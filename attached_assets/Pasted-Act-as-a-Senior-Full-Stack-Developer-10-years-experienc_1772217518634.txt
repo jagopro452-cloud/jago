@@ -1,0 +1,94 @@
+Act as a Senior Full Stack Developer (10+ years experience) and Senior Flutter Architect.
+
+Perform a complete production-level technical audit of my application. 
+Do not give generic answers. I need deep code-level analysis and practical fixes.
+
+PROJECT STACK:
+- Frontend: Flutter
+- Backend: (Check whether MySQL or PostgreSQL is properly configured)
+- Hosting: Replit
+- Real-time features: Ride matching, wallet updates, admin dashboard
+
+CHECK THE FOLLOWING AREAS IN DETAIL:
+
+1. ARCHITECTURE REVIEW
+- Is the app scalable for real-time usage?
+- Is code structured properly (Clean Architecture / MVC / MVVM)?
+- Any bad design patterns or anti-patterns?
+- Is the algorithm logic optimized?
+
+2. DATABASE REVIEW
+- MySQL vs PostgreSQL mismatch issues?
+- Schema normalization problems?
+- Missing indexes?
+- Foreign key errors?
+- Transaction safety?
+- Risk of race conditions?
+- Real-time update efficiency?
+- Payment & wallet double-spend vulnerability?
+
+3. RIDE MATCHING SYSTEM
+- Is real-time ride matching working correctly?
+- Any latency issues?
+- Matching algorithm optimized?
+- Surge pricing logic correct?
+- Intercity and outer city support working properly?
+
+4. PAYMENTS & WALLET SYSTEM
+- Super Admin payment gateway working?
+- Commission calculation correct?
+- Subscription model correct?
+- Negative wallet balance protection?
+- Refund handling correct?
+- Double payment bug possibilities?
+
+5. DISCOUNT COUPONS & SPIN WHEEL
+- Coupon validation logic correct?
+- Expiry & duplicate usage protection?
+- Spin wheel reward logic secure?
+- Any exploit possibility?
+
+6. CAR SHARING & PARCEL SERVICES
+- Flow logic correct?
+- Edge cases handled?
+- Multi-user concurrency issues?
+- Pricing calculation accurate?
+
+7. SECURITY REVIEW
+- SQL injection protection?
+- API authentication secure?
+- JWT or token validation correct?
+- Role-based access (SuperAdmin, Admin, Driver, User)?
+- Data exposure risks?
+
+8. PERFORMANCE
+- App lag issues?
+- Flutter rebuild performance?
+- Memory leaks?
+- API response time acceptable?
+- Real-time websocket handling stable?
+
+9. BUG DETECTION
+- Hidden logical bugs
+- Wrong calculations
+- Broken conditions
+- Algorithm mistakes
+- Runtime crash risks
+
+10. PRODUCTION READINESS
+- Is this app ready for real-world scaling?
+- Can it handle 10,000+ concurrent users?
+- What must be fixed before launch?
+- Critical priority issues list
+
+IMPORTANT:
+- Give structured report.
+- Separate CRITICAL / MAJOR / MINOR issues.
+- Provide exact code correction suggestions.
+- Suggest better database if needed.
+- Suggest infrastructure improvements.
+- Do not assume things — inspect actual code.
+
+Goal:
+I want to know whether this application is truly production-ready or not.
+Give honest technical evaluation like a CTO.
