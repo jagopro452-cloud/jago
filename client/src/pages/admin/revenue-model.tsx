@@ -362,6 +362,94 @@ export default function RevenueModelPage() {
         </div>
       </div>
 
+      {/* PER-SERVICE MODEL OVERRIDE */}
+      <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 14 }}>
+        <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9", borderRadius: "14px 14px 0 0" }}>
+          <SectionHeader icon="bi-sliders" title="Per-Service Model Settings" bg="#f0fdf4" color="#16a34a"
+            badge={{ label: "Independent Control", bg: "#dcfce7", color: "#166534" }} />
+        </div>
+        <div className="card-body p-4">
+          <div className="mb-2" style={{ fontSize: 12.5, color: "#64748b" }}>
+            <i className="bi bi-info-circle me-1"></i>Override the global model for individual services. Each service can independently use Commission or Subscription.
+          </div>
+          <div className="row g-3 mt-1">
+            {/* Rides */}
+            <div className="col-md-6">
+              <div className="p-3 rounded-3" style={{ border: "1.5px solid #e2e8f0", background: "#f8fafc" }}>
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div className="rounded-2 d-flex align-items-center justify-content-center" style={{ width: 30, height: 30, background: "#e8f0fe", color: "#1a73e8", fontSize: 14 }}>
+                    <i className="bi bi-car-front-fill"></i>
+                  </div>
+                  <div className="fw-semibold" style={{ fontSize: 13 }}>Rides Service</div>
+                </div>
+                <div className="d-flex gap-2">
+                  {(["commission", "subscription"] as Model[]).map(m => (
+                    <button key={m}
+                      className={`btn btn-sm flex-fill ${(s["rides_model"] || activeModel) === m ? (m === "commission" ? "btn-warning" : "btn-primary") : "btn-outline-secondary"}`}
+                      style={{ fontSize: 11 }}
+                      onClick={() => set("rides_model", m)}
+                      data-testid={`btn-rides-${m}`}>
+                      <i className={`bi ${m === "commission" ? "bi-percent" : "bi-card-checklist"} me-1`}></i>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 text-muted" style={{ fontSize: 11 }}>
+                  Currently: <strong className={(s["rides_model"] || activeModel) === "commission" ? "text-warning" : "text-primary"}>
+                    {((s["rides_model"] || activeModel) === "commission" ? "Commission" : "Subscription")} Model
+                  </strong>
+                </div>
+              </div>
+            </div>
+            {/* Parcels */}
+            <div className="col-md-6">
+              <div className="p-3 rounded-3" style={{ border: "1.5px solid #e2e8f0", background: "#f8fafc" }}>
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div className="rounded-2 d-flex align-items-center justify-content-center" style={{ width: 30, height: 30, background: "#fef9c3", color: "#ca8a04", fontSize: 14 }}>
+                    <i className="bi bi-box-fill"></i>
+                  </div>
+                  <div>
+                    <span className="fw-semibold" style={{ fontSize: 13 }}>Parcels Service</span>
+                    <span className="badge ms-2" style={{ background: "#fef9c3", color: "#92400e", fontSize: 9, padding: "2px 7px" }}>Commission Only</span>
+                  </div>
+                </div>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-warning btn-sm flex-fill" style={{ fontSize: 11 }} data-testid="btn-parcels-commission">
+                    <i className="bi bi-percent me-1"></i>Commission (Default)
+                  </button>
+                  <button className="btn btn-outline-secondary btn-sm flex-fill" style={{ fontSize: 11, opacity: 0.5 }} disabled title="Subscription not supported for parcels">
+                    <i className="bi bi-lock me-1"></i>Subscription
+                  </button>
+                </div>
+                <div className="mt-2 text-muted" style={{ fontSize: 11 }}>
+                  <i className="bi bi-info-circle me-1"></i>Parcels always use commission model — subscription is not applicable
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Auto-lock threshold */}
+          <div className="row g-3 mt-2">
+            <div className="col-md-4">
+              <div className="p-3 rounded-3" style={{ border: "1.5px solid #fecaca", background: "#fff5f5" }}>
+                <label className="form-label small fw-semibold mb-1" style={{ color: "#991b1b" }}>
+                  <i className="bi bi-lock-fill me-1"></i>Auto-Lock Threshold (₹)
+                </label>
+                <div className="input-group input-group-sm">
+                  <span className="input-group-text" style={{ color: "#dc2626" }}>₹</span>
+                  <input type="number" className="form-control" value={s["auto_lock_threshold"] || "-100"}
+                    onChange={e => set("auto_lock_threshold", e.target.value)}
+                    data-testid="input-auto-lock-threshold" />
+                </div>
+                <div className="form-text" style={{ fontSize: 10.5, color: "#ef4444" }}>
+                  Driver auto-locked when wallet balance drops below this value (typically -₹100)
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Save */}
       <div className="d-flex align-items-center gap-3 pb-2">
         <button className="btn btn-primary px-5"

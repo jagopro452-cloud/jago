@@ -138,6 +138,7 @@ const navSections: NavSection[] = [
       { label: "Transactions", icon: "bi-receipt", href: "/admin/transactions" },
       { label: "Reports", icon: "bi-bar-chart-line-fill", href: "/admin/reports" },
       { label: "Driver Earnings", icon: "bi-cash-coin", href: "/admin/driver-earnings" },
+      { label: "Driver Wallet", icon: "bi-wallet2", href: "/admin/driver-wallet" },
     ],
   },
   {
@@ -145,6 +146,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Chatting", icon: "bi-chat-left-dots", href: "/admin/chatting" },
       { label: "Call Logs", icon: "bi-telephone-fill", href: "/admin/call-logs" },
+      { label: "Refund Requests", icon: "bi-arrow-counterclockwise", href: "/admin/refund-requests" },
     ],
   },
   {

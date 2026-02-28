@@ -1383,6 +1383,208 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Driver Wallet & Auto-Lock ───────────────────────────────────────────────
+
+  // Get all drivers with wallet info
+  app.get("/api/driver-wallet", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT u.id, u.full_name, u.phone, u.email, u.user_type,
+          u.wallet_balance, u.is_locked, u.lock_reason, u.locked_at,
+          u.pending_payment_amount, u.is_active,
+          (SELECT COUNT(*) FROM trip_requests WHERE driver_id = u.id AND current_status='completed') as completed_trips,
+          (SELECT COALESCE(SUM(actual_fare),0) FROM trip_requests WHERE driver_id = u.id AND current_status='completed') as gross_earnings
+        FROM users u WHERE u.user_type = 'driver'
+        ORDER BY u.wallet_balance ASC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get driver payment history
+  app.get("/api/driver-wallet/:id/history", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM driver_payments WHERE driver_id = ${id}::uuid ORDER BY created_at DESC LIMIT 50
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Deduct platform fee per ride (called after ride completion)
+  app.post("/api/driver-wallet/:id/deduct", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { amount, description, tripId } = req.body;
+      // Get revenue model settings
+      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const settings: any = {};
+      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
+      const threshold = parseFloat(settings.auto_lock_threshold || "-100");
+      // Deduct from wallet
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance - ${amount}, pending_payment_amount = GREATEST(0, -(wallet_balance - ${amount}))
+        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
+      `);
+      const row: any = updated.rows[0];
+      const newBalance = parseFloat(row.wallet_balance);
+      // Auto-lock if below threshold
+      if (newBalance < threshold && !row.is_locked) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET is_locked = true, lock_reason = ${'Balance below ₹' + Math.abs(threshold) + ' threshold. Pay ₹' + Math.abs(newBalance).toFixed(2) + ' to unlock.'}, locked_at = NOW()
+          WHERE id = ${id}::uuid
+        `);
+      }
+      // Record payment
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+        VALUES (${id}::uuid, ${amount}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
+      `);
+      res.json({ success: true, newBalance, autoLocked: newBalance < threshold });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Manual lock / unlock by admin
+  app.patch("/api/driver-wallet/:id/lock", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { lock, reason } = req.body;
+      if (lock) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${reason||'Locked by admin'}, locked_at=NOW() WHERE id=${id}::uuid`);
+      } else {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Razorpay: Create payment order for driver wallet top-up
+  app.post("/api/driver-wallet/:id/create-order", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { amount } = req.body; // amount in rupees
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) {
+        // Return mock order for testing
+        const mockOrder = { id: `order_mock_${Date.now()}`, amount: amount * 100, currency: "INR", mock: true };
+        return res.json({ order: mockOrder, keyId: "test_key" });
+      }
+      const Razorpay = require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `wallet_${id}_${Date.now()}` });
+      // Record pending payment
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${id}::uuid, ${amount}, 'wallet_topup', ${order.id}, 'pending', 'Wallet top-up via Razorpay')
+      `);
+      res.json({ order, keyId });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Razorpay: Verify payment + credit wallet
+  app.post("/api/driver-wallet/:id/verify-payment", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret) {
+        const crypto = require("crypto");
+        const body = razorpayOrderId + "|" + razorpayPaymentId;
+        const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      // Credit wallet
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance + ${amount}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amount})
+        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
+      `);
+      const row: any = updated.rows[0];
+      const newBalance = parseFloat(row.wallet_balance);
+      // Auto-unlock if balance now >= 0
+      if (newBalance >= 0 && row.is_locked) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
+      }
+      // Update payment record
+      await rawDb.execute(rawSql`
+        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId}, razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId}
+      `);
+      res.json({ success: true, newBalance, autoUnlocked: newBalance >= 0 && row.is_locked });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: manually credit wallet (offline payment)
+  app.post("/api/driver-wallet/:id/credit", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { amount, description } = req.body;
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance + ${amount}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amount})
+        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
+      `);
+      const row: any = updated.rows[0];
+      const newBalance = parseFloat(row.wallet_balance);
+      if (newBalance >= 0 && row.is_locked) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
+      }
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+        VALUES (${id}::uuid, ${amount}, 'manual_credit', 'completed', ${description || 'Manual credit by admin'})
+      `);
+      res.json({ success: true, newBalance, autoUnlocked: newBalance >= 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── Refund Requests ─────────────────────────────────────────────────────────
+
+  app.get("/api/refund-requests", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const r = await rawDb.execute(rawSql`
+        SELECT rr.*, u.full_name as customer_name, u.phone as customer_phone,
+          tr.ref_id as trip_ref, tr.actual_fare as trip_fare, tr.trip_type
+        FROM refund_requests rr
+        LEFT JOIN users u ON u.id = rr.customer_id
+        LEFT JOIN trip_requests tr ON tr.id = rr.trip_id
+        ${status && status !== 'all' ? rawSql`WHERE rr.status = ${status}` : rawSql``}
+        ORDER BY rr.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/refund-requests", async (req, res) => {
+    try {
+      const { customerId, tripId, amount, reason, paymentMethod } = req.body;
+      const r = tripId
+        ? await rawDb.execute(rawSql`INSERT INTO refund_requests (customer_id, trip_id, amount, reason, payment_method) VALUES (${customerId}::uuid, ${tripId}::uuid, ${amount}, ${reason}, ${paymentMethod||'wallet'}) RETURNING *`)
+        : await rawDb.execute(rawSql`INSERT INTO refund_requests (customer_id, amount, reason, payment_method) VALUES (${customerId}::uuid, ${amount}, ${reason}, ${paymentMethod||'wallet'}) RETURNING *`);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/refund-requests/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, adminNote, approvedBy } = req.body;
+      const r = status !== 'pending'
+        ? await rawDb.execute(rawSql`UPDATE refund_requests SET status=${status}, admin_note=${adminNote||''}, approved_by=${approvedBy||'Admin'}, approved_at=NOW() WHERE id=${id}::uuid RETURNING *`)
+        : await rawDb.execute(rawSql`UPDATE refund_requests SET status=${status}, admin_note=${adminNote||''}, approved_by=${approvedBy||'Admin'} WHERE id=${id}::uuid RETURNING *`);
+      // If approved, credit customer wallet
+      if (status === 'approved') {
+        const refund: any = r.rows[0];
+        if (refund?.customer_id && refund?.amount) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET wallet_balance = wallet_balance + ${refund.amount} WHERE id = ${refund.customer_id}::uuid
+          `);
+        }
+      }
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Call Logs (stub - return empty list)
   app.get("/api/call-logs", async (req, res) => {
     try {
