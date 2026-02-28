@@ -10,70 +10,56 @@ function injectMapStyles() {
   const style = document.createElement("style");
   style.id = "jago-map-styles";
   style.textContent = `
-    .jago-vehicle-wrap { position: relative; }
-    .jago-pulse {
-      position: absolute; top: 50%; left: 50%;
-      width: 52px; height: 52px;
-      transform: translate(-50%,-50%);
-      border-radius: 50%;
-      animation: jagoPulse 2s ease-out infinite;
-    }
-    @keyframes jagoPulse {
-      0%   { transform: translate(-50%,-50%) scale(0.6); opacity: 0.7; }
-      70%  { transform: translate(-50%,-50%) scale(1.6); opacity: 0;   }
-      100% { transform: translate(-50%,-50%) scale(0.6); opacity: 0;   }
-    }
-    .jago-icon {
-      position: relative; z-index: 2;
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      border: 3px solid white;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 20px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.28);
-      transition: transform 0.3s ease;
-    }
-    .jago-icon:hover { transform: scale(1.15); }
     .leaflet-marker-icon { transition: transform 1.6s cubic-bezier(.25,.8,.25,1) !important; }
     .jago-popup .leaflet-popup-content-wrapper {
       border-radius: 14px !important;
       box-shadow: 0 8px 32px rgba(0,0,0,0.18) !important;
-      padding: 0 !important;
-      overflow: hidden;
+      padding: 0 !important; overflow: hidden;
     }
     .jago-popup .leaflet-popup-content { margin: 0 !important; }
     .jago-popup .leaflet-popup-tip-container { margin-top: -1px; }
     .jago-marker-tooltip {
-      background: rgba(15,23,42,0.9) !important;
+      background: rgba(15,23,42,0.92) !important;
       color: #fff !important; border: none !important;
       border-radius: 8px !important; font-size: 12px !important;
-      padding: 4px 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+      padding: 4px 10px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
       white-space: nowrap;
     }
     .jago-marker-tooltip::before { display: none; }
     .live-badge { display: inline-flex; align-items: center; gap: 5px; }
     .live-dot {
       width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
-      box-shadow: 0 0 0 0 rgba(239,68,68,0.4);
       animation: liveDot 1.4s ease infinite;
     }
     @keyframes liveDot {
-      0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
-      70%  { box-shadow: 0 0 0 8px rgba(239,68,68,0);  }
-      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0);    }
+      0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
+      70%  { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
     }
     .trip-card-hover { transition: all 0.18s ease; }
     .trip-card-hover:hover { background: #f8fafc !important; transform: translateX(3px); }
-    .trip-card-active { background: #f1f5f9 !important; border-left-color: currentColor !important; }
+    .trip-card-active { background: #f1f5f9 !important; }
     .prog-bar-anim { transition: width 1.8s cubic-bezier(.4,0,.2,1); }
     .map-stat-card {
       background: white; border-radius: 12px;
       border: 1px solid #e2e8f0;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      padding: 14px 18px;
-      transition: box-shadow 0.2s;
+      padding: 14px 18px; transition: box-shadow 0.2s;
     }
     .map-stat-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+    .jago-vehicle-float {
+      display: flex; flex-direction: column; align-items: center;
+      pointer-events: none;
+    }
+    .jago-vehicle-emoji {
+      line-height: 1;
+      filter: drop-shadow(0 4px 10px rgba(0,0,0,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    }
+    .jago-vehicle-shadow {
+      border-radius: 50%; opacity: 0.35;
+      filter: blur(4px); margin-top: 1px;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -105,25 +91,39 @@ const getVC = (t: string) => VEHICLE_CONFIG[t] || VEHICLE_CONFIG["default"];
 
 function createVehicleIcon(L: any, type: string) {
   const cfg = getVC(type);
+  // Clean floating vehicle icon — NO circles, just emoji + drop-shadow + ground glow
   return L.divIcon({
-    html: `<div class="jago-vehicle-wrap" style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;">
-      <div class="jago-pulse" style="background:${cfg.color};"></div>
-      <div class="jago-icon" style="background:${cfg.color};">${cfg.emoji}</div>
+    html: `<div class="jago-vehicle-float">
+      <div class="jago-vehicle-emoji" style="font-size:38px;">${cfg.emoji}</div>
+      <div class="jago-vehicle-shadow" style="width:26px;height:7px;background:${cfg.color};"></div>
     </div>`,
-    className: "", iconSize: [52, 52], iconAnchor: [26, 26], popupAnchor: [0, -28],
+    className: "",
+    iconSize: [46, 52],
+    iconAnchor: [23, 50],
+    popupAnchor: [0, -52],
   });
 }
 
 function createEndIcon(L: any, type: "pickup" | "dest") {
   const isPick = type === "pickup";
-  const c = isPick ? "#22c55e" : "#ef4444";
-  const lbl = isPick ? "P" : "D";
+  const c = isPick ? "#16a34a" : "#dc2626";
+  const icon = isPick ? "📍" : "🏁";
+  // Teardrop pin style — clean, no thick circles
   return L.divIcon({
-    html: `<div style="width:28px;height:28px;background:${c};border:2.5px solid white;
-      border-radius:50%;display:flex;align-items:center;justify-content:center;
-      color:white;font-weight:800;font-size:11px;
-      box-shadow:0 3px 10px rgba(0,0,0,0.25);">${lbl}</div>`,
-    className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+    html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
+      <div style="
+        width:22px;height:22px;
+        background:${c};
+        border:2.5px solid white;
+        border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);
+        box-shadow:0 3px 10px rgba(0,0,0,0.3);
+        display:flex;align-items:center;justify-content:center;
+      "><span style="transform:rotate(45deg);font-size:10px;">${icon}</span></div>
+    </div>`,
+    className: "",
+    iconSize: [22, 26],
+    iconAnchor: [11, 24],
   });
 }
 
