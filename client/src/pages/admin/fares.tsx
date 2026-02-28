@@ -101,7 +101,7 @@ function FareCalculator({ zones, vehicleCategories }: { zones: any[]; vehicleCat
   );
 }
 
-const EMPTY_FORM = { zoneId: "", vehicleCategoryId: "", baseFare: "50", farePerKm: "15", farePerMin: "2", minimumFare: "30", cancellationFee: "5" };
+const EMPTY_FORM = { zoneId: "", vehicleCategoryId: "", baseFare: "50", farePerKm: "15", farePerMin: "2", minimumFare: "30", cancellationFee: "5", waitingChargePerMin: "1.50", nightChargeMultiplier: "1.25" };
 
 function FareModal({ open, onClose, editing, zones, vehicleCategories, form, setForm, onSave, saving }: any) {
   if (!open) return null;
@@ -153,6 +153,18 @@ function FareModal({ open, onClose, editing, zones, vehicleCategories, form, set
             <div className="col-6">
               <label className="form-label-jago">Cancellation Fee (₹)</label>
               <input type="number" className="form-control" value={form.cancellationFee} min="0" onChange={e => setForm((f: any) => ({ ...f, cancellationFee: e.target.value }))} />
+            </div>
+            <div className="col-6">
+              <label className="form-label-jago">Waiting Charge (₹/min) <i className="bi bi-clock-history ms-1" style={{ fontSize: "0.75rem", color: "#d97706" }}></i></label>
+              <input type="number" className="form-control" value={form.waitingChargePerMin} min="0" step="0.25" onChange={e => setForm((f: any) => ({ ...f, waitingChargePerMin: e.target.value }))} data-testid="input-waiting-charge" />
+              <small className="text-muted">Charged per minute driver waits at pickup</small>
+            </div>
+          </div>
+          <div className="row g-3">
+            <div className="col-6">
+              <label className="form-label-jago">Night Charge Multiplier <i className="bi bi-moon-fill ms-1" style={{ fontSize: "0.75rem", color: "#7c3aed" }}></i></label>
+              <input type="number" className="form-control" value={form.nightChargeMultiplier} min="1" max="3" step="0.05" onChange={e => setForm((f: any) => ({ ...f, nightChargeMultiplier: e.target.value }))} />
+              <small className="text-muted">1.25 = 25% extra charge 10PM–6AM</small>
             </div>
           </div>
           <div className="d-flex gap-2 justify-content-end mt-2">
@@ -208,6 +220,8 @@ export default function Fares() {
       farePerMin: String(item.fare.farePerMin || "2"),
       minimumFare: String(item.fare.minimumFare || "30"),
       cancellationFee: String(item.fare.cancellationFee || "5"),
+      waitingChargePerMin: String(item.fare.waitingChargePerMin || "1.50"),
+      nightChargeMultiplier: String(item.fare.nightChargeMultiplier || "1.25"),
     });
     setOpen(true);
   };
@@ -243,14 +257,16 @@ export default function Fares() {
 
           <div className="table-responsive">
             <table className="table table-borderless align-middle table-hover">
-              <thead className="table-light align-middle text-capitalize">
+              <thead className="table-light align-middle text-capitalize" style={{ fontSize: "0.78rem" }}>
                 <tr>
                   <th>SL</th>
                   <th>Zone</th>
-                  <th>Vehicle Category</th>
+                  <th>Vehicle</th>
                   <th>Base Fare</th>
                   <th>Per Km</th>
                   <th>Per Min</th>
+                  <th>Waiting/min</th>
+                  <th>Night ×</th>
                   <th>Min Fare</th>
                   <th>Cancel Fee</th>
                   <th className="text-center">Action</th>
@@ -275,6 +291,8 @@ export default function Fares() {
                       <td className="fw-semibold">₹{Number(item.fare.baseFare || 0).toFixed(2)}</td>
                       <td>₹{Number(item.fare.farePerKm || 0).toFixed(2)}</td>
                       <td>₹{Number(item.fare.farePerMin || 0).toFixed(2)}</td>
+                      <td style={{ color: "#d97706" }}>₹{Number(item.fare.waitingChargePerMin || 0).toFixed(2)}</td>
+                      <td style={{ color: "#7c3aed" }}>{Number(item.fare.nightChargeMultiplier || 1).toFixed(2)}×</td>
                       <td>₹{Number(item.fare.minimumFare || 0).toFixed(2)}</td>
                       <td>₹{Number(item.fare.cancellationFee || 0).toFixed(2)}</td>
                       <td className="text-center">
@@ -286,7 +304,7 @@ export default function Fares() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={9}>
+                  <tr><td colSpan={11}>
                     <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
                       <i className="bi bi-cash-stack" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
                       <p className="text-muted mb-0">No fare configurations found. Click "Add Fare" to create one.</p>

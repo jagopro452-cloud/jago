@@ -127,6 +127,9 @@ export const tripFares = pgTable("trip_fares", {
   farePerMin: numeric("fare_per_min", { precision: 23, scale: 3 }).default("0"),
   minimumFare: numeric("minimum_fare", { precision: 23, scale: 3 }).default("0"),
   cancellationFee: numeric("cancellation_fee", { precision: 23, scale: 3 }).default("0"),
+  waitingChargePerMin: numeric("waiting_charge_per_min", { precision: 23, scale: 3 }).default("0"),
+  helperCharge: numeric("helper_charge", { precision: 23, scale: 3 }).default("0"),
+  nightChargeMultiplier: numeric("night_charge_multiplier", { precision: 23, scale: 3 }).default("1"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

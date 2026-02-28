@@ -16,8 +16,10 @@ const CONFIG_TABS = [
   { id: "payment", label: "Payment Gateway", icon: "bi-credit-card-fill", color: "#1a73e8", bg: "#e8f0fe" },
   { id: "commission", label: "Commission", icon: "bi-percent", color: "#d97706", bg: "#fef9c3" },
   { id: "features", label: "Features", icon: "bi-toggles", color: "#16a34a", bg: "#f0fdf4" },
+  { id: "dispatch", label: "Dispatch Settings", icon: "bi-broadcast", color: "#0891b2", bg: "#ecfeff" },
+  { id: "sound", label: "Sound Alerts", icon: "bi-volume-up-fill", color: "#7c3aed", bg: "#f5f3ff" },
   { id: "firebase", label: "Firebase & SMS", icon: "bi-bell-fill", color: "#f97316", bg: "#fff7ed" },
-  { id: "maps", label: "Google Maps", icon: "bi-map-fill", color: "#7c3aed", bg: "#f5f3ff" },
+  { id: "maps", label: "Google Maps", icon: "bi-map-fill", color: "#059669", bg: "#f0fdf4" },
 ];
 
 function Toggle({ label, desc, value, onChange, id }: any) {
@@ -545,6 +547,167 @@ export default function ConfigurationsPage() {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ===== DISPATCH SETTINGS ===== */}
+          {tab === "dispatch" && (
+            <div>
+              <div className="mb-4 p-3 rounded-3" style={{ background: "linear-gradient(135deg,#ecfeff,#f0f9ff)", border: "1.5px solid #bae6fd" }}>
+                <div className="d-flex align-items-center gap-2 mb-1">
+                  <i className="bi bi-broadcast text-info" style={{ fontSize: 18 }}></i>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "#0891b2" }}>Auto Dispatch Engine</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Controls how ride requests are assigned to drivers — acceptance timer, smart matching, auto-cancel logic</div>
+              </div>
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Driver Acceptance</div>
+
+              <Field label="Acceptance Timeout (seconds)" id="acceptance_timeout_sec"
+                desc="Time given to a driver to accept a ride before it moves to the next driver. Recommended: 30 seconds"
+                value={get("acceptance_timeout_sec") || "30"} onChange={set("acceptance_timeout_sec")}
+                type="number" placeholder="30" suffix="sec" />
+
+              <Field label="Max Drivers to Notify" id="max_drivers_to_notify"
+                desc="Maximum number of drivers to simultaneously broadcast a ride request to"
+                value={get("max_drivers_to_notify") || "5"} onChange={set("max_drivers_to_notify")}
+                type="number" placeholder="5" suffix="drivers" />
+
+              <Field label="Driver Broadcast Radius (km)" id="broadcast_radius_km"
+                desc="How far from pickup to search for available drivers"
+                value={get("broadcast_radius_km") || "5"} onChange={set("broadcast_radius_km")}
+                type="number" placeholder="5" suffix="km" />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Smart Assignment Logic</div>
+
+              <Toggle label="First Accept Wins" id="first_accept_wins"
+                desc="When multiple drivers receive the same request, only the first to accept gets the ride. Others are notified automatically."
+                value={get("first_accept_wins") || "true"} onChange={set("first_accept_wins")} />
+
+              <Toggle label="Auto-Assign on Driver Cancel" id="auto_assign_on_cancel"
+                desc="If a driver cancels after accepting, automatically assign the next available driver without customer intervention"
+                value={get("auto_assign_on_cancel") || "true"} onChange={set("auto_assign_on_cancel")} />
+
+              <Toggle label="Sequential Dispatch Mode" id="sequential_dispatch"
+                desc="Send request to one driver at a time in order of proximity. If rejected/timeout, moves to next driver automatically."
+                value={get("sequential_dispatch") || "false"} onChange={set("sequential_dispatch")} />
+
+              <Toggle label="Driver Group Broadcast" id="group_broadcast"
+                desc="Broadcast ride to a group of nearby drivers simultaneously (like Rapido/Ola). All see it, first to tap gets it."
+                value={get("group_broadcast") || "true"} onChange={set("group_broadcast")} />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Parcel & Helper</div>
+
+              <Toggle label="Helper Booking Enabled" id="helper_booking_enabled"
+                desc="Allow customers to request a loading/unloading helper along with vehicle booking"
+                value={get("helper_booking_enabled") || "true"} onChange={set("helper_booking_enabled")} />
+
+              <Field label="Helper Charge per Trip (₹)" id="helper_charge_per_trip"
+                desc="Fixed charge added when customer requests a helper for loading/unloading"
+                value={get("helper_charge_per_trip") || "100"} onChange={set("helper_charge_per_trip")}
+                type="number" placeholder="100" suffix="₹" />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Intercity Dispatch</div>
+
+              <Field label="Intercity Acceptance Timeout (seconds)" id="intercity_acceptance_timeout_sec"
+                desc="Longer timeout for intercity bookings (customers plan ahead)"
+                value={get("intercity_acceptance_timeout_sec") || "120"} onChange={set("intercity_acceptance_timeout_sec")}
+                type="number" placeholder="120" suffix="sec" />
+
+              <Toggle label="Intercity Driver Verification Required" id="intercity_driver_verification"
+                desc="Only allow approved/verified drivers to accept intercity trips"
+                value={get("intercity_driver_verification") || "true"} onChange={set("intercity_driver_verification")} />
+            </div>
+          )}
+
+          {/* ===== SOUND ALERTS ===== */}
+          {tab === "sound" && (
+            <div>
+              <div className="mb-4 p-3 rounded-3" style={{ background: "linear-gradient(135deg,#f5f3ff,#faf5ff)", border: "1.5px solid #ddd6fe" }}>
+                <div className="d-flex align-items-center gap-2 mb-1">
+                  <i className="bi bi-volume-up-fill text-purple" style={{ fontSize: 18, color: "#7c3aed" }}></i>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "#7c3aed" }}>Sound Alert Configuration</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Configure alert sounds for driver app, customer app and admin dashboard. These settings sync to Flutter mobile apps.</div>
+              </div>
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Driver App Alerts</div>
+
+              <Toggle label="New Ride Request Sound" id="sound_new_ride"
+                desc="Play alert sound when a new ride request is dispatched to driver"
+                value={get("sound_new_ride") || "true"} onChange={set("sound_new_ride")} />
+
+              <Toggle label="New Parcel Request Sound" id="sound_new_parcel"
+                desc="Play distinct alert sound for new parcel delivery requests"
+                value={get("sound_new_parcel") || "true"} onChange={set("sound_new_parcel")} />
+
+              <Toggle label="Intercity Request Sound" id="sound_intercity"
+                desc="Play premium alert sound for intercity/outstation booking requests"
+                value={get("sound_intercity") || "true"} onChange={set("sound_intercity")} />
+
+              <Toggle label="Trip Completed Sound" id="sound_trip_complete"
+                desc="Play confirmation sound when trip is completed and fare is settled"
+                value={get("sound_trip_complete") || "true"} onChange={set("sound_trip_complete")} />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Customer App Alerts</div>
+
+              <Toggle label="Driver Accepted Sound" id="sound_driver_accepted"
+                desc="Notify customer with sound when driver accepts their booking"
+                value={get("sound_driver_accepted") || "true"} onChange={set("sound_driver_accepted")} />
+
+              <Toggle label="Driver Arriving Sound" id="sound_driver_arriving"
+                desc="Play alert when driver is 2 minutes away from pickup"
+                value={get("sound_driver_arriving") || "true"} onChange={set("sound_driver_arriving")} />
+
+              <Toggle label="Trip Started Sound" id="sound_trip_started"
+                desc="Play sound when driver starts the trip meter"
+                value={get("sound_trip_started") || "false"} onChange={set("sound_trip_started")} />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Safety Alerts</div>
+
+              <Toggle label="SOS Alert Sound" id="sound_sos"
+                desc="HIGH PRIORITY — always play loud alert for SOS emergency triggers. Cannot be muted by driver."
+                value={get("sound_sos") || "true"} onChange={set("sound_sos")} />
+
+              <Toggle label="Accident Detection Alert" id="sound_accident"
+                desc="Play alert if sudden motion/impact detected (requires phone accelerometer)"
+                value={get("sound_accident") || "true"} onChange={set("sound_accident")} />
+
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8, marginTop: 20 }}>Sound Configuration</div>
+
+              <div style={{ padding: "14px 0", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", marginBottom: 8 }}>Alert Sound Type</div>
+                <div className="d-flex gap-2 flex-wrap">
+                  {[
+                    { val: "bell", label: "🔔 Bell", desc: "Classic bell" },
+                    { val: "chime", label: "🎵 Chime", desc: "Soft chime" },
+                    { val: "notification", label: "📳 Notification", desc: "Phone ping" },
+                    { val: "horn", label: "📯 Horn", desc: "Loud horn" },
+                  ].map(s => (
+                    <div key={s.val}
+                      onClick={() => set("sound_type")(s.val)}
+                      style={{
+                        padding: "10px 16px", borderRadius: 10, cursor: "pointer",
+                        border: `2px solid ${get("sound_type") === s.val || (!get("sound_type") && s.val === "bell") ? "#7c3aed" : "#e2e8f0"}`,
+                        background: get("sound_type") === s.val || (!get("sound_type") && s.val === "bell") ? "#f5f3ff" : "#fff",
+                        textAlign: "center",
+                      }}>
+                      <div style={{ fontSize: 18 }}>{s.label.split(' ')[0]}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>{s.label.split(' ')[1]}</div>
+                      <div style={{ fontSize: 10, color: "#94a3b8" }}>{s.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Field label="Alert Sound Repeat Count" id="sound_repeat_count"
+                desc="Number of times to repeat the alert sound for incoming ride/parcel requests"
+                value={get("sound_repeat_count") || "3"} onChange={set("sound_repeat_count")}
+                type="number" placeholder="3" suffix="times" />
+
+              <Toggle label="Vibration with Sound" id="sound_vibration"
+                desc="Vibrate device alongside alert sound for better driver attention"
+                value={get("sound_vibration") || "true"} onChange={set("sound_vibration")} />
             </div>
           )}
 
