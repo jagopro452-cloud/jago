@@ -25,6 +25,7 @@ import CancellationReasonsPage from "@/pages/admin/cancellation-reasons";
 import HeatMap from "@/pages/admin/heat-map";
 import FleetView from "@/pages/admin/fleet-view";
 import CarSharing from "@/pages/admin/car-sharing";
+import IntercityCarSharing from "@/pages/admin/intercity-carsharing";
 import ParcelRefunds from "@/pages/admin/parcel-refunds";
 import SafetyAlerts from "@/pages/admin/safety-alerts";
 import Banners from "@/pages/admin/banners";
@@ -81,6 +82,7 @@ function AdminRoutes() {
         {/* Trip Management */}
         <Route path="/admin/trips" component={Trips} />
         <Route path="/admin/car-sharing" component={CarSharing} />
+        <Route path="/admin/intercity-carsharing" component={IntercityCarSharing} />
         <Route path="/admin/parcel-refunds" component={ParcelRefunds} />
         <Route path="/admin/safety-alerts" component={SafetyAlerts} />
         {/* Promotion Management */}

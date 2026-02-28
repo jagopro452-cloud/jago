@@ -1585,6 +1585,106 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Intercity Car Sharing ────────────────────────────────────────────────────
+
+  // Settings CRUD
+  app.get("/api/intercity-cs/settings", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM intercity_cs_settings ORDER BY key_name`);
+      const obj: any = {};
+      r.rows.forEach((row: any) => { obj[row.key_name] = row.value; });
+      res.json(obj);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.put("/api/intercity-cs/settings", async (req, res) => {
+    try {
+      for (const [key, val] of Object.entries(req.body)) {
+        await rawDb.execute(rawSql`
+          INSERT INTO intercity_cs_settings (key_name, value) VALUES (${key}, ${String(val)})
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Rides list (admin view)
+  app.get("/api/intercity-cs/rides", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const r = await rawDb.execute(rawSql`
+        SELECT r.*,
+          u.full_name as driver_name, u.phone as driver_phone,
+          (SELECT COUNT(*) FROM intercity_cs_bookings b WHERE b.ride_id = r.id AND b.status != 'cancelled') as confirmed_bookings,
+          (SELECT COALESCE(SUM(b.total_fare),0) FROM intercity_cs_bookings b WHERE b.ride_id = r.id AND b.payment_status = 'paid') as total_revenue
+        FROM intercity_cs_rides r
+        LEFT JOIN users u ON u.id = r.driver_id
+        ${status && status !== 'all' ? rawSql`WHERE r.status = ${status}` : rawSql``}
+        ORDER BY r.departure_date ASC, r.departure_time ASC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Create ride (driver action / admin can create too)
+  app.post("/api/intercity-cs/rides", async (req, res) => {
+    try {
+      const { driverId, fromCity, toCity, routeKm, departureDate, departureTime, totalSeats, vehicleNumber, vehicleModel, note } = req.body;
+      // Calculate fare from settings
+      const settingsR = await rawDb.execute(rawSql`SELECT key_name, value FROM intercity_cs_settings`);
+      const s: any = {};
+      settingsR.rows.forEach((r: any) => { s[r.key_name] = parseFloat(r.value); });
+      const farePerSeat = (parseFloat(routeKm) * (s.rate_per_km_per_seat || 3.5));
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO intercity_cs_rides (driver_id, from_city, to_city, route_km, departure_date, departure_time, total_seats, vehicle_number, vehicle_model, note, fare_per_seat)
+        VALUES (${driverId}::uuid, ${fromCity}, ${toCity}, ${routeKm}, ${departureDate}, ${departureTime}, ${totalSeats}, ${vehicleNumber||''}, ${vehicleModel||''}, ${note||''}, ${farePerSeat})
+        RETURNING *
+      `);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Toggle ride active/inactive
+  app.patch("/api/intercity-cs/rides/:id/toggle", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+      await rawDb.execute(rawSql`UPDATE intercity_cs_rides SET is_active=${isActive} WHERE id=${id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Update ride status
+  app.patch("/api/intercity-cs/rides/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      await rawDb.execute(rawSql`UPDATE intercity_cs_rides SET status=${status} WHERE id=${id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Bookings list (admin view)
+  app.get("/api/intercity-cs/bookings", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const r = await rawDb.execute(rawSql`
+        SELECT b.*,
+          u.full_name as customer_name, u.phone as customer_phone,
+          r.from_city, r.to_city, r.departure_date, r.departure_time,
+          d.full_name as driver_name
+        FROM intercity_cs_bookings b
+        LEFT JOIN users u ON u.id = b.customer_id
+        LEFT JOIN intercity_cs_rides r ON r.id = b.ride_id
+        LEFT JOIN users d ON d.id = r.driver_id
+        ${status && status !== 'all' ? rawSql`WHERE b.status = ${status}` : rawSql``}
+        ORDER BY b.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Call Logs (stub - return empty list)
   app.get("/api/call-logs", async (req, res) => {
     try {
