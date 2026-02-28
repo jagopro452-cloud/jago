@@ -52,21 +52,26 @@ function useJagoJS() {
       "/landing-page/assets/js/owl.min.js",
       "/landing-page/assets/js/main.js",
     ];
-    const tags: HTMLScriptElement[] = [];
+    const added: HTMLScriptElement[] = [];
     let idx = 0;
     function loadNext() {
       if (idx >= scripts.length) return;
+      const src = scripts[idx++];
+      if (document.querySelector(`script[src="${src}"]`)) {
+        loadNext();
+        return;
+      }
       const s = document.createElement("script");
-      s.src = scripts[idx++];
+      s.src = src;
       s.async = false;
       s.dataset.jagoScript = "1";
       s.onload = loadNext;
       document.body.appendChild(s);
-      tags.push(s);
+      added.push(s);
     }
     loadNext();
     return () => {
-      document.querySelectorAll('[data-jago-script="1"]').forEach(el => el.remove());
+      added.forEach(el => el.remove());
     };
   }, []);
 }
@@ -102,16 +107,10 @@ export default function LandingPage() {
                     </a>
                   </li>
                 ))}
-                <li className="d-sm-none">
-                  <Link href="/admin/login" className="cmn--btn px-4 text-white d-inline-flex">
-                    <span>Admin</span>
-                  </Link>
-                </li>
               </ul>
               <div className="nav-toggle d-lg-none ms-auto me-2 me-sm-4" onClick={() => setMenuOpen(o => !o)}>
                 <span></span><span></span><span></span>
               </div>
-              <Link href="/admin/login" className="cmn--btn d-none d-sm-block">Admin Panel</Link>
             </div>
           </div>
         </div>

@@ -1723,6 +1723,20 @@ body.aside-folded .main-area {
   pointer-events: none;
 }
 
+.jd-s-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+  border-radius: 50% !important;
+  width: 48px;
+  height: 48px;
+  font-size: 1.25rem;
+  background: rgba(37,99,235,0.1);
+  color: #2563EB;
+  transition: transform 0.2s ease;
+}
+
 .jd-stat-blue {
   background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%) !important;
   box-shadow: 0 2px 12px rgba(37,99,235,0.1) !important;

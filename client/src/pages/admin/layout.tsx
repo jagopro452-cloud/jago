@@ -4,13 +4,9 @@ import { useState, useEffect, useRef } from "react";
 function useAdminBootstrap() {
   useEffect(() => {
     const cssFiles = [
-      { id: "admin-google-fonts-css", href: "/admin-module/css/fonts/google.css" },
       { id: "admin-bootstrap-icons-css", href: "/admin-module/css/bootstrap-icons.min.css" },
       { id: "admin-bootstrap-css", href: "/admin-module/css/bootstrap.min.css" },
       { id: "admin-icon-set-css", href: "/admin-module/plugins/icon-set/style.css" },
-      { id: "admin-perfect-scroll-css", href: "/admin-module/plugins/perfect-scrollbar/perfect-scrollbar.min.css" },
-      { id: "admin-style-css", href: "/admin-module/css/style.css" },
-      { id: "admin-custom-css", href: "/admin-module/css/custom.css" },
     ];
     const added: HTMLLinkElement[] = [];
     cssFiles.forEach(({ id, href }) => {
