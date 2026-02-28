@@ -239,6 +239,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div
         className={`aside-overlay${mobileOpen ? " active" : ""}`}
         onClick={() => setMobileOpen(false)}
+        data-testid="aside-overlay"
       />
 
       {/* Sidebar */}
