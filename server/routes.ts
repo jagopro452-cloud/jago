@@ -67,6 +67,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Seed trips after a short delay
   setTimeout(seedInitialTrips, 2000);
 
+  // Heat Map & Fleet View points
+  app.get("/api/heatmap-points", async (_req, res) => {
+    try {
+      const { db: hDb } = await import("./db");
+      const { sql: hSql } = await import("drizzle-orm");
+      const r = await hDb.execute(hSql`
+        SELECT pickup_lat as lat, pickup_lng as lng, 1 as intensity FROM trip_requests WHERE pickup_lat IS NOT NULL
+        UNION ALL
+        SELECT destination_lat as lat, destination_lng as lng, 0.6 as intensity FROM trip_requests WHERE destination_lat IS NOT NULL
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/fleet-drivers", async (_req, res) => {
+    try {
+      const drivers = await storage.getUsers('driver');
+      // Return drivers with simulated lat/lng around Hyderabad if no real location
+      const result = drivers.data.map((d: any, i: number) => ({
+        id: d.id,
+        name: d.fullName || `${d.f_name || d.firstName || ""} ${d.l_name || d.lastName || ""}`.trim() || "Driver",
+        phone: d.phone,
+        status: (d.isActive ?? d.is_active) ? 'active' : 'inactive',
+        lat: 17.385 + (Math.random() - 0.5) * 0.2,
+        lng: 78.486 + (Math.random() - 0.5) * 0.2,
+      }));
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Dashboard
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
