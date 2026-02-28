@@ -3,6 +3,104 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+function FareCalculator({ zones, vehicleCategories }: { zones: any[]; vehicleCategories: any[] }) {
+  const [calc, setCalc] = useState({ zoneId: "", vehicleCategoryId: "", distanceKm: "5", durationMin: "10" });
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const calculate = async () => {
+    if (!calc.zoneId || !calc.vehicleCategoryId) { setError("Select zone and vehicle category"); return; }
+    setLoading(true); setError(""); setResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/fare-calculator", { ...calc, distanceKm: Number(calc.distanceKm), durationMin: Number(calc.durationMin) });
+      const json = await res.json();
+      setResult(json);
+    } catch (e: any) { setError(e.message || "Calculation failed"); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="card mt-4" style={{ border: "2px solid #4f46e522" }}>
+      <div className="card-header border-bottom py-3" style={{ background: "linear-gradient(135deg,#4f46e508,#818cf808)" }}>
+        <h5 className="card-title mb-0 d-flex align-items-center gap-2">
+          <i className="bi bi-calculator-fill text-primary"></i>
+          Fare Calculator — Test Tool
+          <span className="badge bg-primary bg-opacity-10 text-primary ms-1" style={{ fontSize: "0.7rem" }}>Simulator</span>
+        </h5>
+        <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 4 }}>Simulate what a customer will be charged for a trip</div>
+      </div>
+      <div className="card-body">
+        <div className="row g-3 align-items-end">
+          <div className="col-md-3">
+            <label className="form-label-jago">Zone <span className="text-danger">*</span></label>
+            <select className="form-select form-select-sm" value={calc.zoneId} onChange={e => setCalc(c => ({ ...c, zoneId: e.target.value }))} data-testid="calc-zone">
+              <option value="">Select Zone</option>
+              {zones?.map((z: any) => <option key={z.id} value={z.id}>{z.name}</option>)}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <label className="form-label-jago">Vehicle Category <span className="text-danger">*</span></label>
+            <select className="form-select form-select-sm" value={calc.vehicleCategoryId} onChange={e => setCalc(c => ({ ...c, vehicleCategoryId: e.target.value }))} data-testid="calc-vehicle">
+              <option value="">Select Vehicle</option>
+              {vehicleCategories?.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          </div>
+          <div className="col-md-2">
+            <label className="form-label-jago">Distance (km)</label>
+            <input type="number" className="form-control form-control-sm" value={calc.distanceKm} min="0.1" step="0.1" onChange={e => setCalc(c => ({ ...c, distanceKm: e.target.value }))} data-testid="calc-distance" />
+          </div>
+          <div className="col-md-2">
+            <label className="form-label-jago">Duration (min)</label>
+            <input type="number" className="form-control form-control-sm" value={calc.durationMin} min="0" onChange={e => setCalc(c => ({ ...c, durationMin: e.target.value }))} data-testid="calc-duration" />
+          </div>
+          <div className="col-md-2">
+            <button className="btn btn-primary btn-sm w-100" onClick={calculate} disabled={loading} data-testid="btn-calculate">
+              <i className="bi bi-calculator me-1"></i>{loading ? "Calculating..." : "Calculate"}
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="alert alert-danger mt-3 py-2 mb-0" style={{ fontSize: "0.8rem" }}>{error}</div>}
+
+        {result && (
+          <div className="mt-4 p-3 rounded" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                <i className="bi bi-geo-alt-fill text-primary me-1"></i>{result.zoneName} —
+                <i className="bi bi-truck-front ms-2 me-1 text-success"></i>{result.vehicleName}
+              </span>
+              <span style={{ fontSize: "0.72rem", color: "#64748b" }}>{calc.distanceKm} km · {calc.durationMin} min</span>
+            </div>
+            <div className="row g-2">
+              {[
+                { label: "Base Fare", val: `₹${result.breakdown.baseFare}`, color: "#374151" },
+                { label: `Distance (${calc.distanceKm} km × ₹${result.inputs.perKm}/km)`, val: `₹${result.breakdown.distanceFare}`, color: "#374151" },
+                { label: `Time (${calc.durationMin} min × ₹${result.inputs.perMin}/min)`, val: `₹${result.breakdown.timeFare}`, color: "#374151" },
+                { label: "Minimum Fare", val: `₹${result.breakdown.minimumFare}`, color: "#64748b" },
+                { label: "GST (5%)", val: `₹${result.breakdown.gst}`, color: "#d97706" },
+              ].map((item, i) => (
+                <div key={i} className="col-sm-4 col-md-3">
+                  <div style={{ background: "#fff", border: "1px solid #d1fae5", borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: "0.68rem", color: "#64748b" }}>{item.label}</div>
+                    <div style={{ fontSize: "1rem", fontWeight: 700, color: item.color }}>{item.val}</div>
+                  </div>
+                </div>
+              ))}
+              <div className="col-sm-4 col-md-3">
+                <div style={{ background: "#059669", borderRadius: 8, padding: "8px 12px" }}>
+                  <div style={{ fontSize: "0.68rem", color: "#d1fae5" }}>CUSTOMER PAYS</div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#fff" }}>₹{result.breakdown.total}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const EMPTY_FORM = { zoneId: "", vehicleCategoryId: "", baseFare: "50", farePerKm: "15", farePerMin: "2", minimumFare: "30", cancellationFee: "5" };
 
 function FareModal({ open, onClose, editing, zones, vehicleCategories, form, setForm, onSave, saving }: any) {
@@ -200,6 +298,8 @@ export default function Fares() {
           </div>
         </div>
       </div>
+
+      <FareCalculator zones={zones || []} vehicleCategories={vehicleCategories || []} />
 
       <FareModal
         open={open}

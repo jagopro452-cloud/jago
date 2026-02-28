@@ -98,6 +98,29 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - Admin credentials: admin@admin.com / admin123 (bcrypt hashed in DB)
 - Admin password change: POST /api/admin/change-password
 
+## New Features (Feb 2026)
+- **Fare Calculator** (`/admin/fares` page bottom): Admin tool to test fare calculations — select zone + vehicle + distance + duration → shows breakdown (base fare, per km, GST, total)
+- **Driver Earnings Statement** (`/admin/driver-earnings`): Per-driver earnings with gross, commission (15%), GST (5%), net payout. Monthly drill-down modal per driver
+- **Referral Management** (`/admin/referrals`): Full referral CRUD with stats, status filters (pending/paid/expired), Pay button for pending referrals
+- **Notifications History** (`/admin/notifications`): Sends now persist to `notification_logs` table, history shown in right panel with recipient count and time
+- **Safety & Emergency** (`/admin/safety-alerts`): SOS alerts management, police stations CRUD, female-to-female matching algorithm settings
+
+## New DB Tables (created via executeSql)
+- `referrals`: referrer_id, referred_id, referral_code, referral_type, reward_amount, status
+- `notification_logs`: title, message, target, user_type, recipient_count, status, sent_at
+- `safety_alerts`: Full SOS alert tracking with GPS, status workflow (active→acknowledged→resolved)
+- `police_stations`: Name, address, phone, GPS coordinates
+
+## New API Routes
+- `POST /api/fare-calculator` — Calculate trip fare with breakdown
+- `GET /api/driver-earnings` — All driver earnings summary
+- `GET /api/driver-earnings/:id` — Individual driver monthly breakdown
+- `GET /api/referrals/stats` — Referral statistics
+- `GET /api/referrals` — List referrals with filters
+- `PATCH /api/referrals/:id/pay` — Mark referral as paid
+- `PATCH /api/referrals/:id/expire` — Mark referral as expired
+- `GET /api/notifications` — Notification history (from notification_logs)
+
 ## Seeded Data
 - 5 Indian customers (Ravi Kumar, Priya Sharma, Arjun Reddy, Meera Nair, Suresh Babu)
 - 5 drivers
@@ -106,6 +129,9 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - 9 vehicle categories (Bike, Auto, Car, SUV, Parcel Bike, Temo, Tata Ace, Cargo, Mini Cargo)
 - 25 trip fares seeded (5 vehicle categories × 5 zones with realistic ₹ rates)
 - 4 insurance plans: Basic Shield, Standard Guard, Premium Protect, Driver Health
+- 10 referrals seeded (6 paid, 3 pending, 1 expired — customers and drivers)
+- 6 notification_log entries seeded
+- 6 SOS alerts, 6 Hyderabad police stations
 - Business pages content: About Us, Privacy Policy, Terms & Conditions, Refund Policy (settings_type=pages_settings)
 - Social media links (settings_type=social_settings), Landing page settings (settings_type=landing_settings)
 - Coupons, reviews, blogs, subscription plans, intercity routes

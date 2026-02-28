@@ -1219,9 +1219,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Notifications send (stub - log only)
   app.post("/api/notifications/send", async (req, res) => {
     try {
-      const { title, message, target } = req.body;
-      console.log(`[Notification] To=${target} Title=${title} Msg=${message}`);
-      res.json({ success: true, message: "Notification queued" });
+      const { title, message, target = "all", userType = "all" } = req.body;
+      if (!title || !message) return res.status(400).json({ message: "title and message required" });
+      let recipientCount = 0;
+      if (target === "all") {
+        const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as c FROM users WHERE is_active = true AND (${userType} = 'all' OR user_type = ${userType})`);
+        recipientCount = Number((cnt.rows[0] as any).c);
+      }
+      await rawDb.execute(rawSql`
+        INSERT INTO notification_logs (title, message, target, user_type, recipient_count, status, sent_at)
+        VALUES (${title}, ${message}, ${target}, ${userType}, ${recipientCount}, 'sent', NOW())
+      `);
+      console.log(`[Notification] To=${target}/${userType} Title=${title} Recipients=${recipientCount}`);
+      res.json({ success: true, message: "Notification sent", recipientCount });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -1697,6 +1707,200 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "User not found" });
       res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ========== FARE CALCULATOR ==========
+  app.post("/api/fare-calculator", async (req, res) => {
+    try {
+      const { zoneId, vehicleCategoryId, distanceKm, durationMin = 0 } = req.body;
+      if (!zoneId || !vehicleCategoryId || !distanceKm) {
+        return res.status(400).json({ message: "zoneId, vehicleCategoryId and distanceKm required" });
+      }
+      const fare = await rawDb.execute(rawSql`
+        SELECT tf.base_fare, tf.fare_per_km, tf.fare_per_min, tf.minimum_fare, tf.cancellation_fee,
+               vc.name as vehicle_name, vc.icon as vehicle_icon,
+               z.name as zone_name
+        FROM trip_fares tf
+        JOIN vehicle_categories vc ON vc.id = tf.vehicle_category_id
+        JOIN zones z ON z.id = tf.zone_id
+        WHERE tf.zone_id = ${zoneId}::uuid AND tf.vehicle_category_id = ${vehicleCategoryId}::uuid
+        LIMIT 1
+      `);
+      if (!fare.rows.length) return res.status(404).json({ message: "No fare found for this zone and vehicle" });
+      const f = fare.rows[0] as any;
+      const base = parseFloat(f.base_fare || "0");
+      const perKm = parseFloat(f.fare_per_km || "0");
+      const perMin = parseFloat(f.fare_per_min || "0");
+      const minFare = parseFloat(f.minimum_fare || "0");
+      const cancelFee = parseFloat(f.cancellation_fee || "0");
+      const dist = parseFloat(distanceKm);
+      const dur = parseFloat(durationMin);
+      const baseFareAmt = base;
+      const distanceFare = perKm * dist;
+      const timeFare = perMin * dur;
+      const subtotal = baseFareAmt + distanceFare + timeFare;
+      const total = Math.max(subtotal, minFare);
+      const gst = total * 0.05;
+      const grandTotal = total + gst;
+      res.json({
+        vehicleName: f.vehicle_name,
+        vehicleIcon: f.vehicle_icon,
+        zoneName: f.zone_name,
+        breakdown: {
+          baseFare: baseFareAmt.toFixed(2),
+          distanceFare: distanceFare.toFixed(2),
+          timeFare: timeFare.toFixed(2),
+          subtotal: subtotal.toFixed(2),
+          minimumFare: minFare.toFixed(2),
+          cancellationFee: cancelFee.toFixed(2),
+          gst: gst.toFixed(2),
+          total: grandTotal.toFixed(2),
+        },
+        inputs: { distanceKm: dist, durationMin: dur, perKm, perMin, baseFare: base },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ========== DRIVER EARNINGS ==========
+  app.get("/api/driver-earnings", async (req, res) => {
+    try {
+      const { search = "", limit = 50, offset = 0 } = req.query;
+      const rows = await rawDb.execute(rawSql`
+        SELECT
+          u.id, u.full_name, u.phone, u.email, u.vehicle_number, u.vehicle_model,
+          u.verification_status, u.is_active,
+          vc.name as vehicle_category,
+          dd.avg_rating, dd.availability_status,
+          COUNT(tr.id) FILTER (WHERE tr.current_status = 'completed') as completed_trips,
+          COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status = 'completed'), 0) as gross_earnings,
+          COALESCE(SUM(tr.actual_fare * 0.15) FILTER (WHERE tr.current_status = 'completed'), 0) as commission,
+          COALESCE(SUM(tr.actual_fare * 0.05) FILTER (WHERE tr.current_status = 'completed'), 0) as gst,
+          COALESCE(SUM(tr.actual_fare * 0.80) FILTER (WHERE tr.current_status = 'completed'), 0) as net_earnings,
+          COUNT(tr.id) FILTER (WHERE tr.current_status = 'cancelled') as cancelled_trips,
+          COUNT(tr.id) FILTER (WHERE tr.current_status = 'completed' AND tr.created_at >= NOW() - INTERVAL '30 days') as this_month_trips,
+          COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status = 'completed' AND tr.created_at >= NOW() - INTERVAL '30 days'), 0) as this_month_earnings
+        FROM users u
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        LEFT JOIN trip_requests tr ON tr.driver_id = u.id
+        WHERE u.user_type = 'driver'
+          AND (${search} = '' OR u.full_name ILIKE ${'%' + search + '%'} OR u.phone ILIKE ${'%' + search + '%'})
+        GROUP BY u.id, u.full_name, u.phone, u.email, u.vehicle_number, u.vehicle_model,
+                 u.verification_status, u.is_active, vc.name, dd.avg_rating, dd.availability_status
+        ORDER BY gross_earnings DESC
+        LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+      `);
+      res.json(rows.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/driver-earnings/:driverId", async (req, res) => {
+    try {
+      const driverId = req.params.driverId;
+      const [profile, monthly] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT u.id, u.full_name, u.phone, u.email, u.vehicle_number, u.vehicle_model,
+                 u.verification_status, u.is_active, u.created_at,
+                 vc.name as vehicle_category, dd.avg_rating, dd.availability_status
+          FROM users u
+          LEFT JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.id = ${driverId}::uuid AND u.user_type = 'driver'
+          LIMIT 1
+        `),
+        rawDb.execute(rawSql`
+          SELECT
+            TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+            TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as month_label,
+            COUNT(*) FILTER (WHERE current_status = 'completed') as completed,
+            COUNT(*) FILTER (WHERE current_status = 'cancelled') as cancelled,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status = 'completed'), 0) as gross,
+            COALESCE(SUM(actual_fare * 0.15) FILTER (WHERE current_status = 'completed'), 0) as commission,
+            COALESCE(SUM(actual_fare * 0.05) FILTER (WHERE current_status = 'completed'), 0) as gst,
+            COALESCE(SUM(actual_fare * 0.80) FILTER (WHERE current_status = 'completed'), 0) as net
+          FROM trip_requests
+          WHERE driver_id = ${driverId}::uuid
+          GROUP BY DATE_TRUNC('month', created_at)
+          ORDER BY month DESC
+          LIMIT 12
+        `)
+      ]);
+      if (!profile.rows.length) return res.status(404).json({ message: "Driver not found" });
+      res.json({
+        profile: camelize(profile.rows[0]),
+        monthly: monthly.rows.map(camelize),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ========== REFERRAL SYSTEM ==========
+  app.get("/api/referrals/stats", async (req, res) => {
+    try {
+      const stats = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE status = 'paid') as paid,
+          COUNT(*) FILTER (WHERE status = 'pending') as pending,
+          COUNT(*) FILTER (WHERE status = 'expired') as expired,
+          COALESCE(SUM(reward_amount) FILTER (WHERE status = 'paid'), 0) as total_rewarded,
+          COALESCE(SUM(reward_amount) FILTER (WHERE status = 'pending'), 0) as pending_amount,
+          COUNT(*) FILTER (WHERE referral_type = 'customer') as customer_referrals,
+          COUNT(*) FILTER (WHERE referral_type = 'driver') as driver_referrals
+        FROM referrals
+      `);
+      res.json(camelize(stats.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/referrals", async (req, res) => {
+    try {
+      const { status = "all", referralType = "all", limit = 50, offset = 0 } = req.query;
+      const rows = await rawDb.execute(rawSql`
+        SELECT r.*,
+               ru.full_name as referrer_name, ru.phone as referrer_phone, ru.user_type as referrer_type,
+               rd.full_name as referred_name, rd.phone as referred_phone
+        FROM referrals r
+        LEFT JOIN users ru ON ru.id = r.referrer_id
+        LEFT JOIN users rd ON rd.id = r.referred_id
+        WHERE (${status} = 'all' OR r.status = ${status})
+          AND (${referralType} = 'all' OR r.referral_type = ${referralType})
+        ORDER BY r.created_at DESC
+        LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+      `);
+      res.json(rows.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/referrals/:id/pay", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        UPDATE referrals SET status = 'paid' WHERE id = ${req.params.id}::uuid RETURNING *
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Referral not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/referrals/:id/expire", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        UPDATE referrals SET status = 'expired' WHERE id = ${req.params.id}::uuid RETURNING *
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Referral not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ========== NOTIFICATION LOGS (update send to persist) ==========
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const { limit = 50, offset = 0 } = req.query;
+      const rows = await rawDb.execute(rawSql`
+        SELECT * FROM notification_logs ORDER BY sent_at DESC LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+      `);
+      const countRes = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM notification_logs`);
+      res.json({ data: rows.rows.map(camelize), total: Number((countRes.rows[0] as any).total) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

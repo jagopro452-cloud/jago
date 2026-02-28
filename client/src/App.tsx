@@ -52,6 +52,8 @@ import Configurations from "@/pages/admin/configurations";
 import B2BCompanies from "@/pages/admin/b2b-companies";
 import IntercityRoutes from "@/pages/admin/intercity-routes";
 import Insurance from "@/pages/admin/insurance";
+import DriverEarnings from "@/pages/admin/driver-earnings";
+import Referrals from "@/pages/admin/referrals";
 import NotFound from "@/pages/not-found";
 
 function AdminLogout() {
@@ -127,6 +129,10 @@ function AdminRoutes() {
         <Route path="/admin/intercity-routes" component={IntercityRoutes} />
         {/* Insurance */}
         <Route path="/admin/insurance" component={Insurance} />
+        {/* Driver Earnings */}
+        <Route path="/admin/driver-earnings" component={DriverEarnings} />
+        {/* Referrals */}
+        <Route path="/admin/referrals" component={Referrals} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>
     </AdminLayout>

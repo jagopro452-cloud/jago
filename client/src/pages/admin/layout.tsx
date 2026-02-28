@@ -81,6 +81,7 @@ const navSections: NavSection[] = [
       { label: "Banner Setup", icon: "bi-flag-fill", href: "/admin/banners" },
       { label: "Coupon Setup", icon: "bi-ticket-fill", href: "/admin/coupons" },
       { label: "Discount Setup", icon: "bi-percent", href: "/admin/discounts" },
+      { label: "Referral Management", icon: "bi-share-fill", href: "/admin/referrals" },
       { label: "Spin Wheel", icon: "bi-trophy-fill", href: "/admin/spin-wheel" },
       { label: "Send Notification", icon: "bi-bell-fill", href: "/admin/notifications" },
     ],
@@ -135,6 +136,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Transactions", icon: "bi-receipt", href: "/admin/transactions" },
       { label: "Reports", icon: "bi-bar-chart-line-fill", href: "/admin/reports" },
+      { label: "Driver Earnings", icon: "bi-cash-coin", href: "/admin/driver-earnings" },
     ],
   },
   {

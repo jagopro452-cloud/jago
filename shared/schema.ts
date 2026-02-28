@@ -350,6 +350,28 @@ export const subscriptionPlans = pgTable("subscription_plans", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const referrals = pgTable("referrals", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: uuid("referrer_id").notNull(),
+  referredId: uuid("referred_id"),
+  referralCode: varchar("referral_code", { length: 20 }).notNull(),
+  referralType: varchar("referral_type", { length: 30 }).notNull().default("customer"),
+  rewardAmount: numeric("reward_amount", { precision: 10, scale: 2 }).default("0"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const notificationLogs = pgTable("notification_logs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  target: varchar("target", { length: 50 }).notNull().default("all"),
+  userType: varchar("user_type", { length: 50 }).notNull().default("all"),
+  recipientCount: integer("recipient_count").default(0),
+  status: varchar("status", { length: 30 }).notNull().default("sent"),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripSchema = createInsertSchema(tripRequests).omit({ id: true, createdAt: true, updatedAt: true });
