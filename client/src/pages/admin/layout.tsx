@@ -160,6 +160,7 @@ const navSections: NavSection[] = [
     category: "Developer",
     items: [
       { label: "API Reference", icon: "bi-code-square", href: "/admin/api-docs" },
+      { label: "App UI Design", icon: "bi-phone-fill", href: "/admin/app-design" },
     ],
   },
   {
