@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Tag } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+function Modal({ open, onClose, title, children }: any) {
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function Coupons() {
   const { toast } = useToast();
@@ -46,114 +55,149 @@ export default function Coupons() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="jago-page-header">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="page-title">Coupons</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data?.length || 0} coupon codes</p>
+          <h4 className="page-title" data-testid="page-title">Coupon Setup</h4>
+          <div className="breadcrumb">
+            <i className="bi bi-house-fill"></i>
+            <span>Home</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Promotion Management</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Coupons</span>
+          </div>
         </div>
-        <Button onClick={openCreate} data-testid="btn-add-coupon"><Plus className="w-4 h-4 mr-2" />Add Coupon</Button>
+        <button className="btn-jago-primary" onClick={openCreate} data-testid="btn-add-coupon">
+          <i className="bi bi-plus-circle-fill"></i> Add Coupon
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Code</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Discount</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Min Fare</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Limit/User</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Actions</th>
+      <div className="jago-card">
+        <div className="jago-card-header">
+          <h5 className="jago-card-title">
+            <i className="bi bi-ticket-fill" style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
+            Coupon Codes
+          </h5>
+        </div>
+        <div className="jago-table-wrapper">
+          <table className="jago-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Discount</th>
+                <th>Min Fare</th>
+                <th>Limit/User</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? Array(4).fill(0).map((_, i) => (
+                <tr key={i}>
+                  {Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}
                 </tr>
-              </thead>
-              <tbody>
-                {isLoading ? Array(4).fill(0).map((_, i) => (
-                  <tr key={i} className="border-b">
-                    {Array(7).fill(0).map((_, j) => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}
-                  </tr>
-                )) : data?.length ? data.map((c: any) => (
-                  <tr key={c.id} className="border-b hover:bg-muted/20" data-testid={`coupon-row-${c.id}`}>
-                    <td className="px-4 py-3 font-medium">{c.name}</td>
-                    <td className="px-4 py-3"><span className="font-mono bg-muted px-2 py-0.5 rounded text-xs">{c.code}</span></td>
-                    <td className="px-4 py-3">{c.discountType === "percentage" ? `${c.discountAmount}%` : `₹${c.discountAmount}`}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">₹{c.minTripAmount}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell">{c.limitPerUser}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${c.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {c.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(c)} data-testid={`btn-edit-coupon-${c.id}`}><Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove.mutate(c.id)} data-testid={`btn-delete-coupon-${c.id}`}><Trash2 className="w-3.5 h-3.5" /></Button>
-                      </div>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">
-                    <Tag className="w-12 h-12 mx-auto mb-3 opacity-30" />No coupons created
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              )) : data?.length ? data.map((c: any, idx: number) => (
+                <tr key={c.id} data-testid={`coupon-row-${c.id}`}>
+                  <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>{idx + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{c.name}</td>
+                  <td>
+                    <span style={{ fontFamily: "monospace", background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px", fontWeight: 600, fontSize: "0.8rem", color: "var(--bs-primary)" }}>{c.code}</span>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>
+                    {c.discountType === "percentage" ? `${c.discountAmount}%` : `₹${c.discountAmount}`}
+                  </td>
+                  <td>₹{c.minTripAmount}</td>
+                  <td style={{ textAlign: "center" }}>{c.limitPerUser}</td>
+                  <td>
+                    <span className={`jago-badge ${c.isActive ? "badge-active" : "badge-inactive"}`}>
+                      {c.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: "0.375rem" }}>
+                      <button
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-primary)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                        onClick={() => openEdit(c)}
+                        data-testid={`btn-edit-coupon-${c.id}`}
+                      >
+                        <i className="bi bi-pencil-fill"></i>
+                      </button>
+                      <button
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-danger)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                        onClick={() => { if (confirm("Delete this coupon?")) remove.mutate(c.id); }}
+                        data-testid={`btn-delete-coupon-${c.id}`}
+                      >
+                        <i className="bi bi-trash-fill"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="jago-empty">
+                      <i className="bi bi-ticket"></i>
+                      <p>No coupons created yet</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit Coupon" : "Add Coupon"}</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Coupon Name</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
-              </div>
-              <div className="space-y-2">
-                <Label>Coupon Code</Label>
-                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
-              </div>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Coupon" : "Add Coupon"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <label className="jago-label">Coupon Name *</label>
+              <input className="jago-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Discount Type</Label>
-                <Select value={form.discountType} onValueChange={v => setForm(f => ({ ...f, discountType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="amount">Fixed Amount</SelectItem>
-                    <SelectItem value="percentage">Percentage</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Discount {form.discountType === "percentage" ? "%" : "₹"}</Label>
-                <Input type="number" value={form.discountAmount} onChange={e => setForm(f => ({ ...f, discountAmount: e.target.value }))} data-testid="input-discount-amount" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Min Trip Amount (₹)</Label>
-                <Input type="number" value={form.minTripAmount} onChange={e => setForm(f => ({ ...f, minTripAmount: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Limit Per User</Label>
-                <Input type="number" value={form.limitPerUser} onChange={e => setForm(f => ({ ...f, limitPerUser: e.target.value }))} />
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={() => save.mutate(form)} disabled={!form.name || !form.code || save.isPending} data-testid="btn-save-coupon">
-                {save.isPending ? "Saving..." : editing ? "Update" : "Create"}
-              </Button>
+            <div>
+              <label className="jago-label">Coupon Code *</label>
+              <input className="jago-input" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <label className="jago-label">Discount Type</label>
+              <select className="jago-input" value={form.discountType} onChange={e => setForm(f => ({ ...f, discountType: e.target.value }))}>
+                <option value="amount">Fixed Amount (₹)</option>
+                <option value="percentage">Percentage (%)</option>
+              </select>
+            </div>
+            <div>
+              <label className="jago-label">Discount {form.discountType === "percentage" ? "%" : "₹"}</label>
+              <input type="number" className="jago-input" value={form.discountAmount} onChange={e => setForm(f => ({ ...f, discountAmount: e.target.value }))} data-testid="input-discount-amount" />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <label className="jago-label">Min Trip Amount (₹)</label>
+              <input type="number" className="jago-input" value={form.minTripAmount} onChange={e => setForm(f => ({ ...f, minTripAmount: e.target.value }))} />
+            </div>
+            <div>
+              <label className="jago-label">Limit Per User</label>
+              <input type="number" className="jago-input" value={form.limitPerUser} onChange={e => setForm(f => ({ ...f, limitPerUser: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
+            <button
+              className="btn-jago-primary"
+              onClick={() => save.mutate(form)}
+              disabled={!form.name || !form.code || save.isPending}
+              data-testid="btn-save-coupon"
+            >
+              {save.isPending ? "Saving..." : editing ? "Update" : "Create"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

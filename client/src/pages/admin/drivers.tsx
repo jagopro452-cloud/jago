@@ -1,10 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Search, UserCheck, ChevronLeft, ChevronRight, UserX } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,80 +30,127 @@ export default function Drivers() {
   const totalPages = Math.ceil((data?.total || 0) / 15);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="page-title">Drivers</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{data?.total || 0} driver partners</p>
+    <div>
+      <div className="jago-page-header">
+        <div>
+          <h4 className="page-title" data-testid="page-title">Drivers</h4>
+          <div className="breadcrumb">
+            <i className="bi bi-house-fill"></i>
+            <span>Home</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>User Management</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Driver Setup</span>
+          </div>
+        </div>
+        <div style={{ fontSize: "0.82rem", color: "var(--bs-body-color)" }}>
+          Total: <strong style={{ color: "var(--title-color)" }}>{data?.total || 0}</strong> drivers
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="relative max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search drivers..." className="pl-9" value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="input-search" />
+      <div className="jago-card">
+        <div className="jago-card-header">
+          <h5 className="jago-card-title">
+            <i className="bi bi-person-badge-fill" style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
+            Driver List
+          </h5>
+          <div style={{ position: "relative" }}>
+            <i className="bi bi-search" style={{ position: "absolute", left: "0.65rem", top: "50%", transform: "translateY(-50%)", color: "var(--bs-body-color)", fontSize: "0.8rem" }}></i>
+            <input
+              type="search"
+              className="jago-input"
+              style={{ paddingLeft: "2rem", width: "220px" }}
+              placeholder="Search drivers..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              data-testid="input-search"
+            />
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Phone</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden xl:table-cell">Joined</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Action</th>
+        </div>
+
+        <div className="jago-table-wrapper">
+          <table className="jago-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Joined</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                Array(8).fill(0).map((_, i) => (
+                  <tr key={i}>
+                    {Array(7).fill(0).map((_, j) => (
+                      <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : data?.data?.length ? (
+                data.data.map((u: any, idx: number) => (
+                  <tr key={u.id} data-testid={`driver-row-${u.id}`}>
+                    <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>{(page - 1) * 15 + idx + 1}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                        <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(48,184,119,0.1)", display: "grid", placeItems: "center", color: "#30b877", fontSize: "0.9rem", flexShrink: 0 }}>
+                          <i className="bi bi-person-badge-fill"></i>
+                        </div>
+                        <span style={{ fontWeight: 600 }}>{u.fullName || `${u.firstName || ""} ${u.lastName || ""}`.trim() || "—"}</span>
+                      </div>
+                    </td>
+                    <td style={{ color: "var(--bs-body-color)" }}>{u.email || "—"}</td>
+                    <td style={{ color: "var(--bs-body-color)" }}>{u.phone || "—"}</td>
+                    <td>
+                      <span className={`jago-badge ${u.isActive ? "badge-active" : "badge-inactive"}`}>
+                        {u.isActive ? "Active" : "Blocked"}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>
+                      {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN") : "—"}
+                    </td>
+                    <td>
+                      <button
+                        className={u.isActive ? "btn-jago-danger btn-jago-sm" : "btn-jago-primary btn-jago-sm"}
+                        onClick={() => toggleStatus.mutate({ id: u.id, isActive: !u.isActive })}
+                        data-testid={`btn-toggle-driver-${u.id}`}
+                      >
+                        {u.isActive ? (
+                          <><i className="bi bi-person-x-fill"></i> Block</>
+                        ) : (
+                          <><i className="bi bi-person-check-fill"></i> Unblock</>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="jago-empty">
+                      <i className="bi bi-person-badge"></i>
+                      <p>No drivers found</p>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array(8).fill(0).map((_, i) => (
-                    <tr key={i} className="border-b">
-                      {Array(6).fill(0).map((_, j) => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}
-                    </tr>
-                  ))
-                ) : data?.data?.length ? (
-                  data.data.map((u: any) => (
-                    <tr key={u.id} className="border-b hover:bg-muted/20 transition-colors" data-testid={`driver-row-${u.id}`}>
-                      <td className="px-4 py-3 font-medium">{u.fullName || `${u.firstName || ""} ${u.lastName || ""}`.trim() || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{u.email || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{u.phone || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${u.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                          {u.isActive ? "Active" : "Blocked"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs hidden xl:table-cell">
-                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN") : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Button size="sm" variant="outline" className="text-xs h-7"
-                          onClick={() => toggleStatus.mutate({ id: u.id, isActive: !u.isActive })}
-                          data-testid={`btn-toggle-driver-${u.id}`}>
-                          {u.isActive ? <><UserX className="w-3 h-3 mr-1" />Block</> : <><UserCheck className="w-3 h-3 mr-1" />Unblock</>}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr><td colSpan={6} className="text-center py-12 text-muted-foreground"><UserCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />No drivers found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <p className="text-sm text-muted-foreground">Page {page} of {totalPages}</p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="w-4 h-4" /></Button>
-                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="w-4 h-4" /></Button>
-              </div>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1rem", borderTop: "1px solid var(--bs-border-color)", fontSize: "0.82rem" }}>
+            <span style={{ color: "var(--bs-body-color)" }}>Page {page} of {totalPages}</span>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button className="btn-jago-outline btn-jago-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}><i className="bi bi-chevron-left"></i></button>
+              <button className="btn-jago-outline btn-jago-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><i className="bi bi-chevron-right"></i></button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

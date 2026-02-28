@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, DollarSign } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+function Modal({ open, onClose, title, children }: any) {
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function Fares() {
   const { toast } = useToast();
@@ -25,101 +34,135 @@ export default function Fares() {
     mutationFn: (data: any) => apiRequest("POST", "/api/fares", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/fares"] });
-      toast({ title: "Fare rule saved" });
+      toast({ title: "Fare rule saved successfully" });
       setOpen(false);
       setForm({ zoneId: "", vehicleCategoryId: "", baseFare: "", farePerKm: "", farePerMin: "", minimumFare: "", cancellationFee: "" });
     },
   });
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="jago-page-header">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="page-title">Fare Management</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Configure pricing per zone and vehicle type</p>
+          <h4 className="page-title" data-testid="page-title">Fare Management</h4>
+          <div className="breadcrumb">
+            <i className="bi bi-house-fill"></i>
+            <span>Home</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Trip Management</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Fare Management</span>
+          </div>
         </div>
-        <Button onClick={() => setOpen(true)} data-testid="btn-add-fare"><Plus className="w-4 h-4 mr-2" />Add Fare Rule</Button>
+        <button className="btn-jago-primary" onClick={() => setOpen(true)} data-testid="btn-add-fare">
+          <i className="bi bi-plus-circle-fill"></i> Add Fare Rule
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Zone</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vehicle</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Base Fare</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Per KM</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Per Min</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Min Fare</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Cancel Fee</th>
+      <div className="jago-card">
+        <div className="jago-card-header">
+          <h5 className="jago-card-title">
+            <i className="bi bi-cash-stack" style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
+            Fare Rules
+          </h5>
+        </div>
+        <div className="jago-table-wrapper">
+          <table className="jago-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Zone</th>
+                <th>Vehicle</th>
+                <th>Base Fare</th>
+                <th>Per KM</th>
+                <th>Per Min</th>
+                <th>Min Fare</th>
+                <th>Cancel Fee</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? Array(4).fill(0).map((_, i) => (
+                <tr key={i}>
+                  {Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}
                 </tr>
-              </thead>
-              <tbody>
-                {isLoading ? Array(4).fill(0).map((_, i) => (
-                  <tr key={i} className="border-b">
-                    {Array(7).fill(0).map((_, j) => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}
-                  </tr>
-                )) : fares?.length ? fares.map((item: any) => (
-                  <tr key={item.fare.id} className="border-b hover:bg-muted/20" data-testid={`fare-row-${item.fare.id}`}>
-                    <td className="px-4 py-3 font-medium">{item.zone?.name || "All Zones"}</td>
-                    <td className="px-4 py-3">{item.vehicleCategory?.name || "All Vehicles"}</td>
-                    <td className="px-4 py-3">₹{Number(item.fare.baseFare).toFixed(2)}</td>
-                    <td className="px-4 py-3">₹{Number(item.fare.farePerKm).toFixed(2)}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">₹{Number(item.fare.farePerMin).toFixed(2)}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">₹{Number(item.fare.minimumFare).toFixed(2)}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell">₹{Number(item.fare.cancellationFee).toFixed(2)}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">
-                    <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" />No fare rules configured
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              )) : fares?.length ? fares.map((item: any, idx: number) => (
+                <tr key={item.fare.id} data-testid={`fare-row-${item.fare.id}`}>
+                  <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>{idx + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{item.zone?.name || "All Zones"}</td>
+                  <td>{item.vehicleCategory?.name || "All Vehicles"}</td>
+                  <td style={{ fontWeight: 600, color: "var(--bs-primary)" }}>₹{Number(item.fare.baseFare).toFixed(2)}</td>
+                  <td>₹{Number(item.fare.farePerKm).toFixed(2)}</td>
+                  <td>₹{Number(item.fare.farePerMin).toFixed(2)}</td>
+                  <td>₹{Number(item.fare.minimumFare).toFixed(2)}</td>
+                  <td>₹{Number(item.fare.cancellationFee).toFixed(2)}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="jago-empty">
+                      <i className="bi bi-cash-stack"></i>
+                      <p>No fare rules configured. Add your first fare rule.</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Fare Rule</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Zone</Label>
-                <Select value={form.zoneId} onValueChange={v => setForm(f => ({ ...f, zoneId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select zone" /></SelectTrigger>
-                  <SelectContent>{zones?.map(z => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Vehicle Type</Label>
-                <Select value={form.vehicleCategoryId} onValueChange={v => setForm(f => ({ ...f, vehicleCategoryId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
-                  <SelectContent>{cats?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Fare Rule">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <label className="jago-label">Zone</label>
+              <select className="jago-input" value={form.zoneId} onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}>
+                <option value="">Select Zone</option>
+                {zones?.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+              </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[["baseFare", "Base Fare (₹)"], ["farePerKm", "Fare per KM (₹)"], ["farePerMin", "Fare per Min (₹)"], ["minimumFare", "Minimum Fare (₹)"], ["cancellationFee", "Cancellation Fee (₹)"]].map(([key, label]) => (
-                <div key={key} className="space-y-2">
-                  <Label>{label}</Label>
-                  <Input type="number" value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder="0.00" data-testid={`input-${key}`} />
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="btn-save-fare">
-                {save.isPending ? "Saving..." : "Save Rule"}
-              </Button>
+            <div>
+              <label className="jago-label">Vehicle Type</label>
+              <select className="jago-input" value={form.vehicleCategoryId} onChange={e => setForm(f => ({ ...f, vehicleCategoryId: e.target.value }))}>
+                <option value="">Select Vehicle</option>
+                {cats?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            {[
+              ["baseFare", "Base Fare (₹)"],
+              ["farePerKm", "Fare per KM (₹)"],
+              ["farePerMin", "Fare per Min (₹)"],
+              ["minimumFare", "Minimum Fare (₹)"],
+              ["cancellationFee", "Cancellation Fee (₹)"],
+            ].map(([key, label]) => (
+              <div key={key}>
+                <label className="jago-label">{label}</label>
+                <input
+                  type="number"
+                  className="jago-input"
+                  value={(form as any)[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder="0.00"
+                  data-testid={`input-${key}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
+            <button
+              className="btn-jago-primary"
+              onClick={() => save.mutate(form)}
+              disabled={save.isPending}
+              data-testid="btn-save-fare"
+            >
+              {save.isPending ? "Saving..." : "Save Rule"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

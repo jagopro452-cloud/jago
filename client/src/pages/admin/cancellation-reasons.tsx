@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, XCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+function Modal({ open, onClose, title, children }: any) {
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "480px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function CancellationReasonsPage() {
   const { toast } = useToast();
@@ -37,72 +46,116 @@ export default function CancellationReasonsPage() {
   const driverReasons = data?.filter(r => r.userType === "driver") || [];
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="jago-page-header">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="page-title">Cancellation Reasons</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data?.length || 0} reasons configured</p>
+          <h4 className="page-title" data-testid="page-title">Cancellation Reasons</h4>
+          <div className="breadcrumb">
+            <i className="bi bi-house-fill"></i>
+            <span>Home</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Trip Management</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Cancel Reasons</span>
+          </div>
         </div>
-        <Button onClick={() => setOpen(true)} data-testid="btn-add-reason"><Plus className="w-4 h-4 mr-2" />Add Reason</Button>
+        <button className="btn-jago-primary" onClick={() => setOpen(true)} data-testid="btn-add-reason">
+          <i className="bi bi-plus-circle-fill"></i> Add Reason
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {[{ title: "Customer Reasons", reasons: customerReasons, type: "customer" },
-          { title: "Driver Reasons", reasons: driverReasons, type: "driver" }].map(group => (
-          <Card key={group.type}>
-            <CardContent className="p-0">
-              <div className="p-4 border-b font-semibold text-sm">{group.title}</div>
-              {isLoading ? (
-                <div className="p-4 space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
-              ) : group.reasons.length ? (
-                <ul className="divide-y">
-                  {group.reasons.map((r: any) => (
-                    <li key={r.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20" data-testid={`reason-${r.id}`}>
-                      <span className="text-sm">{r.reason}</span>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove.mutate(r.id)} data-testid={`btn-delete-reason-${r.id}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <XCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />No reasons added
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+        {[
+          { title: "Customer Reasons", reasons: customerReasons, type: "customer", icon: "bi-people-fill" },
+          { title: "Driver Reasons", reasons: driverReasons, type: "driver", icon: "bi-person-badge-fill" },
+        ].map(group => (
+          <div key={group.type} className="jago-card">
+            <div className="jago-card-header">
+              <h5 className="jago-card-title">
+                <i className={`bi ${group.icon}`} style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
+                {group.title}
+              </h5>
+              <span className="jago-badge badge-primary">{group.reasons.length}</span>
+            </div>
+            {isLoading ? (
+              <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                {Array(3).fill(0).map((_, i) => <div key={i} style={{ height: "40px", background: "#f1f5f9", borderRadius: "6px" }} />)}
+              </div>
+            ) : group.reasons.length ? (
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {group.reasons.map((r: any, idx: number) => (
+                  <li
+                    key={r.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0.75rem 1rem",
+                      borderTop: idx === 0 ? "1px solid var(--bs-border-color)" : "none",
+                      borderBottom: "1px solid var(--bs-border-color)",
+                    }}
+                    data-testid={`reason-${r.id}`}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <i className="bi bi-dash-circle" style={{ color: "var(--bs-danger)", fontSize: "0.75rem" }}></i>
+                      <span style={{ fontSize: "0.85rem" }}>{r.reason}</span>
+                    </div>
+                    <button
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-danger)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                      onClick={() => remove.mutate(r.id)}
+                      data-testid={`btn-delete-reason-${r.id}`}
+                    >
+                      <i className="bi bi-trash-fill"></i>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="jago-empty">
+                <i className="bi bi-x-circle"></i>
+                <p>No reasons added</p>
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Cancellation Reason</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label>User Type</Label>
-              <Select value={form.userType} onValueChange={v => setForm(f => ({ ...f, userType: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="customer">Customer</SelectItem>
-                  <SelectItem value="driver">Driver</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Reason</Label>
-              <Input value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
-                placeholder="e.g. Driver not arriving" data-testid="input-reason" />
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={() => save.mutate(form)} disabled={!form.reason || save.isPending} data-testid="btn-save-reason">
-                {save.isPending ? "Saving..." : "Add Reason"}
-              </Button>
-            </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Cancellation Reason">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div>
+            <label className="jago-label">User Type</label>
+            <select
+              className="jago-input"
+              value={form.userType}
+              onChange={e => setForm(f => ({ ...f, userType: e.target.value }))}
+            >
+              <option value="customer">Customer</option>
+              <option value="driver">Driver</option>
+            </select>
           </div>
-        </DialogContent>
-      </Dialog>
+          <div>
+            <label className="jago-label">Reason *</label>
+            <input
+              className="jago-input"
+              value={form.reason}
+              onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+              placeholder="e.g. Driver not arriving"
+              data-testid="input-reason"
+            />
+          </div>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
+            <button
+              className="btn-jago-primary"
+              onClick={() => save.mutate(form)}
+              disabled={!form.reason || save.isPending}
+              data-testid="btn-save-reason"
+            >
+              {save.isPending ? "Saving..." : "Add Reason"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

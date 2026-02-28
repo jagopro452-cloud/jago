@@ -1,19 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Save } from "lucide-react";
 
 type Setting = { keyName: string; value: string; settingsType: string };
 
 const settingGroups = [
   {
     title: "Business Information",
+    icon: "bi-building-fill",
     type: "business",
     fields: [
       { key: "business_name", label: "Business Name" },
@@ -24,6 +19,7 @@ const settingGroups = [
   },
   {
     title: "Currency & Region",
+    icon: "bi-currency-rupee",
     type: "business",
     fields: [
       { key: "currency", label: "Currency Code" },
@@ -33,6 +29,7 @@ const settingGroups = [
   },
   {
     title: "Trip Settings",
+    icon: "bi-car-front-fill",
     type: "trip",
     fields: [
       { key: "ride_request_timeout", label: "Ride Request Timeout (seconds)" },
@@ -76,32 +73,43 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
+    <div>
+      <div className="jago-page-header">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="page-title">Business Settings</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Configure your platform settings</p>
+          <h4 className="page-title" data-testid="page-title">Business Settings</h4>
+          <div className="breadcrumb">
+            <i className="bi bi-house-fill"></i>
+            <span>Home</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>System</span>
+            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
+            <span>Settings</span>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         {settingGroups.map(group => (
-          <Card key={group.title}>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base">{group.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div key={group.title} className="jago-card">
+            <div className="jago-card-header">
+              <h5 className="jago-card-title">
+                <i className={`bi ${group.icon}`} style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
+                {group.title}
+              </h5>
+            </div>
+            <div style={{ padding: "1.25rem" }}>
               {isLoading ? (
-                <div className="space-y-4">
-                  {group.fields.map(f => <Skeleton key={f.key} className="h-10 w-full" />)}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {group.fields.map(f => <div key={f.key} style={{ height: "40px", background: "#f1f5f9", borderRadius: "8px" }} />)}
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
                     {group.fields.map(f => (
-                      <div key={f.key} className="space-y-2">
-                        <Label htmlFor={f.key}>{f.label}</Label>
-                        <Input
+                      <div key={f.key}>
+                        <label className="jago-label">{f.label}</label>
+                        <input
+                          className="jago-input"
                           id={f.key}
                           value={values[f.key] || ""}
                           onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
@@ -110,21 +118,21 @@ export default function Settings() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-end pt-2">
-                    <Button
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem" }}>
+                    <button
+                      className="btn-jago-primary"
                       onClick={() => handleSave(group)}
                       disabled={save.isPending}
-                      className="gap-2"
                       data-testid={`btn-save-${group.type}`}
                     >
-                      <Save className="w-4 h-4" />
-                      Save {group.title}
-                    </Button>
+                      <i className="bi bi-floppy-fill"></i>
+                      {save.isPending ? "Saving..." : `Save ${group.title}`}
+                    </button>
                   </div>
-                </div>
+                </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ))}
       </div>
     </div>

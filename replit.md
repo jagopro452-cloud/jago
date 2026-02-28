@@ -1,18 +1,31 @@
 # JAGO - India's Smart Mobility Platform
 
 ## Overview
-JAGO is a full-stack ride-sharing admin dashboard (like Uber/Rapido for India) rebuilt from a PHP/Laravel backup as a Node.js/React application. It includes a public landing page and a comprehensive admin panel.
+JAGO is a full-stack ride-sharing admin dashboard (like Uber/Rapido for India) rebuilt from a PHP/Laravel backup as a Node.js/React application. It includes a public landing page and a comprehensive admin panel with JAGO-original design system.
 
 ## Tech Stack
-- **Frontend**: React + TypeScript + Vite, TanStack Query v5, Wouter routing, Shadcn/UI, Tailwind CSS
+- **Frontend**: React + TypeScript + Vite, TanStack Query v5, Wouter routing, custom JAGO CSS design system
 - **Backend**: Node.js + Express, Drizzle ORM
 - **Database**: PostgreSQL (Replit-provisioned)
+- **Icons**: Bootstrap Icons (CDN) — bi-* classes, loaded in index.html
+- **Font**: Open Sans (Google Fonts)
 
-## Color Theme
-- Primary blue: HSL 217 91% 55%
-- Dark sidebar: HSL 224 71% 20%
-- Gradient stat cards: stat-card-blue/green/amber/purple/red/cyan (defined in index.css)
-- Dark mode: Full support via ThemeProvider with localStorage persistence
+## Design System (JAGO Original)
+All admin panel styling uses custom JAGO CSS classes in `client/src/index.css`:
+- `--bs-primary: #2563EB` (blue), `--bs-body-bg: #F1F5F9`
+- `.jago-aside` — white sidebar (background #fff), 270px wide
+- `.aside-user-profile` — blue (#2563EB) user profile box in sidebar
+- `.jago-header` — white sticky header, 60px
+- `.jago-stat-card` — dashboard stat cards
+- `.jago-card` / `.jago-card-header` — content cards
+- `.jago-table` — data tables with header uppercase styling
+- `.jago-badge` — status badges (badge-completed, badge-ongoing, badge-pending, badge-cancelled, badge-active, badge-inactive, badge-primary)
+- `.btn-jago-primary` / `.btn-jago-outline` / `.btn-jago-danger` / `.btn-jago-sm` — buttons
+- `.jago-input` / `.jago-label` — form inputs
+- `.jago-page-header` — page title + breadcrumb row
+- `.jago-empty` — empty state component
+- `.jago-stats-grid` — responsive stats grid
+- Body folded: `body.aside-folded` collapses sidebar to 70px icon-only view
 
 ## Features
 
@@ -26,18 +39,18 @@ JAGO is a full-stack ride-sharing admin dashboard (like Uber/Rapido for India) r
 ### Admin Panel (`/admin/`)
 Authentication: Demo mode — any credentials accepted. Stored in localStorage.
 
-#### 14 Admin Pages:
-1. **Dashboard** (`/admin/dashboard`) — Stats cards + recent trips table
+#### 14 Admin Pages (all styled with JAGO CSS):
+1. **Dashboard** (`/admin/dashboard`) — Stats grid (8 cards) + recent trips table
 2. **Trip Requests** (`/admin/trips`) — Paginated trip list with status filter + actions
 3. **Customers** (`/admin/customers`) — Customer management with block/unblock
 4. **Drivers** (`/admin/drivers`) — Driver partner management
 5. **Vehicle Categories** (`/admin/vehicles`) — CRUD for vehicle types (Bike/Auto/Car/SUV)
-6. **Zones** (`/admin/zones`) — Service zone management
+6. **Zones** (`/admin/zones`) — Service zone management with modal CRUD
 7. **Fare Management** (`/admin/fares`) — Pricing rules per zone/vehicle
 8. **Transactions** (`/admin/transactions`) — Financial transaction log
 9. **Coupons** (`/admin/coupons`) — Coupon code CRUD with discount types
-10. **Reviews** (`/admin/reviews`) — Customer/driver review viewer
-11. **Blogs** (`/admin/blogs`) — Article management with WYSIWYG
+10. **Reviews** (`/admin/reviews`) — Customer/driver review viewer with star rating
+11. **Blogs** (`/admin/blogs`) — Article management with card grid
 12. **Withdrawals** (`/admin/withdrawals`) — Driver withdrawal request approvals
 13. **Cancellation Reasons** (`/admin/cancellation-reasons`) — Per user-type cancel reasons
 14. **Settings** (`/admin/settings`) — Business/Currency/Trip settings
@@ -74,5 +87,7 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - `shared/schema.ts`: Drizzle schema with UUID primary keys (varchar with gen_random_uuid())
 - `server/storage.ts`: DatabaseStorage class handles all CRUD
 - `server/routes.ts`: Thin Express routes using storage interface
-- `client/src/components/theme-provider.tsx`: Theme context (light/dark)
-- Tables were created manually via executeSql (db:push has interactive prompt issue)
+- `client/index.html`: Bootstrap Icons CDN only (no Bootstrap CSS — conflicts with Tailwind)
+- `client/src/index.css`: Full JAGO design system with CSS custom properties
+- Tables created via executeSql (db:push has interactive prompt issue in Replit)
+- No Shadcn/Tailwind classes in admin pages — pure JAGO CSS for authentic look
