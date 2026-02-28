@@ -275,7 +275,7 @@ export default function AdminLogin() {
           </div>
         </div>
 
-        <div className="jl-footer">© 2025 JAGO Mobility Pvt. Ltd. · All rights reserved</div>
+        <div className="jl-footer">© {new Date().getFullYear()} MindWhile IT Solutions Pvt Ltd · JAGO is a product of MindWhile IT Solutions Pvt Ltd</div>
       </div>
     </div>
   );

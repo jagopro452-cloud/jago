@@ -400,7 +400,7 @@ export default function LandingPage() {
                     <div className="footer-contact-icon"><i className="bi bi-envelope-fill"></i></div>
                     <div>
                       <span className="footer-contact-label">Email</span>
-                      <a href="mailto:support@jago.in" className="footer-contact-value">support@jago.in</a>
+                      <a href="mailto:info@jagopro.org" className="footer-contact-value">info@jagopro.org</a>
                     </div>
                   </div>
                   <div className="footer-contact-item">
@@ -432,7 +432,7 @@ export default function LandingPage() {
         <div className="footer-bottom">
           <div className="container">
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <p className="mb-0">&copy; {new Date().getFullYear()} JAGO. All rights reserved.</p>
+              <p className="mb-0">&copy; {new Date().getFullYear()} MindWhile IT Solutions Pvt Ltd. JAGO is a product of MindWhile IT Solutions Pvt Ltd.</p>
               <div className="d-flex gap-3">
                 <a href="/privacy" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Privacy Policy</a>
                 <a href="/terms" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Terms &amp; Conditions</a>
