@@ -34,6 +34,8 @@ export interface IStorage {
   // Fares
   getTripFares(): Promise<any[]>;
   upsertTripFare(data: Partial<TripFare>): Promise<TripFare>;
+  updateTripFare(id: string, data: Partial<TripFare>): Promise<TripFare>;
+  deleteTripFare(id: string): Promise<void>;
   // Transactions
   getTransactions(userId?: string, page?: number, limit?: number): Promise<{ data: any[]; total: number }>;
   // Coupons
@@ -180,6 +182,15 @@ export class DatabaseStorage implements IStorage {
   async upsertTripFare(data: Partial<TripFare>): Promise<TripFare> {
     const [created] = await db.insert(tripFares).values(data as any).returning();
     return created;
+  }
+
+  async updateTripFare(id: string, data: Partial<TripFare>): Promise<TripFare> {
+    const [updated] = await db.update(tripFares).set(data as any).where(eq(tripFares.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTripFare(id: string): Promise<void> {
+    await db.delete(tripFares).where(eq(tripFares.id, id));
   }
 
   async getTransactions(userId?: string, page = 1, limit = 15): Promise<{ data: any[]; total: number }> {

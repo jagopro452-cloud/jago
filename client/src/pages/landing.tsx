@@ -44,6 +44,8 @@ function useJagoCSS() {
 
 function useJagoJS() {
   useEffect(() => {
+    if ((window as any).__jagoJsLoaded) return;
+    (window as any).__jagoJsLoaded = true;
     const scripts = [
       "/landing-page/assets/js/jquery-3.6.0.min.js",
       "/landing-page/assets/js/bootstrap.min.js",
@@ -52,27 +54,19 @@ function useJagoJS() {
       "/landing-page/assets/js/owl.min.js",
       "/landing-page/assets/js/main.js",
     ];
-    const added: HTMLScriptElement[] = [];
     let idx = 0;
     function loadNext() {
       if (idx >= scripts.length) return;
       const src = scripts[idx++];
-      if (document.querySelector(`script[src="${src}"]`)) {
-        loadNext();
-        return;
-      }
+      if (document.querySelector(`script[src="${src}"]`)) { loadNext(); return; }
       const s = document.createElement("script");
       s.src = src;
       s.async = false;
       s.dataset.jagoScript = "1";
       s.onload = loadNext;
       document.body.appendChild(s);
-      added.push(s);
     }
     loadNext();
-    return () => {
-      added.forEach(el => el.remove());
-    };
   }, []);
 }
 

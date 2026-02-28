@@ -226,6 +226,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/zones/:id", async (req, res) => {
+    try {
+      const zone = await storage.updateZone(req.params.id, req.body);
+      res.json(zone);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.delete("/api/zones/:id", async (req, res) => {
     try {
       await storage.deleteZone(req.params.id);
@@ -249,6 +258,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const fare = await storage.upsertTripFare(req.body);
       res.status(201).json(fare);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.put("/api/fares/:id", async (req, res) => {
+    try {
+      const fare = await storage.updateTripFare(req.params.id, req.body);
+      res.json(fare);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/fares/:id", async (req, res) => {
+    try {
+      await storage.deleteTripFare(req.params.id);
+      res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
