@@ -1003,6 +1003,195 @@ function LightCustomerWallet() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DRIVER — LIGHT MODE NEW TRIP NOTIFICATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function LightDriverNewTrip() {
+  return (
+    <PhoneFrame bg="#fff8ed">
+      <div style={{ minHeight: 428, background: "linear-gradient(160deg,#fff8ed 0%,#fef3c7 50%,#fff8ed 100%)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "8%", left: "50%", transform: "translateX(-50%)", textAlign: "center", zIndex: 2 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: "#d97706", textTransform: "uppercase", letterSpacing: 1.5 }}>New Ride Request</div>
+        </div>
+        {[80, 112, 146].map((s, i) => (
+          <div key={i} style={{
+            position: "absolute", top: "26%", left: "50%", transform: "translate(-50%,-50%)",
+            width: s, height: s, borderRadius: "50%",
+            border: `1.5px solid rgba(245,158,11,${0.28 - i * 0.07})`,
+            zIndex: 2,
+          }} />
+        ))}
+        <div style={{
+          position: "absolute", top: "26%", left: "50%", transform: "translate(-50%,-50%)",
+          width: 62, height: 62, borderRadius: "50%",
+          background: "linear-gradient(135deg,#f59e0b,#ef4444)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 0 40px rgba(245,158,11,0.45)", zIndex: 3, fontSize: 26,
+        }}>🔔</div>
+
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 4,
+          background: "white", borderRadius: "26px 26px 0 0", padding: "16px 16px 14px",
+          border: "1.5px solid rgba(245,158,11,0.18)", boxShadow: "0 -12px 40px rgba(245,158,11,0.1)",
+        }}>
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "#d97706", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>🔔 New Ride Request!</div>
+            <div style={{ fontSize: 8, color: "#9ca3af", marginTop: 3 }}>Auto-cancel in 28 seconds</div>
+            <div style={{ height: 4, background: "#f3f4f6", borderRadius: 2, marginTop: 8, overflow: "hidden" }}>
+              <div style={{ width: "65%", height: "100%", background: "linear-gradient(90deg,#22c55e,#f59e0b,#ef4444)", borderRadius: 2 }} />
+            </div>
+          </div>
+
+          <div style={{ background: "#fafafa", borderRadius: 14, padding: "11px 13px", marginBottom: 10, border: "1px solid #f3f4f6" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "white" }}>A</div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Arjun Reddy</div>
+                  <div style={{ display: "flex", gap: 2 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 7, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 7, color: "#9ca3af" }}>4.9</span></div>
+                </div>
+              </div>
+              <div style={{ background: "#fef3c7", border: "1.5px solid #f59e0b", borderRadius: 10, padding: "4px 10px", fontSize: 13, color: "#d97706", fontWeight: 800 }}>₹185</div>
+            </div>
+            {[
+              { dot: "#22c55e", label: "MGBS Bus Stand, Hyderabad" },
+              { dot: "#ef4444", label: "Banjara Hills Road No. 12" },
+            ].map((loc, i) => (
+              <div key={i} style={{ display: "flex", gap: 7, alignItems: "center", marginTop: i === 0 ? 0 : 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, flexShrink: 0, boxShadow: `0 0 6px ${loc.dot}` }} />
+                <span style={{ fontSize: 9, color: "#4b5563" }}>{loc.label}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+              <span style={{ fontSize: 8.5, color: "#3b82f6" }}>📍 2.4 km away</span>
+              <span style={{ fontSize: 8.5, color: "#7c3aed" }}>⏱ 8 min pickup</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, background: "#f3f4f6", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#6b7280" }}>✕ Reject</div>
+            <div style={{ flex: 2, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 700, color: "white", boxShadow: "0 6px 20px rgba(34,197,94,0.35)" }}>✓ Accept Ride</div>
+          </div>
+        </div>
+      </div>
+    </PhoneFrame>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CUSTOMER — BOOKING CONFIRMATION SCREEN
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function DarkCustomerBooking() {
+  return (
+    <PhoneFrame bg="#0d0b1a">
+      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(135deg,#13103a,#1e1a3a)", padding: "10px 14px 14px", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: -20, right: -20, width: 90, height: 90, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.3) 0%, transparent 70%)" }} />
+          <div style={{ fontSize: 7.5, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Book a Ride</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>Choose Vehicle Type</div>
+        </div>
+
+        <div style={{ padding: "10px 12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 10 }}>
+            {[
+              { icon: "🚗", label: "Car", price: "₹180", eta: "3 min", active: false },
+              { icon: "🛺", label: "Auto", price: "₹85", eta: "2 min", active: true },
+              { icon: "🏍️", label: "Bike", price: "₹50", eta: "1 min", active: false },
+              { icon: "🚙", label: "SUV", price: "₹350", eta: "5 min", active: false },
+            ].map((v, i) => (
+              <div key={i} style={{
+                background: v.active ? "rgba(124,58,237,0.15)" : "#13103a",
+                border: `1.5px solid ${v.active ? "#7c3aed" : "rgba(124,58,237,0.1)"}`,
+                borderRadius: 13, padding: "10px 10px 8px", cursor: "pointer",
+                boxShadow: v.active ? "0 0 0 3px rgba(124,58,237,0.12)" : "none",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 20 }}>{v.icon}</span>
+                  {v.active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed", boxShadow: "0 0 8px #7c3aed" }} />}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: v.active ? "#a78bfa" : "white", marginTop: 4 }}>{v.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: v.active ? "#7c3aed" : "#a78bfa", marginTop: 1 }}>{v.price}</div>
+                <div style={{ fontSize: 7.5, color: "#475569", marginTop: 2 }}>⏱ {v.eta}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background: "#13103a", borderRadius: 14, padding: "10px 12px", marginBottom: 9, border: "1px solid rgba(124,58,237,0.12)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+              <span style={{ fontSize: 9, color: "#94a3b8", flex: 1 }}>MGBS Bus Stand, Hyderabad</span>
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.04)", marginLeft: 8, marginBottom: 6 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444", boxShadow: "0 0 6px #ef4444" }} />
+              <span style={{ fontSize: 9, color: "#94a3b8", flex: 1 }}>Banjara Hills Road No. 12</span>
+            </div>
+          </div>
+
+          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
+            🚀 Book Auto — ₹85
+          </div>
+        </div>
+      </div>
+    </PhoneFrame>
+  );
+}
+
+function LightCustomerBooking() {
+  return (
+    <PhoneFrame bg="white">
+      <div style={{ minHeight: 428, background: "white", position: "relative", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", padding: "10px 14px 14px" }}>
+          <div style={{ fontSize: 7.5, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Book a Ride</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917" }}>Choose Vehicle Type</div>
+        </div>
+
+        <div style={{ padding: "10px 12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 10 }}>
+            {[
+              { icon: "🚗", label: "Car", price: "₹180", eta: "3 min", active: false },
+              { icon: "🛺", label: "Auto", price: "₹85", eta: "2 min", active: true },
+              { icon: "🏍️", label: "Bike", price: "₹50", eta: "1 min", active: false },
+              { icon: "🚙", label: "SUV", price: "₹350", eta: "5 min", active: false },
+            ].map((v, i) => (
+              <div key={i} style={{
+                background: v.active ? "#ede9fe" : "#faf9ff",
+                border: `1.5px solid ${v.active ? "#7c3aed" : "#e5e7eb"}`,
+                borderRadius: 13, padding: "10px 10px 8px", cursor: "pointer",
+                boxShadow: v.active ? "0 0 0 3px rgba(124,58,237,0.08), 0 4px 16px rgba(124,58,237,0.12)" : "none",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 20 }}>{v.icon}</span>
+                  {v.active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#1c1917", marginTop: 4 }}>{v.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#7c3aed", marginTop: 1 }}>{v.price}</div>
+                <div style={{ fontSize: 7.5, color: "#9ca3af", marginTop: 2 }}>⏱ {v.eta}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background: "#faf9ff", borderRadius: 14, padding: "10px 12px", marginBottom: 9, border: "1.5px solid #ede9fe" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
+              <span style={{ fontSize: 9, color: "#6b7280", flex: 1 }}>MGBS Bus Stand, Hyderabad</span>
+            </div>
+            <div style={{ height: 1, background: "#f3f4f6", marginLeft: 8, marginBottom: 6 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} />
+              <span style={{ fontSize: 9, color: "#6b7280", flex: 1 }}>Banjara Hills Road No. 12</span>
+            </div>
+          </div>
+
+          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
+            🚀 Book Auto — ₹85
+          </div>
+        </div>
+      </div>
+    </PhoneFrame>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN PAGE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1023,7 +1212,7 @@ export default function AppDesign() {
     { component: <LightDriverSplash />, title: "Splash Screen", sub: "App launch — Light theme" },
     { component: <LightDriverLogin />, title: "OTP Login", sub: "Phone number verification" },
     { component: <LightDriverHome />, title: "Home / Map", sub: "Online/offline + live stats" },
-    { component: <DarkDriverNewTrip />, title: "New Ride Alert", sub: "Accept / Reject with timer" },
+    { component: <LightDriverNewTrip />, title: "New Ride Alert", sub: "Accept / Reject with timer" },
     { component: <DarkDriverOnTrip />, title: "On Trip", sub: "Navigation + customer info" },
     { component: <LightDriverWallet />, title: "Wallet", sub: "Balance, earnings & history" },
   ];
@@ -1031,19 +1220,19 @@ export default function AppDesign() {
   const customerScreensDark = [
     { component: <DarkCustomerSplash />, title: "Splash Screen", sub: "App launch — JAGO branding" },
     { component: <DarkCustomerLogin />, title: "OTP Login", sub: "Phone number verification" },
-    { component: <DarkCustomerHome />, title: "Home / Map", sub: "Book a ride" },
+    { component: <DarkCustomerHome />, title: "Home / Map", sub: "Find a ride" },
+    { component: <DarkCustomerBooking />, title: "Book Ride", sub: "Vehicle selection + price" },
     { component: <DarkCustomerTracking />, title: "Live Tracking", sub: "Driver on the way + OTP" },
     { component: <DarkCustomerWallet />, title: "Wallet", sub: "Balance & trip history" },
-    { component: <LightCustomerHome />, title: "Light Preview", sub: "Alternate theme" },
   ];
 
   const customerScreensLight = [
     { component: <LightCustomerSplash />, title: "Splash Screen", sub: "App launch — Light theme" },
     { component: <LightCustomerLogin />, title: "OTP Login", sub: "Phone number verification" },
-    { component: <LightCustomerHome />, title: "Home / Map", sub: "Book a ride" },
+    { component: <LightCustomerHome />, title: "Home / Map", sub: "Find a ride" },
+    { component: <LightCustomerBooking />, title: "Book Ride", sub: "Vehicle selection + price" },
     { component: <LightCustomerTracking />, title: "Live Tracking", sub: "Driver on the way + OTP" },
     { component: <LightCustomerWallet />, title: "Wallet", sub: "Balance & trip history" },
-    { component: <DarkCustomerSplash />, title: "Dark Preview", sub: "Dark theme variant" },
   ];
 
   const screens = activeApp === "driver"
@@ -1063,7 +1252,7 @@ export default function AppDesign() {
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
           <div className="d-flex align-items-center gap-3">
             {/* JAGO Logo */}
-            <div style={{ width: 52, height: 52, background: accentGrad, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 8px 24px ${accentColor}44`, fontSize: 22 }}>🚗</div>
+            <div style={{ width: 52, height: 52, background: accentGrad, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 8px 24px ${accentColor}44`, fontSize: 22 }}>{isDriver ? "🚗" : "📱"}</div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 22, color: "#0f172a", letterSpacing: -0.5 }}>JAGO <span style={{ background: accentGrad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>App Design</span></div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 1 }}>Flutter App Mockups — Driver & Customer</div>

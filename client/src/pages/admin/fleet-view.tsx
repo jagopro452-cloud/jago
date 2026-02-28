@@ -50,15 +50,11 @@ function injectMapStyles() {
     .map-stat-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
     .jago-vehicle-float {
       display: flex; flex-direction: column; align-items: center;
-      pointer-events: none;
-    }
-    .jago-vehicle-emoji {
-      line-height: 1;
-      filter: drop-shadow(0 4px 10px rgba(0,0,0,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+      pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.5)) drop-shadow(0 1px 3px rgba(0,0,0,0.3));
     }
     .jago-vehicle-shadow {
-      border-radius: 50%; opacity: 0.35;
-      filter: blur(4px); margin-top: 1px;
+      border-radius: 50%; opacity: 0.3;
+      filter: blur(5px); margin-top: -2px;
     }
   `;
   document.head.appendChild(style);
@@ -79,28 +75,98 @@ function loadLeafletCss() {
   document.head.appendChild(l);
 }
 
-const VEHICLE_CONFIG: Record<string, { color: string; emoji: string; label: string; bg: string }> = {
-  "Car":         { color: "#1a73e8", bg: "#e8f0fe", emoji: "🚗", label: "Car" },
-  "Bike":        { color: "#f97316", bg: "#fff7ed", emoji: "🏍️", label: "Bike" },
-  "SUV":         { color: "#8b5cf6", bg: "#f5f3ff", emoji: "🚙", label: "SUV" },
-  "Auto":        { color: "#d97706", bg: "#fffbeb", emoji: "🛺", label: "Auto" },
-  "Parcel Bike": { color: "#16a34a", bg: "#f0fdf4", emoji: "📦", label: "Parcel" },
-  "default":     { color: "#475569", bg: "#f8fafc", emoji: "🚐", label: "Vehicle" },
+const VEHICLE_CONFIG: Record<string, { color: string; dark: string; label: string; bg: string }> = {
+  "Car":         { color: "#1a73e8", dark: "#0d47a1", bg: "#e8f0fe", label: "Car" },
+  "Bike":        { color: "#f97316", dark: "#c2410c", bg: "#fff7ed", label: "Bike" },
+  "SUV":         { color: "#8b5cf6", dark: "#5b21b6", bg: "#f5f3ff", label: "SUV" },
+  "Auto":        { color: "#d97706", dark: "#92400e", bg: "#fffbeb", label: "Auto" },
+  "Parcel Bike": { color: "#16a34a", dark: "#064e3b", bg: "#f0fdf4", label: "Parcel" },
+  "default":     { color: "#475569", dark: "#1e293b", bg: "#f8fafc", label: "Vehicle" },
 };
 const getVC = (t: string) => VEHICLE_CONFIG[t] || VEHICLE_CONFIG["default"];
 
+/* SVG vehicle silhouettes — top-down view */
+function getVehicleSVG(type: string, color: string, dark: string): string {
+  const w = `rgba(255,255,255,0.55)`;
+  const wm = `rgba(255,255,255,0.3)`;
+  if (type === "Bike") {
+    return `<svg width="18" height="52" viewBox="0 0 18 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="9" cy="7" rx="7" ry="7" fill="${dark}"/>
+      <ellipse cx="9" cy="7" rx="4" ry="4" fill="${color}"/>
+      <rect x="6.5" y="13" width="5" height="22" rx="2.5" fill="${color}"/>
+      <rect x="2" y="14" width="14" height="2.5" rx="1.2" fill="${dark}"/>
+      <ellipse cx="9" cy="45" rx="7" ry="7" fill="${dark}"/>
+      <ellipse cx="9" cy="45" rx="4" ry="4" fill="${color}"/>
+      <rect x="5" y="20" width="8" height="14" rx="3" fill="${w}"/>
+    </svg>`;
+  }
+  if (type === "Auto") {
+    return `<svg width="36" height="46" viewBox="0 0 36 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 6 L28 6 C31 6 33 8 33 11 L33 38 C33 41 31 43 28 43 L8 43 C5 43 3 41 3 38 L3 11 C3 8 5 6 8 6Z" fill="${color}"/>
+      <path d="M10 8 L26 8 L26 22 L10 22 Z" rx="2" fill="${w}"/>
+      <rect x="3" y="10" width="5" height="10" rx="2" fill="${dark}"/>
+      <rect x="28" y="10" width="5" height="10" rx="2" fill="${dark}"/>
+      <rect x="3" y="32" width="5" height="10" rx="2" fill="${dark}"/>
+      <rect x="28" y="32" width="5" height="10" rx="2" fill="${dark}"/>
+      <rect x="10" y="6" width="16" height="3" rx="1.5" fill="${wm}"/>
+      <rect x="4" y="26" width="28" height="2" rx="1" fill="${wm}"/>
+    </svg>`;
+  }
+  if (type === "SUV") {
+    return `<svg width="40" height="58" viewBox="0 0 40 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="8" width="32" height="42" rx="7" fill="${color}"/>
+      <rect x="6" y="11" width="28" height="14" rx="3" fill="${w}"/>
+      <rect x="6" y="34" width="28" height="11" rx="2" fill="${wm}"/>
+      <rect x="0" y="12" width="6" height="12" rx="3" fill="${dark}"/>
+      <rect x="34" y="12" width="6" height="12" rx="3" fill="${dark}"/>
+      <rect x="0" y="36" width="6" height="12" rx="3" fill="${dark}"/>
+      <rect x="34" y="36" width="6" height="12" rx="3" fill="${dark}"/>
+      <rect x="5" y="8" width="30" height="4" rx="2" fill="rgba(255,255,255,0.7)"/>
+      <polygon points="20,1 26,8 14,8" fill="${dark}"/>
+    </svg>`;
+  }
+  if (type === "Parcel Bike") {
+    return `<svg width="34" height="50" viewBox="0 0 34 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="16" width="28" height="22" rx="4" fill="${color}"/>
+      <rect x="7" y="19" width="20" height="16" rx="2" fill="${w}"/>
+      <line x1="17" y1="19" x2="17" y2="35" stroke="${dark}" stroke-width="1.5"/>
+      <line x1="7" y1="27" x2="27" y2="27" stroke="${dark}" stroke-width="1.5"/>
+      <ellipse cx="17" cy="8" rx="7" ry="7" fill="${dark}"/>
+      <ellipse cx="17" cy="8" rx="4" ry="4" fill="${color}"/>
+      <ellipse cx="17" cy="44" rx="7" ry="6" fill="${dark}"/>
+      <ellipse cx="17" cy="44" rx="4" ry="3.5" fill="${color}"/>
+      <rect x="3" y="15" width="5" height="8" rx="2" fill="${dark}"/>
+      <rect x="26" y="15" width="5" height="8" rx="2" fill="${dark}"/>
+    </svg>`;
+  }
+  /* Default: Car */
+  return `<svg width="36" height="56" viewBox="0 0 36 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="9" width="28" height="38" rx="7" fill="${color}"/>
+    <rect x="6" y="12" width="24" height="13" rx="3" fill="${w}"/>
+    <rect x="7" y="34" width="22" height="9" rx="2" fill="${wm}"/>
+    <rect x="0" y="13" width="6" height="11" rx="3" fill="${dark}"/>
+    <rect x="30" y="13" width="6" height="11" rx="3" fill="${dark}"/>
+    <rect x="0" y="34" width="6" height="11" rx="3" fill="${dark}"/>
+    <rect x="30" y="34" width="6" height="11" rx="3" fill="${dark}"/>
+    <rect x="5" y="9" width="26" height="4" rx="2" fill="rgba(255,255,255,0.75)"/>
+    <polygon points="18,2 24,9 12,9" fill="${dark}"/>
+  </svg>`;
+}
+
 function createVehicleIcon(L: any, type: string) {
   const cfg = getVC(type);
-  // Clean floating vehicle icon — NO circles, just emoji + drop-shadow + ground glow
+  const svg = getVehicleSVG(type, cfg.color, cfg.dark);
+  const w = type === "Bike" ? 18 : type === "SUV" ? 40 : type === "Parcel Bike" ? 34 : 36;
+  const h = type === "Bike" ? 52 : type === "SUV" ? 58 : type === "Auto" ? 46 : type === "Parcel Bike" ? 50 : 56;
   return L.divIcon({
     html: `<div class="jago-vehicle-float">
-      <div class="jago-vehicle-emoji" style="font-size:38px;">${cfg.emoji}</div>
-      <div class="jago-vehicle-shadow" style="width:26px;height:7px;background:${cfg.color};"></div>
+      ${svg}
+      <div class="jago-vehicle-shadow" style="width:${Math.round(w*0.6)}px;height:6px;background:${cfg.color};"></div>
     </div>`,
     className: "",
-    iconSize: [46, 52],
-    iconAnchor: [23, 50],
-    popupAnchor: [0, -52],
+    iconSize: [w, h + 8],
+    iconAnchor: [Math.round(w / 2), h + 6],
+    popupAnchor: [0, -(h + 6)],
   });
 }
 
@@ -368,7 +434,9 @@ export default function FleetViewPage() {
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:220px">
             <div style="background:${cfg.color};padding:14px 16px;color:white">
               <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-size:28px">${cfg.emoji}</span>
+                <div style="width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;">
+                  ${getVehicleSVG(trip.vehicleType, "white", "rgba(255,255,255,0.5)")}
+                </div>
                 <div>
                   <div style="font-weight:700;font-size:15px">${cfg.label}</div>
                   <div style="font-size:11px;opacity:.85">${trip.refId}</div>
@@ -539,7 +607,7 @@ export default function FleetViewPage() {
                 <div className="d-flex gap-3" style={{ fontSize: 11 }}>
                   {Object.entries(VEHICLE_CONFIG).filter(([k]) => k !== "default").map(([k, v]) => (
                     <span key={k} className="d-flex align-items-center gap-1">
-                      <span style={{ fontSize: 13 }}>{v.emoji}</span>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: v.color, display: "inline-block", boxShadow: `0 0 0 2px ${v.color}30` }} />
                       <span className="fw-semibold" style={{ color: v.color }}>{v.label}</span>
                     </span>
                   ))}
@@ -621,10 +689,9 @@ export default function FleetViewPage() {
                         style={{ cursor: "pointer", borderLeft: `3.5px solid ${isSel ? cfg.color : "transparent"}` }}
                         onClick={() => focusTrip(trip)} data-testid={`card-trip-${trip.id}`}>
                         <div className="d-flex align-items-start gap-2">
-                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                            style={{ width: 40, height: 40, background: cfg.bg, fontSize: 20, border: `2px solid ${cfg.color}22` }}>
-                            {cfg.emoji}
-                          </div>
+                          <div className="d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: 40, height: 40, background: cfg.bg, borderRadius: 10, border: `2px solid ${cfg.color}33`, overflow: "hidden" }}
+                            dangerouslySetInnerHTML={{ __html: getVehicleSVG(trip.vehicleType, cfg.color, cfg.dark) }} />
                           <div className="flex-grow-1" style={{ minWidth: 0 }}>
                             <div className="d-flex justify-content-between align-items-center">
                               <span className="fw-bold small" style={{ color: "#0f172a" }}>{trip.refId}</span>
