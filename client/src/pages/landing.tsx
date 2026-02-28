@@ -1,216 +1,453 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Car, Package, MapPin, Star, Shield, Clock, ChevronRight, Menu, X, Smartphone } from "lucide-react";
-import { useState } from "react";
 
-const stats = [
-  { label: "Active Users", value: "2M+", color: "text-blue-600" },
-  { label: "Cities Covered", value: "50+", color: "text-green-600" },
-  { label: "Rides Completed", value: "10M+", color: "text-amber-600" },
-  { label: "Driver Partners", value: "100K+", color: "text-purple-600" },
+const LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/about-us", label: "About Us" },
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms & Condition" },
 ];
 
-const services = [
-  { icon: Car, title: "Bike Rides", desc: "Quick and affordable bike taxis for daily commute", color: "bg-blue-50 text-blue-600" },
-  { icon: Car, title: "Auto Rides", desc: "Comfortable auto rickshaw rides across the city", color: "bg-green-50 text-green-600" },
-  { icon: Car, title: "Car Rides", desc: "Premium car rides for comfortable travel", color: "bg-amber-50 text-amber-600" },
-  { icon: Package, title: "Parcel Delivery", desc: "Same-day parcel delivery with real-time tracking", color: "bg-purple-50 text-purple-600" },
-];
+function useJagoCSS() {
+  useEffect(() => {
+    const cssFiles = [
+      "/landing-page/assets/css/bootstrap-icons.min.css",
+      "/landing-page/assets/css/bootstrap.min.css",
+      "/landing-page/assets/css/animate.css",
+      "/landing-page/assets/css/line-awesome.min.css",
+      "/landing-page/assets/css/odometer.css",
+      "/landing-page/assets/css/owl.min.css",
+      "/landing-page/assets/css/main.css",
+      "/landing-page/assets/css/jago-custom.css",
+    ];
+    const tags: HTMLLinkElement[] = [];
+    cssFiles.forEach((href) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      link.dataset.jagoLanding = "1";
+      document.head.appendChild(link);
+      tags.push(link);
+    });
+    const fonts = document.createElement("link");
+    fonts.rel = "stylesheet";
+    fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap";
+    fonts.dataset.jagoLanding = "1";
+    document.head.appendChild(fonts);
+    tags.push(fonts);
 
-const features = [
-  { icon: MapPin, title: "Real-Time Tracking", desc: "Track your ride live on the map with accurate ETA" },
-  { icon: Shield, title: "Safe & Secure", desc: "Verified drivers, SOS button, and 24/7 support" },
-  { icon: Clock, title: "Instant Booking", desc: "Book a ride in under 30 seconds, driver arrives fast" },
-  { icon: Star, title: "Top Rated Drivers", desc: "Only 4.5+ rated drivers serve on our platform" },
-];
+    return () => {
+      document.querySelectorAll('[data-jago-landing="1"]').forEach(el => el.remove());
+    };
+  }, []);
+}
+
+function useJagoJS() {
+  useEffect(() => {
+    const scripts = [
+      "/landing-page/assets/js/jquery-3.6.0.min.js",
+      "/landing-page/assets/js/bootstrap.min.js",
+      "/landing-page/assets/js/viewport.jquery.js",
+      "/landing-page/assets/js/wow.min.js",
+      "/landing-page/assets/js/owl.min.js",
+      "/landing-page/assets/js/main.js",
+    ];
+    const tags: HTMLScriptElement[] = [];
+    let idx = 0;
+    function loadNext() {
+      if (idx >= scripts.length) return;
+      const s = document.createElement("script");
+      s.src = scripts[idx++];
+      s.async = false;
+      s.dataset.jagoScript = "1";
+      s.onload = loadNext;
+      document.body.appendChild(s);
+      tags.push(s);
+    }
+    loadNext();
+    return () => {
+      document.querySelectorAll('[data-jago-script="1"]').forEach(el => el.remove());
+    };
+  }, []);
+}
 
 export default function LandingPage() {
+  useJagoCSS();
+  useJagoJS();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 font-sans">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 border-b bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center">
-                <Car className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">JAGO</span>
-            </div>
-            <div className="hidden md:flex items-center gap-8">
-              {["Services", "How It Works", "About", "Blog"].map(item => (
-                <a key={item} href="#" className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{item}</a>
-              ))}
-            </div>
-            <div className="hidden md:flex items-center gap-3">
-              <Link href="/admin/login">
-                <Button variant="outline" size="sm" data-testid="btn-admin-login">Admin Panel</Button>
-              </Link>
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="btn-download-app">Download App</Button>
-            </div>
-            <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} data-testid="btn-mobile-menu">
-              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          </div>
-          {menuOpen && (
-            <div className="md:hidden py-4 border-t dark:border-gray-800 flex flex-col gap-4">
-              {["Services", "How It Works", "About", "Blog"].map(item => (
-                <a key={item} href="#" className="text-sm text-gray-600 dark:text-gray-300 px-2">{item}</a>
-              ))}
-              <Link href="/admin/login"><Button variant="outline" size="sm" className="w-fit">Admin Panel</Button></Link>
-            </div>
-          )}
-        </div>
-      </nav>
+    <>
+      <style>{`
+        html, body { margin:0; padding:0; }
+        #root { min-height:100vh; }
+      `}</style>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 text-white">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 right-10 w-72 h-72 rounded-full bg-white" />
-          <div className="absolute bottom-0 left-20 w-48 h-48 rounded-full bg-white" />
-        </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
-          <div className="max-w-3xl">
-            <Badge className="mb-4 bg-white/20 text-white border-white/30 hover:bg-white/25" data-testid="badge-tagline">
-              India's Smart Mobility Platform
-            </Badge>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6" data-testid="hero-title">
-              Rides & Deliveries<br />at Your Fingertips
-            </h1>
-            <p className="text-lg sm:text-xl text-blue-100 mb-8 max-w-xl" data-testid="hero-subtitle">
-              Book auto, bike, and car rides instantly. Send parcels across the city with real-time tracking. Download JAGO now!
-            </p>
-            <div className="flex flex-wrap gap-4 mb-12">
-              <Button size="lg" className="bg-white text-blue-700 hover:bg-blue-50" data-testid="btn-play-store">
-                <Smartphone className="w-5 h-5 mr-2" /> Play Store
-              </Button>
-              <Button size="lg" variant="outline" className="border-white text-white bg-white/10 hover:bg-white/20" data-testid="btn-app-store">
-                <Smartphone className="w-5 h-5 mr-2" /> App Store
-              </Button>
+      {/* Preloader */}
+      <div className="preloader" id="preloader" style={{ display: "none" }}></div>
+
+      {/* Header */}
+      <header>
+        <div className="navbar-bottom">
+          <div className="container">
+            <div className="navbar-bottom-wrapper">
+              <a href="/" className="logo" style={{ maxWidth: "320px", height: "auto" }}>
+                <img src="/jago-logo.png" alt="JAGO" style={{ width: "100%", height: "auto", maxHeight: "80px", objectFit: "contain" }} />
+              </a>
+              <ul className={`menu me-lg-4${menuOpen ? " show" : ""}`} style={{ display: menuOpen ? "flex" : undefined, flexDirection: menuOpen ? "column" : undefined }}>
+                {LINKS.map(l => (
+                  <li key={l.href}>
+                    <a href={l.href} className={window.location.pathname === l.href ? "active" : ""}>
+                      <span>{l.label}</span>
+                    </a>
+                  </li>
+                ))}
+                <li className="d-sm-none">
+                  <Link href="/admin/login" className="cmn--btn px-4 text-white d-inline-flex">
+                    <span>Admin</span>
+                  </Link>
+                </li>
+              </ul>
+              <div className="nav-toggle d-lg-none ms-auto me-2 me-sm-4" onClick={() => setMenuOpen(o => !o)}>
+                <span></span><span></span><span></span>
+              </div>
+              <Link href="/admin/login" className="cmn--btn d-none d-sm-block">Admin Panel</Link>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-              {stats.map(s => (
-                <div key={s.label} className="text-center" data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, '-')}`}>
-                  <div className="text-2xl sm:text-3xl font-bold text-white">{s.value}</div>
-                  <div className="text-sm text-blue-200 mt-1">{s.label}</div>
+          </div>
+        </div>
+      </header>
+
+      {/* Banner Section */}
+      <section className="banner-section">
+        <div className="container">
+          <div className="banner-wrapper justify-content-between" style={{ paddingTop: "80px", paddingBottom: "60px" }}>
+            <div className="banner-content text-center text-sm-start">
+              <h1 className="title">
+                Your Smart <span className="text--base">Logistics &amp; Mobility</span> Platform
+              </h1>
+              <p className="txt">
+                Powering seamless parcel delivery, smart fleet management, and real-time tracking — JAGO is the all-in-one logistics and ride-sharing solution built for modern businesses.
+              </p>
+              <div className="app--btns d-flex flex-wrap flex-column flex-sm-row gap-3 mt-4">
+                <div className="dropdown py-0">
+                  <a href="#" className="cmn--btn h-50 d-flex gap-2 lh-1" data-bs-toggle="dropdown">
+                    Download User App <i className="bi bi-chevron-down"></i>
+                  </a>
+                  <div className="dropdown-menu dropdown-button-menu">
+                    <ul className="list-unstyled mb-0">
+                      <li className="border-bottom">
+                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
+                          <img width="20" src="/landing-page/assets/img/play-fav.png" alt="" />
+                          <span>Play Store</span>
+                        </a>
+                      </li>
+                      <li>
+                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
+                          <img width="20" src="/landing-page/assets/img/apple.png" alt="" />
+                          <span>App Store</span>
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-              ))}
+                <div className="dropdown py-0">
+                  <a href="#" className="cmn--btn btn-white text-nowrap h-50 d-flex gap-2 lh-1" data-bs-toggle="dropdown">
+                    Earn From JAGO <i className="bi bi-chevron-down"></i>
+                  </a>
+                  <div className="dropdown-menu dropdown-button-menu">
+                    <ul className="list-unstyled mb-0">
+                      <li className="border-bottom">
+                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
+                          <img width="20" src="/landing-page/assets/img/play-fav.png" alt="" />
+                          <span>Play Store</span>
+                        </a>
+                      </li>
+                      <li>
+                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
+                          <img width="20" src="/landing-page/assets/img/apple.png" alt="" />
+                          <span>App Store</span>
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Services */}
-      <section className="py-20 bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Our Services</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto">Everything you need for commuting and delivery, all in one app</p>
+      {/* Why JAGO Section */}
+      <section className="why-jago-section">
+        <div className="container">
+          <div className="mb-4 mb-sm-5 text-center">
+            <h2 className="section-title mb-2 mb-sm-3">Why <span style={{ color: "var(--jago-primary, #2563EB)" }}>JAGO</span></h2>
+            <p className="fs-18 mb-0">Everything you need to power your logistics and mobility operations</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {services.map(s => (
-              <div key={s.title} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border dark:border-gray-700 hover:shadow-md transition-shadow" data-testid={`service-card-${s.title.toLowerCase().replace(/\s+/g, '-')}`}>
-                <div className={`w-12 h-12 rounded-xl ${s.color} flex items-center justify-center mb-4`}>
-                  <s.icon className="w-6 h-6" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">{s.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="py-20 bg-white dark:bg-gray-950">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">How It Works</h2>
-            <p className="text-gray-500 dark:text-gray-400">Book a ride in 3 simple steps</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="row g-4">
             {[
-              { step: "01", title: "Enter Destination", desc: "Type your pickup and drop location in the app" },
-              { step: "02", title: "Choose Vehicle", desc: "Select from bike, auto, or car options" },
-              { step: "03", title: "Ride & Pay", desc: "Your driver arrives, ride safely, and pay digitally" },
-            ].map(item => (
-              <div key={item.step} className="text-center" data-testid={`step-${item.step}`}>
-                <div className="w-16 h-16 rounded-full bg-blue-600 text-white text-xl font-bold flex items-center justify-center mx-auto mb-4">{item.step}</div>
-                <h3 className="font-semibold text-gray-900 dark:text-white text-lg mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="py-20 bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Why Choose JAGO?</h2>
-            <p className="text-gray-500 dark:text-gray-400">Built for safety, speed, and reliability</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map(f => (
-              <div key={f.title} className="flex flex-col items-start gap-3 p-6 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700" data-testid={`feature-${f.title.toLowerCase().replace(/\s+/g, '-')}`}>
-                <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-                  <f.icon className="w-5 h-5 text-blue-600" />
+              { icon: "bi-geo-alt", title: "Real-Time Tracking", desc: "Track every delivery and vehicle in real time with precise GPS location updates and live status notifications." },
+              { icon: "bi-truck", title: "Smart Fleet Management", desc: "Optimize routes, monitor driver performance, and manage your entire fleet from a single powerful dashboard." },
+              { icon: "bi-box-seam", title: "Parcel Delivery", desc: "Fast and reliable parcel delivery with custom fare setup, weight-based pricing, and instant booking." },
+              { icon: "bi-car-front", title: "Ride Sharing", desc: "Comfortable and affordable rides at your fingertips. Book instantly and travel to any destination with ease." },
+              { icon: "bi-shield-check", title: "Secure Payments", desc: "Multiple secure payment options including digital wallets, cards, and cash on delivery for every transaction." },
+              { icon: "bi-headset", title: "24/7 Support", desc: "Round-the-clock customer support to ensure smooth operations and quick resolution of any issues." },
+            ].map((item) => (
+              <div key={item.title} className="col-lg-4 col-md-6">
+                <div className="why-jago-card">
+                  <div className="icon-circle">
+                    <i className={`bi ${item.icon}`}></i>
+                  </div>
+                  <h5>{item.title}</h5>
+                  <p>{item.desc}</p>
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">{f.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 bg-blue-600">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to Ride with JAGO?</h2>
-          <p className="text-blue-100 mb-8">Join millions of happy riders. Download the app now and get your first ride free!</p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <Button size="lg" className="bg-white text-blue-700 hover:bg-blue-50" data-testid="cta-play-store">Get it on Play Store</Button>
-            <Button size="lg" variant="outline" className="border-white text-white bg-white/10 hover:bg-white/20" data-testid="cta-app-store">Download on App Store</Button>
+      {/* How It Works Section */}
+      <section className="how-it-works-section mt-4 mt-sm-60" id="jago-flow">
+        <div className="container">
+          <div className="text-center mb-4 mb-sm-5">
+            <span className="jago-section-badge">How It Works</span>
+            <h2 className="jago-section-heading mt-3">Your Parcel, <span className="text-gradient">Delivered Safely</span></h2>
+            <p className="jago-section-sub mx-auto">From booking to doorstep delivery — see how JAGO makes logistics simple, fast, and secure.</p>
+          </div>
+
+          <div className="jago-flow-scene">
+            <div className="jago-flow-connector">
+              <svg className="jago-flow-svg" viewBox="0 0 1100 120" preserveAspectRatio="none">
+                <path className="jago-flow-path" d="M80,60 C200,60 200,60 300,60 C400,60 400,60 550,60 C700,60 700,60 800,60 C900,60 900,60 1020,60" fill="none" stroke="#DBEAFE" strokeWidth="3" strokeDasharray="8,6" />
+                <path className="jago-flow-path-active" d="M80,60 C200,60 200,60 300,60 C400,60 400,60 550,60 C700,60 700,60 800,60 C900,60 900,60 1020,60" fill="none" stroke="url(#jagoGrad)" strokeWidth="3" />
+                <defs>
+                  <linearGradient id="jagoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style={{ stopColor: "#2563EB" }} />
+                    <stop offset="50%" style={{ stopColor: "#3B82F6" }} />
+                    <stop offset="100%" style={{ stopColor: "#10B981" }} />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div className="jago-flow-nodes">
+              <div className="jago-flow-node" data-step="1">
+                <div className="jago-node-visual">
+                  <div className="jago-node-phone">
+                    <div className="jago-phone-screen">
+                      <div className="jago-phone-header"><span>JAGO</span></div>
+                      <div className="jago-phone-map"><i className="bi bi-geo-alt-fill"></i></div>
+                      <div className="jago-phone-btn">Book Now</div>
+                    </div>
+                  </div>
+                  <div className="jago-node-badge">1</div>
+                </div>
+                <h5>Book on App</h5>
+                <p>Enter pickup &amp; drop location, select vehicle, confirm booking</p>
+              </div>
+              <div className="jago-flow-node" data-step="2">
+                <div className="jago-node-visual">
+                  <div className="jago-node-rider">
+                    <div className="jago-rider-bike"><i className="bi bi-bicycle"></i></div>
+                    <div className="jago-rider-parcel"><i className="bi bi-box-seam-fill"></i></div>
+                  </div>
+                  <div className="jago-node-badge">2</div>
+                </div>
+                <h5>Pilot Picks Up</h5>
+                <p>Nearest Pilot arrives, collects parcel with OTP verification</p>
+              </div>
+              <div className="jago-flow-node" data-step="3">
+                <div className="jago-node-visual">
+                  <div className="jago-node-tracking">
+                    <div className="jago-tracking-map">
+                      <div className="jago-tracking-route"></div>
+                      <div className="jago-tracking-dot jago-dot-start"><i className="bi bi-circle-fill"></i></div>
+                      <div className="jago-tracking-dot jago-dot-moving"><i className="bi bi-truck"></i></div>
+                      <div className="jago-tracking-dot jago-dot-end"><i className="bi bi-geo-alt-fill"></i></div>
+                    </div>
+                  </div>
+                  <div className="jago-node-badge">3</div>
+                </div>
+                <h5>Live Tracking</h5>
+                <p>Real-time GPS tracking on map with status notifications</p>
+              </div>
+              <div className="jago-flow-node" data-step="4">
+                <div className="jago-node-visual">
+                  <div className="jago-node-delivered">
+                    <div className="jago-delivered-check"><i className="bi bi-patch-check-fill"></i></div>
+                    <div className="jago-delivered-otp">
+                      <span>OTP</span>
+                      <div className="jago-otp-dots"><span></span><span></span><span></span><span></span></div>
+                    </div>
+                  </div>
+                  <div className="jago-node-badge jago-badge-success">4</div>
+                </div>
+                <h5>Delivered &amp; Verified</h5>
+                <p>Receiver OTP verified, payment processed automatically</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flow-features-bar mt-4 mt-sm-5">
+            {[
+              { icon: "bi-lightning-charge-fill", label: "30 Min Avg Delivery" },
+              { icon: "bi-shield-lock-fill", label: "OTP Secured" },
+              { icon: "bi-pin-map-fill", label: "Live GPS Tracking" },
+              { icon: "bi-cash-coin", label: "Transparent Pricing" },
+            ].map(f => (
+              <div key={f.label} className="flow-feature-item">
+                <div className="flow-feature-icon"><i className={`bi ${f.icon}`}></i></div>
+                <span>{f.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Our Solutions Section */}
+      <section className="jago-solutions-section mt-4 mt-sm-60">
+        <div className="container">
+          <div className="text-center mb-5">
+            <span className="jago-section-badge">What We Offer</span>
+            <h2 className="jago-section-heading mt-3">Our <span className="text-gradient">Solutions</span></h2>
+            <p className="jago-section-sub mx-auto">End-to-end logistics and mobility solutions built for speed, reliability, and scale.</p>
+          </div>
+          <div className="row g-4">
+            {[
+              { icon: "bi-box-seam", title: "Parcel Delivery", desc: "Send parcels anywhere with real-time tracking, weight-based pricing, and OTP-verified handoffs. Fast, reliable, and transparent.", features: ["Real-time Tracking", "OTP Verified", "Weight-based Pricing"] },
+              { icon: "bi-car-front", title: "Ride Sharing", desc: "Book rides instantly with smart route matching, fare estimation, and safe travel. Affordable commuting made simple.", features: ["Instant Booking", "Fare Estimation", "Driver Tracking"] },
+              { icon: "bi-calendar-check", title: "Scheduled Trips", desc: "Plan ahead with pre-scheduled rides and deliveries. Set your time, date, and destination — we handle the rest.", features: ["Advance Booking", "Flexible Timing", "Auto Reminders"] },
+              { icon: "bi-building", title: "Business Logistics", desc: "Scalable fleet management for businesses. Route optimization, driver management, and analytics all in one dashboard.", features: ["Fleet Dashboard", "Route Optimization", "Analytics"] },
+              { icon: "bi-wallet2", title: "Digital Payments", desc: "Seamless and secure payment options including digital wallets, cards, and cash on delivery for every transaction.", features: ["Multiple Methods", "Wallet System", "Secure & Fast"] },
+              { icon: "bi-geo-alt", title: "Live Navigation", desc: "Real-time GPS navigation for drivers with optimized routes, turn-by-turn directions, and traffic-aware ETA calculations.", features: ["GPS Tracking", "Smart Routes", "Live ETA"] },
+            ].map(item => (
+              <div key={item.title} className="col-lg-4 col-md-6">
+                <div className="jago-solution-card">
+                  <div className="jago-solution-icon-wrap">
+                    <i className={`bi ${item.icon}`}></i>
+                  </div>
+                  <div className="jago-solution-body">
+                    <h4 className="jago-solution-title">{item.title}</h4>
+                    <p className="jago-solution-desc">{item.desc}</p>
+                    <div className="jago-solution-features">
+                      {item.features.map(f => (
+                        <span key={f}><i className="bi bi-check-circle-fill"></i> {f}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Newsletter Section */}
+      <section className="newsletter-section p-0 mt-4 mt-sm-60">
+        <div className="container">
+          <div className="newsletter--wrapper bg__img" data-img="/landing-page/assets/img/newsletter-new-bg.png">
+            <div className="position-relative p-4 p-sm-5">
+              <div className="row g-4 align-items-center">
+                <div className="col-lg-8">
+                  <h4 className="text-white text-uppercase mb-2">GET ALL UPDATES &amp; EXCITING NEWS</h4>
+                  <p className="text-white opacity-75 lh-base">Subscribe to our newsletters to receive all the latest activity we provide for you</p>
+                </div>
+                <div className="col-lg-4">
+                  <div className="newsletter-right">
+                    <form className="newsletter-form" onSubmit={e => { e.preventDefault(); }}>
+                      <input type="email" className="form-control" placeholder="Type email..." autoComplete="off" required />
+                      <button type="submit" className="btn cmn--btn">Subscribe</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                  <Car className="w-4 h-4 text-white" />
+      <footer className="jago-footer mt-4 mt-sm-60">
+        <div className="footer-top">
+          <div className="container">
+            <div className="row g-4 g-lg-5">
+              <div className="col-lg-4 col-md-6">
+                <div className="footer-brand">
+                  <a href="/" className="footer-logo d-inline-block mb-3">
+                    <img src="/jago-logo.png" alt="JAGO Logo" className="footer-logo-img" />
+                  </a>
+                  <p className="footer-desc">Your trusted logistics and mobility platform. Delivering parcels, connecting rides, and powering seamless transportation — anytime, anywhere.</p>
+                  <div className="footer-social">
+                    {[["bi-facebook", "#"], ["bi-instagram", "#"], ["bi-twitter-x", "#"], ["bi-linkedin", "#"]].map(([icon, href]) => (
+                      <a key={icon} href={href} className="social-link"><i className={`bi ${icon}`}></i></a>
+                    ))}
+                  </div>
                 </div>
-                <span className="text-white font-bold">JAGO</span>
               </div>
-              <p className="text-sm">India's smart mobility platform for rides and deliveries.</p>
-            </div>
-            {[
-              { title: "Company", links: ["About Us", "Careers", "Press", "Blog"] },
-              { title: "Services", links: ["Bike Rides", "Auto Rides", "Car Rides", "Parcel Delivery"] },
-              { title: "Support", links: ["Help Center", "Safety", "Terms", "Privacy"] },
-            ].map(col => (
-              <div key={col.title}>
-                <h4 className="text-white font-semibold mb-4">{col.title}</h4>
-                <ul className="space-y-2">
-                  {col.links.map(link => <li key={link}><a href="#" className="text-sm hover:text-white transition-colors">{link}</a></li>)}
+              <div className="col-lg-2 col-md-6">
+                <h6 className="footer-widget-title">Quick Links</h6>
+                <ul className="footer-links">
+                  {[["Home", "/"], ["About Us", "/about-us"], ["Privacy Policy", "/privacy"], ["Terms & Condition", "/terms"], ["Contact Us", "/contact-us"]].map(([label, href]) => (
+                    <li key={label}><a href={href}>{label}</a></li>
+                  ))}
                 </ul>
               </div>
-            ))}
+              <div className="col-lg-3 col-md-6">
+                <h6 className="footer-widget-title">Our Services</h6>
+                <ul className="footer-links">
+                  {["Ride Sharing", "Parcel Delivery", "Scheduled Trips", "Business Logistics", "Driver App", "Customer App"].map(s => (
+                    <li key={s}><a href="#">{s}</a></li>
+                  ))}
+                </ul>
+              </div>
+              <div className="col-lg-3 col-md-6">
+                <h6 className="footer-widget-title">Contact Us</h6>
+                <div className="footer-contact-list">
+                  <div className="footer-contact-item">
+                    <div className="footer-contact-icon"><i className="bi bi-envelope-fill"></i></div>
+                    <div>
+                      <span className="footer-contact-label">Email</span>
+                      <a href="mailto:support@jago.in" className="footer-contact-value">support@jago.in</a>
+                    </div>
+                  </div>
+                  <div className="footer-contact-item">
+                    <div className="footer-contact-icon"><i className="bi bi-telephone-fill"></i></div>
+                    <div>
+                      <span className="footer-contact-label">Phone</span>
+                      <a href="tel:+911234567890" className="footer-contact-value">+91 12345 67890</a>
+                    </div>
+                  </div>
+                  <div className="footer-contact-item">
+                    <div className="footer-contact-icon"><i className="bi bi-geo-alt-fill"></i></div>
+                    <div>
+                      <span className="footer-contact-label">Address</span>
+                      <span className="footer-contact-value">Hyderabad, Telangana, India</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="footer-apps-row">
+                  <div className="footer-app-group">
+                    <span className="footer-app-label">Download App:</span>
+                    <a href="#"><img src="/landing-page/assets/img/play-store.png" className="footer-store-badge" alt="Play Store" /></a>
+                    <a href="#"><img src="/landing-page/assets/img/app-store.png" className="footer-store-badge" alt="App Store" /></a>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="border-t border-gray-800 pt-8 text-center text-sm">
-            <p>&copy; 2025 JAGO. All rights reserved. | Hyderabad, India</p>
+        </div>
+        <div className="footer-bottom">
+          <div className="container">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <p className="mb-0">&copy; {new Date().getFullYear()} JAGO. All rights reserved.</p>
+              <div className="d-flex gap-3">
+                <a href="/privacy" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Privacy Policy</a>
+                <a href="/terms" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Terms &amp; Conditions</a>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
-    </div>
+    </>
   );
 }
