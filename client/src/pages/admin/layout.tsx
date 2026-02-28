@@ -46,6 +46,8 @@ const navSections: NavSection[] = [
     category: "Dashboard",
     items: [
       { label: "Dashboard", icon: "bi-grid-fill", href: "/admin/dashboard" },
+      { label: "Heat Map", icon: "bi-pin-map", href: "/admin/heat-map" },
+      { label: "Fleet View", icon: "bi-map-fill", href: "/admin/fleet-view" },
     ],
   },
   {
@@ -58,32 +60,92 @@ const navSections: NavSection[] = [
     category: "Trip Management",
     items: [
       { label: "All Trips", icon: "bi-car-front-fill", href: "/admin/trips" },
-      { label: "Fare Management", icon: "bi-cash-stack", href: "/admin/fares" },
-      { label: "Cancel Reasons", icon: "bi-x-circle-fill", href: "/admin/cancellation-reasons" },
+      { label: "Car Sharing", icon: "bi-people-fill", href: "/admin/car-sharing" },
+      { label: "Parcel Refund Request", icon: "bi-arrow-return-left", href: "/admin/parcel-refunds" },
+      { label: "Solved Alert List", icon: "bi-shield-fill-check", href: "/admin/safety-alerts" },
     ],
   },
   {
     category: "Promotion Management",
     items: [
+      { label: "Banner Setup", icon: "bi-flag-fill", href: "/admin/banners" },
       { label: "Coupon Setup", icon: "bi-ticket-fill", href: "/admin/coupons" },
-      { label: "Blogs", icon: "bi-newspaper", href: "/admin/blogs" },
+      { label: "Discount Setup", icon: "bi-percent", href: "/admin/discounts" },
+      { label: "Spin Wheel", icon: "bi-trophy-fill", href: "/admin/spin-wheel" },
+      { label: "Send Notification", icon: "bi-bell-fill", href: "/admin/notifications" },
     ],
   },
   {
     category: "User Management",
     items: [
-      { label: "Customers", icon: "bi-people-fill", href: "/admin/customers" },
-      { label: "Drivers", icon: "bi-person-badge-fill", href: "/admin/drivers" },
+      { label: "Driver Level Setup", icon: "bi-bar-chart-fill", href: "/admin/driver-levels" },
+      { label: "Driver Setup", icon: "bi-person-badge-fill", href: "/admin/drivers" },
+      { label: "Withdraw Requests", icon: "bi-cash-coin", href: "/admin/withdrawals" },
+      { label: "Customer Level Setup", icon: "bi-person-fill-add", href: "/admin/customer-levels" },
+      { label: "Customer Setup", icon: "bi-people-fill", href: "/admin/customers" },
+      { label: "Customer Wallet", icon: "bi-wallet-fill", href: "/admin/customer-wallet" },
+      { label: "Wallet Bonus", icon: "bi-wallet2", href: "/admin/wallet-bonus" },
+      { label: "Employee Setup", icon: "bi-person-square", href: "/admin/employees" },
+      { label: "Newsletter", icon: "bi-envelope-fill", href: "/admin/newsletter" },
+      { label: "Subscription Plans", icon: "bi-card-checklist", href: "/admin/subscriptions" },
+    ],
+  },
+  {
+    category: "Parcel Management",
+    items: [
+      { label: "Parcel Attributes", icon: "bi-patch-plus", href: "/admin/parcel-attributes" },
+    ],
+  },
+  {
+    category: "Vehicle Management",
+    items: [
+      { label: "Vehicle Attribute Setup", icon: "bi-ev-front-fill", href: "/admin/vehicle-attributes" },
       { label: "Vehicle Categories", icon: "bi-truck-front-fill", href: "/admin/vehicles" },
-      { label: "Withdrawals", icon: "bi-cash-coin", href: "/admin/withdrawals" },
+      { label: "Vehicle Requests", icon: "bi-car-front-fill", href: "/admin/vehicle-requests" },
+    ],
+  },
+  {
+    category: "Fare Management",
+    items: [
+      { label: "Trip Fare Setup", icon: "bi-sign-intersection-y-fill", href: "/admin/fares" },
+      { label: "Cancel Reasons", icon: "bi-x-circle-fill", href: "/admin/cancellation-reasons" },
+      { label: "Parcel Delivery Fare", icon: "bi-box", href: "/admin/parcel-fares" },
+      { label: "Surge Pricing", icon: "bi-graph-up-arrow", href: "/admin/surge-pricing" },
+    ],
+  },
+  {
+    category: "Transactions & Reports",
+    items: [
       { label: "Transactions", icon: "bi-receipt", href: "/admin/transactions" },
+      { label: "Reports", icon: "bi-bar-chart-line-fill", href: "/admin/reports" },
+    ],
+  },
+  {
+    category: "Help & Support",
+    items: [
+      { label: "Chatting", icon: "bi-chat-left-dots", href: "/admin/chatting" },
+      { label: "Call Logs", icon: "bi-telephone-fill", href: "/admin/call-logs" },
+    ],
+  },
+  {
+    category: "Blog Management",
+    items: [
+      { label: "Blog Setup", icon: "bi-layout-text-window", href: "/admin/blogs" },
+    ],
+  },
+  {
+    category: "Reviews",
+    items: [
       { label: "Reviews", icon: "bi-star-fill", href: "/admin/reviews" },
     ],
   },
   {
-    category: "System",
+    category: "Business Management",
     items: [
-      { label: "Settings", icon: "bi-gear-fill", href: "/admin/settings" },
+      { label: "Business Setup", icon: "bi-briefcase-fill", href: "/admin/business-setup" },
+      { label: "Pages & Media", icon: "bi-file-earmark-break-fill", href: "/admin/pages-media" },
+      { label: "Configurations", icon: "bi-gear-wide-connected", href: "/admin/configurations" },
+      { label: "System Settings", icon: "bi-sliders2-vertical", href: "/admin/settings" },
     ],
   },
 ];
@@ -97,12 +159,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const admin = (() => {
-    try {
-      return JSON.parse(localStorage.getItem("jago-admin") || '{"name":"Admin","email":"admin@jago.com","role":"superadmin"}');
-    } catch {
-      return { name: "Admin", email: "admin@jago.com", role: "superadmin" };
-    }
+    try { return JSON.parse(localStorage.getItem("jago-admin") || "{}"); }
+    catch { return {}; }
   })();
+
+  useEffect(() => {
+    if (!admin?.email && !admin?.name) {
+      setLocation("/admin/login");
+    }
+  }, []);
 
   useEffect(() => {
     if (sidebarFolded) {
@@ -121,46 +186,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [mobileOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    function handleClick(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  const isActive = (href: string) => location === href || location.startsWith(href + "/");
 
   const handleLogout = () => {
     localStorage.removeItem("jago-admin");
     setLocation("/admin/login");
   };
 
-  const isActive = (href: string) =>
-    location === href || location.startsWith(href + "/");
-
   return (
-    <>
-      {/* Mobile overlay */}
+    <div className="admin-wrapper">
+      {/* Overlay */}
       <div
         className={`aside-overlay${mobileOpen ? " active" : ""}`}
         onClick={() => setMobileOpen(false)}
       />
 
-      {/* Aside (Sidebar) - exact original JAGO structure */}
+      {/* Sidebar */}
       <aside className="aside">
-        {/* Aside Header */}
         <div className="aside-header">
           <a
             href="/admin/dashboard"
             className="logo"
             onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
           >
-            <img
-              width="115"
-              src="/jago-logo.png"
-              alt="JAGO"
-              className="main-logo"
-            />
+            <img width="115" src="/jago-logo.png" alt="JAGO" className="main-logo" />
           </a>
           <button
             className="toggle-menu-button"
@@ -170,13 +228,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <i className="bi bi-chevron-left"></i>
           </button>
         </div>
-        {/* End Aside Header */}
 
-        {/* Aside Body */}
         <div className="aside-body-wrapper">
           <div className="aside-body">
-
-            {/* User Profile */}
             <div className="user-profile">
               <div className="avatar rounded-circle">
                 <i className="bi bi-person-fill"></i>
@@ -188,9 +242,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <span className="card-text">{admin.role || "superadmin"}</span>
               </div>
             </div>
-            {/* End User Profile */}
 
-            {/* Search */}
             <div className="aside-search mb-3">
               <div className="search-form__input_group">
                 <span className="search-form__icon">
@@ -205,7 +257,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             </div>
 
-            {/* Nav */}
             <ul className="main-nav nav">
               {navSections.map((section) => (
                 <li key={section.category} className="nav-section-group" style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -229,18 +280,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </li>
               ))}
             </ul>
-            {/* End Nav */}
-
           </div>
         </div>
-        {/* End Aside Body */}
       </aside>
 
       {/* Header */}
       <header className="header fixed-top">
         <div className="header-inner">
           <div className="header-left-col">
-            {/* Mobile toggle */}
             <button
               className="aside-toggle-mobile border-0 bg-transparent p-0"
               onClick={() => setMobileOpen(!mobileOpen)}
@@ -258,7 +305,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   </button>
                 </li>
                 <li>
-                  {/* User Dropdown */}
                   <div className="user" ref={userMenuRef}>
                     <button
                       className="avatar avatar-sm rounded-circle header-avatar-btn"
@@ -274,26 +320,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           <span className="text-muted" style={{ fontSize: "0.8rem" }}>{admin.email}</span>
                         </div>
                         <div className="dropdown-divider"></div>
-                        <Link
-                          href="/admin/settings"
-                          className="dropdown-item"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <i className="bi bi-gear me-2"></i>
-                          Settings
+                        <Link href="/admin/settings" className="dropdown-item" onClick={() => setUserMenuOpen(false)}>
+                          <i className="bi bi-gear me-2"></i>Settings
                         </Link>
-                        <button
-                          className="dropdown-item text-danger"
-                          onClick={handleLogout}
-                          data-testid="menu-logout"
-                        >
-                          <i className="bi bi-box-arrow-right me-2"></i>
-                          Sign Out
+                        <button className="dropdown-item text-danger" onClick={handleLogout} data-testid="menu-logout">
+                          <i className="bi bi-box-arrow-right me-2"></i>Sign Out
                         </button>
                       </div>
                     )}
                   </div>
-                  {/* End User Dropdown */}
                 </li>
               </ul>
             </div>
@@ -301,12 +336,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
 
-      {/* Main Area */}
-      <main className="main-area">
-        <div className="main-content">
+      {/* Main Content */}
+      <div className="main-area">
+        <div className="main-area-inner">
           {children}
         </div>
-      </main>
-    </>
+      </div>
+    </div>
   );
 }

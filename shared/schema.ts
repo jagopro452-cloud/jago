@@ -173,6 +173,141 @@ export const withdrawRequests = pgTable("withdraw_requests", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const banners = pgTable("banners", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 255 }).notNull(),
+  imageUrl: text("image_url"),
+  redirectUrl: text("redirect_url"),
+  zone: varchar("zone", { length: 255 }),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const discounts = pgTable("discounts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  discountAmount: numeric("discount_amount", { precision: 23, scale: 3 }).default("0"),
+  discountType: varchar("discount_type", { length: 50 }).default("percentage"),
+  minOrderAmount: numeric("min_order_amount", { precision: 23, scale: 3 }).default("0"),
+  maxDiscountAmount: numeric("max_discount_amount", { precision: 23, scale: 3 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const spinWheelItems = pgTable("spin_wheel_items", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  label: varchar("label", { length: 255 }).notNull(),
+  rewardAmount: numeric("reward_amount", { precision: 23, scale: 3 }).default("0"),
+  rewardType: varchar("reward_type", { length: 50 }).default("amount"),
+  probability: numeric("probability", { precision: 5, scale: 2 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userLevels = pgTable("user_levels", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  userType: varchar("user_type", { length: 50 }).notNull().default("driver"),
+  minPoints: doublePrecision("min_points").default(0),
+  maxPoints: doublePrecision("max_points").default(0),
+  reward: doublePrecision("reward").default(0),
+  rewardType: varchar("reward_type", { length: 50 }).default("cashback"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const employees = pgTable("employees", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 191 }).notNull().unique(),
+  phone: varchar("phone", { length: 20 }),
+  role: varchar("role", { length: 50 }).default("employee"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const parcelCategories = pgTable("parcel_categories", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const parcelWeights = pgTable("parcel_weights", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  label: varchar("label", { length: 255 }).notNull(),
+  minWeight: doublePrecision("min_weight").default(0),
+  maxWeight: doublePrecision("max_weight").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const vehicleBrands = pgTable("vehicle_brands", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const vehicleModels = pgTable("vehicle_models", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  brandId: uuid("brand_id"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const parcelFares = pgTable("parcel_fares", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoneId: uuid("zone_id"),
+  baseFare: numeric("base_fare", { precision: 23, scale: 3 }).default("0"),
+  farePerKm: numeric("fare_per_km", { precision: 23, scale: 3 }).default("0"),
+  farePerKg: numeric("fare_per_kg", { precision: 23, scale: 3 }).default("0"),
+  minimumFare: numeric("minimum_fare", { precision: 23, scale: 3 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const surgePricing = pgTable("surge_pricing", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoneId: uuid("zone_id"),
+  startTime: varchar("start_time", { length: 10 }),
+  endTime: varchar("end_time", { length: 10 }),
+  multiplier: numeric("multiplier", { precision: 5, scale: 2 }).default("1"),
+  reason: varchar("reason", { length: 255 }),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const vehicleRequests = pgTable("vehicle_requests", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  driverId: uuid("driver_id"),
+  vehicleName: varchar("vehicle_name", { length: 255 }),
+  registrationNo: varchar("registration_no", { length: 100 }),
+  status: varchar("status", { length: 50 }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const walletBonuses = pgTable("wallet_bonuses", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  bonusAmount: numeric("bonus_amount", { precision: 23, scale: 3 }).default("0"),
+  bonusType: varchar("bonus_type", { length: 50 }).default("percentage"),
+  minimumAddAmount: numeric("minimum_add_amount", { precision: 23, scale: 3 }).default("0"),
+  maxBonusAmount: numeric("max_bonus_amount", { precision: 23, scale: 3 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  price: numeric("price", { precision: 23, scale: 3 }).default("0"),
+  durationDays: integer("duration_days").default(30),
+  features: text("features"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripSchema = createInsertSchema(tripRequests).omit({ id: true, createdAt: true, updatedAt: true });

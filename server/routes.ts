@@ -446,5 +446,335 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ── NEW MODULE ROUTES ──────────────────────────────────────────
+  // Helper: direct DB queries for new tables
+  const { db: rawDb } = await import("./db");
+  const { sql: rawSql } = await import("drizzle-orm");
+
+  // Banners
+  app.get("/api/banners", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM banners ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/banners", async (req, res) => {
+    try {
+      const { title, image_url, redirect_url, zone, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO banners (title, image_url, redirect_url, zone, is_active) VALUES (${title}, ${image_url}, ${redirect_url}, ${zone}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/banners/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, image_url, redirect_url, zone, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE banners SET title=${title}, image_url=${image_url}, redirect_url=${redirect_url}, zone=${zone}, is_active=${is_active} WHERE id=${id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/banners/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM banners WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Discounts
+  app.get("/api/discounts", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM discounts ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/discounts", async (req, res) => {
+    try {
+      const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO discounts (name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active) VALUES (${name}, ${discount_amount}, ${discount_type}, ${min_order_amount}, ${max_discount_amount}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/discounts/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM discounts WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Spin Wheel
+  app.get("/api/spin-wheel", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM spin_wheel_items ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/spin-wheel", async (req, res) => {
+    try {
+      const { label, reward_amount, reward_type, probability, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${reward_amount}, ${reward_type}, ${probability}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/spin-wheel/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM spin_wheel_items WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // User Levels (driver & customer)
+  app.get("/api/driver-levels", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='driver' ORDER BY min_points ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/customer-levels", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='customer' ORDER BY min_points ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/user-levels", async (req, res) => {
+    try {
+      const { name, user_type, min_points, max_points, reward, reward_type, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, ${user_type}, ${min_points}, ${max_points}, ${reward}, ${reward_type}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/user-levels/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Employees
+  app.get("/api/employees", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM employees ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/employees", async (req, res) => {
+    try {
+      const { name, email, phone, role, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, is_active) VALUES (${name}, ${email}, ${phone}, ${role}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/employees/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM employees WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Parcel Categories & Weights
+  app.get("/api/parcel-categories", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM parcel_categories ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/parcel-categories", async (req, res) => {
+    try {
+      const { name, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_categories (name, is_active) VALUES (${name}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/parcel-categories/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM parcel_categories WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/parcel-weights", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM parcel_weights ORDER BY min_weight ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/parcel-weights", async (req, res) => {
+    try {
+      const { label, min_weight, max_weight, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_weights (label, min_weight, max_weight, is_active) VALUES (${label}, ${min_weight}, ${max_weight}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/parcel-weights/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM parcel_weights WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Vehicle Brands & Models
+  app.get("/api/vehicle-brands", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM vehicle_brands ORDER BY name ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/vehicle-brands", async (req, res) => {
+    try {
+      const { name, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, is_active) VALUES (${name}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/vehicle-brands/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM vehicle_brands WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/vehicle-models", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT vm.*, vb.name as brand_name FROM vehicle_models vm LEFT JOIN vehicle_brands vb ON vb.id=vm.brand_id ORDER BY vm.name ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/vehicle-models", async (req, res) => {
+    try {
+      const { name, brand_id, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id}::uuid, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/vehicle-models/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM vehicle_models WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Parcel Fares
+  app.get("/api/parcel-fares", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT pf.*, z.name as zone_name FROM parcel_fares pf LEFT JOIN zones z ON z.id::uuid=pf.zone_id ORDER BY pf.created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/parcel-fares", async (req, res) => {
+    try {
+      const { zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zone_id}::uuid, ${base_fare}, ${fare_per_km}, ${fare_per_kg}, ${minimum_fare}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/parcel-fares/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM parcel_fares WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Surge Pricing
+  app.get("/api/surge-pricing", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT sp.*, z.name as zone_name FROM surge_pricing sp LEFT JOIN zones z ON z.id::uuid=sp.zone_id ORDER BY sp.created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/surge-pricing", async (req, res) => {
+    try {
+      const { zone_id, start_time, end_time, multiplier, reason, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO surge_pricing (zone_id, start_time, end_time, multiplier, reason, is_active) VALUES (${zone_id}::uuid, ${start_time}, ${end_time}, ${multiplier}, ${reason}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/surge-pricing/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM surge_pricing WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Vehicle Requests
+  app.get("/api/vehicle-requests", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const r = status
+        ? await rawDb.execute(rawSql`SELECT vr.*, u.f_name, u.l_name FROM vehicle_requests vr LEFT JOIN users u ON u.id::uuid=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
+        : await rawDb.execute(rawSql`SELECT vr.*, u.f_name, u.l_name FROM vehicle_requests vr LEFT JOIN users u ON u.id::uuid=vr.driver_id ORDER BY vr.created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/vehicle-requests/:id/status", async (req, res) => {
+    try {
+      const { status } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Wallet Bonus
+  app.get("/api/wallet-bonus", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM wallet_bonuses ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/wallet-bonus", async (req, res) => {
+    try {
+      const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/wallet-bonus/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM wallet_bonuses WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Subscription Plans
+  app.get("/api/subscription-plans", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM subscription_plans ORDER BY price ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/subscription-plans", async (req, res) => {
+    try {
+      const { name, price, duration_days, features, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO subscription_plans (name, price, duration_days, features, is_active) VALUES (${name}, ${price}, ${duration_days}, ${features}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/subscription-plans/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM subscription_plans WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Newsletter subscribers (from existing users table)
+  app.get("/api/newsletter", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT id, f_name, l_name, email, phone, created_at FROM users WHERE role='customer' ORDER BY created_at DESC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Notifications send (stub - log only)
+  app.post("/api/notifications/send", async (req, res) => {
+    try {
+      const { title, message, target } = req.body;
+      console.log(`[Notification] To=${target} Title=${title} Msg=${message}`);
+      res.json({ success: true, message: "Notification queued" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Call Logs (stub - return empty list)
+  app.get("/api/call-logs", async (_req, res) => {
+    try {
+      res.json({ data: [], total: 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }
