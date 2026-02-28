@@ -65,7 +65,10 @@ Authentication: Demo mode — any credentials accepted. Stored in localStorage.
 14. **Settings** (`/admin/settings`) — Business/Currency/Trip settings
 
 ## Database Schema
-Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, blogs, business_settings, cancellation_reasons, transactions, withdrawal_requests, admins
+Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, blogs, business_settings, cancellation_reasons, transactions, withdrawal_requests, admins, parcel_attributes
+- users table has driver verification fields: verification_status, license_number, license_image, vehicle_image, vehicle_number, vehicle_model, rejection_note
+- parcel_attributes: id, type (category/weight/size), name, icon, min_value, max_value, unit, extra_fare, is_active, created_at
+- File uploads stored in public/uploads/ — served at /uploads/:filename
 
 ## API Routes
 - `GET /api/dashboard/stats` — Dashboard statistics
@@ -73,6 +76,11 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - `PATCH /api/trips/:id/status` — Update trip status
 - `GET/POST /api/users` — Users list (filter by userType: customer|driver)
 - `PATCH /api/users/:id/status` — Block/unblock user
+- `PATCH /api/users/:id` (via updateUser) — Update arbitrary user fields
+- `PATCH /api/drivers/:id/verify` — Approve/reject driver ({status, note})
+- `PATCH /api/drivers/:id/documents` — Update driver docs ({licenseImage, vehicleImage, profileImage, licenseNumber, vehicleNumber, vehicleModel})
+- `POST /api/upload` — Multer file upload → saves to public/uploads/, returns {url}
+- `GET/POST/PUT/DELETE /api/parcel-attributes` — Parcel attribute CRUD (type: category|weight|size)
 - `GET/POST/PUT/DELETE /api/vehicle-categories` — Vehicle categories CRUD
 - `GET/POST/PUT/DELETE /api/zones` — Zones CRUD
 - `GET/POST /api/fares` — Fare rules

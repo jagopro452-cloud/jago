@@ -17,6 +17,7 @@ export interface IStorage {
   getUsers(userType?: string, search?: string, page?: number, limit?: number): Promise<{ data: User[]; total: number }>;
   getUserById(id: string): Promise<User | undefined>;
   updateUserStatus(id: string, isActive: boolean): Promise<User>;
+  updateUser(id: string, data: Partial<User>): Promise<User>;
   // Trips
   getTrips(status?: string, search?: string, page?: number, limit?: number): Promise<{ data: any[]; total: number }>;
   getTripById(id: string): Promise<TripRequest | undefined>;
@@ -93,6 +94,11 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserStatus(id: string, isActive: boolean): Promise<User> {
     const [updated] = await db.update(users).set({ isActive }).where(eq(users.id, id)).returning();
+    return updated;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User> {
+    const [updated] = await db.update(users).set(data as any).where(eq(users.id, id)).returning();
     return updated;
   }
 

@@ -3,6 +3,25 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
 import crypto from "crypto";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { db } from "./db";
+import { parcelAttributes } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+// ── Multer upload setup ───────────────────────────────────────────────────────
+const uploadsDir = path.join(process.cwd(), "public", "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const diskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`);
+  },
+});
+const upload = multer({ storage: diskStorage, limits: { fileSize: 8 * 1024 * 1024 } });
 
 function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
@@ -953,6 +972,92 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/call-logs", async (_req, res) => {
     try {
       res.json({ data: [], total: 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Static uploads ──────────────────────────────────────────────────────────
+  const express = (await import("express")).default;
+  app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
+
+  // ── File upload ─────────────────────────────────────────────────────────────
+  app.post("/api/upload", upload.single("file"), (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const url = `/uploads/${req.file.filename}`;
+      res.json({ url, filename: req.file.filename, originalname: req.file.originalname, size: req.file.size });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Driver verification ─────────────────────────────────────────────────────
+  app.patch("/api/drivers/:id/verify", async (req, res) => {
+    try {
+      const { status, note, licenseNumber, vehicleNumber, vehicleModel } = req.body;
+      const updateData: any = { verificationStatus: status };
+      if (note) updateData.rejectionNote = note;
+      if (licenseNumber) updateData.licenseNumber = licenseNumber;
+      if (vehicleNumber) updateData.vehicleNumber = vehicleNumber;
+      if (vehicleModel) updateData.vehicleModel = vehicleModel;
+      if (status === "approved") updateData.isActive = true;
+      await storage.updateUser(req.params.id, updateData);
+      res.json({ success: true, status });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/drivers/:id/documents", async (req, res) => {
+    try {
+      const { licenseImage, vehicleImage, profileImage, licenseNumber, vehicleNumber, vehicleModel } = req.body;
+      const updateData: any = {};
+      if (licenseImage !== undefined) updateData.licenseImage = licenseImage;
+      if (vehicleImage !== undefined) updateData.vehicleImage = vehicleImage;
+      if (profileImage !== undefined) updateData.profileImage = profileImage;
+      if (licenseNumber !== undefined) updateData.licenseNumber = licenseNumber;
+      if (vehicleNumber !== undefined) updateData.vehicleNumber = vehicleNumber;
+      if (vehicleModel !== undefined) updateData.vehicleModel = vehicleModel;
+      await storage.updateUser(req.params.id, updateData);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Parcel Attributes ───────────────────────────────────────────────────────
+  app.get("/api/parcel-attributes", async (req, res) => {
+    try {
+      const type = req.query.type as string;
+      let rows;
+      if (type) {
+        rows = await db.select().from(parcelAttributes).where(eq(parcelAttributes.type, type));
+      } else {
+        rows = await db.select().from(parcelAttributes);
+      }
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  function sanitizeAttr(body: any) {
+    const clean: any = { ...body };
+    if (clean.extraFare === "" || clean.extraFare === null || clean.extraFare === undefined) clean.extraFare = "0";
+    if (clean.minValue === "") clean.minValue = null;
+    if (clean.maxValue === "") clean.maxValue = null;
+    return clean;
+  }
+
+  app.post("/api/parcel-attributes", async (req, res) => {
+    try {
+      const [row] = await db.insert(parcelAttributes).values(sanitizeAttr(req.body) as any).returning();
+      res.status(201).json(row);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.put("/api/parcel-attributes/:id", async (req, res) => {
+    try {
+      const [row] = await db.update(parcelAttributes).set(sanitizeAttr(req.body) as any).where(eq(parcelAttributes.id, req.params.id)).returning();
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/parcel-attributes/:id", async (req, res) => {
+    try {
+      await db.delete(parcelAttributes).where(eq(parcelAttributes.id, req.params.id));
+      res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -24,8 +24,29 @@ export const users = pgTable("users", {
   userType: varchar("user_type", { length: 25 }).notNull().default("customer"),
   isActive: boolean("is_active").notNull().default(true),
   loyaltyPoints: doublePrecision("loyalty_points").notNull().default(0),
+  // Driver verification fields
+  verificationStatus: varchar("verification_status", { length: 30 }).notNull().default("pending"),
+  licenseNumber: varchar("license_number", { length: 100 }),
+  licenseImage: varchar("license_image", { length: 500 }),
+  vehicleImage: varchar("vehicle_image", { length: 500 }),
+  vehicleNumber: varchar("vehicle_number", { length: 50 }),
+  vehicleModel: varchar("vehicle_model", { length: 100 }),
+  rejectionNote: text("rejection_note"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const parcelAttributes = pgTable("parcel_attributes", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: varchar("type", { length: 50 }).notNull().default("category"),
+  name: varchar("name", { length: 255 }).notNull(),
+  icon: varchar("icon", { length: 100 }),
+  minValue: numeric("min_value", { precision: 10, scale: 2 }),
+  maxValue: numeric("max_value", { precision: 10, scale: 2 }),
+  unit: varchar("unit", { length: 30 }),
+  extraFare: numeric("extra_fare", { precision: 10, scale: 2 }).default("0"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const vehicleCategories = pgTable("vehicle_categories", {
