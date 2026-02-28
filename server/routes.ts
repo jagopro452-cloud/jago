@@ -2524,7 +2524,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const loc = await rawDb.execute(rawSql`SELECT lat, lng, is_online FROM driver_locations WHERE driver_id=${driver.id}::uuid`);
       const d = camelize(r.rows[0]) as any;
-      res.json({
+      const userObj = {
         id: d.id,
         fullName: d.fullName,
         phone: d.phone,
@@ -2543,7 +2543,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           totalEarned: parseFloat(d.totalEarned || "0"),
           cancelledTrips: parseInt(d.cancelledTrips || "0"),
         }
-      });
+      };
+      res.json({ user: userObj, ...userObj });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2551,32 +2552,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/driver/incoming-trip", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const r = await rawDb.execute(rawSql`
-        SELECT t.*,
-          c.full_name as customer_name, c.phone as customer_phone, c.rating as customer_rating,
+      // 1. Check if this driver has an active/accepted trip
+      const active = await rawDb.execute(rawSql`
+        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone, c.rating as customer_rating,
           vc.name as vehicle_name
         FROM trip_requests t
         LEFT JOIN users c ON c.id = t.customer_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
-        WHERE t.driver_id = ${driver.id}::uuid AND t.current_status = 'accepted'
+        WHERE t.driver_id = ${driver.id}::uuid
+          AND t.current_status IN ('driver_assigned','accepted','arrived','on_the_way')
         ORDER BY t.created_at DESC LIMIT 1
       `);
-      if (!r.rows.length) {
-        // Also check for newly assigned (searching) trip for this driver
-        const pending = await rawDb.execute(rawSql`
-          SELECT t.*,
-            c.full_name as customer_name, c.phone as customer_phone,
-            vc.name as vehicle_name
-          FROM trip_requests t
-          LEFT JOIN users c ON c.id = t.customer_id
-          LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
-          WHERE t.driver_id = ${driver.id}::uuid AND t.current_status = 'driver_assigned'
-          LIMIT 1
-        `);
-        if (!pending.rows.length) return res.json({ trip: null });
-        return res.json({ trip: camelize(pending.rows[0]), stage: "assigned" });
+      if (active.rows.length) {
+        const stage = (active.rows[0] as any).current_status;
+        return res.json({ trip: camelize(active.rows[0]), stage });
       }
-      res.json({ trip: camelize(r.rows[0]), stage: "accepted" });
+      // 2. Check driver location to find nearby searching trips
+      const locR = await rawDb.execute(rawSql`SELECT lat, lng FROM driver_locations WHERE driver_id=${driver.id}::uuid`);
+      if (!locR.rows.length) return res.json({ trip: null });
+      const { lat, lng } = locR.rows[0] as any;
+      // Show any searching trip within 10km radius
+      const searching = await rawDb.execute(rawSql`
+        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
+          vc.name as vehicle_name,
+          (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) as dist_sq
+        FROM trip_requests t
+        LEFT JOIN users c ON c.id = t.customer_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.current_status = 'searching' AND t.driver_id IS NULL
+          AND t.created_at > NOW() - INTERVAL '10 minutes'
+        ORDER BY dist_sq ASC LIMIT 1
+      `);
+      if (searching.rows.length) {
+        return res.json({ trip: camelize(searching.rows[0]), stage: "new_request" });
+      }
+      res.json({ trip: null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2587,15 +2597,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { tripId } = req.body;
       // Generate pickup OTP
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
+      // First assign driver if trip is in searching state
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET driver_id=${driver.id}::uuid
+        WHERE id=${tripId}::uuid AND current_status='searching' AND driver_id IS NULL
+      `);
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
-        SET current_status='accepted', driver_accepted_at=NOW(), pickup_otp=${otp}
-        WHERE id=${tripId}::uuid AND (driver_id=${driver.id}::uuid OR driver_id IS NULL) AND current_status IN ('driver_assigned','searching')
+        SET current_status='accepted', driver_accepted_at=NOW(), pickup_otp=${otp}, driver_id=${driver.id}::uuid
+        WHERE id=${tripId}::uuid
+          AND (driver_id=${driver.id}::uuid OR driver_id IS NULL)
+          AND current_status IN ('driver_assigned','searching')
         RETURNING *
       `);
-      if (!r.rows.length) return res.status(404).json({ message: "Trip not found or already accepted" });
-      // Assign driver if not set
-      await rawDb.execute(rawSql`UPDATE trip_requests SET driver_id=${driver.id}::uuid WHERE id=${tripId}::uuid AND driver_id IS NULL`);
+      if (!r.rows.length) {
+        // Check if trip exists and return helpful message
+        const exists = await rawDb.execute(rawSql`SELECT id, current_status, driver_id FROM trip_requests WHERE id=${tripId}::uuid`);
+        const info = exists.rows[0] as any;
+        if (!info) return res.status(404).json({ message: "Trip not found" });
+        if (info.current_status === 'accepted') return res.status(400).json({ message: "Trip already accepted" });
+        return res.status(400).json({ message: `Cannot accept trip in status: ${info.current_status}` });
+      }
 
       // 🔔 Notify customer that driver accepted
       const tripData = camelize(r.rows[0]) as any;
@@ -2615,6 +2637,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/reject-trip", authApp, async (req, res) => {
     try {
       const { tripId } = req.body;
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!tripId || !uuidRe.test(tripId)) return res.json({ success: true });
       await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='searching', driver_id=NULL WHERE id=${tripId}::uuid AND current_status='driver_assigned'
       `);
@@ -2628,7 +2652,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { tripId, otp } = req.body;
       const r = await rawDb.execute(rawSql`
-        SELECT * FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status='accepted'
+        SELECT * FROM trip_requests WHERE id=${tripId}::uuid
+          AND (current_status = 'accepted' OR current_status = 'arrived')
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
       const trip = r.rows[0] as any;
@@ -2646,8 +2671,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
-      await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='arrived' WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+      const updR = await rawDb.execute(rawSql`
+        UPDATE trip_requests SET current_status='arrived'
+        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+          AND current_status IN ('accepted','driver_assigned')
+        RETURNING id, pickup_otp, customer_id
       `);
       // Get pickup OTP + customer FCM token
       const r = await rawDb.execute(rawSql`
@@ -2680,7 +2708,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SET current_status='completed', ride_ended_at=NOW(),
             actual_fare=${actualFare}, actual_distance=${actualDistance || 0},
             tips=${tips}, payment_status='paid'
-        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status='on_the_way'
+        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+          AND (current_status = 'on_the_way' OR current_status = 'arrived' OR current_status = 'accepted')
         RETURNING *
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
@@ -2762,7 +2791,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.created_at DESC LIMIT ${Number(limit)} OFFSET ${Number(offset)}
       `);
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE driver_id=${driver.id}::uuid ${status ? rawSql`AND current_status=${status as string}` : rawSql``}`);
-      res.json({ data: camelize(r.rows), total: Number((cnt.rows[0] as any).total) });
+      const trips = camelize(r.rows);
+      res.json({ trips, data: trips, total: Number((cnt.rows[0] as any).total) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2813,7 +2843,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM users u WHERE u.id=${customer.id}::uuid
       `);
       const d = camelize(r.rows[0]) as any;
-      res.json({
+      const custObj = {
         id: d.id,
         fullName: d.fullName,
         phone: d.phone,
@@ -2825,7 +2855,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           completedTrips: parseInt(d.completedTrips || "0"),
           totalSpent: parseFloat(d.totalSpent || "0"),
         }
-      });
+      };
+      res.json({ user: custObj, ...custObj });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2835,10 +2866,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const customer = (req as any).currentUser;
       const {
         pickupAddress, pickupLat, pickupLng,
-        destinationAddress, destinationLat, destinationLng,
-        vehicleCategoryId, estimatedFare, estimatedDistance,
-        paymentMethod = "cash", tripType = "normal", isScheduled = false, scheduledAt
+        destinationAddress, destAddress, destinationLat, destLat, destinationLng, destLng,
+        vehicleCategoryId, estimatedFare, estimatedDistance, distanceKm,
+        paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt
       } = req.body;
+      const finalDestAddress = destinationAddress || destAddress || "";
+      const finalDestLat = destinationLat || destLat || 0;
+      const finalDestLng = destinationLng || destLng || 0;
+      const finalPayment = paymentMethod || paymentMode || "cash";
+      const finalDistance = estimatedDistance || distanceKm || 0;
 
       // Check if customer already has an active trip
       const active = await rawDb.execute(rawSql`
@@ -2862,6 +2898,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const nearestDriver = drivers.rows.length ? camelize(drivers.rows[0]) : null;
 
+      const tripStatus = nearestDriver ? 'driver_assigned' : 'searching';
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
           ref_id, customer_id, driver_id, vehicle_category_id,
@@ -2871,12 +2908,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           trip_type, current_status, is_scheduled, scheduled_at
         ) VALUES (
           ${refId}, ${customer.id}::uuid,
-          ${nearestDriver ? nearestDriver.id + '::uuid' : null},
-          ${vehicleCategoryId ? vehicleCategoryId + '::uuid' : null},
-          ${pickupAddress}, ${pickupLat}, ${pickupLng},
-          ${destinationAddress}, ${destinationLat}, ${destinationLng},
-          ${estimatedFare}, ${estimatedDistance || 0}, ${paymentMethod},
-          ${tripType}, ${nearestDriver ? 'driver_assigned' : 'searching'}, ${isScheduled}, ${scheduledAt || null}
+          ${nearestDriver ? rawSql`${nearestDriver.id}::uuid` : rawSql`NULL`},
+          ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+          ${pickupAddress || ""}, ${Number(pickupLat) || 0}, ${Number(pickupLng) || 0},
+          ${finalDestAddress}, ${Number(finalDestLat) || 0}, ${Number(finalDestLng) || 0},
+          ${Number(estimatedFare) || 0}, ${Number(finalDistance) || 0}, ${finalPayment},
+          ${tripType}, ${tripStatus}, ${isScheduled ? true : false}, ${scheduledAt || null}
         ) RETURNING *
       `);
 
@@ -2929,14 +2966,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
       const trip = camelize(r.rows[0]) as any;
-      // Mask pickup OTP for customer (only show first 2 digits if arrived)
       if (trip.currentStatus === "arrived" || trip.currentStatus === "accepted") {
-        // Customer needs to share OTP with driver
         trip.pickupOtpVisible = trip.pickupOtp;
       } else {
         delete trip.pickupOtp;
       }
-      res.json(trip);
+      res.json({ trip });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3034,7 +3069,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.created_at DESC LIMIT ${Number(limit)} OFFSET ${Number(offset)}
       `);
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE customer_id=${customer.id}::uuid`);
-      res.json({ data: camelize(r.rows), total: Number((cnt.rows[0] as any).total) });
+      const cTrips = camelize(r.rows);
+      res.json({ trips: cTrips, data: cTrips, total: Number((cnt.rows[0] as any).total) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3044,10 +3080,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pickupLat, pickupLng, destLat, destLng, vehicleCategoryId, distanceKm } = req.body;
       // Get fare settings
       const fareR = await rawDb.execute(rawSql`
-        SELECT f.*, vc.name as vehicle_name FROM fares f
+        SELECT f.*, vc.name as vehicle_name FROM trip_fares f
         LEFT JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
-        ${vehicleCategoryId ? rawSql`WHERE f.vehicle_category_id = ${vehicleCategoryId}::uuid AND f.is_active=true` : rawSql`WHERE f.is_active=true`}
-        LIMIT 5
+        ${vehicleCategoryId ? rawSql`WHERE f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+        ORDER BY vc.name
+        LIMIT 10
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
         const base = parseFloat(f.baseFare || 30);
@@ -3104,7 +3141,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const [cats, reasons, settings] = await Promise.all([
         rawDb.execute(rawSql`SELECT * FROM vehicle_categories WHERE is_active=true ORDER BY name`),
         rawDb.execute(rawSql`SELECT * FROM cancellation_reasons WHERE is_active=true`),
-        rawDb.execute(rawSql`SELECT key_name, value FROM configurations WHERE key_name IN ('otp_on_pickup','max_ride_radius_km','driver_auto_accept','sos_number','support_phone','currency','currency_symbol')`),
+        rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE key_name IN ('otp_on_pickup','max_ride_radius_km','driver_auto_accept','sos_number','support_phone','currency','currency_symbol')`),
       ]);
       const configs: any = {};
       (settings.rows as any[]).forEach(r => { configs[r.key_name] = r.value; });
