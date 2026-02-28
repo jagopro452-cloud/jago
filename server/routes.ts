@@ -1,3 +1,4 @@
+import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -3066,6 +3067,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ success: true, message: "SOS alert sent. Help is on the way." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+
+  // ========== FLUTTER SDK FILES DOWNLOAD ==========
+  app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 
   // ========== NOTIFICATION LOGS (update send to persist) ==========
   app.get("/api/notifications", async (req, res) => {

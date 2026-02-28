@@ -365,9 +365,71 @@ function EndpointCard({ ep }: { ep: ApiEndpoint }) {
   );
 }
 
+const DRIVER_API_SUMMARY = [
+  { when: "App launch",             api: "GET /api/app/configs",                    note: "Cache vehicle categories locally" },
+  { when: "OTP screen — send",      api: "POST /api/app/send-otp",                  note: "userType: 'driver'" },
+  { when: "OTP screen — verify",    api: "POST /api/app/verify-otp",                note: "Save returned token" },
+  { when: "Home screen load",       api: "GET /api/app/driver/profile",             note: "Show wallet, rating, online status" },
+  { when: "Go Online / Offline",    api: "PATCH /api/app/driver/online-status",     note: "403 if wallet locked" },
+  { when: "Every 5 seconds online", api: "POST /api/app/driver/location",           note: "Send lat/lng + heading" },
+  { when: "Every 3 seconds online", api: "GET /api/app/driver/incoming-trip",       note: "Poll for new trip assignment" },
+  { when: "Trip alert arrives",     api: "POST /api/app/driver/accept-trip",        note: "Get pickup OTP (4 digits)" },
+  { when: "Reached pickup point",   api: "POST /api/app/driver/arrived",            note: "Show OTP on driver screen" },
+  { when: "Customer reads OTP",     api: "POST /api/app/driver/verify-pickup-otp",  note: "Ride starts — navigate to dest" },
+  { when: "Ride over",              api: "POST /api/app/driver/complete-trip",      note: "Enter final fare → commission deducted" },
+  { when: "After completion",       api: "POST /api/app/driver/rate-customer",      note: "1–5 stars" },
+  { when: "History screen",         api: "GET /api/app/driver/trips",               note: "?status=completed&limit=20" },
+  { when: "Wallet screen",          api: "GET /api/app/driver/wallet",              note: "Balance + history + lock status" },
+  { when: "FCM token refresh",      api: "POST /api/app/fcm-token",                 note: "Register push notification token" },
+  { when: "Emergency",              api: "POST /api/app/sos",                       note: "Send SOS alert" },
+];
+
+const CUSTOMER_API_SUMMARY = [
+  { when: "App launch",             api: "GET /api/app/configs",                    note: "Cache vehicle categories" },
+  { when: "OTP screen — send",      api: "POST /api/app/send-otp",                  note: "userType: 'customer'" },
+  { when: "OTP screen — verify",    api: "POST /api/app/verify-otp",                note: "Save returned token" },
+  { when: "Home screen load",       api: "GET /api/app/customer/profile",           note: "Show wallet balance, stats" },
+  { when: "Home map screen",        api: "GET /api/app/nearby-drivers",             note: "?lat=&lng=&radius=5" },
+  { when: "Pickup selected",        api: "POST /api/app/customer/estimate-fare",    note: "Show price options for each vehicle" },
+  { when: "Book Now tapped",        api: "POST /api/app/customer/book-ride",        note: "Auto-assigns nearest driver" },
+  { when: "Waiting / In-ride",      api: "GET /api/app/customer/active-trip",       note: "Poll every 5s — driver location + status" },
+  { when: "Driver arrived",         api: "active-trip returns pickupOtpVisible",    note: "Show OTP to customer — tell driver" },
+  { when: "Ride completed",         api: "active-trip status = 'completed'",        note: "Show fare summary + rating screen" },
+  { when: "Rate driver",            api: "POST /api/app/customer/rate-driver",      note: "1–5 stars + review" },
+  { when: "Need to cancel",         api: "POST /api/app/customer/cancel-trip",      note: "Only before on_the_way" },
+  { when: "History screen",         api: "GET /api/app/customer/trips",             note: "Paginated trip history" },
+  { when: "FCM token refresh",      api: "POST /api/app/fcm-token",                 note: "Register push notification token" },
+  { when: "Emergency",              api: "POST /api/app/sos",                       note: "Send SOS alert" },
+];
+
+const FLUTTER_FILES = [
+  {
+    app: "Driver App",
+    icon: "bi-car-front-fill",
+    color: "#16a34a",
+    bg: "#f0fdf4",
+    files: [
+      { name: "api_service.dart", path: "/flutter/driver_app/api_service.dart", desc: "All API calls (OTP, location, trip management, wallet)" },
+      { name: "models.dart",      path: "/flutter/driver_app/models.dart",      desc: "DriverProfile, IncomingTrip, TripDetail, WalletInfo models" },
+    ],
+  },
+  {
+    app: "Customer App",
+    icon: "bi-person-fill",
+    color: "#7c3aed",
+    bg: "#f5f3ff",
+    files: [
+      { name: "api_service.dart", path: "/flutter/customer_app/api_service.dart", desc: "All API calls (OTP, booking, tracking, rating)" },
+      { name: "models.dart",      path: "/flutter/customer_app/models.dart",       desc: "CustomerProfile, FareOption, ActiveTrip, AppConfigs models" },
+    ],
+  },
+];
+
 export default function ApiDocsPage() {
   const [activeApp, setActiveApp] = useState<"all" | "driver" | "customer" | "shared">("all");
   const [showFlow, setShowFlow] = useState(true);
+  const [showDriverTable, setShowDriverTable] = useState(true);
+  const [showCustomerTable, setShowCustomerTable] = useState(true);
 
   const filtered = API_SECTIONS.filter(s => activeApp === "all" || s.app === "both" || s.app === activeApp || s.app === "shared");
 
@@ -378,11 +440,136 @@ export default function ApiDocsPage() {
           <h4 className="fw-bold mb-0" data-testid="page-title">
             <i className="bi bi-code-square me-2 text-primary"></i>Flutter App API Reference
           </h4>
-          <div className="text-muted small">Complete API documentation for Driver App + Customer App (Flutter)</div>
+          <div className="text-muted small">Driver App + Customer App — అన్ని APIs, Flutter Dart files</div>
         </div>
         <div className="d-flex gap-2">
           <code className="badge rounded-pill bg-dark px-3 py-2" style={{ fontSize: 11 }}>{BASE_URL}</code>
         </div>
+      </div>
+
+      {/* Flutter Download Files */}
+      <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 14, border: "1.5px solid #e0f2fe" }}>
+        <div className="card-header py-3 px-4 d-flex align-items-center gap-2"
+          style={{ background: "linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%)", borderRadius: "14px 14px 0 0", border: "none" }}>
+          <i className="bi bi-download text-white"></i>
+          <span className="fw-semibold text-white" style={{ fontSize: 14 }}>Flutter Dart Files — Download చేసి Flutter project లో వాడండి</span>
+        </div>
+        <div className="card-body p-4">
+          <div className="row g-3">
+            {FLUTTER_FILES.map((app, ai) => (
+              <div key={ai} className="col-md-6">
+                <div className="p-3 rounded-3 h-100" style={{ background: app.bg, border: `1.5px solid ${app.color}22` }}>
+                  <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: app.color, fontSize: 13 }}>
+                    <i className={`bi ${app.icon}`}></i>{app.app}
+                  </div>
+                  <div className="d-flex flex-column gap-2">
+                    {app.files.map((f, fi) => (
+                      <div key={fi} className="d-flex align-items-center gap-2 p-2 bg-white rounded-2"
+                        style={{ border: "1px solid #f1f5f9" }}>
+                        <div className="flex-1">
+                          <div className="fw-semibold" style={{ fontSize: 12, color: "#1e293b" }}>
+                            <i className="bi bi-file-earmark-code me-1" style={{ color: app.color }}></i>
+                            {f.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b" }}>{f.desc}</div>
+                        </div>
+                        <a href={f.path} download className="btn btn-sm"
+                          style={{ background: app.color, color: "white", fontSize: 11, borderRadius: 8, padding: "4px 10px", textDecoration: "none" }}
+                          data-testid={`download-${f.name}`}>
+                          <i className="bi bi-download me-1"></i>Download
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 p-2 rounded-2" style={{ background: "white", border: "1px dashed #cbd5e1", fontSize: 11, color: "#64748b" }}>
+                    <strong>pubspec.yaml లో add చేయండి:</strong>
+                    <pre style={{ margin: 0, fontSize: 10, color: "#334155" }}>{`dependencies:\n  http: ^1.2.0\n  shared_preferences: ^2.2.3`}</pre>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Driver App API Decision Table */}
+      <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 14 }}>
+        <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between"
+          style={{ borderBottom: "1px solid #f1f5f9" }}>
+          <span className="fw-semibold d-flex align-items-center gap-2" style={{ fontSize: 14, color: "#16a34a" }}>
+            <i className="bi bi-car-front-fill"></i>Driver App — ఏ screen లో ఏ API call చేయాలి
+          </span>
+          <button className="btn btn-sm btn-outline-secondary" style={{ fontSize: 11 }}
+            onClick={() => setShowDriverTable(!showDriverTable)}>
+            {showDriverTable ? "Hide" : "Show"}
+          </button>
+        </div>
+        {showDriverTable && (
+          <div className="card-body p-0">
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead style={{ background: "#f8fafc" }}>
+                  <tr>
+                    <th style={{ fontSize: 11, padding: "10px 16px", width: "25%", color: "#64748b", fontWeight: 600 }}>SCREEN / EVENT</th>
+                    <th style={{ fontSize: 11, padding: "10px 16px", width: "40%", color: "#64748b", fontWeight: 600 }}>API CALL</th>
+                    <th style={{ fontSize: 11, padding: "10px 16px", color: "#64748b", fontWeight: 600 }}>NOTE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {DRIVER_API_SUMMARY.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #f8fafc" }}>
+                      <td style={{ fontSize: 11.5, padding: "8px 16px", color: "#1e293b", fontWeight: 500 }}>{row.when}</td>
+                      <td style={{ padding: "8px 16px" }}>
+                        <code style={{ fontSize: 10.5, color: "#1a73e8", background: "#f1f5f9", padding: "2px 6px", borderRadius: 4 }}>{row.api}</code>
+                      </td>
+                      <td style={{ fontSize: 11, padding: "8px 16px", color: "#64748b" }}>{row.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Customer App API Decision Table */}
+      <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 14 }}>
+        <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between"
+          style={{ borderBottom: "1px solid #f1f5f9" }}>
+          <span className="fw-semibold d-flex align-items-center gap-2" style={{ fontSize: 14, color: "#7c3aed" }}>
+            <i className="bi bi-person-fill"></i>Customer App — ఏ screen లో ఏ API call చేయాలి
+          </span>
+          <button className="btn btn-sm btn-outline-secondary" style={{ fontSize: 11 }}
+            onClick={() => setShowCustomerTable(!showCustomerTable)}>
+            {showCustomerTable ? "Hide" : "Show"}
+          </button>
+        </div>
+        {showCustomerTable && (
+          <div className="card-body p-0">
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead style={{ background: "#f8fafc" }}>
+                  <tr>
+                    <th style={{ fontSize: 11, padding: "10px 16px", width: "25%", color: "#64748b", fontWeight: 600 }}>SCREEN / EVENT</th>
+                    <th style={{ fontSize: 11, padding: "10px 16px", width: "40%", color: "#64748b", fontWeight: 600 }}>API CALL</th>
+                    <th style={{ fontSize: 11, padding: "10px 16px", color: "#64748b", fontWeight: 600 }}>NOTE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CUSTOMER_API_SUMMARY.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #f8fafc" }}>
+                      <td style={{ fontSize: 11.5, padding: "8px 16px", color: "#1e293b", fontWeight: 500 }}>{row.when}</td>
+                      <td style={{ padding: "8px 16px" }}>
+                        <code style={{ fontSize: 10.5, color: "#7c3aed", background: "#f5f3ff", padding: "2px 6px", borderRadius: 4 }}>{row.api}</code>
+                      </td>
+                      <td style={{ fontSize: 11, padding: "8px 16px", color: "#64748b" }}>{row.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quick info */}
