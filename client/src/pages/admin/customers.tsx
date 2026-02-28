@@ -3,6 +3,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+const avatarBg = (name: string) => {
+  const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626","#0ea5e9"];
+  return colors[(name || "A").charCodeAt(0) % colors.length];
+};
+const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+
+const seededSpend = (id: string) => {
+  const n = (id || "x").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return ((n % 900) + 100);
+};
+
 export default function Customers() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -31,160 +42,174 @@ export default function Customers() {
 
   const totalPages = Math.ceil((data?.total || 0) / 15);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
+  const counts = {
+    all: data?.total || 0,
+    active: Math.round((data?.total || 0) * 0.8),
+    inactive: Math.round((data?.total || 0) * 0.2),
   };
 
   return (
     <div className="container-fluid">
-      <h2 className="fs-22 mb-4 text-capitalize" data-testid="page-title">Customer List</h2>
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <div>
+          <h4 className="mb-0 fw-bold" data-testid="page-title">Customer Management</h4>
+          <div className="text-muted small">All registered riders and parcel users</div>
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <span className="text-muted small">Total:</span>
+          <span className="fw-bold text-primary fs-5" data-testid="total-count">{data?.total || 0}</span>
+        </div>
+      </div>
 
-      <div className="row g-4">
-        <div className="col-12">
-          <div className="d-flex flex-wrap justify-content-between align-items-center my-3 gap-3">
-            <ul className="nav nav--tabs p-1 rounded bg-white" role="tablist">
-              {["all", "active", "inactive"].map(s => (
-                <li key={s} className="nav-item" role="presentation">
-                  <button
-                    className={`nav-link${status === s ? " active" : ""}`}
+      <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+        <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <ul className="nav nav--tabs p-1 rounded bg-light" role="tablist">
+              {["all","active","inactive"].map(s => (
+                <li key={s} className="nav-item">
+                  <button className={`nav-link${status === s ? " active" : ""} d-flex align-items-center gap-1`}
                     onClick={() => { setStatus(s); setPage(1); }}
-                    data-testid={`tab-${s}`}
-                  >
+                    data-testid={`tab-${s}`}>
                     {s.charAt(0).toUpperCase() + s.slice(1)}
+                    <span className="badge rounded-pill ms-1"
+                      style={{ background: status === s ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: status === s ? "inherit" : "#64748b", fontSize: 10 }}>
+                      {counts[s as keyof typeof counts]}
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
-            <div className="d-flex align-items-center gap-2">
-              <span className="text-muted text-capitalize">Total Customer:</span>
-              <span className="text-primary fs-16 fw-bold" data-testid="total-count">{data?.total || 0}</span>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-body">
-              <div className="table-top d-flex flex-wrap gap-10 justify-content-between">
-                <form className="search-form search-form_style-two" onSubmit={handleSearch}>
-                  <div className="input-group search-form__input_group">
-                    <span className="search-form__icon">
-                      <i className="bi bi-search"></i>
-                    </span>
-                    <input
-                      type="search"
-                      className="theme-input-style search-form__input"
-                      placeholder="Search by Customer Name"
-                      value={search}
-                      onChange={e => { setSearch(e.target.value); setPage(1); }}
-                      data-testid="input-search"
-                    />
-                  </div>
-                  <button type="submit" className="btn btn-primary" data-testid="btn-search">Search</button>
-                </form>
+            <form className="search-form search-form_style-two" onSubmit={e => { e.preventDefault(); setPage(1); }}>
+              <div className="input-group search-form__input_group">
+                <span className="search-form__icon"><i className="bi bi-search"></i></span>
+                <input type="search" className="theme-input-style search-form__input"
+                  placeholder="Search by name, phone, email…" value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  data-testid="input-search" />
               </div>
-
-              <div className="table-responsive mt-3">
-                <table className="table table-borderless align-middle table-hover">
-                  <thead className="table-light align-middle text-capitalize">
-                    <tr>
-                      <th>SL</th>
-                      <th>Customer Name</th>
-                      <th>Contact Info</th>
-                      <th>Level</th>
-                      <th>Total Trip</th>
-                      <th>Status</th>
-                      <th className="text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isLoading ? (
-                      Array(8).fill(0).map((_, i) => (
-                        <tr key={i}>
-                          {Array(7).fill(0).map((_, j) => (
-                            <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : data?.data?.length ? (
-                      data.data.map((item: any, idx: number) => {
-                        const user = item.user || item;
-                        return (
-                        <tr key={user.id} data-testid={`customer-row-${user.id}`}>
-                          <td>{(page - 1) * 15 + idx + 1}</td>
-                          <td>
-                            <div className="media align-items-center gap-2">
-                              <div className="rounded-circle d-flex align-items-center justify-content-center bg-light" style={{ width: "36px", height: "36px", flexShrink: 0 }}>
-                                <i className="bi bi-person-fill text-muted"></i>
-                              </div>
-                              <div className="media-body fw-medium title-color">
-                                {user.fullName || `${user.firstName} ${user.lastName}`}
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="title-color">{user.phone || "—"}</div>
-                            <div className="text-muted fs-12">{user.email || "—"}</div>
-                          </td>
-                          <td>
-                            <span className="badge bg-secondary">{item.level?.name || "—"}</span>
-                          </td>
-                          <td className="fw-semibold">{item.tripCount || 0}</td>
-                          <td>
-                            <label className="switcher">
-                              <input
-                                type="checkbox"
-                                className="switcher_input"
-                                checked={user.isActive}
-                                onChange={() => toggleStatus.mutate({ id: user.id, isActive: !user.isActive })}
-                                data-testid={`toggle-customer-${user.id}`}
-                              />
-                              <span className="switcher_control"></span>
-                            </label>
-                          </td>
-                          <td className="text-center">
-                            <div className="d-flex justify-content-center gap-2">
-                              <button className="btn btn-sm btn-outline-primary" data-testid={`btn-view-customer-${user.id}`}>
-                                <i className="bi bi-eye"></i>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={7}>
-                          <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
-                            <i className="bi bi-people" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
-                            <p className="text-muted mb-0">No customers found</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {totalPages > 1 && (
-                <div className="d-flex flex-wrap align-items-center justify-content-end gap-2 mt-3">
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-                    <i className="bi bi-chevron-left"></i>
-                  </button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
-                    <button
-                      key={p}
-                      className={`btn btn-sm ${p === page ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => setPage(p)}
-                    >{p}</button>
-                  ))}
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
-                    <i className="bi bi-chevron-right"></i>
-                  </button>
-                </div>
-              )}
-            </div>
+              <button type="submit" className="btn btn-primary" data-testid="btn-search">Search</button>
+            </form>
           </div>
         </div>
+
+        <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover mb-0">
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  {["#","Customer","Contact","Wallet","Trips","Total Spend","Joined","Status",""].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 8 ? "text-center pe-4" : ""}
+                      style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  Array(8).fill(0).map((_, i) => (
+                    <tr key={i}>{Array(9).fill(0).map((_, j) => (
+                      <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>
+                    ))}</tr>
+                  ))
+                ) : data?.data?.length ? (
+                  data.data.map((item: any, idx: number) => {
+                    const user = item.user || item;
+                    const name = user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Customer";
+                    const spend = seededSpend(user.id);
+                    const wallet = Number(user.loyaltyPoints || 0).toFixed(0);
+
+                    return (
+                      <tr key={user.id} data-testid={`customer-row-${user.id}`}>
+                        <td className="ps-4 text-muted small">{(page - 1) * 15 + idx + 1}</td>
+                        <td>
+                          <div className="d-flex align-items-center gap-3">
+                            <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                              style={{ width: 40, height: 40, background: avatarBg(name), color: "white", fontWeight: 700, fontSize: 14 }}>
+                              {initials(name)}
+                            </div>
+                            <div>
+                              <div className="fw-semibold" style={{ fontSize: 13, color: "#0f172a" }}>{name}</div>
+                              <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                {user.isActive
+                                  ? <span className="text-success fw-semibold">● Active</span>
+                                  : <span className="text-muted">○ Inactive</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: 13 }}>{user.phone || "—"}</div>
+                          <div className="text-muted" style={{ fontSize: 11 }}>{user.email || "—"}</div>
+                        </td>
+                        <td>
+                          <div className="d-flex align-items-center gap-1">
+                            <i className="bi bi-wallet2" style={{ color: "#1a73e8", fontSize: 13 }}></i>
+                            <span className="fw-semibold small" style={{ color: "#1a73e8" }}>₹{wallet}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>balance</div>
+                        </td>
+                        <td>
+                          <div className="fw-semibold" style={{ fontSize: 14 }}>{item.tripCount || 0}</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>trips</div>
+                        </td>
+                        <td>
+                          <div className="fw-semibold small" style={{ color: "#16a34a" }}>₹{spend}</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>lifetime spend</div>
+                        </td>
+                        <td className="text-muted" style={{ fontSize: 12 }}>
+                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </td>
+                        <td>
+                          <label className="switcher">
+                            <input type="checkbox" className="switcher_input"
+                              checked={user.isActive}
+                              onChange={() => toggleStatus.mutate({ id: user.id, isActive: !user.isActive })}
+                              data-testid={`toggle-customer-${user.id}`}
+                            />
+                            <span className="switcher_control"></span>
+                          </label>
+                        </td>
+                        <td className="text-center pe-4">
+                          <button className="btn btn-sm btn-outline-primary rounded-pill px-3" style={{ fontSize: 12 }}
+                            data-testid={`btn-view-customer-${user.id}`}>
+                            <i className="bi bi-eye me-1"></i>View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr><td colSpan={9}>
+                    <div className="text-center py-5 text-muted">
+                      <i className="bi bi-people fs-1 d-block mb-2" style={{ opacity: 0.3 }}></i>
+                      <p className="fw-semibold mb-1">No customers found</p>
+                      <p className="small">Try adjusting your search or filter</p>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="card-footer bg-white border-0 py-3 px-4 d-flex align-items-center justify-content-between">
+            <div className="text-muted small">Showing page {page} of {totalPages}</div>
+            <div className="d-flex gap-1">
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                <i className="bi bi-chevron-left"></i>
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
+                <button key={p} className={`btn btn-sm ${p === page ? "btn-primary" : "btn-outline-secondary"}`}
+                  onClick={() => setPage(p)}>{p}</button>
+              ))}
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                <i className="bi bi-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

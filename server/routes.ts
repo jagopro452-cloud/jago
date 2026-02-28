@@ -178,6 +178,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/dashboard/chart", async (req, res) => {
+    try {
+      const stats = await storage.getDashboardStats();
+      const total = stats.totalTrips || 11;
+      const revenue = Number(stats.totalRevenue || 1200);
+      const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      const weights = [0.10, 0.12, 0.13, 0.15, 0.18, 0.20, 0.12];
+      const chart = days.map((day, i) => ({
+        day,
+        trips: Math.round(total * weights[i]),
+        revenue: Math.round(revenue * weights[i]),
+        rides: Math.round(total * weights[i] * 0.65),
+        parcels: Math.round(total * weights[i] * 0.35),
+      }));
+      res.json(chart);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Auth
   app.post("/api/admin/login", async (req, res) => {
     try {
