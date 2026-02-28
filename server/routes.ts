@@ -1025,15 +1025,90 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/subscription-plans", async (req, res) => {
     try {
-      const { name, price, duration_days, features, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO subscription_plans (name, price, duration_days, features, is_active) VALUES (${name}, ${price}, ${duration_days}, ${features}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO subscription_plans (name, price, duration_days, features, is_active, plan_type, max_rides, max_parcels) VALUES (${name}, ${price}, ${durationDays||30}, ${features||''}, ${isActive ?? true}, ${planType||'both'}, ${maxRides||0}, ${maxParcels||0}) RETURNING *`);
+      res.status(201).json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/subscription-plans/:id", async (req, res) => {
+    try {
+      const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET name=${name}, price=${price}, duration_days=${durationDays}, features=${features}, is_active=${isActive}, plan_type=${planType || 'both'}, max_rides=${maxRides || 0}, max_parcels=${maxParcels || 0}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/subscription-plans/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET is_active=${isActive}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/subscription-plans/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM subscription_plans WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Intercity Routes CRUD
+  app.get("/api/intercity-routes", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT ir.*, vc.name as vehicle_name FROM intercity_routes ir
+        LEFT JOIN vehicle_categories vc ON vc.id = ir.vehicle_category_id
+        ORDER BY ir.from_city, ir.to_city
+      `);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/intercity-routes", async (req, res) => {
+    try {
+      const { fromCity, toCity, estimatedKm, baseFare, farePerKm, tollCharges, vehicleCategoryId, isActive } = req.body;
+      let r;
+      if (vehicleCategoryId) {
+        r = await rawDb.execute(rawSql`INSERT INTO intercity_routes (from_city, to_city, estimated_km, base_fare, fare_per_km, toll_charges, vehicle_category_id, is_active) VALUES (${fromCity}, ${toCity}, ${estimatedKm||0}, ${baseFare||0}, ${farePerKm||0}, ${tollCharges||0}, ${vehicleCategoryId}::uuid, ${isActive ?? true}) RETURNING *`);
+      } else {
+        r = await rawDb.execute(rawSql`INSERT INTO intercity_routes (from_city, to_city, estimated_km, base_fare, fare_per_km, toll_charges, is_active) VALUES (${fromCity}, ${toCity}, ${estimatedKm||0}, ${baseFare||0}, ${farePerKm||0}, ${tollCharges||0}, ${isActive ?? true}) RETURNING *`);
+      }
+      res.status(201).json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/intercity-routes/:id", async (req, res) => {
+    try {
+      const { fromCity, toCity, estimatedKm, baseFare, farePerKm, tollCharges, vehicleCategoryId, isActive } = req.body;
+      let r;
+      if (vehicleCategoryId) {
+        r = await rawDb.execute(rawSql`UPDATE intercity_routes SET from_city=${fromCity}, to_city=${toCity}, estimated_km=${estimatedKm||0}, base_fare=${baseFare||0}, fare_per_km=${farePerKm||0}, toll_charges=${tollCharges||0}, vehicle_category_id=${vehicleCategoryId}::uuid, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      } else {
+        r = await rawDb.execute(rawSql`UPDATE intercity_routes SET from_city=${fromCity}, to_city=${toCity}, estimated_km=${estimatedKm||0}, base_fare=${baseFare||0}, fare_per_km=${farePerKm||0}, toll_charges=${tollCharges||0}, vehicle_category_id=NULL, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      }
+      res.json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/intercity-routes/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE intercity_routes SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/intercity-routes/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM intercity_routes WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Business settings — bulk update
+  app.put("/api/business-settings", async (req, res) => {
+    try {
+      const settings = req.body as Record<string, string>;
+      for (const [key, value] of Object.entries(settings)) {
+        await rawDb.execute(rawSql`UPDATE business_settings SET value=${String(value)}, updated_at=now() WHERE key_name=${key}`);
+      }
+      const r = await rawDb.execute(rawSql`SELECT * FROM business_settings ORDER BY settings_type, key_name`);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

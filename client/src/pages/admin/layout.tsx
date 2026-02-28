@@ -70,6 +70,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "All Trips", icon: "bi-car-front-fill", href: "/admin/trips" },
       { label: "Car Sharing", icon: "bi-people-fill", href: "/admin/car-sharing" },
+      { label: "Intercity Routes", icon: "bi-signpost-2-fill", href: "/admin/intercity-routes" },
       { label: "Parcel Refund Request", icon: "bi-arrow-return-left", href: "/admin/parcel-refunds" },
       { label: "Solved Alert List", icon: "bi-shield-fill-check", href: "/admin/safety-alerts" },
     ],

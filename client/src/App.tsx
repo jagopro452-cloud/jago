@@ -50,6 +50,7 @@ import BusinessSetup from "@/pages/admin/business-setup";
 import PagesMedia from "@/pages/admin/pages-media";
 import Configurations from "@/pages/admin/configurations";
 import B2BCompanies from "@/pages/admin/b2b-companies";
+import IntercityRoutes from "@/pages/admin/intercity-routes";
 import NotFound from "@/pages/not-found";
 
 function AdminLogout() {
@@ -121,6 +122,8 @@ function AdminRoutes() {
         <Route path="/admin/settings" component={Settings} />
         {/* B2B / Porter */}
         <Route path="/admin/b2b-companies" component={B2BCompanies} />
+        {/* Intercity Routes */}
+        <Route path="/admin/intercity-routes" component={IntercityRoutes} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>
     </AdminLayout>
