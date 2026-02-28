@@ -3,17 +3,32 @@ import { useLocation } from "wouter";
 
 function useAdminBootstrap() {
   useEffect(() => {
-    let link = document.getElementById("admin-bootstrap-css") as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "/admin-bootstrap.min.css";
-      link.id = "admin-bootstrap-css";
-      document.head.appendChild(link);
-    }
+    const cssFiles = [
+      { id: "admin-google-fonts-css", href: "/admin-module/css/fonts/google.css" },
+      { id: "admin-bootstrap-icons-css", href: "/admin-module/css/bootstrap-icons.min.css" },
+      { id: "admin-bootstrap-css", href: "/admin-module/css/bootstrap.min.css" },
+      { id: "admin-icon-set-css", href: "/admin-module/plugins/icon-set/style.css" },
+      { id: "admin-style-css", href: "/admin-module/css/style.css" },
+      { id: "admin-custom-css", href: "/admin-module/css/custom.css" },
+    ];
+    const added: HTMLLinkElement[] = [];
+    cssFiles.forEach(({ id, href }) => {
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href;
+        link.id = id;
+        document.head.appendChild(link);
+        added.push(link);
+      }
+    });
     return () => {
-      const el = document.getElementById("admin-bootstrap-css");
-      if (el) el.remove();
+      added.forEach(el => el.remove());
+      cssFiles.forEach(({ id }) => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+      });
     };
   }, []);
 }
