@@ -1,4 +1,5 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -22,6 +23,15 @@ import BlogsPage from "@/pages/admin/blogs";
 import Withdrawals from "@/pages/admin/withdrawals";
 import CancellationReasonsPage from "@/pages/admin/cancellation-reasons";
 import NotFound from "@/pages/not-found";
+
+function AdminLogout() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    localStorage.removeItem("jago-admin");
+    setLocation("/admin/auth/login");
+  }, []);
+  return null;
+}
 
 function AdminRoutes() {
   return (
@@ -52,6 +62,8 @@ function Router() {
     <Switch>
       <Route path="/" component={LandingPage} />
       <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/auth/login" component={AdminLogin} />
+      <Route path="/admin/auth/logout" component={AdminLogout} />
       <Route path="/admin/:rest*" component={AdminRoutes} />
       <Route component={NotFound} />
     </Switch>

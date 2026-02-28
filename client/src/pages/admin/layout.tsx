@@ -212,23 +212,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {/* Nav */}
             <ul className="main-nav nav">
               {navSections.map((section) => (
-                <>
-                  <li key={`cat-${section.category}`} className="nav-category" title={section.category}>
-                    {section.category}
-                  </li>
-                  {section.items.map((item) => (
-                    <li key={item.href} className={isActive(item.href) ? "active open" : ""}>
-                      <Link
-                        href={item.href}
-                        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        <i className={`bi ${item.icon}`}></i>
-                        <span className="link-title">{item.label}</span>
-                      </Link>
+                <li key={section.category} className="nav-section-group" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    <li className="nav-category" title={section.category}>
+                      {section.category}
                     </li>
-                  ))}
-                </>
+                    {section.items.map((item) => (
+                      <li key={item.href} className={isActive(item.href) ? "active open" : ""}>
+                        <Link
+                          href={item.href}
+                          data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <i className={`bi ${item.icon}`}></i>
+                          <span className="link-title">{item.label}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
               ))}
             </ul>
             {/* End Nav */}
