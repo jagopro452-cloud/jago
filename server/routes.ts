@@ -81,6 +81,77 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Live vehicle tracking — ongoing trips with simulated positions
+  app.get("/api/live-tracking", async (_req, res) => {
+    try {
+      const { db: ltDb } = await import("./db");
+      const { sql: ltSql } = await import("drizzle-orm");
+      const r = await ltDb.execute(ltSql`
+        SELECT
+          t.id, t.ref_id, t.type,
+          t.pickup_address, t.destination_address,
+          t.pickup_lat, t.pickup_lng,
+          t.destination_lat, t.destination_lng,
+          t.estimated_fare, t.estimated_distance,
+          t.payment_method, t.current_status,
+          t.created_at,
+          u.full_name as customer_name, u.phone as customer_phone,
+          vc.name as vehicle_type
+        FROM trip_requests t
+        LEFT JOIN users u ON u.id = t.customer_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.current_status IN ('ongoing', 'accepted')
+          AND t.pickup_lat IS NOT NULL
+          AND t.destination_lat IS NOT NULL
+        ORDER BY t.created_at DESC
+      `);
+
+      const now = Date.now();
+      const TRIP_DURATION_MS = 25 * 60 * 1000; // assume 25 min trip
+
+      const trips = r.rows.map((t: any) => {
+        const elapsed = now - new Date(t.created_at).getTime();
+        // Clamp progress 0..0.95 so vehicle never fully arrives on its own
+        const progress = Math.min(0.95, Math.max(0, elapsed / TRIP_DURATION_MS));
+
+        // Add slight sinusoidal wobble to simulate real road curvature
+        const wobbleAmp = 0.002;
+        const wobble = wobbleAmp * Math.sin(progress * Math.PI * 3);
+
+        const currentLat = parseFloat(t.pickup_lat) +
+          progress * (parseFloat(t.destination_lat) - parseFloat(t.pickup_lat)) + wobble;
+        const currentLng = parseFloat(t.pickup_lng) +
+          progress * (parseFloat(t.destination_lng) - parseFloat(t.pickup_lng)) + wobble;
+
+        const progressPct = Math.round(progress * 100);
+
+        return {
+          id: t.id,
+          refId: t.ref_id,
+          type: t.type,
+          vehicleType: t.vehicle_type || 'Car',
+          customerName: t.customer_name || 'Customer',
+          customerPhone: t.customer_phone,
+          pickupAddress: t.pickup_address,
+          destinationAddress: t.destination_address,
+          pickupLat: parseFloat(t.pickup_lat),
+          pickupLng: parseFloat(t.pickup_lng),
+          destinationLat: parseFloat(t.destination_lat),
+          destinationLng: parseFloat(t.destination_lng),
+          currentLat,
+          currentLng,
+          progress: progressPct,
+          estimatedFare: t.estimated_fare,
+          estimatedDistance: t.estimated_distance,
+          paymentMethod: t.payment_method,
+          status: t.current_status,
+        };
+      });
+
+      res.json(trips);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/fleet-drivers", async (_req, res) => {
     try {
       const drivers = await storage.getUsers('driver');
