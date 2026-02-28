@@ -3,18 +3,56 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-function Modal({ open, onClose, title, children }: any) {
+function CouponModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+    <div className="modal-backdrop-jago">
+      <div className="modal-jago" style={{ maxWidth: "560px" }}>
+        <div className="modal-jago-header">
+          <h5 className="modal-jago-title">{editing ? "Edit Coupon" : "Add Coupon"}</h5>
+          <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
         </div>
-        {children}
+        <div className="d-flex flex-column gap-3">
+          <div className="row g-3">
+            <div className="col-6">
+              <label className="form-label-jago">Coupon Name <span className="text-danger">*</span></label>
+              <input className="form-control" value={form.name} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
+            </div>
+            <div className="col-6">
+              <label className="form-label-jago">Coupon Code <span className="text-danger">*</span></label>
+              <input className="form-control" value={form.code} onChange={e => setForm((f: any) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
+            </div>
+          </div>
+          <div className="row g-3">
+            <div className="col-6">
+              <label className="form-label-jago">Discount Type</label>
+              <select className="form-select" value={form.discountType} onChange={e => setForm((f: any) => ({ ...f, discountType: e.target.value }))}>
+                <option value="amount">Fixed Amount (₹)</option>
+                <option value="percentage">Percentage (%)</option>
+              </select>
+            </div>
+            <div className="col-6">
+              <label className="form-label-jago">Discount {form.discountType === "percentage" ? "%" : "₹"}</label>
+              <input type="number" className="form-control" value={form.discountAmount} onChange={e => setForm((f: any) => ({ ...f, discountAmount: e.target.value }))} data-testid="input-discount-amount" />
+            </div>
+          </div>
+          <div className="row g-3">
+            <div className="col-6">
+              <label className="form-label-jago">Min Trip Amount (₹)</label>
+              <input type="number" className="form-control" value={form.minTripAmount} onChange={e => setForm((f: any) => ({ ...f, minTripAmount: e.target.value }))} />
+            </div>
+            <div className="col-6">
+              <label className="form-label-jago">Limit Per User</label>
+              <input type="number" className="form-control" value={form.limitPerUser} onChange={e => setForm((f: any) => ({ ...f, limitPerUser: e.target.value }))} />
+            </div>
+          </div>
+          <div className="d-flex gap-2 justify-content-end mt-2">
+            <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={onSave} disabled={!form.name || !form.code || saving} data-testid="btn-save-coupon">
+              {saving ? "Saving..." : editing ? "Update" : "Create"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -25,19 +63,23 @@ export default function Coupons() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", code: "", discountAmount: "", discountType: "amount", minTripAmount: "", limitPerUser: "1" });
+  const [page, setPage] = useState(1);
+  const [form, setForm] = useState({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" });
 
-  const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/coupons"] });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/coupons", { page }],
+    queryFn: () => fetch(`/api/coupons?page=${page}&limit=15`).then(r => r.json()),
+  });
 
   const save = useMutation({
-    mutationFn: (data: any) => editing
-      ? apiRequest("PUT", `/api/coupons/${editing.id}`, data)
-      : apiRequest("POST", "/api/coupons", data),
+    mutationFn: (d: any) => editing
+      ? apiRequest("PUT", `/api/coupons/${editing.id}`, d)
+      : apiRequest("POST", "/api/coupons", d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/coupons"] });
       toast({ title: editing ? "Coupon updated" : "Coupon created" });
       setOpen(false); setEditing(null);
-      setForm({ name: "", code: "", discountAmount: "", discountType: "amount", minTripAmount: "", limitPerUser: "1" });
+      setForm({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -47,157 +89,103 @@ export default function Coupons() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/coupons"] }); toast({ title: "Coupon deleted" }); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", code: "", discountAmount: "", discountType: "amount", minTripAmount: "", limitPerUser: "1" }); setOpen(true); };
+  const toggleStatus = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/coupons/${id}`, { isActive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/coupons"] }),
+  });
+
+  const openCreate = () => { setEditing(null); setForm({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" }); setOpen(true); };
   const openEdit = (c: any) => {
     setEditing(c);
-    setForm({ name: c.name, code: c.code, discountAmount: String(c.discountAmount || ""), discountType: c.discountType || "amount", minTripAmount: String(c.minTripAmount || ""), limitPerUser: String(c.limitPerUser || "1") });
+    setForm({ name: c.name, code: c.code, discountType: c.discountType || "amount", discountAmount: String(c.discountAmount || 50), minTripAmount: String(c.minTripAmount || 0), limitPerUser: String(c.limitPerUser || 1) });
     setOpen(true);
   };
 
+  const totalPages = Math.ceil((data?.total || 0) / 15);
+  const coupons = data?.data || data || [];
+
   return (
-    <div>
-      <div className="jago-page-header">
-        <div>
-          <h4 className="page-title" data-testid="page-title">Coupon Setup</h4>
-          <div className="breadcrumb">
-            <i className="bi bi-house-fill"></i>
-            <span>Home</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Promotion Management</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Coupons</span>
-          </div>
-        </div>
-        <button className="btn-jago-primary" onClick={openCreate} data-testid="btn-add-coupon">
-          <i className="bi bi-plus-circle-fill"></i> Add Coupon
+    <div className="container-fluid">
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <h2 className="fs-22 text-capitalize mb-0" data-testid="page-title">Coupon Setup</h2>
+        <button className="btn btn-primary" onClick={openCreate} data-testid="btn-add-coupon">
+          <i className="bi bi-plus-circle me-1"></i> Add Coupon
         </button>
       </div>
 
-      <div className="jago-card">
-        <div className="jago-card-header">
-          <h5 className="jago-card-title">
-            <i className="bi bi-ticket-fill" style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
-            Coupon Codes
-          </h5>
-        </div>
-        <div className="jago-table-wrapper">
-          <table className="jago-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Code</th>
-                <th>Discount</th>
-                <th>Min Fare</th>
-                <th>Limit/User</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? Array(4).fill(0).map((_, i) => (
-                <tr key={i}>
-                  {Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}
-                </tr>
-              )) : data?.length ? data.map((c: any, idx: number) => (
-                <tr key={c.id} data-testid={`coupon-row-${c.id}`}>
-                  <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>{idx + 1}</td>
-                  <td style={{ fontWeight: 600 }}>{c.name}</td>
-                  <td>
-                    <span style={{ fontFamily: "monospace", background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px", fontWeight: 600, fontSize: "0.8rem", color: "var(--bs-primary)" }}>{c.code}</span>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>
-                    {c.discountType === "percentage" ? `${c.discountAmount}%` : `₹${c.discountAmount}`}
-                  </td>
-                  <td>₹{c.minTripAmount}</td>
-                  <td style={{ textAlign: "center" }}>{c.limitPerUser}</td>
-                  <td>
-                    <span className={`jago-badge ${c.isActive ? "badge-active" : "badge-inactive"}`}>
-                      {c.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: "0.375rem" }}>
-                      <button
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-primary)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                        onClick={() => openEdit(c)}
-                        data-testid={`btn-edit-coupon-${c.id}`}
-                      >
-                        <i className="bi bi-pencil-fill"></i>
-                      </button>
-                      <button
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-danger)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                        onClick={() => { if (confirm("Delete this coupon?")) remove.mutate(c.id); }}
-                        data-testid={`btn-delete-coupon-${c.id}`}
-                      >
-                        <i className="bi bi-trash-fill"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )) : (
+      <div className="card">
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover">
+              <thead className="table-light align-middle text-capitalize">
                 <tr>
-                  <td colSpan={8}>
-                    <div className="jago-empty">
-                      <i className="bi bi-ticket"></i>
-                      <p>No coupons created yet</p>
-                    </div>
-                  </td>
+                  <th>SL</th>
+                  <th>Coupon Name</th>
+                  <th>Code</th>
+                  <th>Discount</th>
+                  <th>Min Amount</th>
+                  <th>Limit/User</th>
+                  <th>Status</th>
+                  <th className="text-center">Action</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i}>{Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                  ))
+                ) : coupons.length ? (
+                  coupons.map((c: any, idx: number) => (
+                    <tr key={c.id} data-testid={`coupon-row-${c.id}`}>
+                      <td>{(page - 1) * 15 + idx + 1}</td>
+                      <td className="fw-medium title-color">{c.name}</td>
+                      <td><span className="badge bg-primary">{c.code}</span></td>
+                      <td>
+                        {c.discountType === "percentage"
+                          ? `${c.discountAmount}%`
+                          : `₹${c.discountAmount}`}
+                      </td>
+                      <td>₹{c.minTripAmount || 0}</td>
+                      <td>{c.limitPerUser || 1}x</td>
+                      <td>
+                        <label className="switcher">
+                          <input type="checkbox" className="switcher_input" checked={c.isActive} onChange={() => toggleStatus.mutate({ id: c.id, isActive: !c.isActive })} data-testid={`toggle-coupon-${c.id}`} />
+                          <span className="switcher_control"></span>
+                        </label>
+                      </td>
+                      <td className="text-center">
+                        <div className="d-flex justify-content-center gap-2">
+                          <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(c)} data-testid={`btn-edit-coupon-${c.id}`}><i className="bi bi-pencil-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this coupon?")) remove.mutate(c.id); }} data-testid={`btn-delete-coupon-${c.id}`}><i className="bi bi-trash-fill"></i></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan={8}>
+                    <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
+                      <i className="bi bi-ticket" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
+                      <p className="text-muted mb-0">No coupons found</p>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {totalPages > 1 && (
+            <div className="d-flex flex-wrap align-items-center justify-content-end gap-2 mt-3">
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}><i className="bi bi-chevron-left"></i></button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
+                <button key={p} className={`btn btn-sm ${p === page ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setPage(p)}>{p}</button>
+              ))}
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}><i className="bi bi-chevron-right"></i></button>
+            </div>
+          )}
         </div>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Coupon" : "Add Coupon"}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <div>
-              <label className="jago-label">Coupon Name *</label>
-              <input className="jago-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
-            </div>
-            <div>
-              <label className="jago-label">Coupon Code *</label>
-              <input className="jago-input" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <div>
-              <label className="jago-label">Discount Type</label>
-              <select className="jago-input" value={form.discountType} onChange={e => setForm(f => ({ ...f, discountType: e.target.value }))}>
-                <option value="amount">Fixed Amount (₹)</option>
-                <option value="percentage">Percentage (%)</option>
-              </select>
-            </div>
-            <div>
-              <label className="jago-label">Discount {form.discountType === "percentage" ? "%" : "₹"}</label>
-              <input type="number" className="jago-input" value={form.discountAmount} onChange={e => setForm(f => ({ ...f, discountAmount: e.target.value }))} data-testid="input-discount-amount" />
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <div>
-              <label className="jago-label">Min Trip Amount (₹)</label>
-              <input type="number" className="jago-input" value={form.minTripAmount} onChange={e => setForm(f => ({ ...f, minTripAmount: e.target.value }))} />
-            </div>
-            <div>
-              <label className="jago-label">Limit Per User</label>
-              <input type="number" className="jago-input" value={form.limitPerUser} onChange={e => setForm(f => ({ ...f, limitPerUser: e.target.value }))} />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
-            <button
-              className="btn-jago-primary"
-              onClick={() => save.mutate(form)}
-              disabled={!form.name || !form.code || save.isPending}
-              data-testid="btn-save-coupon"
-            >
-              {save.isPending ? "Saving..." : editing ? "Update" : "Create"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <CouponModal open={open} onClose={() => setOpen(false)} editing={editing} form={form} setForm={setForm} onSave={() => save.mutate(form)} saving={save.isPending} />
     </div>
   );
 }

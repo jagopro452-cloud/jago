@@ -3,45 +3,63 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-function Modal({ open, onClose, title, children }: any) {
+function VehicleModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "480px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+    <div className="modal-backdrop-jago">
+      <div className="modal-jago">
+        <div className="modal-jago-header">
+          <h5 className="modal-jago-title">{editing ? "Edit Vehicle Category" : "Add Vehicle Category"}</h5>
+          <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
         </div>
-        {children}
+        <div className="d-flex flex-column gap-3">
+          <div>
+            <label className="form-label-jago">Category Name <span className="text-danger">*</span></label>
+            <input className="form-control" value={form.name} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="e.g. Economy Car" data-testid="input-vehicle-name" />
+          </div>
+          <div>
+            <label className="form-label-jago">Vehicle Type</label>
+            <select className="form-select" value={form.type} onChange={e => setForm((f: any) => ({ ...f, type: e.target.value }))}>
+              <option value="car">Car</option>
+              <option value="motor_bike">Bike</option>
+              <option value="auto">Auto</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label-jago">Max Passengers</label>
+            <input type="number" className="form-control" value={form.maxPassengers} onChange={e => setForm((f: any) => ({ ...f, maxPassengers: e.target.value }))} />
+          </div>
+          <div className="d-flex gap-2 justify-content-end mt-2">
+            <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={onSave} disabled={!form.name || saving} data-testid="btn-save-vehicle">
+              {saving ? "Saving..." : editing ? "Update" : "Create"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-const vehicleIcons: Record<string, string> = {
-  Bike: "bi-bicycle", Auto: "bi-car-front", Car: "bi-car-front-fill", SUV: "bi-truck-front-fill", "Parcel Bike": "bi-bicycle"
-};
 
 export default function VehicleCategories() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", type: "ride" });
+  const [form, setForm] = useState({ name: "", type: "car", maxPassengers: "4" });
 
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/vehicle-categories"] });
 
   const save = useMutation({
-    mutationFn: (data: any) => editing
-      ? apiRequest("PUT", `/api/vehicle-categories/${editing.id}`, data)
-      : apiRequest("POST", "/api/vehicle-categories", data),
+    mutationFn: (d: any) => editing
+      ? apiRequest("PUT", `/api/vehicle-categories/${editing.id}`, d)
+      : apiRequest("POST", "/api/vehicle-categories", d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] });
-      toast({ title: editing ? "Category updated" : "Category created" });
-      setOpen(false); setEditing(null); setForm({ name: "", type: "ride" });
+      toast({ title: editing ? "Updated successfully" : "Created successfully" });
+      setOpen(false); setEditing(null); setForm({ name: "", type: "car", maxPassengers: "4" });
     },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -49,106 +67,94 @@ export default function VehicleCategories() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }); toast({ title: "Deleted" }); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", type: "ride" }); setOpen(true); };
-  const openEdit = (cat: any) => { setEditing(cat); setForm({ name: cat.name, type: cat.type || "ride" }); setOpen(true); };
+  const toggleStatus = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/vehicle-categories/${id}`, { isActive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }),
+  });
+
+  const openCreate = () => { setEditing(null); setForm({ name: "", type: "car", maxPassengers: "4" }); setOpen(true); };
+  const openEdit = (v: any) => { setEditing(v); setForm({ name: v.name, type: v.type || "car", maxPassengers: String(v.maxPassengers || 4) }); setOpen(true); };
+  const vehicles = Array.isArray(data) ? data : [];
+
+  const typeColors: Record<string, string> = { car: "bg-primary", motor_bike: "bg-success", auto: "bg-warning text-dark" };
+  const typeLabels: Record<string, string> = { car: "Car", motor_bike: "Bike", auto: "Auto" };
 
   return (
-    <div>
-      <div className="jago-page-header">
-        <div>
-          <h4 className="page-title" data-testid="page-title">Vehicle Categories</h4>
-          <div className="breadcrumb">
-            <i className="bi bi-house-fill"></i>
-            <span>Home</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Vehicle Categories</span>
-          </div>
-        </div>
-        <button className="btn-jago-primary" onClick={openCreate} data-testid="btn-add-category">
-          <i className="bi bi-plus-circle-fill"></i> Add Category
+    <div className="container-fluid">
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <h2 className="fs-22 text-capitalize mb-0" data-testid="page-title">Vehicle Categories</h2>
+        <button className="btn btn-primary" onClick={openCreate} data-testid="btn-add-vehicle">
+          <i className="bi bi-plus-circle me-1"></i> Add Category
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1rem" }}>
-        {isLoading ? Array(4).fill(0).map((_, i) => (
-          <div key={i} className="jago-card" style={{ padding: "1.25rem" }}>
-            <div style={{ height: "80px", background: "#f1f5f9", borderRadius: "8px" }} />
-          </div>
-        )) : data?.map((cat: any) => (
-          <div key={cat.id} className="jago-card" data-testid={`category-card-${cat.id}`} style={{ padding: "1.25rem" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1rem" }}>
-              <div style={{ width: "48px", height: "48px", borderRadius: "10px", background: "rgba(37,99,235,0.1)", display: "grid", placeItems: "center", color: "var(--bs-primary)", fontSize: "1.3rem" }}>
-                <i className={`bi ${vehicleIcons[cat.name] || "bi-car-front-fill"}`}></i>
-              </div>
-              <div style={{ display: "flex", gap: "0.25rem" }}>
-                <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-primary)", padding: "0.25rem", borderRadius: "4px", fontSize: "0.9rem" }}
-                  onClick={() => openEdit(cat)}
-                  data-testid={`btn-edit-${cat.id}`}
-                >
-                  <i className="bi bi-pencil-fill"></i>
-                </button>
-                <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-danger)", padding: "0.25rem", borderRadius: "4px", fontSize: "0.9rem" }}
-                  onClick={() => { if (confirm("Delete this category?")) remove.mutate(cat.id); }}
-                  data-testid={`btn-delete-${cat.id}`}
-                >
-                  <i className="bi bi-trash-fill"></i>
-                </button>
-              </div>
-            </div>
-            <h6 style={{ fontWeight: 700, color: "var(--title-color)", marginBottom: "0.5rem" }}>{cat.name}</h6>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <span className="jago-badge badge-primary" style={{ textTransform: "capitalize" }}>{cat.type}</span>
-              <span className={`jago-badge ${cat.isActive ? "badge-active" : "badge-inactive"}`}>
-                {cat.isActive ? "Active" : "Inactive"}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {!isLoading && !data?.length && (
-        <div className="jago-card"><div className="jago-empty"><i className="bi bi-car-front"></i><p>No vehicle categories found.</p></div></div>
-      )}
-
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Category" : "Add Vehicle Category"}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div>
-            <label className="jago-label">Category Name *</label>
-            <input
-              className="jago-input"
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Bike, Auto, Car"
-              data-testid="input-category-name"
-            />
-          </div>
-          <div>
-            <label className="jago-label">Type *</label>
-            <select
-              className="jago-input"
-              value={form.type}
-              onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-              data-testid="select-type"
-            >
-              <option value="ride">Ride</option>
-              <option value="parcel">Parcel</option>
-            </select>
-          </div>
-          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
-            <button
-              className="btn-jago-primary"
-              onClick={() => save.mutate(form)}
-              disabled={!form.name || save.isPending}
-              data-testid="btn-save-category"
-            >
-              {save.isPending ? "Saving..." : editing ? "Update" : "Create"}
-            </button>
+      <div className="card">
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover">
+              <thead className="table-light align-middle text-capitalize">
+                <tr>
+                  <th>SL</th>
+                  <th>Category Name</th>
+                  <th>Type</th>
+                  <th>Max Passengers</th>
+                  <th>Status</th>
+                  <th className="text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i}>{Array(6).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                  ))
+                ) : vehicles.length ? (
+                  vehicles.map((v: any, idx: number) => (
+                    <tr key={v.id} data-testid={`vehicle-row-${v.id}`}>
+                      <td>{idx + 1}</td>
+                      <td>
+                        <div className="media align-items-center gap-2">
+                          <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <i className={`bi ${v.type === "motor_bike" ? "bi-bicycle" : v.type === "auto" ? "bi-truck" : "bi-car-front-fill"}`} style={{ color: "#2563eb" }}></i>
+                          </div>
+                          <div className="media-body fw-medium title-color">{v.name}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${typeColors[v.type] || "bg-secondary"}`}>
+                          {typeLabels[v.type] || v.type}
+                        </span>
+                      </td>
+                      <td>{v.maxPassengers || "—"}</td>
+                      <td>
+                        <label className="switcher">
+                          <input type="checkbox" className="switcher_input" checked={v.isActive} onChange={() => toggleStatus.mutate({ id: v.id, isActive: !v.isActive })} data-testid={`toggle-vehicle-${v.id}`} />
+                          <span className="switcher_control"></span>
+                        </label>
+                      </td>
+                      <td className="text-center">
+                        <div className="d-flex justify-content-center gap-2">
+                          <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(v)} data-testid={`btn-edit-vehicle-${v.id}`}><i className="bi bi-pencil-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this category?")) remove.mutate(v.id); }} data-testid={`btn-delete-vehicle-${v.id}`}><i className="bi bi-trash-fill"></i></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan={6}>
+                    <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
+                      <i className="bi bi-car-front" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
+                      <p className="text-muted mb-0">No vehicle categories found</p>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      </Modal>
+      </div>
+
+      <VehicleModal open={open} onClose={() => setOpen(false)} editing={editing} form={form} setForm={setForm} onSave={() => save.mutate(form)} saving={save.isPending} />
     </div>
   );
 }

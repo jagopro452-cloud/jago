@@ -1,6 +1,23 @@
 import { useLocation, Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 
+function useAdminBootstrap() {
+  useEffect(() => {
+    let link = document.getElementById("admin-bootstrap-css") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/admin-bootstrap.min.css";
+      link.id = "admin-bootstrap-css";
+      document.head.appendChild(link);
+    }
+    return () => {
+      const el = document.getElementById("admin-bootstrap-css");
+      if (el) el.remove();
+    };
+  }, []);
+}
+
 interface NavItem {
   label: string;
   icon: string;
@@ -60,6 +77,7 @@ const navSections: NavSection[] = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  useAdminBootstrap();
   const [location, setLocation] = useLocation();
   const [sidebarFolded, setSidebarFolded] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);

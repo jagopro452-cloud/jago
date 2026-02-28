@@ -3,18 +3,39 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-function Modal({ open, onClose, title, children }: any) {
+function BlogModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-      <div style={{ background: "#fff", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "1.5rem", boxShadow: "0 20px 60px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-          <h5 style={{ margin: 0, fontWeight: 700, color: "var(--title-color)", fontSize: "1rem" }}>{title}</h5>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-body-color)", fontSize: "1.2rem" }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+    <div className="modal-backdrop-jago">
+      <div className="modal-jago" style={{ maxWidth: "600px" }}>
+        <div className="modal-jago-header">
+          <h5 className="modal-jago-title">{editing ? "Edit Blog Post" : "Add Blog Post"}</h5>
+          <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
         </div>
-        {children}
+        <div className="d-flex flex-column gap-3">
+          <div>
+            <label className="form-label-jago">Title <span className="text-danger">*</span></label>
+            <input className="form-control" value={form.title} onChange={e => setForm((f: any) => ({ ...f, title: e.target.value }))} placeholder="Blog post title" data-testid="input-blog-title" />
+          </div>
+          <div>
+            <label className="form-label-jago">Short Description</label>
+            <input className="form-control" value={form.shortDesc} onChange={e => setForm((f: any) => ({ ...f, shortDesc: e.target.value }))} placeholder="Short description" />
+          </div>
+          <div>
+            <label className="form-label-jago">Content</label>
+            <textarea className="form-control" rows={4} value={form.content} onChange={e => setForm((f: any) => ({ ...f, content: e.target.value }))} placeholder="Blog content..." data-testid="input-blog-content"></textarea>
+          </div>
+          <div>
+            <label className="form-label-jago">Tags</label>
+            <input className="form-control" value={form.tags} onChange={e => setForm((f: any) => ({ ...f, tags: e.target.value }))} placeholder="e.g. ride, driver, tips" />
+          </div>
+          <div className="d-flex gap-2 justify-content-end mt-2">
+            <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={onSave} disabled={!form.title || saving} data-testid="btn-save-blog">
+              {saving ? "Saving..." : editing ? "Update" : "Publish"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -25,19 +46,24 @@ export default function BlogsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ title: "", slug: "", content: "" });
+  const [page, setPage] = useState(1);
+  const [form, setForm] = useState({ title: "", shortDesc: "", content: "", tags: "" });
 
-  const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/blogs"] });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/blogs", { page }],
+    queryFn: () => fetch(`/api/blogs?page=${page}&limit=10`).then(r => r.json()),
+  });
 
   const save = useMutation({
-    mutationFn: (data: any) => editing
-      ? apiRequest("PUT", `/api/blogs/${editing.id}`, data)
-      : apiRequest("POST", "/api/blogs", data),
+    mutationFn: (d: any) => editing
+      ? apiRequest("PUT", `/api/blogs/${editing.id}`, d)
+      : apiRequest("POST", "/api/blogs", d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/blogs"] });
-      toast({ title: editing ? "Blog updated" : "Blog created" });
-      setOpen(false); setEditing(null); setForm({ title: "", slug: "", content: "" });
+      toast({ title: editing ? "Blog updated" : "Blog published" });
+      setOpen(false); setEditing(null); setForm({ title: "", shortDesc: "", content: "", tags: "" });
     },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -45,129 +71,97 @@ export default function BlogsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/blogs"] }); toast({ title: "Blog deleted" }); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ title: "", slug: "", content: "" }); setOpen(true); };
-  const openEdit = (b: any) => { setEditing(b); setForm({ title: b.title, slug: b.slug || "", content: b.content || "" }); setOpen(true); };
-  const makeSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const toggleStatus = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/blogs/${id}`, { isActive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/blogs"] }),
+  });
+
+  const openCreate = () => { setEditing(null); setForm({ title: "", shortDesc: "", content: "", tags: "" }); setOpen(true); };
+  const openEdit = (b: any) => { setEditing(b); setForm({ title: b.title, shortDesc: b.shortDesc || "", content: b.content || "", tags: b.tags || "" }); setOpen(true); };
+  const blogs = data?.data || data || [];
+  const totalPages = Math.ceil((data?.total || 0) / 10);
 
   return (
-    <div>
-      <div className="jago-page-header">
-        <div>
-          <h4 className="page-title" data-testid="page-title">Blog Management</h4>
-          <div className="breadcrumb">
-            <i className="bi bi-house-fill"></i>
-            <span>Home</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Promotion Management</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Blogs</span>
-          </div>
-        </div>
-        <button className="btn-jago-primary" onClick={openCreate} data-testid="btn-add-blog">
-          <i className="bi bi-plus-circle-fill"></i> Add Article
+    <div className="container-fluid">
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <h2 className="fs-22 text-capitalize mb-0" data-testid="page-title">Blog Posts</h2>
+        <button className="btn btn-primary" onClick={openCreate} data-testid="btn-add-blog">
+          <i className="bi bi-plus-circle me-1"></i> Add Post
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
-        {isLoading ? Array(3).fill(0).map((_, i) => (
-          <div key={i} className="jago-card" style={{ padding: "1.25rem" }}>
-            <div style={{ height: "120px", background: "#f1f5f9", borderRadius: "8px" }} />
+      <div className="card">
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover">
+              <thead className="table-light align-middle text-capitalize">
+                <tr>
+                  <th>SL</th>
+                  <th>Title</th>
+                  <th>Tags</th>
+                  <th>Published</th>
+                  <th>Status</th>
+                  <th className="text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i}>{Array(6).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                  ))
+                ) : blogs.length ? (
+                  blogs.map((b: any, idx: number) => (
+                    <tr key={b.id} data-testid={`blog-row-${b.id}`}>
+                      <td>{(page - 1) * 10 + idx + 1}</td>
+                      <td>
+                        <div className="fw-medium title-color">{b.title}</div>
+                        {b.shortDesc && <div className="text-muted fs-12">{b.shortDesc.substring(0, 60)}...</div>}
+                      </td>
+                      <td>
+                        {b.tags ? b.tags.split(",").map((t: string) => (
+                          <span key={t} className="badge bg-light text-primary me-1" style={{ border: "1px solid #dbeafe" }}>{t.trim()}</span>
+                        )) : "—"}
+                      </td>
+                      <td className="text-muted fs-12">{new Date(b.createdAt || b.created_at).toLocaleDateString("en-IN")}</td>
+                      <td>
+                        <label className="switcher">
+                          <input type="checkbox" className="switcher_input" checked={b.isActive} onChange={() => toggleStatus.mutate({ id: b.id, isActive: !b.isActive })} data-testid={`toggle-blog-${b.id}`} />
+                          <span className="switcher_control"></span>
+                        </label>
+                      </td>
+                      <td className="text-center">
+                        <div className="d-flex justify-content-center gap-2">
+                          <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(b)} data-testid={`btn-edit-blog-${b.id}`}><i className="bi bi-pencil-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this blog?")) remove.mutate(b.id); }} data-testid={`btn-delete-blog-${b.id}`}><i className="bi bi-trash-fill"></i></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan={6}>
+                    <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
+                      <i className="bi bi-newspaper" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
+                      <p className="text-muted mb-0">No blog posts found</p>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        )) : data?.length ? data.map((b: any) => (
-          <div key={b.id} className="jago-card" data-testid={`blog-card-${b.id}`} style={{ padding: "1.25rem" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.875rem" }}>
-              <div style={{ width: "40px", height: "40px", borderRadius: "8px", background: "rgba(37,99,235,0.1)", display: "grid", placeItems: "center", color: "var(--bs-primary)", fontSize: "1.1rem" }}>
-                <i className="bi bi-newspaper"></i>
-              </div>
-              <div style={{ display: "flex", gap: "0.25rem" }}>
-                <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-primary)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                  onClick={() => openEdit(b)}
-                  data-testid={`btn-edit-blog-${b.id}`}
-                >
-                  <i className="bi bi-pencil-fill"></i>
-                </button>
-                <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bs-danger)", padding: "0.2rem 0.4rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                  onClick={() => { if (confirm("Delete this blog?")) remove.mutate(b.id); }}
-                  data-testid={`btn-delete-blog-${b.id}`}
-                >
-                  <i className="bi bi-trash-fill"></i>
-                </button>
-              </div>
+          {totalPages > 1 && (
+            <div className="d-flex flex-wrap align-items-center justify-content-end gap-2 mt-3">
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}><i className="bi bi-chevron-left"></i></button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
+                <button key={p} className={`btn btn-sm ${p === page ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setPage(p)}>{p}</button>
+              ))}
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}><i className="bi bi-chevron-right"></i></button>
             </div>
-            <h6 style={{ fontWeight: 700, color: "var(--title-color)", marginBottom: "0.5rem", lineHeight: 1.35 }}>{b.title}</h6>
-            <p style={{ fontSize: "0.8rem", color: "var(--bs-body-color)", marginBottom: "0.75rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {b.content}
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span className={`jago-badge ${b.isActive ? "badge-active" : "badge-inactive"}`}>
-                {b.isActive ? "Published" : "Draft"}
-              </span>
-              <span style={{ fontSize: "0.75rem", color: "var(--bs-body-color)" }}>
-                {new Date(b.createdAt).toLocaleDateString("en-IN")}
-              </span>
-            </div>
-          </div>
-        )) : (
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div className="jago-card">
-              <div className="jago-empty">
-                <i className="bi bi-newspaper"></i>
-                <p>No articles yet. Create your first blog post.</p>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Article" : "New Article"}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div>
-            <label className="jago-label">Title *</label>
-            <input
-              className="jago-input"
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value, slug: makeSlug(e.target.value) }))}
-              placeholder="Article title"
-              data-testid="input-blog-title"
-            />
-          </div>
-          <div>
-            <label className="jago-label">Slug</label>
-            <input
-              className="jago-input"
-              value={form.slug}
-              onChange={e => setForm(f => ({ ...f, slug: e.target.value }))}
-              placeholder="article-slug"
-              data-testid="input-blog-slug"
-            />
-          </div>
-          <div>
-            <label className="jago-label">Content</label>
-            <textarea
-              className="jago-input"
-              value={form.content}
-              onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-              placeholder="Write your article content..."
-              rows={6}
-              style={{ resize: "vertical" }}
-              data-testid="input-blog-content"
-            />
-          </div>
-          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-            <button className="btn-jago-outline" onClick={() => setOpen(false)}>Cancel</button>
-            <button
-              className="btn-jago-primary"
-              onClick={() => save.mutate(form)}
-              disabled={!form.title || save.isPending}
-              data-testid="btn-save-blog"
-            >
-              {save.isPending ? "Saving..." : editing ? "Update" : "Publish"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <BlogModal open={open} onClose={() => setOpen(false)} editing={editing} form={form} setForm={setForm} onSave={() => save.mutate(form)} saving={save.isPending} />
     </div>
   );
 }

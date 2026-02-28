@@ -1,15 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
+function useAdminBootstrap() {
+  useEffect(() => {
+    let link = document.getElementById("admin-bootstrap-css") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/admin-bootstrap.min.css";
+      link.id = "admin-bootstrap-css";
+      document.head.appendChild(link);
+    }
+    return () => {
+      const el = document.getElementById("admin-bootstrap-css");
+      if (el) el.remove();
+    };
+  }, []);
+}
+
 export default function AdminLogin() {
+  useAdminBootstrap();
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("admin@jago.com");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("admin@admin.com");
+  const [password, setPassword] = useState("12345678");
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const saved = localStorage.getItem("jago-admin");
+    if (saved) setLocation("/admin/dashboard");
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/admin/login", {
@@ -19,14 +45,16 @@ export default function AdminLogin() {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem("jago-admin", JSON.stringify(data.admin));
+        localStorage.setItem("jago-admin", JSON.stringify(data.admin || data));
         setLocation("/admin/dashboard");
       } else {
-        localStorage.setItem("jago-admin", JSON.stringify({ name: "Admin", email, role: "superadmin" }));
+        const adminData = { name: "Admin", email, role: "superadmin" };
+        localStorage.setItem("jago-admin", JSON.stringify(adminData));
         setLocation("/admin/dashboard");
       }
     } catch {
-      localStorage.setItem("jago-admin", JSON.stringify({ name: "Admin", email, role: "superadmin" }));
+      const adminData = { name: "Admin", email, role: "superadmin" };
+      localStorage.setItem("jago-admin", JSON.stringify(adminData));
       setLocation("/admin/dashboard");
     } finally {
       setLoading(false);
@@ -34,84 +62,134 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="jago-login-bg">
-      <div className="jago-login-card">
-        {/* Logo */}
-        <div className="jago-login-logo">
-          <img src="/jago-logo.png" alt="JAGO" style={{ width: "140px", marginBottom: "1rem" }} />
-          <h2>Admin Panel</h2>
-          <p>Sign in to manage your ride-sharing platform</p>
+    <>
+      <div className="login-container" data-testid="login-page">
+        <div className="login-brand-side">
+          <div className="brand-content">
+            <img
+              className="brand-logo"
+              src="/jago-logo.png"
+              alt="JAGO Logo"
+              data-testid="brand-logo"
+            />
+            <h2 className="brand-tagline">
+              Smart <strong>Logistics</strong> &amp; Seamless <strong>Mobility</strong>
+            </h2>
+            <div className="brand-features">
+              <div className="brand-feature">
+                <div className="brand-feature-icon">
+                  <i className="bi bi-truck"></i>
+                </div>
+                <span>Real-time parcel &amp; delivery tracking</span>
+              </div>
+              <div className="brand-feature">
+                <div className="brand-feature-icon">
+                  <i className="bi bi-geo-alt"></i>
+                </div>
+                <span>Multi-zone ride management</span>
+              </div>
+              <div className="brand-feature">
+                <div className="brand-feature-icon">
+                  <i className="bi bi-shield-check"></i>
+                </div>
+                <span>Secure payment &amp; pilot verification</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleLogin}>
-          {/* Email */}
-          <div className="jago-login-input-group">
-            <label htmlFor="email">Email Address</label>
-            <i className="bi bi-envelope-fill input-icon"></i>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="admin@jago.com"
-              required
-              data-testid="input-email"
-            />
-          </div>
+        <div className="login-form-side">
+          <div className="version-badge">v3.0</div>
 
-          {/* Password */}
-          <div className="jago-login-input-group">
-            <label htmlFor="password">Password</label>
-            <i className="bi bi-lock-fill input-icon"></i>
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-              data-testid="input-password"
-              style={{ paddingRight: "2.5rem" }}
-            />
-            <button
-              type="button"
-              className="show-pw"
-              onClick={() => setShowPassword(!showPassword)}
-              data-testid="btn-toggle-password"
-            >
-              <i className={`bi ${showPassword ? "bi-eye-slash-fill" : "bi-eye-fill"}`}></i>
-            </button>
-          </div>
+          <div className="login-form-wrapper">
+            <div className="login-greeting">
+              <h1>Welcome back</h1>
+              <p>Sign in to your admin dashboard</p>
+            </div>
 
-          <button
-            type="submit"
-            className="btn-login"
-            disabled={loading}
-            data-testid="btn-login"
-          >
-            {loading ? (
-              <>
-                <i className="bi bi-arrow-repeat" style={{ animation: "spin 1s linear infinite" }}></i>
-                Signing in...
-              </>
-            ) : (
-              <>
-                <i className="bi bi-box-arrow-in-right"></i>
-                Sign In to Dashboard
-              </>
+            {error && (
+              <div className="alert alert-danger mb-3" role="alert" data-testid="login-error">
+                <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                {error}
+              </div>
             )}
-          </button>
-        </form>
 
-        <p style={{ textAlign: "center", fontSize: "0.78rem", color: "var(--bs-body-color)", marginTop: "1rem" }}>
-          Demo: <strong>admin@jago.com</strong> / any password
-        </p>
+            <form onSubmit={handleSubmit} id="login-form">
+              <div className="form-group">
+                <label htmlFor="email">Email Address</label>
+                <div className="input-wrapper">
+                  <input
+                    type="email"
+                    id="email"
+                    className="form-input"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    data-testid="input-email"
+                  />
+                  <i className="bi bi-envelope input-icon"></i>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <div className="input-wrapper">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    className="form-input"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                    data-testid="input-password"
+                  />
+                  <i className="bi bi-lock input-icon"></i>
+                  <button
+                    type="button"
+                    className="toggle-password"
+                    onClick={() => setShowPassword(!showPassword)}
+                    data-testid="btn-toggle-password"
+                  >
+                    <i className={`bi ${showPassword ? "bi-eye-fill" : "bi-eye-slash-fill"}`}></i>
+                  </button>
+                </div>
+              </div>
+
+              <div className="remember-row">
+                <div className="remember-check">
+                  <input
+                    type="checkbox"
+                    id="remember"
+                    checked={remember}
+                    onChange={e => setRemember(e.target.checked)}
+                    data-testid="input-remember"
+                  />
+                  <label htmlFor="remember">Remember me</label>
+                </div>
+              </div>
+
+              <button
+                className="btn-login"
+                type="submit"
+                disabled={loading}
+                data-testid="btn-login"
+              >
+                {loading ? "Signing in..." : "Sign In"}
+                {!loading && <i className="bi bi-arrow-right ms-1"></i>}
+              </button>
+            </form>
+
+            <div className="login-footer-demo">
+              <div className="creds">
+                <div>Email: <span>admin@admin.com</span></div>
+                <div>Password: <span>12345678</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
-    </div>
+    </>
   );
 }

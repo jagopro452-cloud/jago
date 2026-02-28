@@ -2,6 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+const statusBadge: Record<string, string> = {
+  pending: "badge bg-warning text-dark",
+  approved: "badge bg-success",
+  rejected: "badge bg-danger",
+};
+
 export default function Withdrawals() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -20,109 +26,91 @@ export default function Withdrawals() {
     },
   });
 
+  const withdrawals = Array.isArray(data) ? data : [];
+
   return (
-    <div>
-      <div className="jago-page-header">
-        <div>
-          <h4 className="page-title" data-testid="page-title">Withdrawal Requests</h4>
-          <div className="breadcrumb">
-            <i className="bi bi-house-fill"></i>
-            <span>Home</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>User Management</span>
-            <i className="bi bi-chevron-right" style={{ fontSize: "0.65rem" }}></i>
-            <span>Withdrawals</span>
-          </div>
-        </div>
-        <div style={{ fontSize: "0.82rem", color: "var(--bs-body-color)" }}>
-          Total: <strong style={{ color: "var(--title-color)" }}>{data?.length || 0}</strong> requests
+    <div className="container-fluid">
+      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <h2 className="fs-22 text-capitalize mb-0" data-testid="page-title">Withdrawal Requests</h2>
+        <div className="d-flex align-items-center gap-2">
+          <span className="text-muted">Total:</span>
+          <span className="text-primary fs-16 fw-bold" data-testid="total-count">{withdrawals.length}</span>
         </div>
       </div>
 
-      <div className="jago-card">
-        <div className="jago-card-header">
-          <h5 className="jago-card-title">
-            <i className="bi bi-cash-coin" style={{ marginRight: "0.5rem", color: "var(--bs-primary)" }}></i>
-            Withdrawal Requests
-          </h5>
-        </div>
-        <div className="jago-table-wrapper">
-          <table className="jago-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Driver</th>
-                <th>Amount</th>
-                <th>Note</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? Array(5).fill(0).map((_, i) => (
-                <tr key={i}>
-                  {Array(7).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}
-                </tr>
-              )) : data?.length ? data.map((item: any, idx: number) => (
-                <tr key={item.withdraw.id} data-testid={`withdrawal-row-${item.withdraw.id}`}>
-                  <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem" }}>{idx + 1}</td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{item.user?.fullName || "—"}</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--bs-body-color)" }}>{item.user?.phone || ""}</div>
-                  </td>
-                  <td style={{ fontWeight: 700, color: "var(--bs-primary)" }}>₹{Number(item.withdraw.amount).toFixed(2)}</td>
-                  <td style={{ color: "var(--bs-body-color)", maxWidth: "180px" }}>
-                    <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.withdraw.note || "—"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`jago-badge ${
-                      item.withdraw.status === "approved" ? "badge-completed" :
-                      item.withdraw.status === "rejected" ? "badge-cancelled" :
-                      "badge-pending"
-                    }`}>
-                      {item.withdraw.status}
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--bs-body-color)", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                    {new Date(item.withdraw.createdAt).toLocaleDateString("en-IN")}
-                  </td>
-                  <td>
-                    {item.withdraw.status === "pending" && (
-                      <div style={{ display: "flex", gap: "0.375rem" }}>
-                        <button
-                          className="btn-jago-primary btn-jago-sm"
-                          style={{ background: "#22c55e", borderColor: "#22c55e" }}
-                          onClick={() => update.mutate({ id: item.withdraw.id, status: "approved" })}
-                          data-testid={`btn-approve-${item.withdraw.id}`}
-                        >
-                          <i className="bi bi-check-circle-fill"></i> Approve
-                        </button>
-                        <button
-                          className="btn-jago-danger btn-jago-sm"
-                          onClick={() => update.mutate({ id: item.withdraw.id, status: "rejected" })}
-                          data-testid={`btn-reject-${item.withdraw.id}`}
-                        >
-                          <i className="bi bi-x-circle-fill"></i> Reject
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )) : (
+      <div className="card">
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover">
+              <thead className="table-light align-middle text-capitalize">
                 <tr>
-                  <td colSpan={7}>
-                    <div className="jago-empty">
-                      <i className="bi bi-cash-coin"></i>
-                      <p>No withdrawal requests found</p>
-                    </div>
-                  </td>
+                  <th>SL</th>
+                  <th>Driver</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Account</th>
+                  <th>Status</th>
+                  <th className="text-center">Action</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i}>{Array(7).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                  ))
+                ) : withdrawals.length ? (
+                  withdrawals.map((item: any, idx: number) => (
+                    <tr key={item.withdrawal.id} data-testid={`withdrawal-row-${item.withdrawal.id}`}>
+                      <td>{idx + 1}</td>
+                      <td>
+                        <div className="media align-items-center gap-2">
+                          <div className="rounded-circle d-flex align-items-center justify-content-center bg-light" style={{ width: "32px", height: "32px" }}>
+                            <i className="bi bi-person-badge-fill text-muted"></i>
+                          </div>
+                          <div className="media-body">{item.driver?.fullName || "—"}</div>
+                        </div>
+                      </td>
+                      <td className="fw-bold text-primary">₹{Number(item.withdrawal.amount).toFixed(2)}</td>
+                      <td className="text-capitalize text-muted">{item.withdrawal.method || "—"}</td>
+                      <td className="fs-12 text-muted">{item.withdrawal.accountNumber || "—"}</td>
+                      <td>
+                        <span className={statusBadge[item.withdrawal.status] || "badge bg-secondary"}>
+                          {item.withdrawal.status}
+                        </span>
+                      </td>
+                      <td className="text-center">
+                        {item.withdrawal.status === "pending" && (
+                          <div className="d-flex justify-content-center gap-2">
+                            <button
+                              className="btn btn-sm btn-success"
+                              onClick={() => update.mutate({ id: item.withdrawal.id, status: "approved" })}
+                              data-testid={`btn-approve-${item.withdrawal.id}`}
+                            >
+                              <i className="bi bi-check-lg"></i> Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => update.mutate({ id: item.withdrawal.id, status: "rejected" })}
+                              data-testid={`btn-reject-${item.withdrawal.id}`}
+                            >
+                              <i className="bi bi-x-lg"></i> Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan={7}>
+                    <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
+                      <i className="bi bi-cash-coin" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
+                      <p className="text-muted mb-0">No withdrawal requests found</p>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
