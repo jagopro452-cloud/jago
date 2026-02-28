@@ -390,6 +390,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Business Settings alias (same as /api/settings)
+  app.get("/api/business-settings", async (_req, res) => {
+    try {
+      const settings = await storage.getBusinessSettings();
+      res.json(settings);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/business-settings", async (req, res) => {
+    try {
+      const { keyName, value, settingsType } = req.body;
+      const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
+      res.json(setting);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Blogs
   app.get("/api/blogs", async (req, res) => {
     try {
@@ -727,8 +742,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const status = req.query.status as string | undefined;
       const r = status
-        ? await rawDb.execute(rawSql`SELECT vr.*, u.f_name, u.l_name FROM vehicle_requests vr LEFT JOIN users u ON u.id::uuid=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
-        : await rawDb.execute(rawSql`SELECT vr.*, u.f_name, u.l_name FROM vehicle_requests vr LEFT JOIN users u ON u.id::uuid=vr.driver_id ORDER BY vr.created_at DESC`);
+        ? await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
+        : await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id ORDER BY vr.created_at DESC`);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -785,7 +800,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Newsletter subscribers (from existing users table)
   app.get("/api/newsletter", async (_req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`SELECT id, f_name, l_name, email, phone, created_at FROM users WHERE role='customer' ORDER BY created_at DESC`);
+      const r = await rawDb.execute(rawSql`SELECT id, full_name, email, phone, created_at FROM users WHERE user_type='customer' ORDER BY created_at DESC`);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
