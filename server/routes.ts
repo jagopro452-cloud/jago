@@ -1261,21 +1261,101 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Car Sharing trips
-  app.get("/api/car-sharing-trips", async (req, res) => {
+  // ─── Car Sharing APIs ────────────────────────────────────────────────────────
+
+  // Stats
+  app.get("/api/car-sharing/stats", async (req, res) => {
+    try {
+      const rides = await rawDb.execute(rawSql`SELECT status, COUNT(*) as cnt FROM car_sharing_rides GROUP BY status`);
+      const bookings = await rawDb.execute(rawSql`SELECT COUNT(*) as total, COALESCE(SUM(total_fare),0) as revenue FROM car_sharing_bookings WHERE status != 'cancelled'`);
+      const seats = await rawDb.execute(rawSql`SELECT COALESCE(SUM(seats_booked),0) as seats_sold, COALESCE(SUM(max_seats),0) as seats_total FROM car_sharing_rides`);
+      const statusMap: any = {};
+      rides.rows.forEach((r: any) => { statusMap[r.status] = parseInt(r.cnt); });
+      const bRow: any = bookings.rows[0] || {};
+      const sRow: any = seats.rows[0] || {};
+      res.json({
+        totalRides: rides.rows.reduce((s: number, r: any) => s + parseInt(r.cnt), 0),
+        activeRides: (statusMap.active || 0) + (statusMap.scheduled || 0),
+        completedRides: statusMap.completed || 0,
+        cancelledRides: statusMap.cancelled || 0,
+        totalBookings: parseInt(bRow.total || 0),
+        totalRevenue: parseFloat(bRow.revenue || 0),
+        seatsSold: parseInt(sRow.seats_sold || 0),
+        seatsTotal: parseInt(sRow.seats_total || 0),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Rides list
+  app.get("/api/car-sharing/rides", async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
-        SELECT t.*, u.full_name as customer_name, u.phone as customer_phone,
-          d.full_name as driver_name, d.phone as driver_phone,
-          vc.name as vehicle_name
-        FROM trip_requests t
-        LEFT JOIN users u ON u.id = t.customer_id
-        LEFT JOIN users d ON d.id = t.driver_id
-        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
-        WHERE t.trip_type = 'car_sharing'
-        ORDER BY t.created_at DESC
+        SELECT cs.*, 
+          u.full_name as driver_name, u.phone as driver_phone,
+          vc.name as vehicle_name,
+          z.name as zone_name,
+          (SELECT COUNT(*) FROM car_sharing_bookings b WHERE b.ride_id = cs.id AND b.status != 'cancelled') as booking_count
+        FROM car_sharing_rides cs
+        LEFT JOIN users u ON u.id = cs.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = cs.vehicle_category_id
+        LEFT JOIN zones z ON z.id = cs.zone_id
+        ORDER BY cs.departure_time DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Update ride status
+  app.patch("/api/car-sharing/rides/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      await rawDb.execute(rawSql`UPDATE car_sharing_rides SET status = ${status} WHERE id = ${id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Bookings list
+  app.get("/api/car-sharing/bookings", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT b.*,
+          cu.full_name as customer_name, cu.phone as customer_phone,
+          du.full_name as driver_name, du.phone as driver_phone,
+          cs.from_location, cs.to_location, cs.departure_time, cs.seat_price,
+          vc.name as vehicle_name
+        FROM car_sharing_bookings b
+        LEFT JOIN car_sharing_rides cs ON cs.id = b.ride_id
+        LEFT JOIN users cu ON cu.id = b.customer_id
+        LEFT JOIN users du ON du.id = cs.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = cs.vehicle_category_id
+        ORDER BY b.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Settings get
+  app.get("/api/car-sharing/settings", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM car_sharing_settings ORDER BY key_name`);
+      const settings: any = {};
+      r.rows.forEach((row: any) => { settings[row.key_name] = row.value; });
+      res.json(settings);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Settings save
+  app.put("/api/car-sharing/settings", async (req, res) => {
+    try {
+      const entries = Object.entries(req.body) as [string, string][];
+      for (const [key, val] of entries) {
+        await rawDb.execute(rawSql`
+          INSERT INTO car_sharing_settings (key_name, value) VALUES (${key}, ${String(val)})
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
