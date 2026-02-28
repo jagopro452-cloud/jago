@@ -143,40 +143,42 @@ export default function Dashboard() {
 
   return (
     <div className="container-fluid">
+
+      {/* ── FULL WIDTH BANNER ── */}
+      <div className="jd-banner mb-3" data-testid="dashboard-banner">
+        <div className="jd-banner-inner">
+          <div className="d-flex align-items-center gap-3">
+            <div className="jd-avatar">
+              <span style={{ fontSize: "1.6rem" }}>👋</span>
+            </div>
+            <div>
+              <h3 className="mb-1">{greeting}, {adminName}!</h3>
+              <p className="mb-0">Here's your platform overview for today</p>
+            </div>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <div className="jd-date-badge">
+              <i className="bi bi-calendar3"></i>
+              <span>{today}</span>
+            </div>
+          </div>
+        </div>
+        <div className="jd-banner-kpis">
+          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Pilots</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span><span className="jd-kpi-l">Total Revenue</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.totalZones ?? "—"}</span><span className="jd-kpi-l">Active Zones</span></div>
+        </div>
+      </div>
+
+      {/* ── TWO COLUMN LAYOUT ── */}
       <div className="row g-3">
 
         {/* ── LEFT MAIN CONTENT ── */}
         <div className="col-xl-8 col-lg-8">
-
-          {/* Hero Welcome Banner */}
-          <div className="jd-banner mb-3" data-testid="dashboard-banner">
-            <div className="jd-banner-inner">
-              <div className="d-flex align-items-center gap-3">
-                <div className="jd-avatar">
-                  <span style={{ fontSize: "1.6rem" }}>👋</span>
-                </div>
-                <div>
-                  <h3 className="mb-1">{greeting}, {adminName}!</h3>
-                  <p className="mb-0">Here's your platform overview for today</p>
-                </div>
-              </div>
-              <div className="d-flex align-items-center gap-2">
-                <div className="jd-date-badge">
-                  <i className="bi bi-calendar3"></i>
-                  <span>{today}</span>
-                </div>
-              </div>
-            </div>
-            <div className="jd-banner-kpis">
-              <div className="jd-kpi"><span className="jd-kpi-n">{stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
-              <div className="jd-kpi-sep"></div>
-              <div className="jd-kpi"><span className="jd-kpi-n">{Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Pilots</span></div>
-              <div className="jd-kpi-sep"></div>
-              <div className="jd-kpi"><span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span><span className="jd-kpi-l">Total Revenue</span></div>
-              <div className="jd-kpi-sep"></div>
-              <div className="jd-kpi"><span className="jd-kpi-n">{stats?.totalZones ?? "—"}</span><span className="jd-kpi-l">Active Zones</span></div>
-            </div>
-          </div>
 
           {/* 4 Stat Cards */}
           <div className="row g-3 mb-3">
