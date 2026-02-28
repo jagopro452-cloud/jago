@@ -409,8 +409,9 @@ const FLUTTER_FILES = [
     color: "#16a34a",
     bg: "#f0fdf4",
     files: [
-      { name: "api_service.dart", path: "/flutter/driver_app/api_service.dart", desc: "All API calls (OTP, location, trip management, wallet)" },
-      { name: "models.dart",      path: "/flutter/driver_app/models.dart",      desc: "DriverProfile, IncomingTrip, TripDetail, WalletInfo models" },
+      { name: "api_service.dart",          path: "/flutter/driver_app/api_service.dart",          desc: "All API calls (OTP, location, trip management, wallet)" },
+      { name: "models.dart",               path: "/flutter/driver_app/models.dart",               desc: "DriverProfile, IncomingTrip, TripDetail, WalletInfo models" },
+      { name: "notification_service.dart", path: "/flutter/driver_app/notification_service.dart", desc: "🔔 FCM push notifications + sound alerts setup" },
     ],
   },
   {
@@ -488,6 +489,60 @@ export default function ApiDocsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Firebase / FCM Setup Banner */}
+      <div className="card border-0 mb-4" style={{ borderRadius: 14, background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" }}>
+        <div className="card-body p-4">
+          <div className="row align-items-center g-4">
+            <div className="col-md-7">
+              <div className="fw-bold text-white mb-1" style={{ fontSize: 15 }}>
+                <i className="bi bi-bell-fill me-2" style={{ color: "#f59e0b" }}></i>
+                🔔 Driver Sound Alert — Firebase Setup అవసరం
+              </div>
+              <div style={{ fontSize: 12.5, color: "#94a3b8", lineHeight: 1.7 }}>
+                Customer ride book చేసినప్పుడు Driver phone లో <strong style={{ color: "#fbbf24" }}>loud sound alert</strong> వస్తుంది.<br />
+                దానికి <strong style={{ color: "#86efac" }}>Firebase Console</strong> లో project create చేసి Service Account key ఇవ్వాలి.
+              </div>
+              <div className="mt-3 d-flex flex-column gap-1">
+                {[
+                  "1. console.firebase.google.com → New Project",
+                  "2. Project Settings → Service Accounts → Generate Private Key",
+                  "3. Download చేసిన JSON ని Admin Panel → Settings లో paste చేయండి",
+                  "4. Flutter app లో google-services.json add చేయండి",
+                ].map((step, i) => (
+                  <div key={i} style={{ fontSize: 11.5, color: "#e2e8f0" }}>
+                    <i className="bi bi-check-circle-fill me-2" style={{ color: "#86efac" }}></i>{step}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="col-md-5">
+              <div className="p-3 rounded-3" style={{ background: "#0f172a" }}>
+                <div className="fw-semibold mb-2" style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>
+                  Server Environment Variable
+                </div>
+                <code style={{ fontSize: 11, color: "#86efac" }}>FIREBASE_SERVICE_ACCOUNT_KEY={"{"}"type": "service_account", "project_id": "...", ...{"}"}</code>
+                <hr style={{ borderColor: "#1e293b", margin: "12px 0" }} />
+                <div className="fw-semibold mb-2" style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>
+                  Notifications Triggered
+                </div>
+                {[
+                  { icon: "bi-car-front-fill", color: "#f59e0b", text: "Customer books → Driver ki sound alert" },
+                  { icon: "bi-check-circle", color: "#86efac", text: "Driver accepts → Customer ki notification" },
+                  { icon: "bi-geo-alt-fill", color: "#60a5fa", text: "Driver arrived → Customer ki OTP + alert" },
+                  { icon: "bi-flag-fill", color: "#a78bfa", text: "Trip complete → Customer ki fare summary" },
+                  { icon: "bi-x-circle", color: "#f87171", text: "Trip cancel → Opposite party ki alert" },
+                ].map((n, i) => (
+                  <div key={i} className="d-flex align-items-center gap-2 mb-1">
+                    <i className={`bi ${n.icon}`} style={{ color: n.color, fontSize: 11 }}></i>
+                    <span style={{ fontSize: 11, color: "#e2e8f0" }}>{n.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
+import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled } from "./fcm";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -2595,7 +2596,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found or already accepted" });
       // Assign driver if not set
       await rawDb.execute(rawSql`UPDATE trip_requests SET driver_id=${driver.id}::uuid WHERE id=${tripId}::uuid AND driver_id IS NULL`);
-      res.json({ success: true, trip: camelize(r.rows[0]), pickupOtp: otp });
+
+      // 🔔 Notify customer that driver accepted
+      const tripData = camelize(r.rows[0]) as any;
+      const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripData.customerId}::uuid`);
+      const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
+      notifyCustomerDriverAccepted({
+        fcmToken: custFcmToken,
+        driverName: driver.fullName || "Driver",
+        tripId: tripData.id,
+      }).catch(() => {});
+
+      res.json({ success: true, trip: tripData, pickupOtp: otp });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2637,9 +2649,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='arrived' WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
       `);
-      // Get pickup OTP to show customer
-      const r = await rawDb.execute(rawSql`SELECT pickup_otp FROM trip_requests WHERE id=${tripId}::uuid`);
-      res.json({ success: true, pickupOtp: (r.rows[0] as any)?.pickup_otp });
+      // Get pickup OTP + customer FCM token
+      const r = await rawDb.execute(rawSql`
+        SELECT t.pickup_otp, t.customer_id FROM trip_requests t WHERE t.id=${tripId}::uuid
+      `);
+      const tripRow = r.rows[0] as any;
+      const otp = tripRow?.pickup_otp;
+
+      // 🔔 Notify customer — driver arrived, show OTP
+      const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
+      const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
+      notifyCustomerDriverArrived({
+        fcmToken: custFcmToken,
+        driverName: driver.fullName || "Driver",
+        otp: otp || "",
+        tripId,
+      }).catch(() => {});
+
+      res.json({ success: true, pickupOtp: otp });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2686,7 +2713,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
 
-      res.json({ success: true, trip: camelize(r.rows[0]), platformDeduction: deductAmount });
+      // 🔔 Notify customer — trip completed, show fare
+      const completedTrip = camelize(r.rows[0]) as any;
+      const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
+      const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
+      notifyCustomerTripCompleted({
+        fcmToken: custFcmComp,
+        fare: actualFare,
+        tripId,
+      }).catch(() => {});
+
+      res.json({ success: true, trip: completedTrip, platformDeduction: deductAmount });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2695,10 +2732,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId, reason } = req.body;
-      await rawDb.execute(rawSql`
+      const updRes = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='cancelled', cancelled_by='driver', cancel_reason=${reason || 'Driver cancelled'}
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status IN ('accepted','arrived')
+        RETURNING customer_id
       `);
+      // 🔔 Notify customer — driver cancelled
+      if (updRes.rows.length) {
+        const customerId = (updRes.rows[0] as any).customer_id;
+        const custDevResCancel = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${customerId}::uuid`);
+        const custFcmCancel = (custDevResCancel.rows[0] as any)?.fcm_token || null;
+        notifyTripCancelled({ fcmToken: custFcmCancel, cancelledBy: "driver", tripId }).catch(() => {});
+      }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2838,6 +2883,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Mark driver as on current trip
       if (nearestDriver) {
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=${(trip.rows[0] as any).id}::uuid WHERE id=${nearestDriver.id}::uuid`);
+
+        // 🔔 Send sound alert push notification to driver
+        const driverDeviceRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nearestDriver.id}::uuid`);
+        const driverFcmToken = (driverDeviceRes.rows[0] as any)?.fcm_token || null;
+        const tripRow = camelize(trip.rows[0]) as any;
+        notifyDriverNewRide({
+          fcmToken: driverFcmToken,
+          driverName: nearestDriver.fullName,
+          customerName: customer.fullName || "Customer",
+          pickupAddress: pickupAddress,
+          estimatedFare: tripRow.estimatedFare || estimatedFare || 0,
+          tripId: tripRow.id,
+        }).catch(() => {});
       }
 
       res.json({
@@ -2924,6 +2982,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const trip = r.rows[0] as any;
       if (trip.driver_id) {
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${trip.driver_id}::uuid`);
+        // 🔔 Notify driver — customer cancelled
+        const drvDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.driver_id}::uuid`);
+        const drvFcm = (drvDevRes.rows[0] as any)?.fcm_token || null;
+        notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
       }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
