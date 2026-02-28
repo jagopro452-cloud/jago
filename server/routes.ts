@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -9,6 +9,8 @@ import fs from "fs";
 import { db } from "./db";
 import { parcelAttributes } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 
 // ── Multer upload setup ───────────────────────────────────────────────────────
 const uploadsDir = path.join(process.cwd(), "public", "uploads");
@@ -93,6 +95,15 @@ async function seedInitialTrips() {
     }
   }
 }
+
+// Login rate limiter — max 10 attempts per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: "Too many login attempts. Please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Seed trips after a short delay
@@ -229,12 +240,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Auth
-  app.post("/api/admin/login", async (req, res) => {
+  // Auth — with rate limiting and bcrypt password verification
+  app.post("/api/admin/login", loginLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
       const admin = await storage.getAdminByEmail(email);
       if (!admin) return res.status(401).json({ message: "Invalid credentials" });
+      if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
+      const passwordValid = await bcrypt.compare(String(password), admin.password);
+      if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
       res.json({ admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1105,10 +1120,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const settings = req.body as Record<string, string>;
       for (const [key, value] of Object.entries(settings)) {
-        await rawDb.execute(rawSql`UPDATE business_settings SET value=${String(value)}, updated_at=now() WHERE key_name=${key}`);
+        await rawDb.execute(rawSql`INSERT INTO business_settings (key_name, value, settings_type) VALUES (${key}, ${String(value)}, 'business_settings') ON CONFLICT (key_name) DO UPDATE SET value=${String(value)}, updated_at=now()`);
       }
       const r = await rawDb.execute(rawSql`SELECT * FROM business_settings ORDER BY settings_type, key_name`);
       res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Business Pages — GET by settings_type
+  app.get("/api/business-pages", async (req, res) => {
+    try {
+      const type = (req.query.type as string) || "pages_settings";
+      const r = await rawDb.execute(rawSql`SELECT key_name, value, settings_type FROM business_settings WHERE settings_type=${type} ORDER BY key_name`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Business Pages — upsert single setting
+  app.post("/api/business-pages", async (req, res) => {
+    try {
+      const { keyName, value, settingsType } = req.body;
+      if (!keyName || value === undefined) return res.status(400).json({ message: "keyName and value required" });
+      const type = settingsType || "pages_settings";
+      await rawDb.execute(rawSql`INSERT INTO business_settings (key_name, value, settings_type) VALUES (${keyName}, ${String(value)}, ${type}) ON CONFLICT (key_name) DO UPDATE SET value=${String(value)}, updated_at=now()`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin password change
+  app.post("/api/admin/change-password", async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) return res.status(400).json({ message: "Current and new passwords required" });
+      if (newPassword.length < 8) return res.status(400).json({ message: "New password must be at least 8 characters" });
+      const r = await rawDb.execute(rawSql`SELECT id, password FROM admins WHERE role='superadmin' LIMIT 1`);
+      if (!r.rows.length) return res.status(404).json({ message: "Admin not found" });
+      const admin = r.rows[0] as any;
+      const valid = await bcrypt.compare(String(currentPassword), admin.password);
+      if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
+      const hash = await bcrypt.hash(String(newPassword), 10);
+      await rawDb.execute(rawSql`UPDATE admins SET password=${hash} WHERE id=${admin.id}::uuid`);
+      res.json({ success: true, message: "Password changed successfully" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

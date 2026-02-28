@@ -46,7 +46,7 @@ export default function AdminLogin() {
   useAdminBootstrap();
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("admin@admin.com");
-  const [password, setPassword] = useState("12345678");
+  const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
@@ -69,19 +69,15 @@ export default function AdminLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         localStorage.setItem("jago-admin", JSON.stringify(data.admin || data));
         setLocation("/admin/dashboard");
       } else {
-        const adminData = { name: "Admin", email, role: "superadmin" };
-        localStorage.setItem("jago-admin", JSON.stringify(adminData));
-        setLocation("/admin/dashboard");
+        setError(data.message || "Invalid credentials. Please try again.");
       }
     } catch {
-      const adminData = { name: "Admin", email, role: "superadmin" };
-      localStorage.setItem("jago-admin", JSON.stringify(adminData));
-      setLocation("/admin/dashboard");
+      setError("Connection error. Please check your network and try again.");
     } finally {
       setLoading(false);
     }

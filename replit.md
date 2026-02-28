@@ -92,13 +92,23 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - `GET/POST/DELETE /api/cancellation-reasons` — Cancel reasons
 - `GET/POST /api/settings` — Business settings
 
+## Security
+- Login: bcrypt password verification (bcryptjs) + express-rate-limit (10 attempts/15min per IP)
+- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy
+- Admin credentials: admin@admin.com / admin123 (bcrypt hashed in DB)
+- Admin password change: POST /api/admin/change-password
+
 ## Seeded Data
 - 5 Indian customers (Ravi Kumar, Priya Sharma, Arjun Reddy, Meera Nair, Suresh Babu)
 - 5 drivers
 - 7 trips across Hyderabad (completed, ongoing, cancelled, pending)
-- 4 zones (Hyderabad Central, Hitec City, Gachibowli, Secunderabad)
-- 5 vehicle categories (Bike, Auto, Car, SUV, Parcel Bike)
-- Fare rules, coupons, reviews, blogs, settings
+- 6 zones (Hyderabad Central, Hitec City, Gachibowli, Secunderabad, Test Zone HYD, Hyderabad South Zone)
+- 9 vehicle categories (Bike, Auto, Car, SUV, Parcel Bike, Temo, Tata Ace, Cargo, Mini Cargo)
+- 25 trip fares seeded (5 vehicle categories × 5 zones with realistic ₹ rates)
+- 4 insurance plans: Basic Shield, Standard Guard, Premium Protect, Driver Health
+- Business pages content: About Us, Privacy Policy, Terms & Conditions, Refund Policy (settings_type=pages_settings)
+- Social media links (settings_type=social_settings), Landing page settings (settings_type=landing_settings)
+- Coupons, reviews, blogs, subscription plans, intercity routes
 
 ## Architecture Notes
 - `shared/schema.ts`: Drizzle schema with UUID primary keys (varchar with gen_random_uuid())
