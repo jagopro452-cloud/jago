@@ -38,6 +38,7 @@ import WalletBonus from "@/pages/admin/wallet-bonus";
 import Employees from "@/pages/admin/employees";
 import Newsletter from "@/pages/admin/newsletter";
 import Subscriptions from "@/pages/admin/subscriptions";
+import RevenueModel from "@/pages/admin/revenue-model";
 import ParcelAttributes from "@/pages/admin/parcel-attributes";
 import VehicleAttributes from "@/pages/admin/vehicle-attributes";
 import VehicleRequests from "@/pages/admin/vehicle-requests";
@@ -97,6 +98,7 @@ function AdminRoutes() {
         <Route path="/admin/employees" component={Employees} />
         <Route path="/admin/newsletter" component={Newsletter} />
         <Route path="/admin/subscriptions" component={Subscriptions} />
+        <Route path="/admin/revenue-model" component={RevenueModel} />
         {/* Parcel Management */}
         <Route path="/admin/parcel-attributes" component={ParcelAttributes} />
         {/* Vehicle Management */}

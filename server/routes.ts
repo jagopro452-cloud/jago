@@ -1359,6 +1359,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Revenue Model Settings ──────────────────────────────────────────────────
+
+  app.get("/api/revenue-model", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings ORDER BY key_name`);
+      const s: any = {};
+      r.rows.forEach((row: any) => { s[row.key_name] = row.value; });
+      res.json(s);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.put("/api/revenue-model", async (req, res) => {
+    try {
+      const entries = Object.entries(req.body) as [string, string][];
+      for (const [key, val] of entries) {
+        await rawDb.execute(rawSql`
+          INSERT INTO revenue_model_settings (key_name, value) VALUES (${key}, ${String(val)})
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Call Logs (stub - return empty list)
   app.get("/api/call-logs", async (req, res) => {
     try {

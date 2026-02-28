@@ -100,6 +100,7 @@ const navSections: NavSection[] = [
       { label: "Employee Setup", icon: "bi-person-square", href: "/admin/employees" },
       { label: "Newsletter", icon: "bi-envelope-fill", href: "/admin/newsletter" },
       { label: "Subscription Plans", icon: "bi-card-checklist", href: "/admin/subscriptions" },
+      { label: "Revenue Model", icon: "bi-diagram-3-fill", href: "/admin/revenue-model" },
     ],
   },
   {
