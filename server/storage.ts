@@ -307,6 +307,9 @@ export class DatabaseStorage implements IStorage {
     const [cancelledTrips] = await db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'cancelled'));
     const [ongoingTrips] = await db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'ongoing'));
     const [totalRevenue] = await db.select({ total: sum(tripRequests.actualFare) }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed'));
+    const [txRevenue] = await db.select({ total: sum(transactions.debit) }).from(transactions).where(eq(transactions.transactionType, 'ride_payment') as any);
+    const [pendingWithdrawals] = await db.select({ count: count() }).from(withdrawRequests).where(eq(withdrawRequests.status, 'pending'));
+    const [totalReviews] = await db.select({ count: count() }).from(reviews);
     const [totalZones] = await db.select({ count: count() }).from(zones).where(eq(zones.isActive, true));
     const [totalVehicleCategories] = await db.select({ count: count() }).from(vehicleCategories).where(eq(vehicleCategories.isActive, true));
 
@@ -321,6 +324,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(tripRequests.createdAt))
       .limit(10);
 
+    const tripRev = Number(totalRevenue.total || 0);
+    const txRev = Number(txRevenue?.total || 0);
     return {
       totalCustomers: Number(totalCustomers.count),
       totalDrivers: Number(totalDrivers.count),
@@ -328,7 +333,9 @@ export class DatabaseStorage implements IStorage {
       completedTrips: Number(completedTrips.count),
       cancelledTrips: Number(cancelledTrips.count),
       ongoingTrips: Number(ongoingTrips.count),
-      totalRevenue: Number(totalRevenue.total || 0),
+      totalRevenue: tripRev + txRev,
+      pendingWithdrawals: Number(pendingWithdrawals.count),
+      totalReviews: Number(totalReviews.count),
       totalZones: Number(totalZones.count),
       totalVehicleCategories: Number(totalVehicleCategories.count),
       recentTrips,

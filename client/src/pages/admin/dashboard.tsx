@@ -67,6 +67,8 @@ export default function Dashboard() {
     { label: "Cancelled", val: stats?.cancelledTrips, icon: "bi-x-circle-fill", color: "#dc2626", bg: "rgba(220,38,38,0.1)" },
     { label: "Active Zones", val: stats?.totalZones, icon: "bi-map-fill", color: "#7c3aed", bg: "rgba(124,58,237,0.1)" },
     { label: "Vehicle Types", val: stats?.totalVehicleCategories, icon: "bi-truck", color: "#0891b2", bg: "rgba(8,145,178,0.1)" },
+    { label: "Pending Withdrawals", val: stats?.pendingWithdrawals, icon: "bi-clock-history", color: "#d97706", bg: "rgba(217,119,6,0.1)" },
+    { label: "Total Reviews", val: stats?.totalReviews, icon: "bi-star-fill", color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
   ];
 
   return (
