@@ -5,46 +5,22 @@ type ThemeMode = "dark" | "light";
 
 // ── JAGO Logo Component ──────────────────────────────────────────────────────
 function JagoLogo({ size = 56, variant = "amber", showPilot = false }: { size?: number; variant?: "amber" | "purple" | "white"; showPilot?: boolean }) {
-  const gradients: Record<string, string> = {
-    amber: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
-    purple: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
-    white: "linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%)",
-  };
-  const accentColor = variant === "amber" ? "#f59e0b" : variant === "purple" ? "#7c3aed" : "#94a3b8";
+  const src = showPilot ? "/jago-pilot-logo.png" : "/jago-logo.png";
+  const isLight = variant === "white";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: size * 0.08 }}>
-      <div style={{
-        width: size, height: size,
-        background: gradients[variant],
-        borderRadius: size * 0.28,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: variant === "amber"
-          ? `0 ${size * 0.15}px ${size * 0.5}px rgba(245,158,11,0.45)`
-          : variant === "purple"
-          ? `0 ${size * 0.15}px ${size * 0.5}px rgba(124,58,237,0.45)`
-          : `0 ${size * 0.12}px ${size * 0.35}px rgba(0,0,0,0.2)`,
-        flexShrink: 0,
-        position: "relative",
-        overflow: "hidden",
-      }}>
-        <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.1)", borderRadius: "inherit" }} />
-        <span style={{ fontSize: size * 0.42, lineHeight: 1 }}>🚗</span>
-      </div>
-      {showPilot && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-          <div style={{ fontSize: size * 0.26, fontWeight: 900, color: "white", letterSpacing: size * 0.05, textTransform: "uppercase", lineHeight: 1 }}>JAGO</div>
-          <div style={{
-            fontSize: size * 0.17, fontWeight: 700, letterSpacing: size * 0.08,
-            background: gradients[variant],
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            textTransform: "uppercase", lineHeight: 1,
-            padding: `${size * 0.03}px ${size * 0.12}px`,
-            border: `1px solid ${accentColor}55`,
-            borderRadius: size * 0.08,
-          }}>PILOT</div>
-        </div>
-      )}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <img
+        src={src}
+        alt={showPilot ? "JAGO Pilot" : "JAGO"}
+        style={{
+          height: size,
+          width: "auto",
+          objectFit: "contain",
+          filter: isLight ? "brightness(10)" : "none",
+          mixBlendMode: "screen",
+          maxWidth: size * 3,
+        }}
+      />
     </div>
   );
 }
@@ -115,9 +91,9 @@ function DarkDriverSplash() {
           width: 140, height: 140, borderRadius: "50%",
           background: "radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 70%)" }} />
 
-        <JagoLogo size={72} variant="amber" showPilot={true} />
+        <JagoLogo size={90} variant="amber" showPilot={true} />
 
-        <div style={{ marginTop: 20, fontSize: 9, color: "#475569", letterSpacing: 1 }}>Your Earnings. Your Journey.</div>
+        <div style={{ marginTop: 16, fontSize: 9, color: "#475569", letterSpacing: 1 }}>Your Earnings. Your Journey.</div>
 
         <div style={{ marginTop: 28, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
 
@@ -455,11 +431,13 @@ function LightDriverSplash() {
         <div style={{ position: "absolute", top: "15%", right: "10%", width: 100, height: 100, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.2) 0%, transparent 70%)" }} />
         <div style={{ position: "absolute", bottom: "20%", left: "5%", width: 80, height: 80, borderRadius: "50%", background: "radial-gradient(circle, rgba(239,68,68,0.1) 0%, transparent 70%)" }} />
 
-        <JagoLogo size={72} variant="amber" showPilot={true} />
+        <div style={{ background: "rgba(10,10,20,0.85)", borderRadius: 22, padding: "14px 22px", backdropFilter: "blur(4px)", boxShadow: "0 20px 50px rgba(245,158,11,0.2)" }}>
+          <img src="/jago-pilot-logo.png" alt="JAGO Pilot" style={{ height: 72, width: "auto", objectFit: "contain" }} />
+        </div>
 
         <div style={{ marginTop: 20, fontSize: 9, color: "#92400e", letterSpacing: 1 }}>Your Earnings. Your Journey.</div>
 
-        <div style={{ marginTop: 28, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
+        <div style={{ marginTop: 20, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
         <div style={{ marginTop: 20, fontSize: 9, color: "#d1d5db" }}>Version 2.0.1</div>
 
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg, transparent, rgba(245,158,11,0.5), transparent)" }} />
@@ -630,11 +608,9 @@ function DarkCustomerSplash() {
         <div style={{ position: "absolute", top: "20%", left: "50%", transform: "translateX(-50%)", width: 180, height: 180, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)" }} />
         <div style={{ position: "absolute", bottom: "10%", right: "-10%", width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(79,70,229,0.1) 0%, transparent 70%)" }} />
 
-        <JagoLogo size={72} variant="purple" />
-        <div style={{ marginTop: 18, fontWeight: 900, fontSize: 30, color: "white", letterSpacing: 2 }}>JAGO</div>
-        <div style={{ fontSize: 10, color: "#a78bfa", textTransform: "uppercase", letterSpacing: 3, marginTop: 4, fontWeight: 600 }}>Ride Anywhere</div>
-        <div style={{ marginTop: 32, width: 48, height: 4, background: "linear-gradient(90deg,#7c3aed,#4f46e5)", borderRadius: 2 }} />
-        <div style={{ marginTop: 28, fontSize: 9, color: "#334155" }}>Version 2.0.1</div>
+        <JagoLogo size={90} variant="purple" />
+        <div style={{ marginTop: 20, width: 48, height: 4, background: "linear-gradient(90deg,#7c3aed,#4f46e5)", borderRadius: 2 }} />
+        <div style={{ marginTop: 20, fontSize: 9, color: "#334155" }}>Version 2.0.1</div>
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg, transparent, #7c3aed44, transparent)" }} />
       </div>
     </PhoneFrame>
@@ -837,11 +813,11 @@ function LightCustomerSplash() {
         <div style={{ position: "absolute", top: "10%", right: "5%", width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.2)" }} />
         <div style={{ position: "absolute", bottom: "15%", left: "5%", width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.15)" }} />
 
-        <div style={{ width: 80, height: 80, background: "white", borderRadius: 26, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 20px 50px rgba(124,58,237,0.3)", fontSize: 34 }}>🚖</div>
-        <div style={{ marginTop: 18, fontWeight: 900, fontSize: 30, color: "white", letterSpacing: 2, textShadow: "0 2px 10px rgba(0,0,0,0.15)" }}>JAGO</div>
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 3, marginTop: 4, fontWeight: 600 }}>Ride Anywhere</div>
+        <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 22, padding: "14px 22px", backdropFilter: "blur(8px)", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}>
+          <img src="/jago-logo.png" alt="JAGO" style={{ height: 72, width: "auto", objectFit: "contain" }} />
+        </div>
         <div style={{ marginTop: 32, width: 48, height: 4, background: "rgba(255,255,255,0.6)", borderRadius: 2 }} />
-        <div style={{ marginTop: 28, fontSize: 9, color: "rgba(255,255,255,0.5)" }}>Version 2.0.1</div>
+        <div style={{ marginTop: 20, fontSize: 9, color: "rgba(255,255,255,0.5)" }}>Version 2.0.1</div>
       </div>
     </PhoneFrame>
   );
