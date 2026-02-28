@@ -163,6 +163,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     catch { return {}; }
   })();
 
+  const adminName = admin.name || admin.email || "Admin";
+  const adminInitials = adminName.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase();
+  const adminBg = ["#2563eb","#7c3aed","#0891b2","#16a34a"][adminName.charCodeAt(0) % 4];
+
   useEffect(() => {
     if (!admin?.email && !admin?.name) {
       setLocation("/admin/login");
@@ -232,12 +236,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="aside-body-wrapper">
           <div className="aside-body">
             <div className="user-profile">
-              <div className="avatar rounded-circle">
-                <i className="bi bi-person-fill"></i>
+              <div className="avatar rounded-circle" style={{ background: adminBg, border: "2px solid rgba(255,255,255,0.3)", fontSize: "0.85rem", fontWeight: 700 }}>
+                {adminInitials}
               </div>
               <div className="media-body">
                 <div className="card-title fw-semibold" data-testid="sidebar-user-email">
-                  {admin.email || admin.name}
+                  {adminName}
                 </div>
                 <span className="card-text">{admin.role || "superadmin"}</span>
               </div>
@@ -310,8 +314,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       className="avatar avatar-sm rounded-circle header-avatar-btn"
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
                       data-testid="btn-user-menu"
+                      style={{ background: adminBg, fontSize: "0.75rem", fontWeight: 700, color: "#fff", letterSpacing: 0 }}
                     >
-                      <i className="bi bi-person-fill"></i>
+                      {adminInitials}
                     </button>
                     {userMenuOpen && (
                       <div className="dropdown-menu dropdown-menu-right show">
