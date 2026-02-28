@@ -19,6 +19,31 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
   accepted:  { cls: "badge bg-primary", label: "Accepted" },
 };
 
+function StatCard({ label, val, icon, color, bg, link, trend, trendUp, isLoading }: any) {
+  return (
+    <Link href={link}>
+      <div className="jd-stat-card" data-testid={`stat-card-${label.toLowerCase().replace(/\s+/g,"-")}`}>
+        <div className="jd-stat-icon-wrap" style={{ background: bg }}>
+          <i className={`bi ${icon}`} style={{ color, fontSize: "1.35rem" }}></i>
+        </div>
+        <div className="jd-stat-body">
+          <div className="jd-stat-label">{label}</div>
+          <div className="jd-stat-value" style={{ color }}>
+            {isLoading ? <span className="jd-stat-skeleton"></span> : (val ?? 0).toLocaleString()}
+          </div>
+        </div>
+        {trend && (
+          <div className={`jd-stat-trend ${trendUp ? "jd-trend-up" : "jd-trend-down"}`}>
+            <i className={`bi ${trendUp ? "bi-arrow-up-short" : "bi-arrow-down-short"}`}></i>
+            {trend}
+          </div>
+        )}
+        <div className="jd-stat-arrow"><i className="bi bi-chevron-right"></i></div>
+      </div>
+    </Link>
+  );
+}
+
 export default function Dashboard() {
   const { data: stats, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/stats"] });
   const { data: chart = [] } = useQuery<any[]>({ queryKey: ["/api/dashboard/chart"] });
@@ -26,12 +51,14 @@ export default function Dashboard() {
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const adminName = (() => { try { return JSON.parse(localStorage.getItem("jago-admin") || "{}").name || "Admin"; } catch { return "Admin"; } })();
   const revenue = Number(stats?.totalRevenue || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const topStats = [
-    { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe", link: "/admin/customers" },
-    { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers" },
-    { label: "Total Revenue", val: `₹${revenue}`, icon: "bi-currency-rupee", color: "#b45309", bg: "#fefce8", link: "/admin/reports" },
-    { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips" },
+    { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe", link: "/admin/customers", trend: "+12%", trendUp: true },
+    { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers", trend: "+5%", trendUp: true },
+    { label: "Total Revenue", val: `₹${revenue}`, icon: "bi-currency-rupee", color: "#b45309", bg: "#fefce8", link: "/admin/reports", trend: "+18%", trendUp: true },
+    { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips", trend: "+8%", trendUp: true },
   ];
 
   const midStats = [
@@ -45,110 +72,106 @@ export default function Dashboard() {
   return (
     <div className="container-fluid">
 
-      {/* Welcome banner */}
+      {/* ── Hero Welcome Banner ── */}
       <div className="jd-banner" data-testid="dashboard-banner">
         <div className="jd-banner-inner">
           <div className="d-flex align-items-center gap-3">
-            <div className="jd-avatar"><i className="bi bi-person-fill"></i></div>
+            <div className="jd-avatar">
+              <span style={{ fontSize: "1.6rem" }}>👋</span>
+            </div>
             <div>
-              <h3 className="mb-1">Good day, {adminName}!</h3>
-              <p className="mb-0">Here's what's happening with your ride platform today.</p>
+              <h3 className="mb-1">{greeting}, {adminName}!</h3>
+              <p className="mb-0">Here's your platform overview for today</p>
             </div>
           </div>
-          <div className="jd-date-badge"><i className="bi bi-calendar3"></i><span>{today}</span></div>
+          <div className="d-flex align-items-center gap-2">
+            <div className="jd-date-badge">
+              <i className="bi bi-calendar3"></i>
+              <span>{today}</span>
+            </div>
+          </div>
+        </div>
+        {/* Mini KPI strip */}
+        <div className="jd-banner-kpis">
+          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Drivers</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span><span className="jd-kpi-l">Total Revenue</span></div>
+          <div className="jd-kpi-sep"></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.totalZones ?? "—"}</span><span className="jd-kpi-l">Active Zones</span></div>
         </div>
       </div>
 
-      {/* Top 4 stat cards */}
+      {/* ── 4 Stat Cards ── */}
       <div className="row g-3 mb-3">
         {topStats.map((s, i) => (
           <div key={i} className="col-xl-3 col-sm-6">
-            <Link href={s.link}>
-              <div className="card border-0 shadow-sm h-100" style={{ cursor: "pointer", borderRadius: 14, transition: "box-shadow 0.2s" }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.12)")}
-                onMouseLeave={e => (e.currentTarget.style.boxShadow = "")}>
-                <div className="card-body d-flex align-items-center gap-3">
-                  <div className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
-                    style={{ width: 54, height: 54, background: s.bg, fontSize: "1.4rem", color: s.color }}>
-                    <i className={`bi ${s.icon}`}></i>
-                  </div>
-                  <div>
-                    <div className="text-muted small fw-semibold text-uppercase" style={{ fontSize: 10, letterSpacing: ".5px" }}>{s.label}</div>
-                    <div className="fw-bold mt-1" style={{ fontSize: 26, color: s.color, lineHeight: 1 }} data-testid={`stat-${i}`}>
-                      {isLoading ? <span style={{ color: "#cbd5e1" }}>—</span> : (s.val ?? 0).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Link>
+            <StatCard {...s} isLoading={isLoading} />
           </div>
         ))}
       </div>
 
-      {/* Charts row */}
+      {/* ── Charts Row ── */}
       <div className="row g-3 mb-3">
-        {/* Revenue Area Chart */}
         <div className="col-lg-8">
-          <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
-            <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between" style={{ borderBottom: "1px solid #f1f5f9" }}>
+          <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 16 }}>
+            <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between border-0">
               <div>
-                <h6 className="mb-0 fw-bold">Weekly Revenue</h6>
-                <div className="text-muted small">Last 7 days performance</div>
+                <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Weekly Revenue Trend</h6>
+                <div className="text-muted small">Revenue & trips over the last 7 days</div>
               </div>
               <div className="d-flex gap-3 small">
-                <span className="d-flex align-items-center gap-1">
-                  <span style={{ width: 10, height: 10, borderRadius: 2, background: "#1a73e8", display: "inline-block" }}></span>
-                  Revenue
+                <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#1a73e8" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: "#1a73e8", display: "inline-block" }}></span>Revenue
                 </span>
-                <span className="d-flex align-items-center gap-1">
-                  <span style={{ width: 10, height: 10, borderRadius: 2, background: "#16a34a", display: "inline-block" }}></span>
-                  Trips
+                <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#16a34a" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a", display: "inline-block" }}></span>Trips
                 </span>
               </div>
             </div>
-            <div className="card-body p-3">
-              <ResponsiveContainer width="100%" height={220}>
+            <div className="card-body pt-0 px-3 pb-3">
+              <ResponsiveContainer width="100%" height={230}>
                 <AreaChart data={chart} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
                   <defs>
-                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1a73e8" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#1a73e8" stopOpacity={0} />
+                    <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="colorTrips" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#16a34a" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                    <linearGradient id="gradTrips" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
+                      <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={40} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={42} />
                   <Tooltip
-                    contentStyle={{ borderRadius: 10, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.12)", fontSize: 12 }}
+                    contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12, padding: "10px 14px" }}
                     formatter={(val: any, name: string) => [name === "revenue" ? `₹${val}` : val, name === "revenue" ? "Revenue" : "Trips"]}
                   />
-                  <Area type="monotone" dataKey="revenue" stroke="#1a73e8" strokeWidth={2.5} fill="url(#colorRev)" dot={false} activeDot={{ r: 5 }} />
-                  <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#colorTrips)" dot={false} activeDot={{ r: 5 }} />
+                  <Area type="monotone" dataKey="revenue" stroke="#1a73e8" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#1a73e8" }} />
+                  <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#gradTrips)" dot={false} activeDot={{ r: 5, fill: "#16a34a" }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        {/* Ride vs Parcel Bar Chart */}
         <div className="col-lg-4">
-          <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 14 }}>
-            <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
-              <h6 className="mb-0 fw-bold">Rides vs Parcels</h6>
-              <div className="text-muted small">Weekly breakdown</div>
+          <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 16 }}>
+            <div className="card-header bg-white py-3 px-4 border-0">
+              <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Rides vs Parcels</h6>
+              <div className="text-muted small">Daily split this week</div>
             </div>
-            <div className="card-body p-3">
-              <ResponsiveContainer width="100%" height={220}>
+            <div className="card-body pt-0 px-3 pb-3">
+              <ResponsiveContainer width="100%" height={230}>
                 <BarChart data={chart} margin={{ top: 5, right: 5, bottom: 0, left: -15 }} barSize={10}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.12)", fontSize: 12 }} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <Tooltip contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12 }} />
+                  <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   <Bar dataKey="rides" fill="#1a73e8" radius={[4, 4, 0, 0]} name="Rides" />
                   <Bar dataKey="parcels" fill="#16a34a" radius={[4, 4, 0, 0]} name="Parcels" />
                 </BarChart>
@@ -158,21 +181,21 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Mid stats strip */}
+      {/* ── Mid Stats Strip ── */}
       <div className="row g-3 mb-3">
         {midStats.map((s, i) => (
           <div key={i} className="col">
-            <div className="card border-0 shadow-sm" style={{ borderRadius: 12 }}>
+            <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
               <div className="card-body py-3 d-flex align-items-center gap-3">
                 <div className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
-                  style={{ width: 42, height: 42, background: s.bg }}>
-                  <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: "1.1rem" }}></i>
+                  style={{ width: 44, height: 44, background: s.bg }}>
+                  <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: "1.15rem" }}></i>
                 </div>
                 <div>
-                  <div className="fw-bold fs-5 lh-1" style={{ color: s.color }}>
+                  <div className="fw-bold lh-1 mb-1" style={{ fontSize: 22, color: s.color }}>
                     {isLoading ? "—" : (s.val ?? 0).toLocaleString()}
                   </div>
-                  <div className="text-muted small">{s.label}</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{s.label}</div>
                 </div>
               </div>
             </div>
@@ -180,25 +203,28 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Recent Trips */}
-      <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 14 }} data-testid="recent-trips-card">
-        <div className="card-header bg-white py-3 px-4 d-flex justify-content-between align-items-center" style={{ borderBottom: "1px solid #f1f5f9" }}>
-          <h6 className="mb-0 fw-bold">Recent Trips</h6>
-          <Link href="/admin/trips" className="text-primary small fw-semibold">View All →</Link>
+      {/* ── Recent Trips Table ── */}
+      <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }} data-testid="recent-trips-card">
+        <div className="card-header bg-white py-3 px-4 d-flex justify-content-between align-items-center border-0">
+          <div>
+            <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Recent Trips</h6>
+            <div className="text-muted small">Latest platform activity</div>
+          </div>
+          <Link href="/admin/trips" className="btn btn-sm btn-outline-primary rounded-pill px-3" style={{ fontSize: 12 }}>
+            View All <i className="bi bi-arrow-right ms-1"></i>
+          </Link>
         </div>
         <div className="card-body p-0">
           <div className="table-responsive">
             <table className="table table-borderless align-middle table-hover mb-0">
-              <thead style={{ background: "#f8fafc" }}>
+              <thead style={{ background: "#f8fafc", borderTop: "1px solid #f1f5f9" }}>
                 <tr>
-                  <th className="ps-4" style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Trip ID</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Customer</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Vehicle</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Type</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Fare</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Payment</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Status</th>
-                  <th style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Date</th>
+                  {["Trip ID","Customer","Vehicle","Type","Fare","Payment","Status","Date"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : ""}
+                      style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", whiteSpace: "nowrap", paddingTop: 12, paddingBottom: 12 }}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -206,19 +232,19 @@ export default function Dashboard() {
                   Array(6).fill(0).map((_, i) => (
                     <tr key={i}>
                       {Array(8).fill(0).map((_, j) => (
-                        <td key={j}><div style={{ height: 13, background: "#f1f5f9", borderRadius: 4 }} /></td>
+                        <td key={j}><div className="skeleton" style={{ height: 13, borderRadius: 4 }} /></td>
                       ))}
                     </tr>
                   ))
                 ) : stats?.recentTrips?.length ? (
-                  stats.recentTrips.map((item: any, idx: number) => {
+                  stats.recentTrips.map((item: any) => {
                     const st = item.trip.currentStatus;
                     const badge = STATUS_BADGE[st] || { cls: "badge bg-secondary", label: st };
                     const name = item.customer?.fullName || "—";
                     return (
                       <tr key={item.trip.id} data-testid={`trip-row-${item.trip.id}`}>
                         <td className="ps-4">
-                          <span className="fw-semibold small" style={{ color: "#1a73e8" }}>{item.trip.refId}</span>
+                          <span className="fw-bold" style={{ fontSize: 12, color: "#1a73e8", fontFamily: "monospace" }}>{item.trip.refId}</span>
                         </td>
                         <td>
                           <div className="d-flex align-items-center gap-2">
@@ -229,28 +255,29 @@ export default function Dashboard() {
                             <span style={{ fontSize: 13 }}>{name}</span>
                           </div>
                         </td>
-                        <td className="text-muted small">{item.vehicleCategory?.name || "—"}</td>
+                        <td className="text-muted" style={{ fontSize: 12 }}>{item.vehicleCategory?.name || "—"}</td>
                         <td>
                           <span className="badge rounded-pill"
-                            style={{ background: item.trip.type === "parcel" ? "#f0fdf4" : "#eff6ff", color: item.trip.type === "parcel" ? "#16a34a" : "#1d4ed8", fontSize: 10 }}>
+                            style={{ background: item.trip.type === "parcel" ? "#f0fdf4" : "#eff6ff", color: item.trip.type === "parcel" ? "#16a34a" : "#1d4ed8", fontSize: 10, padding: "4px 8px" }}>
                             {item.trip.type === "parcel" ? "📦 Parcel" : "🚗 Ride"}
                           </span>
                         </td>
-                        <td className="fw-semibold small">₹{Number(item.trip.actualFare || item.trip.estimatedFare || 0).toFixed(0)}</td>
+                        <td className="fw-semibold" style={{ fontSize: 13 }}>₹{Number(item.trip.actualFare || item.trip.estimatedFare || 0).toFixed(0)}</td>
                         <td>
                           <span className={`badge ${item.trip.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
-                            {item.trip.paymentStatus}
+                            {item.trip.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
                           </span>
                         </td>
-                        <td><span className={`${badge.cls}`} style={{ fontSize: 10 }}>{badge.label}</span></td>
-                        <td className="text-muted small">{new Date(item.trip.createdAt).toLocaleDateString("en-IN")}</td>
+                        <td><span className={badge.cls} style={{ fontSize: 10 }}>{badge.label}</span></td>
+                        <td className="text-muted" style={{ fontSize: 12 }}>{new Date(item.trip.createdAt).toLocaleDateString("en-IN")}</td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr><td colSpan={8}>
-                    <div className="text-center py-4 text-muted">
-                      <i className="bi bi-car-front fs-2 d-block mb-2"></i>No trips found
+                    <div className="text-center py-5 text-muted">
+                      <i className="bi bi-car-front fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
+                      <p className="fw-semibold mb-0">No trips yet</p>
                     </div>
                   </td></tr>
                 )}

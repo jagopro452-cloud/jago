@@ -29,6 +29,19 @@ function useAdminBootstrap() {
   }, []);
 }
 
+const STATS = [
+  { icon: "🏍️", value: "1,240+", label: "Active Drivers" },
+  { icon: "🚗", value: "8,500+", label: "Trips Today" },
+  { icon: "🌆", value: "12", label: "Cities Covered" },
+];
+
+const FEATURES = [
+  { icon: "bi-geo-alt-fill", label: "Real-time GPS fleet tracking" },
+  { icon: "bi-shield-fill-check", label: "Secure pilot verification & KYC" },
+  { icon: "bi-graph-up-arrow", label: "Live revenue & analytics dashboard" },
+  { icon: "bi-bell-fill", label: "Smart alerts & surge pricing" },
+];
+
 export default function AdminLogin() {
   useAdminBootstrap();
   const [, setLocation] = useLocation();
@@ -38,8 +51,10 @@ export default function AdminLogin() {
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const saved = localStorage.getItem("jago-admin");
     if (saved) setLocation("/admin/dashboard");
   }, []);
@@ -73,134 +88,149 @@ export default function AdminLogin() {
   };
 
   return (
-    <>
-      <div className="login-container" data-testid="login-page">
-        <div className="login-brand-side">
-          <div className="brand-content">
-            <img
-              className="brand-logo"
-              src="/jago-logo.png"
-              alt="JAGO Logo"
-              data-testid="brand-logo"
-            />
-            <h2 className="brand-tagline">
-              Smart <strong>Logistics</strong> &amp; Seamless <strong>Mobility</strong>
-            </h2>
-            <div className="brand-features">
-              <div className="brand-feature">
-                <div className="brand-feature-icon">
-                  <i className="bi bi-truck"></i>
-                </div>
-                <span>Real-time parcel &amp; delivery tracking</span>
-              </div>
-              <div className="brand-feature">
-                <div className="brand-feature-icon">
-                  <i className="bi bi-geo-alt"></i>
-                </div>
-                <span>Multi-zone ride management</span>
-              </div>
-              <div className="brand-feature">
-                <div className="brand-feature-icon">
-                  <i className="bi bi-shield-check"></i>
-                </div>
-                <span>Secure payment &amp; pilot verification</span>
-              </div>
-            </div>
+    <div className="jl-root" data-testid="login-page">
+
+      {/* ── LEFT — Brand Panel ── */}
+      <div className="jl-brand">
+        {/* Animated orbs */}
+        <div className="jl-orb jl-orb-1"></div>
+        <div className="jl-orb jl-orb-2"></div>
+        <div className="jl-orb jl-orb-3"></div>
+
+        <div className="jl-brand-inner">
+          {/* Logo */}
+          <div className="jl-logo-wrap">
+            <img src="/jago-logo.png" alt="JAGO" className="jl-logo" data-testid="brand-logo" />
+            <span className="jl-logo-tag">Admin Console</span>
           </div>
-        </div>
 
-        <div className="login-form-side">
-          <div className="version-badge">v3.0</div>
+          {/* Headline */}
+          <h2 className="jl-headline">
+            Power your city's<br />
+            <span className="jl-headline-accent">mobility network</span>
+          </h2>
+          <p className="jl-sub">Complete ride & parcel management platform for operators across India.</p>
 
-          <div className="login-form-wrapper">
-            <div className="login-greeting">
-              <h1>Welcome back</h1>
-              <p>Sign in to your admin dashboard</p>
-            </div>
-
-            {error && (
-              <div className="alert alert-danger mb-3" role="alert" data-testid="login-error">
-                <i className="bi bi-exclamation-triangle-fill me-2"></i>
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} id="login-form">
-              <div className="form-group">
-                <label htmlFor="email">Email Address</label>
-                <div className="input-wrapper">
-                  <input
-                    type="email"
-                    id="email"
-                    className="form-input"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    required
-                    data-testid="input-email"
-                  />
-                  <i className="bi bi-envelope input-icon"></i>
+          {/* Live stat chips */}
+          <div className="jl-stats">
+            {STATS.map((s, i) => (
+              <div key={i} className={`jl-stat ${mounted ? "jl-stat-in" : ""}`} style={{ animationDelay: `${i * 0.12}s` }}>
+                <span className="jl-stat-icon">{s.icon}</span>
+                <div>
+                  <div className="jl-stat-val">{s.value}</div>
+                  <div className="jl-stat-lbl">{s.label}</div>
                 </div>
               </div>
+            ))}
+          </div>
 
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
-                <div className="input-wrapper">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    id="password"
-                    className="form-input"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    data-testid="input-password"
-                  />
-                  <i className="bi bi-lock input-icon"></i>
-                  <button
-                    type="button"
-                    className="toggle-password"
-                    onClick={() => setShowPassword(!showPassword)}
-                    data-testid="btn-toggle-password"
-                  >
-                    <i className={`bi ${showPassword ? "bi-eye-fill" : "bi-eye-slash-fill"}`}></i>
-                  </button>
-                </div>
+          {/* Feature list */}
+          <div className="jl-features">
+            {FEATURES.map((f, i) => (
+              <div key={i} className="jl-feat">
+                <div className="jl-feat-icon"><i className={`bi ${f.icon}`}></i></div>
+                <span>{f.label}</span>
               </div>
+            ))}
+          </div>
 
-              <div className="remember-row">
-                <div className="remember-check">
-                  <input
-                    type="checkbox"
-                    id="remember"
-                    checked={remember}
-                    onChange={e => setRemember(e.target.checked)}
-                    data-testid="input-remember"
-                  />
-                  <label htmlFor="remember">Remember me</label>
-                </div>
-              </div>
-
-              <button
-                className="btn-login"
-                type="submit"
-                disabled={loading}
-                data-testid="btn-login"
-              >
-                {loading ? "Signing in..." : "Sign In"}
-                {!loading && <i className="bi bi-arrow-right ms-1"></i>}
-              </button>
-            </form>
-
-            <div className="login-footer-demo">
-              <div className="creds">
-                <div>Email: <span>admin@admin.com</span></div>
-                <div>Password: <span>12345678</span></div>
-              </div>
-            </div>
+          {/* Floating live badge */}
+          <div className="jl-live-badge">
+            <span className="jl-live-dot"></span>
+            Live platform — updated in real time
           </div>
         </div>
       </div>
-    </>
+
+      {/* ── RIGHT — Form Panel ── */}
+      <div className="jl-form-panel">
+        <div className="jl-form-card" data-testid="login-form-card">
+
+          {/* Top mark */}
+          <div className="jl-form-logo-row">
+            <div className="jl-form-logo-circle">
+              <i className="bi bi-shield-lock-fill"></i>
+            </div>
+            <div>
+              <div className="jl-form-logo-title">JAGO Admin</div>
+              <div className="jl-form-logo-sub">Secure access portal</div>
+            </div>
+          </div>
+
+          <h1 className="jl-form-title">Welcome back</h1>
+          <p className="jl-form-subtitle">Sign in to manage your platform</p>
+
+          {error && (
+            <div className="jl-alert" data-testid="login-error">
+              <i className="bi bi-exclamation-triangle-fill"></i> {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div className="jl-field">
+              <label className="jl-label">Email Address</label>
+              <div className="jl-input-wrap">
+                <span className="jl-input-icon"><i className="bi bi-envelope"></i></span>
+                <input
+                  type="email"
+                  className="jl-input"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  data-testid="input-email"
+                />
+              </div>
+            </div>
+
+            <div className="jl-field">
+              <label className="jl-label">Password</label>
+              <div className="jl-input-wrap">
+                <span className="jl-input-icon"><i className="bi bi-lock"></i></span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="jl-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  data-testid="input-password"
+                />
+                <button
+                  type="button"
+                  className="jl-eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  data-testid="btn-toggle-password"
+                >
+                  <i className={`bi ${showPassword ? "bi-eye-fill" : "bi-eye-slash-fill"}`}></i>
+                </button>
+              </div>
+            </div>
+
+            <div className="jl-row">
+              <label className="jl-check-label">
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} data-testid="input-remember" />
+                <span>Remember me</span>
+              </label>
+            </div>
+
+            <button className={`jl-btn${loading ? " jl-btn-loading" : ""}`} type="submit" disabled={loading} data-testid="btn-login">
+              {loading
+                ? <><span className="jl-spinner"></span>Signing in…</>
+                : <><i className="bi bi-box-arrow-in-right me-2"></i>Sign In to Dashboard</>
+              }
+            </button>
+          </form>
+
+          <div className="jl-demo-box">
+            <div className="jl-demo-title"><i className="bi bi-info-circle me-1"></i>Demo Credentials</div>
+            <div className="jl-demo-row"><span>Email:</span><code>admin@admin.com</code></div>
+            <div className="jl-demo-row"><span>Password:</span><code>12345678</code></div>
+          </div>
+        </div>
+
+        <div className="jl-footer">© 2025 JAGO Mobility Pvt. Ltd. · All rights reserved</div>
+      </div>
+    </div>
   );
 }

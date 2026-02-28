@@ -2538,3 +2538,557 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   .jd-banner { padding: 1.25rem !important; }
 }
 
+/* ═══════════════════════════════════════════════════
+   🔐 LOGIN PAGE — "The Best Design"
+   ═══════════════════════════════════════════════════ */
+.jl-root {
+  display: flex;
+  min-height: 100vh;
+  font-family: "Inter", sans-serif;
+  background: #fff;
+}
+
+/* ── Left Brand Panel ── */
+.jl-brand {
+  flex: 0 0 48%;
+  max-width: 48%;
+  background: linear-gradient(145deg, #080e1f 0%, #0d1b3e 30%, #1a3a8f 65%, #2563eb 100%);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2.5rem;
+}
+
+/* Animated orbs */
+.jl-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  animation: orbFloat 8s ease-in-out infinite;
+}
+.jl-orb-1 {
+  width: 400px; height: 400px;
+  background: rgba(99, 102, 241, 0.25);
+  top: -100px; right: -100px;
+  animation-delay: 0s;
+}
+.jl-orb-2 {
+  width: 300px; height: 300px;
+  background: rgba(59, 130, 246, 0.2);
+  bottom: -60px; left: -60px;
+  animation-delay: -3s;
+}
+.jl-orb-3 {
+  width: 200px; height: 200px;
+  background: rgba(16, 185, 129, 0.12);
+  top: 50%; left: 50%;
+  animation-delay: -5s;
+}
+@keyframes orbFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-20px) scale(1.05); }
+}
+
+.jl-brand-inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 420px;
+  color: #fff;
+}
+
+/* Logo */
+.jl-logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 2.5rem;
+}
+.jl-logo {
+  max-width: 140px;
+  filter: brightness(0) invert(1);
+  opacity: 0.95;
+}
+.jl-logo-tag {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.8);
+}
+
+/* Headline */
+.jl-headline {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.875rem;
+}
+.jl-headline-accent {
+  background: linear-gradient(90deg, #93c5fd, #a5f3fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.jl-sub {
+  color: rgba(255,255,255,0.6);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+/* Stats */
+.jl-stats {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+.jl-stat {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(10px);
+}
+.jl-stat-in {
+  animation: statIn 0.4s ease forwards;
+}
+@keyframes statIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+.jl-stat-icon { font-size: 1.25rem; }
+.jl-stat-val {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+.jl-stat-lbl {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.55);
+  margin-top: 2px;
+}
+
+/* Features */
+.jl-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+.jl-feat {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: rgba(255,255,255,0.75);
+  font-size: 0.85rem;
+}
+.jl-feat-icon {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; color: #93c5fd;
+  flex-shrink: 0;
+}
+
+/* Live badge */
+.jl-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16,185,129,0.15);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  color: #6ee7b7;
+  font-weight: 500;
+}
+.jl-live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16,185,129,0.4);
+  animation: livePulse 1.5s ease infinite;
+  flex-shrink: 0;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+
+/* ── Right Form Panel ── */
+.jl-form-panel {
+  flex: 1;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem;
+  position: relative;
+}
+
+.jl-form-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 40px rgba(0,0,0,0.06);
+  padding: 2.5rem;
+  animation: pageFadeIn 0.35s ease;
+}
+
+/* Logo row at top of card */
+.jl-form-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+.jl-form-logo-circle {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; color: #fff;
+  box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+  flex-shrink: 0;
+}
+.jl-form-logo-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
+.jl-form-logo-sub { font-size: 0.72rem; color: #94a3b8; }
+
+.jl-form-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.3rem;
+}
+.jl-form-subtitle {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin-bottom: 1.75rem;
+}
+
+/* Alert */
+.jl-alert {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.84rem;
+  color: #be123c;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Form fields */
+.jl-field { margin-bottom: 1.25rem; }
+.jl-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.01em;
+}
+.jl-input-wrap { position: relative; }
+.jl-input-icon {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+.jl-input {
+  width: 100%;
+  padding: 0.825rem 2.75rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-family: "Inter", sans-serif;
+  color: #1e293b;
+  background: #f8fafc;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.jl-input:focus {
+  border-color: #2563eb;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.09);
+}
+.jl-eye-btn {
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  transition: color 0.15s;
+}
+.jl-eye-btn:hover { color: #2563eb; }
+
+.jl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.jl-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 500;
+  cursor: pointer;
+}
+.jl-check-label input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: #2563eb;
+}
+
+/* Submit button */
+.jl-btn {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: "Inter", sans-serif;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.jl-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  box-shadow: 0 6px 22px rgba(37,99,235,0.45);
+  transform: translateY(-1px);
+}
+.jl-btn:active { transform: translateY(0); }
+.jl-btn:disabled { opacity: 0.75; cursor: not-allowed; }
+.jl-btn-loading { background: linear-gradient(135deg, #60a5fa, #3b82f6) !important; }
+
+.jl-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Demo box */
+.jl-demo-box {
+  margin-top: 1.5rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.875rem 1rem;
+}
+.jl-demo-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+.jl-demo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+.jl-demo-row span { color: #64748b; font-weight: 500; min-width: 60px; }
+.jl-demo-row code {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 0.78rem;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.jl-footer {
+  position: absolute;
+  bottom: 1.25rem;
+  font-size: 0.72rem;
+  color: #cbd5e1;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .jl-brand { display: none; }
+  .jl-form-panel { padding: 1.5rem; }
+  .jl-form-card { border-radius: 16px; padding: 1.75rem; }
+  .jl-root { background: #fafbfc; }
+}
+
+
+/* ═══════════════════════════════════════════════════
+   📊 DASHBOARD STAT CARDS
+   ═══════════════════════════════════════════════════ */
+.jd-stat-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(226,232,240,0.8);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  text-decoration: none !important;
+  position: relative;
+  overflow: hidden;
+}
+.jd-stat-card::before {
+  content: "";
+  position: absolute;
+  right: -30px; bottom: -30px;
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.03;
+}
+.jd-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+  text-decoration: none !important;
+}
+.jd-stat-icon-wrap {
+  width: 54px; height: 54px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.jd-stat-body { flex: 1; min-width: 0; }
+.jd-stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.jd-stat-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.jd-stat-skeleton {
+  display: inline-block;
+  width: 70px; height: 28px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  animation: shimmer 1.4s infinite;
+}
+.jd-stat-trend {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 3px 7px;
+  flex-shrink: 0;
+}
+.jd-trend-up { background: #f0fdf4; color: #16a34a; }
+.jd-trend-down { background: #fff1f2; color: #dc2626; }
+.jd-stat-arrow {
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.15s;
+}
+.jd-stat-card:hover .jd-stat-arrow { color: #94a3b8; transform: translateX(2px); }
+
+/* ── Dashboard Banner KPI strip ── */
+.jd-banner-kpis {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 14px;
+  padding: 0.75rem 1.5rem;
+  margin-top: 1.25rem;
+  backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 1;
+}
+.jd-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 2px;
+}
+.jd-kpi-n {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+.jd-kpi-l {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.55);
+  font-weight: 500;
+}
+.jd-kpi-sep {
+  width: 1px;
+  height: 32px;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+  margin: 0 0.5rem;
+}
+
+@media (max-width: 576px) {
+  .jd-banner-kpis { flex-wrap: wrap; gap: 0.75rem; }
+  .jd-kpi-sep { display: none; }
+  .jd-stat-card { padding: 1rem; }
+}
+

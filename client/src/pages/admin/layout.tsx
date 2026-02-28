@@ -1,6 +1,15 @@
 import { useLocation, Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 
+function useLiveClock() {
+  const [time, setTime] = useState(() => new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })), 30000);
+    return () => clearInterval(t);
+  }, []);
+  return time;
+}
+
 function useAdminBootstrap() {
   useEffect(() => {
     const cssFiles = [
@@ -153,6 +162,18 @@ const navSections: NavSection[] = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   useAdminBootstrap();
   const [location, setLocation] = useLocation();
+  const clock = useLiveClock();
+
+  const currentPage = (() => {
+    for (const section of navSections) {
+      for (const item of section.items) {
+        if (location === item.href || location.startsWith(item.href + "/")) {
+          return { label: item.label, section: section.category };
+        }
+      }
+    }
+    return { label: "Dashboard", section: "Overview" };
+  })();
   const [sidebarFolded, setSidebarFolded] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -291,22 +312,55 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Header */}
       <header className="header fixed-top">
         <div className="header-inner">
-          <div className="header-left-col">
+          <div className="header-left-col d-flex align-items-center gap-3">
             <button
               className="aside-toggle-mobile border-0 bg-transparent p-0"
               onClick={() => setMobileOpen(!mobileOpen)}
               data-testid="btn-mobile-sidebar"
             >
-              <i className="bi bi-list fs-3"></i>
+              <i className="bi bi-list fs-3" style={{ color: "#64748b" }}></i>
             </button>
+            {/* Breadcrumb */}
+            <div className="d-none d-md-flex align-items-center gap-2">
+              <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".6px" }}>
+                {currentPage.section}
+              </span>
+              <i className="bi bi-chevron-right" style={{ fontSize: 10, color: "#cbd5e1" }}></i>
+              <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 700 }}>{currentPage.label}</span>
+            </div>
           </div>
           <div className="header-right-col">
             <div className="header-right">
-              <ul className="nav justify-content-end align-items-center header-nav-list">
+              <ul className="nav justify-content-end align-items-center header-nav-list gap-2">
+                {/* Live clock */}
+                <li className="d-none d-lg-block">
+                  <div style={{
+                    background: "linear-gradient(135deg, #f0f6ff, #e8f0fe)",
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    padding: "5px 12px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#1e40af",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}>
+                    <i className="bi bi-clock" style={{ fontSize: 11 }}></i>
+                    {clock}
+                  </div>
+                </li>
                 <li>
-                  <button className="header-icon-btn" data-testid="btn-notifications">
-                    <i className="bi bi-bell-fill"></i>
-                  </button>
+                  <div className="position-relative">
+                    <button className="header-icon-btn" data-testid="btn-notifications">
+                      <i className="bi bi-bell-fill"></i>
+                    </button>
+                    <span style={{
+                      position: "absolute", top: 3, right: 3,
+                      width: 7, height: 7, borderRadius: "50%",
+                      background: "#ef4444", border: "1.5px solid white"
+                    }}></span>
+                  </div>
                 </li>
                 <li>
                   <div className="user" ref={userMenuRef}>
