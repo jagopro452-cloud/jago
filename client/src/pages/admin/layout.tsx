@@ -5,7 +5,6 @@ interface NavItem {
   label: string;
   icon: string;
   href: string;
-  badge?: number;
 }
 
 interface NavSection {
@@ -75,10 +74,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   })();
 
-  const currentPageLabel = navSections
-    .flatMap(s => s.items)
-    .find(i => location === i.href || location.startsWith(i.href + "/"))?.label || "JAGO Admin";
-
   useEffect(() => {
     if (sidebarFolded) {
       document.body.classList.add("aside-folded");
@@ -115,171 +110,166 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <>
-      {/* Aside Overlay (mobile) */}
+      {/* Mobile overlay */}
       <div
-        className={`aside-overlay ${mobileOpen ? "active" : ""}`}
+        className={`aside-overlay${mobileOpen ? " active" : ""}`}
         onClick={() => setMobileOpen(false)}
       />
 
-      {/* Sidebar */}
-      <aside className="jago-aside">
+      {/* Aside (Sidebar) - exact original JAGO structure */}
+      <aside className="aside">
         {/* Aside Header */}
-        <div className="jago-aside-header">
-          <a href="/admin/dashboard" className="logo" onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}>
-            <div className="logo-icon">
-              <i className="bi bi-car-front-fill"></i>
-            </div>
-            <span className="logo-text" style={{ fontWeight: 700, fontSize: "1.1rem", color: "var(--bs-primary)" }}>
-              JAGO
-            </span>
+        <div className="aside-header">
+          <a
+            href="/admin/dashboard"
+            className="logo"
+            onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
+          >
+            <img
+              width="115"
+              src="/jago-logo.png"
+              alt="JAGO"
+              className="main-logo"
+            />
           </a>
           <button
-            className="aside-toggle-btn"
+            className="toggle-menu-button"
             onClick={() => setSidebarFolded(!sidebarFolded)}
             data-testid="btn-sidebar-toggle"
           >
             <i className="bi bi-chevron-left"></i>
           </button>
         </div>
+        {/* End Aside Header */}
 
         {/* Aside Body */}
-        <div className="jago-aside-body">
-          {/* User Profile */}
-          <div className="aside-user-profile">
-            <div className="avatar">
-              <i className="bi bi-person-fill"></i>
-            </div>
-            <div className="user-info">
-              <div className="name">{admin.email || admin.name}</div>
-              <div className="role">{admin.role || "superadmin"}</div>
-            </div>
-          </div>
+        <div className="aside-body-wrapper">
+          <div className="aside-body">
 
-          {/* Search */}
-          <div className="aside-search">
-            <div className="aside-search-wrapper">
-              <i className="bi bi-search search-icon"></i>
-              <input
-                type="search"
-                className="aside-search-input"
-                placeholder="Search Here"
-                data-testid="sidebar-search"
-              />
+            {/* User Profile */}
+            <div className="user-profile">
+              <div className="avatar rounded-circle">
+                <i className="bi bi-person-fill"></i>
+              </div>
+              <div className="media-body">
+                <div className="card-title fw-semibold" data-testid="sidebar-user-email">
+                  {admin.email || admin.name}
+                </div>
+                <span className="card-text">{admin.role || "superadmin"}</span>
+              </div>
             </div>
-          </div>
+            {/* End User Profile */}
 
-          {/* Main Nav */}
-          <ul className="jago-main-nav">
-            {navSections.map((section) => (
-              <li key={section.category}>
-                <span className="nav-category">{section.category}</span>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {/* Search */}
+            <div className="aside-search mb-3">
+              <div className="search-form__input_group">
+                <span className="search-form__icon">
+                  <i className="bi bi-search"></i>
+                </span>
+                <input
+                  type="search"
+                  className="theme-input-style search-form__input"
+                  placeholder="Search Here"
+                  data-testid="sidebar-search"
+                />
+              </div>
+            </div>
+
+            {/* Nav */}
+            <ul className="main-nav nav">
+              {navSections.map((section) => (
+                <li key={section.category}>
+                  <span className="nav-category">{section.category}</span>
                   {section.items.map((item) => (
-                    <li key={item.href} className={isActive(item.href) ? "active" : ""}>
-                      <Link href={item.href}>
-                        <a
-                          data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          <i className={`bi ${item.icon}`}></i>
-                          <span className="link-title">{item.label}</span>
-                          {item.badge !== undefined && (
-                            <span className="badge-count">{item.badge}</span>
-                          )}
-                        </a>
+                    <li key={item.href} className={isActive(item.href) ? "active open" : ""}>
+                      <Link
+                        href={item.href}
+                        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <i className={`bi ${item.icon}`}></i>
+                        <span className="link-title">{item.label}</span>
                       </Link>
                     </li>
                   ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+            {/* End Nav */}
+
+          </div>
         </div>
+        {/* End Aside Body */}
       </aside>
 
       {/* Header */}
-      <header className="jago-header">
-        <div className="jago-header-left">
-          {/* Mobile toggle */}
-          <button
-            className="header-toggle-btn"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            data-testid="btn-mobile-sidebar"
-            style={{ display: "none" }}
-            id="mobile-aside-btn"
-          >
-            <i className="bi bi-list"></i>
-          </button>
-          {/* Desktop toggle (shown only on desktop) */}
-          <button
-            className="header-toggle-btn"
-            onClick={() => setSidebarFolded(!sidebarFolded)}
-            data-testid="btn-desktop-sidebar"
-            id="desktop-aside-btn"
-          >
-            <i className="bi bi-list"></i>
-          </button>
-          <h5 className="header-page-title">{currentPageLabel}</h5>
-        </div>
-
-        <div className="jago-header-right">
-          {/* Notifications */}
-          <button className="header-icon-btn" data-testid="btn-notifications">
-            <i className="bi bi-bell-fill"></i>
-          </button>
-
-          {/* User Dropdown */}
-          <div className="user-dropdown" ref={userMenuRef}>
+      <header className="header fixed-top">
+        <div className="header-inner">
+          <div className="header-left-col">
+            {/* Mobile toggle */}
             <button
-              className="header-user-btn"
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              data-testid="btn-user-menu"
+              className="aside-toggle-mobile border-0 bg-transparent p-0"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              data-testid="btn-mobile-sidebar"
             >
-              <div className="header-avatar">
-                <i className="bi bi-person-fill"></i>
-              </div>
-              <span style={{ fontSize: "0.82rem" }}>{admin.name || "Admin"}</span>
-              <i className="bi bi-chevron-down" style={{ fontSize: "0.7rem" }}></i>
+              <i className="bi bi-list fs-3"></i>
             </button>
-
-            <div className={`user-dropdown-menu ${userMenuOpen ? "show" : ""}`}>
-              <div className="user-dropdown-profile">
-                <div className="avatar">
-                  <i className="bi bi-person-fill"></i>
-                </div>
-                <div className="info">
-                  <div className="name">{admin.name}</div>
-                  <div className="role">{admin.email}</div>
-                </div>
-              </div>
-              <button
-                className="user-dropdown-item text-danger"
-                onClick={handleLogout}
-                data-testid="menu-logout"
-              >
-                <i className="bi bi-box-arrow-right"></i>
-                Logout
-              </button>
+          </div>
+          <div className="header-right-col">
+            <div className="header-right">
+              <ul className="nav justify-content-end align-items-center header-nav-list">
+                <li>
+                  <button className="header-icon-btn" data-testid="btn-notifications">
+                    <i className="bi bi-bell-fill"></i>
+                  </button>
+                </li>
+                <li>
+                  {/* User Dropdown */}
+                  <div className="user" ref={userMenuRef}>
+                    <button
+                      className="avatar avatar-sm rounded-circle header-avatar-btn"
+                      onClick={() => setUserMenuOpen(!userMenuOpen)}
+                      data-testid="btn-user-menu"
+                    >
+                      <i className="bi bi-person-fill"></i>
+                    </button>
+                    {userMenuOpen && (
+                      <div className="dropdown-menu dropdown-menu-right show">
+                        <div className="dropdown-item-text">
+                          <h6 className="mb-0">{admin.name || "Admin"}</h6>
+                          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{admin.email}</span>
+                        </div>
+                        <div className="dropdown-divider"></div>
+                        <Link
+                          href="/admin/settings"
+                          className="dropdown-item"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <i className="bi bi-gear me-2"></i>
+                          Settings
+                        </Link>
+                        <button
+                          className="dropdown-item text-danger"
+                          onClick={handleLogout}
+                          data-testid="menu-logout"
+                        >
+                          <i className="bi bi-box-arrow-right me-2"></i>
+                          Sign Out
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* End User Dropdown */}
+                </li>
+              </ul>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Responsive toggle: show mobile btn on small screens */}
-      <style>{`
-        @media (max-width: 1199px) {
-          #mobile-aside-btn { display: grid !important; }
-          #desktop-aside-btn { display: none !important; }
-        }
-        @media (min-width: 1200px) {
-          #mobile-aside-btn { display: none !important; }
-          #desktop-aside-btn { display: grid !important; }
-        }
-      `}</style>
-
       {/* Main Area */}
-      <main className="jago-main-area">
-        <div className="jago-main-content">
+      <main className="main-area">
+        <div className="main-content">
           {children}
         </div>
       </main>

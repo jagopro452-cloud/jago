@@ -38,10 +38,8 @@ export default function AdminLogin() {
       <div className="jago-login-card">
         {/* Logo */}
         <div className="jago-login-logo">
-          <div className="logo-icon">
-            <i className="bi bi-car-front-fill"></i>
-          </div>
-          <h2>JAGO Admin Panel</h2>
+          <img src="/jago-logo.png" alt="JAGO" style={{ width: "140px", marginBottom: "1rem" }} />
+          <h2>Admin Panel</h2>
           <p>Sign in to manage your ride-sharing platform</p>
         </div>
 

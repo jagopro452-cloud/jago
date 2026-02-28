@@ -126,7 +126,7 @@ a:hover { color: var(--bs-primary); }
 /* ========================
    03.3: ASIDE (SIDEBAR)
    ======================== */
-.jago-aside {
+.aside {
   width: 270px;
   position: fixed;
   left: 0;
@@ -141,7 +141,7 @@ a:hover { color: var(--bs-primary); }
   overflow: hidden;
 }
 
-.jago-aside-header {
+.aside-header {
   padding: 0 1.25rem;
   height: 60px;
   display: flex;
@@ -153,7 +153,7 @@ a:hover { color: var(--bs-primary); }
   border-bottom: 0.5px dashed #ddd;
 }
 
-.jago-aside-header .logo {
+.aside-header .logo {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -163,7 +163,7 @@ a:hover { color: var(--bs-primary); }
   text-decoration: none;
 }
 
-.jago-aside-header .logo-icon {
+.aside-header .logo-icon {
   width: 36px;
   height: 36px;
   background-color: var(--bs-primary);
@@ -176,7 +176,7 @@ a:hover { color: var(--bs-primary); }
   flex-shrink: 0;
 }
 
-.aside-toggle-btn {
+.toggle-menu-button {
   position: absolute;
   right: -13px;
   width: 26px;
@@ -191,27 +191,36 @@ a:hover { color: var(--bs-primary); }
   z-index: 10;
 }
 
-.aside-toggle-btn i {
+.toggle-menu-button i {
   font-size: 0.8rem;
   color: var(--bs-body-color);
   transition: transform 150ms;
 }
 
-body.aside-folded .aside-toggle-btn i {
+body.aside-folded .toggle-menu-button i {
   transform: rotate(180deg);
 }
 
-.jago-aside-body {
+.aside-body {
   padding: 0 1rem 1rem;
   overflow-y: auto;
   flex: 1;
 }
 
-.jago-aside-body::-webkit-scrollbar { width: 4px; }
-.jago-aside-body::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+.aside-body::-webkit-scrollbar { width: 4px; }
+.aside-body::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+
+/* Aside Body Wrapper (scroll container) */
+.aside-body-wrapper {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
 
 /* User Profile in Aside */
-.aside-user-profile {
+.user-profile {
   background-color: var(--bs-primary);
   border-radius: 8px;
   padding: 0.875rem;
@@ -220,9 +229,11 @@ body.aside-folded .aside-toggle-btn i {
   align-items: center;
   gap: 0.75rem;
   color: #fff;
+  flex-shrink: 0;
 }
 
-.aside-user-profile .avatar {
+.user-profile .avatar,
+.user-profile .avatar.rounded-circle {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -231,20 +242,26 @@ body.aside-folded .aside-toggle-btn i {
   place-items: center;
   font-size: 1.1rem;
   flex-shrink: 0;
+  color: #fff;
 }
 
-.aside-user-profile .user-info .name {
-  font-size: 0.85rem;
+.user-profile .media-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-profile .card-title {
+  font-size: 0.82rem;
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
+  margin: 0;
 }
 
-.aside-user-profile .user-info .role {
-  font-size: 0.75rem;
+.user-profile .card-text {
+  font-size: 0.72rem;
   color: rgba(255,255,255,0.8);
   text-transform: capitalize;
 }
@@ -254,44 +271,50 @@ body.aside-folded .aside-toggle-btn i {
   margin-bottom: 0.75rem;
 }
 
-.aside-search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2rem;
+.search-form__input_group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background-color: var(--input-bg);
   border: 1px solid var(--input-border-color);
   border-radius: 6px;
-  background-color: var(--input-bg);
+  overflow: hidden;
+}
+
+.search-form__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.625rem;
+  color: var(--bs-body-color);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.search-form__input,
+.theme-input-style.search-form__input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.625rem 0.5rem 0;
   font-size: 0.8rem;
   color: var(--title-color);
   outline: none;
-  position: relative;
+  font-family: var(--bs-body-font-family);
 }
 
-.aside-search-input:focus {
-  border-color: #93C5FD;
-  background-color: #fff;
-}
-
-.aside-search-wrapper {
-  position: relative;
-}
-
-.aside-search-wrapper .search-icon {
-  position: absolute;
-  left: 0.6rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--bs-body-color);
-  font-size: 0.8rem;
+.search-form__input::placeholder {
+  color: var(--secondary-body-color);
 }
 
 /* Main Nav */
-.jago-main-nav {
+.main-nav {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.jago-main-nav .nav-category {
+.main-nav .nav-category {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -301,7 +324,7 @@ body.aside-folded .aside-toggle-btn i {
   display: block;
 }
 
-.jago-main-nav li > a {
+.main-nav li > a {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -316,31 +339,31 @@ body.aside-folded .aside-toggle-btn i {
   margin-bottom: 2px;
 }
 
-.jago-main-nav li > a:hover {
+.main-nav li > a:hover {
   background-color: rgba(var(--bs-primary-rgb), 0.07);
   color: var(--bs-primary);
 }
 
-.jago-main-nav li.active > a {
+.main-nav li.active > a {
   background-color: rgba(var(--bs-primary-rgb), 0.1);
   color: var(--bs-primary);
 }
 
-.jago-main-nav li > a i {
+.main-nav li > a i {
   font-size: 1rem;
   width: 1.1rem;
   text-align: center;
   flex-shrink: 0;
 }
 
-.jago-main-nav li > a .link-title {
+.main-nav li > a .link-title {
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.jago-main-nav .badge-count {
+.main-nav .badge-count {
   background-color: var(--bs-primary);
   color: #fff;
   font-size: 0.65rem;
@@ -351,12 +374,12 @@ body.aside-folded .aside-toggle-btn i {
 }
 
 /* Folded aside */
-body.aside-folded .jago-aside {
+body.aside-folded .aside {
   width: 70px;
 }
 
-body.aside-folded .jago-aside-header .logo-text,
-body.aside-folded .aside-user-profile,
+body.aside-folded .aside-header .logo-text,
+body.aside-folded .user-profile,
 body.aside-folded .aside-search,
 body.aside-folded .nav-category,
 body.aside-folded .link-title,
@@ -364,20 +387,20 @@ body.aside-folded .badge-count {
   display: none !important;
 }
 
-body.aside-folded .jago-aside-header {
+body.aside-folded .aside-header {
   justify-content: center;
 }
 
-body.aside-folded .jago-aside-body {
+body.aside-folded .aside-body {
   padding: 0.5rem;
 }
 
-body.aside-folded .jago-main-nav li > a {
+body.aside-folded .main-nav li > a {
   justify-content: center;
   padding: 0.625rem;
 }
 
-body.aside-folded .jago-main-nav li > a i {
+body.aside-folded .main-nav li > a i {
   font-size: 1.15rem;
   width: auto;
 }
@@ -385,7 +408,7 @@ body.aside-folded .jago-main-nav li > a i {
 /* ========================
    03.1: HEADER
    ======================== */
-.jago-header {
+.header {
   position: fixed;
   top: 0;
   right: 0;
@@ -396,26 +419,148 @@ body.aside-folded .jago-main-nav li > a i {
   border-bottom: 0.5px dashed #ddd;
   display: flex;
   align-items: center;
-  padding: 0 1.25rem;
   transition: left 150ms ease;
 }
 
-body.aside-folded .jago-header {
+.header.fixed-top {
+  position: fixed;
+}
+
+body.aside-folded .header {
   left: 70px;
 }
 
-.jago-header-left {
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 1.25rem;
+}
+
+.header-left-col {
+  flex: 0 0 auto;
+}
+
+.header-right-col {
+  flex: 1;
+}
+
+.header-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex: 1;
 }
 
-.jago-header-right {
+.header-right {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
+
+.header-nav-list {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 0.5rem;
+}
+
+/* Mobile toggle button in header */
+.aside-toggle-mobile {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--bs-body-color);
+  font-size: 1.25rem;
+  display: none;
+}
+
+/* Header User Avatar */
+.avatar-sm {
+  width: 36px;
+  height: 36px;
+}
+
+.rounded-circle {
+  border-radius: 50% !important;
+}
+
+.header-avatar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--bs-primary);
+  border: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #fff;
+  font-size: 1rem;
+  position: relative;
+}
+
+/* Header Dropdown */
+.user {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background-color: #fff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 1050;
+  padding: 0.5rem 0;
+  list-style: none;
+}
+
+.dropdown-item-text {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--bs-border-color);
+  margin: 0.25rem 0;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: var(--bs-body-color);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 100ms;
+}
+
+.dropdown-item:hover {
+  background-color: var(--input-bg);
+  color: var(--title-color);
+}
+
+.dropdown-item.text-danger { color: var(--bs-danger) !important; }
+.dropdown-item.text-danger:hover { background-color: rgba(255,109,109,0.06); }
+
+.text-muted { color: var(--bs-body-color) !important; }
 
 .header-toggle-btn {
   width: 36px;
@@ -492,7 +637,7 @@ body.aside-folded .jago-header {
 /* ========================
    03.4: MAIN AREA
    ======================== */
-.jago-main-area {
+.main-area {
   margin-left: 270px;
   padding-top: 60px;
   min-height: 100vh;
@@ -500,11 +645,11 @@ body.aside-folded .jago-header {
   transition: margin-left 150ms ease;
 }
 
-body.aside-folded .jago-main-area {
+body.aside-folded .main-area {
   margin-left: 70px;
 }
 
-.jago-main-content {
+.main-content {
   padding: 1.5rem;
 }
 
@@ -520,24 +665,42 @@ body.aside-folded .jago-main-area {
 .aside-overlay.active { display: block; }
 
 @media (max-width: 1199px) {
-  .jago-aside {
+  .aside {
     transform: translateX(-100%);
     transition: transform 150ms ease, width 150ms ease;
   }
 
-  body.aside-open .jago-aside {
+  body.aside-open .aside {
     transform: translateX(0);
   }
 
-  .jago-header {
+  .header {
     left: 0 !important;
   }
 
-  .jago-main-area {
+  .main-area {
     margin-left: 0 !important;
   }
 
-  .aside-toggle-btn {
+  .toggle-menu-button {
+    display: none;
+  }
+
+  .aside-toggle-mobile {
+    display: grid !important;
+  }
+
+  .header-left-col {
+    display: block;
+  }
+}
+
+@media (min-width: 1200px) {
+  .aside-toggle-mobile {
+    display: none !important;
+  }
+
+  .header-left-col {
     display: none;
   }
 }

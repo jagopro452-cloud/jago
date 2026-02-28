@@ -10,21 +10,30 @@ JAGO is a full-stack ride-sharing admin dashboard (like Uber/Rapido for India) r
 - **Icons**: Bootstrap Icons (CDN) — bi-* classes, loaded in index.html
 - **Font**: Open Sans (Google Fonts)
 
-## Design System (JAGO Original)
-All admin panel styling uses custom JAGO CSS classes in `client/src/index.css`:
-- `--bs-primary: #2563EB` (blue), `--bs-body-bg: #F1F5F9`
-- `.jago-aside` — white sidebar (background #fff), 270px wide
-- `.aside-user-profile` — blue (#2563EB) user profile box in sidebar
-- `.jago-header` — white sticky header, 60px
-- `.jago-stat-card` — dashboard stat cards
-- `.jago-card` / `.jago-card-header` — content cards
-- `.jago-table` — data tables with header uppercase styling
-- `.jago-badge` — status badges (badge-completed, badge-ongoing, badge-pending, badge-cancelled, badge-active, badge-inactive, badge-primary)
-- `.btn-jago-primary` / `.btn-jago-outline` / `.btn-jago-danger` / `.btn-jago-sm` — buttons
-- `.jago-input` / `.jago-label` — form inputs
-- `.jago-page-header` — page title + breadcrumb row
-- `.jago-empty` — empty state component
-- `.jago-stats-grid` — responsive stats grid
+## Design System (JAGO Original — exact class names from backup)
+All admin panel styling uses the ORIGINAL JAGO CSS class names from `attached_assets/JAGO_Backup/public/assets/admin-module/css/style.css`, implemented in `client/src/index.css`:
+- CSS Variables: `--bs-primary: #2563EB` (blue), `--bs-body-bg: #F1F5F9`, Open Sans font
+- **Logo**: `/jago-logo.png` — actual JAGO brand logo PNG (copied from backup: `public/assets/admin-module/img/logo.png`)
+- **Favicon**: `/favicon.png` — actual JAGO favicon (copied from backup)
+- Layout classes (matching original blade templates exactly):
+  - `.aside` — white sidebar (background #fff), 270px wide (HTML: `<aside class="aside">`)
+  - `.aside-header` — sidebar header with logo + toggle button
+  - `.aside-body` — scrollable sidebar body
+  - `.user-profile` — blue (#2563EB) user profile box in sidebar
+  - `.main-nav` — sidebar navigation list (`<ul class="main-nav nav">`)
+  - `.nav-category` — navigation section headings
+  - `.toggle-menu-button` — sidebar collapse button
+  - `.header` — white sticky header, 60px (`<header class="header fixed-top">`)
+  - `.main-area` — main content area (`<main class="main-area">`)
+  - `.main-content` — inner content padding
+- Component classes:
+  - `.jago-stat-card` — dashboard stat cards
+  - `.jago-card` / `.jago-card-header` — content cards
+  - `.jago-table` — data tables with header uppercase styling
+  - `.jago-badge` — status badges (badge-completed, badge-ongoing, badge-pending, badge-cancelled, badge-active, badge-inactive, badge-primary)
+  - `.btn-jago-primary` / `.btn-jago-outline` / `.btn-jago-danger` / `.btn-jago-sm` — buttons
+  - `.jago-input` / `.jago-label` — form inputs
+  - `.jago-page-header` — page title + breadcrumb row
 - Body folded: `body.aside-folded` collapses sidebar to 70px icon-only view
 
 ## Features
