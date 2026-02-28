@@ -90,6 +90,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Driver Level Setup", icon: "bi-bar-chart-fill", href: "/admin/driver-levels" },
       { label: "Driver Setup", icon: "bi-person-badge-fill", href: "/admin/drivers" },
+      { label: "Insurance Plans", icon: "bi-shield-fill", href: "/admin/insurance" },
       { label: "Withdraw Requests", icon: "bi-cash-coin", href: "/admin/withdrawals" },
       { label: "Customer Level Setup", icon: "bi-person-fill-add", href: "/admin/customer-levels" },
       { label: "Customer Setup", icon: "bi-people-fill", href: "/admin/customers" },

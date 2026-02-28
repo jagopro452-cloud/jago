@@ -1284,5 +1284,131 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Insurance Plans ──────────────────────────────────────────────
+  app.get("/api/insurance-plans", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM insurance_plans ORDER BY premium_monthly ASC`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/insurance-plans", async (req, res) => {
+    try {
+      const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO insurance_plans (name, plan_type, premium_daily, premium_monthly, coverage_amount, features, is_active) VALUES (${name}, ${planType||'vehicle'}, ${premiumDaily||0}, ${premiumMonthly||0}, ${coverageAmount||0}, ${features||''}, ${isActive ?? true}) RETURNING *`);
+      res.status(201).json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/insurance-plans/:id", async (req, res) => {
+    try {
+      const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET name=${name}, plan_type=${planType||'vehicle'}, premium_daily=${premiumDaily||0}, premium_monthly=${premiumMonthly||0}, coverage_amount=${coverageAmount||0}, features=${features||''}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/insurance-plans/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/insurance-plans/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM insurance_plans WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Driver Insurance ─────────────────────────────────────────────
+  app.get("/api/driver-insurance", async (req, res) => {
+    try {
+      const driverId = req.query.driverId as string;
+      let r;
+      if (driverId) {
+        r = await rawDb.execute(rawSql`SELECT di.*, ip.name as plan_name, ip.premium_monthly, ip.coverage_amount, u.full_name as driver_name FROM driver_insurance di LEFT JOIN insurance_plans ip ON ip.id=di.plan_id LEFT JOIN users u ON u.id=di.driver_id WHERE di.driver_id=${driverId}::uuid ORDER BY di.created_at DESC`);
+      } else {
+        r = await rawDb.execute(rawSql`SELECT di.*, ip.name as plan_name, ip.premium_monthly, ip.coverage_amount, u.full_name as driver_name FROM driver_insurance di LEFT JOIN insurance_plans ip ON ip.id=di.plan_id LEFT JOIN users u ON u.id=di.driver_id ORDER BY di.created_at DESC`);
+      }
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/driver-insurance", async (req, res) => {
+    try {
+      const { driverId, planId, startDate, endDate, paymentAmount, paymentStatus } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO driver_insurance (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active) VALUES (${driverId}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${paymentAmount||0}, ${paymentStatus||'paid'}, true) RETURNING *`);
+      res.status(201).json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Driver Subscriptions ─────────────────────────────────────────
+  app.get("/api/driver-subscriptions", async (req, res) => {
+    try {
+      const driverId = req.query.driverId as string;
+      let r;
+      if (driverId) {
+        r = await rawDb.execute(rawSql`SELECT ds.*, sp.name as plan_name, sp.price, sp.duration_days, sp.max_rides, u.full_name as driver_name FROM driver_subscriptions ds LEFT JOIN subscription_plans sp ON sp.id=ds.plan_id LEFT JOIN users u ON u.id=ds.driver_id WHERE ds.driver_id=${driverId}::uuid ORDER BY ds.created_at DESC`);
+      } else {
+        r = await rawDb.execute(rawSql`SELECT ds.*, sp.name as plan_name, sp.price, sp.duration_days, sp.max_rides, u.full_name as driver_name FROM driver_subscriptions ds LEFT JOIN subscription_plans sp ON sp.id=ds.plan_id LEFT JOIN users u ON u.id=ds.driver_id ORDER BY ds.created_at DESC LIMIT 100`);
+      }
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/driver-subscriptions", async (req, res) => {
+    try {
+      const { driverId, planId, startDate, endDate, paymentAmount, paymentStatus } = req.body;
+      await rawDb.execute(rawSql`UPDATE driver_subscriptions SET is_active=false WHERE driver_id=${driverId}::uuid`);
+      const r = await rawDb.execute(rawSql`INSERT INTO driver_subscriptions (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active) VALUES (${driverId}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${paymentAmount||0}, ${paymentStatus||'paid'}, true) RETURNING *`);
+      res.status(201).json(camelize(r.rows)[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Reports ──────────────────────────────────────────────────────
+  app.get("/api/reports/earnings", async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const fromDate = from || new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+      const toDate = to || new Date().toISOString().split('T')[0];
+      // Get settings for commission rates
+      const settR = await rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE key_name IN ('platform_commission_b2c','gst_percentage','insurance_per_ride')`);
+      const sett: Record<string,string> = {};
+      settR.rows.forEach((s: any) => { sett[s.key_name] = s.value; });
+      const commPct = parseFloat(sett['platform_commission_b2c'] || '15') / 100;
+      const gstPct = parseFloat(sett['gst_percentage'] || '18') / 100;
+      const insurancePerRide = parseFloat(sett['insurance_per_ride'] || '5');
+      const r = await rawDb.execute(rawSql`SELECT DATE(created_at) as date, COUNT(*) as trips, COUNT(*) FILTER (WHERE current_status='completed') as completed, COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled, COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed'), 0) as revenue FROM trip_requests WHERE DATE(created_at) BETWEEN ${fromDate} AND ${toDate} GROUP BY DATE(created_at) ORDER BY date`);
+      const rows = r.rows.map((row: any) => {
+        const rev = parseFloat(row.revenue || 0);
+        const commission = rev * commPct;
+        const gst = commission * gstPct;
+        const insurance = parseFloat(row.completed || 0) * insurancePerRide;
+        const adminTotal = commission + gst + insurance;
+        const driverEarning = rev - commission;
+        return camelize({ ...row, commission: commission.toFixed(2), gst: gst.toFixed(2), insurance: insurance.toFixed(2), admin_total: adminTotal.toFixed(2), driver_earning: driverEarning.toFixed(2) });
+      });
+      res.json({ rows, summary: { totalRevenue: rows.reduce((s: any, r: any) => s + parseFloat(r.revenue||0), 0).toFixed(2), totalTrips: rows.reduce((s: any, r: any) => s + parseInt(r.trips||0), 0), totalCommission: rows.reduce((s: any, r: any) => s + parseFloat(r.commission||0), 0).toFixed(2), totalGst: rows.reduce((s: any, r: any) => s + parseFloat(r.gst||0), 0).toFixed(2), totalInsurance: rows.reduce((s: any, r: any) => s + parseFloat(r.insurance||0), 0).toFixed(2), totalAdminEarning: rows.reduce((s: any, r: any) => s + parseFloat(r.adminTotal||0), 0).toFixed(2) } });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/reports/trips", async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const fromDate = from || new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+      const toDate = to || new Date().toISOString().split('T')[0];
+      const r = await rawDb.execute(rawSql`SELECT tr.ref_id, tr.pickup_address, tr.destination_address, tr.estimated_fare, tr.actual_fare, tr.current_status, tr.payment_method, tr.trip_type, tr.created_at, u.full_name as customer_name, vc.name as vehicle_name FROM trip_requests tr LEFT JOIN users u ON u.id=tr.customer_id LEFT JOIN vehicle_categories vc ON vc.id=tr.vehicle_category_id WHERE DATE(tr.created_at) BETWEEN ${fromDate} AND ${toDate} ORDER BY tr.created_at DESC LIMIT 500`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/reports/drivers", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT u.full_name, u.phone, u.email, u.is_active, u.verification_status, u.created_at, u.vehicle_number, u.vehicle_model, vc.name as vehicle_category, dd.avg_rating, dd.availability_status, COUNT(tr.id) as total_trips, COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status='completed'), 0) as total_earnings FROM users u LEFT JOIN driver_details dd ON dd.user_id=u.id LEFT JOIN vehicle_categories vc ON vc.id=dd.vehicle_category_id LEFT JOIN trip_requests tr ON tr.driver_id=u.id WHERE u.user_type='driver' GROUP BY u.id, u.full_name, u.phone, u.email, u.is_active, u.verification_status, u.created_at, u.vehicle_number, u.vehicle_model, vc.name, dd.avg_rating, dd.availability_status ORDER BY total_trips DESC`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/reports/customers", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT u.full_name, u.phone, u.email, u.is_active, u.created_at, COUNT(tr.id) as total_trips, COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status='completed'), 0) as total_spent FROM users u LEFT JOIN trip_requests tr ON tr.customer_id=u.id WHERE u.user_type='customer' GROUP BY u.id, u.full_name, u.phone, u.email, u.is_active, u.created_at ORDER BY total_spent DESC`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }
