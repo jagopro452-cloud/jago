@@ -44,12 +44,17 @@ All admin panel styling uses the ORIGINAL JAGO CSS class names from `attached_as
 - How It Works (3-step flow)
 - Features grid (Tracking, Safety, Speed, Ratings)
 - CTA section + footer
+- **Policy pages** (all routes active, no 404):
+  - `/privacy` — Full Privacy Policy page
+  - `/terms` — Terms & Conditions page
+  - `/about-us` — About JAGO page
+  - `/contact-us` — Contact Us page
 
 ### Admin Panel (`/admin/`)
 Authentication: Demo mode — any credentials accepted. Stored in localStorage.
 
 #### 14 Admin Pages (all styled with JAGO CSS):
-1. **Dashboard** (`/admin/dashboard`) — Stats grid (8 cards) + recent trips table
+1. **Dashboard** (`/admin/dashboard`) — Two-column layout: left (banner, 4 stat cards, area chart + pie chart, recent trips table) + right sidebar (live clock, quick stats, quick actions, notifications feed)
 2. **Trip Requests** (`/admin/trips`) — Paginated trip list with status filter + actions
 3. **Customers** (`/admin/customers`) — Customer management with block/unblock
 4. **Drivers** (`/admin/drivers`) — Driver partner management
@@ -96,6 +101,7 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - Login: bcrypt password verification (bcryptjs) + express-rate-limit (10 attempts/15min per IP)
 - Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy
 - Admin credentials: admin@admin.com / admin123 (bcrypt hashed in DB)
+- Admin login has math captcha (client-side: random X+Y=? question, refreshable)
 - Admin password change: POST /api/admin/change-password
 
 ## New Features (Feb 2026)

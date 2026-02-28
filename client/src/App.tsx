@@ -60,6 +60,7 @@ import IntercityRoutes from "@/pages/admin/intercity-routes";
 import Insurance from "@/pages/admin/insurance";
 import DriverEarnings from "@/pages/admin/driver-earnings";
 import Referrals from "@/pages/admin/referrals";
+import { PrivacyPage, TermsPage, AboutPage, ContactPage } from "@/pages/policy-pages";
 import NotFound from "@/pages/not-found";
 
 function AdminLogout() {
@@ -155,6 +156,10 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
+      <Route path="/about-us" component={AboutPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/contact-us" component={ContactPage} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/auth/login" component={AdminLogin} />
       <Route path="/admin/auth/logout" component={AdminLogout} />

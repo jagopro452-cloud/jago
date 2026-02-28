@@ -4,29 +4,47 @@ type AppTab = "driver" | "customer";
 type ThemeMode = "dark" | "light";
 
 // ── JAGO Logo Component ──────────────────────────────────────────────────────
-function JagoLogo({ size = 56, variant = "amber" }: { size?: number; variant?: "amber" | "purple" | "white" }) {
+function JagoLogo({ size = 56, variant = "amber", showPilot = false }: { size?: number; variant?: "amber" | "purple" | "white"; showPilot?: boolean }) {
   const gradients: Record<string, string> = {
     amber: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
     purple: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
     white: "linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%)",
   };
+  const accentColor = variant === "amber" ? "#f59e0b" : variant === "purple" ? "#7c3aed" : "#94a3b8";
   return (
-    <div style={{
-      width: size, height: size,
-      background: gradients[variant],
-      borderRadius: size * 0.28,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      boxShadow: variant === "amber"
-        ? `0 ${size * 0.15}px ${size * 0.5}px rgba(245,158,11,0.45)`
-        : variant === "purple"
-        ? `0 ${size * 0.15}px ${size * 0.5}px rgba(124,58,237,0.45)`
-        : `0 ${size * 0.12}px ${size * 0.35}px rgba(0,0,0,0.2)`,
-      flexShrink: 0,
-      position: "relative",
-      overflow: "hidden",
-    }}>
-      <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.1)", borderRadius: "inherit" }} />
-      <span style={{ fontSize: size * 0.42, lineHeight: 1 }}>🚗</span>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: size * 0.08 }}>
+      <div style={{
+        width: size, height: size,
+        background: gradients[variant],
+        borderRadius: size * 0.28,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: variant === "amber"
+          ? `0 ${size * 0.15}px ${size * 0.5}px rgba(245,158,11,0.45)`
+          : variant === "purple"
+          ? `0 ${size * 0.15}px ${size * 0.5}px rgba(124,58,237,0.45)`
+          : `0 ${size * 0.12}px ${size * 0.35}px rgba(0,0,0,0.2)`,
+        flexShrink: 0,
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.1)", borderRadius: "inherit" }} />
+        <span style={{ fontSize: size * 0.42, lineHeight: 1 }}>🚗</span>
+      </div>
+      {showPilot && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+          <div style={{ fontSize: size * 0.26, fontWeight: 900, color: "white", letterSpacing: size * 0.05, textTransform: "uppercase", lineHeight: 1 }}>JAGO</div>
+          <div style={{
+            fontSize: size * 0.17, fontWeight: 700, letterSpacing: size * 0.08,
+            background: gradients[variant],
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            textTransform: "uppercase", lineHeight: 1,
+            padding: `${size * 0.03}px ${size * 0.12}px`,
+            border: `1px solid ${accentColor}55`,
+            borderRadius: size * 0.08,
+          }}>PILOT</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -97,14 +115,13 @@ function DarkDriverSplash() {
           width: 140, height: 140, borderRadius: "50%",
           background: "radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 70%)" }} />
 
-        <JagoLogo size={72} variant="amber" />
+        <JagoLogo size={72} variant="amber" showPilot={true} />
 
-        <div style={{ marginTop: 18, fontWeight: 900, fontSize: 30, color: "white", letterSpacing: 2 }}>JAGO</div>
-        <div style={{ fontSize: 10, color: "#f59e0b", textTransform: "uppercase", letterSpacing: 3, marginTop: 4, fontWeight: 600 }}>Driver Partner</div>
+        <div style={{ marginTop: 20, fontSize: 9, color: "#475569", letterSpacing: 1 }}>Your Earnings. Your Journey.</div>
 
-        <div style={{ marginTop: 32, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
+        <div style={{ marginTop: 28, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
 
-        <div style={{ marginTop: 28, fontSize: 9, color: "#334155" }}>Version 2.0.1</div>
+        <div style={{ marginTop: 20, fontSize: 9, color: "#334155" }}>Version 2.0.1</div>
 
         {/* Bottom glow line */}
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2,
@@ -124,7 +141,7 @@ function DarkDriverLogin() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
           <JagoLogo size={32} variant="amber" />
           <div style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#f59e0b", background: "rgba(245,158,11,0.1)", padding: "2px 6px", borderRadius: 6, marginLeft: 4 }}>DRIVER</div>
+          <div style={{ fontSize: 8, color: "#f59e0b", background: "rgba(245,158,11,0.15)", padding: "2px 7px", borderRadius: 6, marginLeft: 2, fontWeight: 800, letterSpacing: 0.5, border: "1px solid rgba(245,158,11,0.3)" }}>PILOT</div>
         </div>
 
         <div style={{ color: "white", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Welcome<br />Back <span style={{ fontSize: 18 }}>👋</span></div>
@@ -438,13 +455,12 @@ function LightDriverSplash() {
         <div style={{ position: "absolute", top: "15%", right: "10%", width: 100, height: 100, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.2) 0%, transparent 70%)" }} />
         <div style={{ position: "absolute", bottom: "20%", left: "5%", width: 80, height: 80, borderRadius: "50%", background: "radial-gradient(circle, rgba(239,68,68,0.1) 0%, transparent 70%)" }} />
 
-        <div style={{ width: 80, height: 80, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: 26, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 20px 50px rgba(245,158,11,0.4)", fontSize: 34 }}>🚗</div>
+        <JagoLogo size={72} variant="amber" showPilot={true} />
 
-        <div style={{ marginTop: 18, fontWeight: 900, fontSize: 30, color: "#1c1917", letterSpacing: 2 }}>JAGO</div>
-        <div style={{ fontSize: 10, color: "#d97706", textTransform: "uppercase", letterSpacing: 3, marginTop: 4, fontWeight: 700 }}>Driver Partner</div>
+        <div style={{ marginTop: 20, fontSize: 9, color: "#92400e", letterSpacing: 1 }}>Your Earnings. Your Journey.</div>
 
-        <div style={{ marginTop: 32, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
-        <div style={{ marginTop: 28, fontSize: 9, color: "#d1d5db" }}>Version 2.0.1</div>
+        <div style={{ marginTop: 28, width: 48, height: 4, background: "linear-gradient(90deg,#f59e0b,#ef4444)", borderRadius: 2 }} />
+        <div style={{ marginTop: 20, fontSize: 9, color: "#d1d5db" }}>Version 2.0.1</div>
 
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg, transparent, rgba(245,158,11,0.5), transparent)" }} />
       </div>
@@ -461,7 +477,7 @@ function LightDriverLogin() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22 }}>
           <JagoLogo size={32} variant="amber" />
           <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#d97706", background: "#fef3c7", padding: "2px 7px", borderRadius: 6, marginLeft: 4, fontWeight: 700 }}>DRIVER</div>
+          <div style={{ fontSize: 8, color: "#d97706", background: "#fef3c7", padding: "2px 7px", borderRadius: 6, marginLeft: 2, fontWeight: 800, letterSpacing: 0.5, border: "1px solid #fde68a" }}>PILOT</div>
         </div>
 
         <div style={{ color: "#1c1917", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Welcome<br />Back <span style={{ fontSize: 18 }}>👋</span></div>
