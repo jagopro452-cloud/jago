@@ -186,6 +186,7 @@ export default function Fares() {
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const { data: fares, isLoading } = useQuery<any[]>({ queryKey: ["/api/fares"] });
   const { data: zones } = useQuery<any[]>({ queryKey: ["/api/zones"] });
@@ -195,10 +196,19 @@ export default function Fares() {
     mutationFn: (d: any) => editing
       ? apiRequest("PUT", `/api/fares/${editing.fare.id}`, d)
       : apiRequest("POST", "/api/fares", d),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/fares"] });
+    onSuccess: async (res) => {
+      const savedFareId = editing?.fare?.id ?? null;
+      await qc.invalidateQueries({ queryKey: ["/api/fares"] });
       toast({ title: editing ? "Fare updated" : "Fare created" });
       setOpen(false); setEditing(null); setForm({ ...EMPTY_FORM });
+      if (savedFareId) {
+        setSavedId(savedFareId);
+        setTimeout(() => setSavedId(null), 3000);
+        setTimeout(() => {
+          const el = document.querySelector(`[data-testid="fare-row-${savedFareId}"]`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 150);
+      }
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -279,7 +289,16 @@ export default function Fares() {
                   ))
                 ) : filtered.length ? (
                   filtered.map((item: any, idx: number) => (
-                    <tr key={item.fare.id} data-testid={`fare-row-${item.fare.id}`}>
+                    <tr
+                      key={item.fare.id}
+                      data-testid={`fare-row-${item.fare.id}`}
+                      style={savedId === item.fare.id ? {
+                        background: "linear-gradient(90deg, #dcfce7, #f0fdf4)",
+                        transition: "background 0.4s ease",
+                        outline: "2px solid #22c55e",
+                        outlineOffset: "-2px"
+                      } : { transition: "background 0.6s ease" }}
+                    >
                       <td>{idx + 1}</td>
                       <td>
                         <div className="media align-items-center gap-2">
