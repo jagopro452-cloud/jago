@@ -70,6 +70,50 @@ function ScreenLabel({ title, sub }: { title: string; sub: string }) {
   );
 }
 
+function BottomNav({ active, dark = true, accent = "#f59e0b" }: { active: string; dark?: boolean; accent?: string }) {
+  const bg = dark ? "#0a0f1a" : "white";
+  const border = dark ? "rgba(255,255,255,0.06)" : "#f1f5f9";
+  const inactive = dark ? "#475569" : "#9ca3af";
+  const items = [
+    { id: "home", svg: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 12L12 3L21 12V20C21 20.55 20.55 21 20 21H15V15H9V21H4C3.45 21 3 20.55 3 20V12Z" fill="currentColor"/></svg>, label: "Home" },
+    { id: "trips", svg: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 7V12L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>, label: "Trips" },
+    { id: "wallet", svg: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="2"/><circle cx="17" cy="13" r="2" fill="currentColor"/><path d="M2 10H22" stroke="currentColor" strokeWidth="2"/></svg>, label: "Wallet" },
+    { id: "profile", svg: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2"/><path d="M4 20C4 16.686 7.582 14 12 14C16.418 14 20 16.686 20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>, label: "Profile" },
+  ];
+  return (
+    <div style={{ display: "flex", background: bg, borderTop: `1px solid ${border}`, padding: "6px 0 4px" }}>
+      {items.map(it => {
+        const isActive = it.id === active;
+        return (
+          <div key={it.id} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: isActive ? accent : inactive }}>
+            {it.svg}
+            <div style={{ fontSize: 7, fontWeight: isActive ? 700 : 400, color: isActive ? accent : inactive }}>{it.label}</div>
+            {isActive && <div style={{ width: 4, height: 4, borderRadius: "50%", background: accent }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CityMap({ dark = true, driverMode = false }: { dark?: boolean; driverMode?: boolean }) {
+  const roadColor = dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)";
+  const roadBold = dark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.1)";
+  const bg = dark ? (driverMode ? "radial-gradient(ellipse at 50% 40%, #0d1f35 0%, #0a0a14 80%)" : "radial-gradient(ellipse at 50% 40%, #13103a 0%, #0d0b1a 80%)") : (driverMode ? "linear-gradient(160deg,#fef3c7 0%,#fff8ed 60%,#fffbf5 100%)" : "linear-gradient(160deg,#ede9fe 0%,#e0e7ff 60%,#f5f3ff 100%)");
+  return (
+    <div style={{ position: "absolute", inset: 0, background: bg, overflow: "hidden" }}>
+      <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
+        {[0,14,28,42,56,70,84,100].map(x => <line key={`v${x}`} x1={`${x}%`} y1="0" x2={`${x}%`} y2="100%" stroke={x % 28 === 0 ? roadBold : roadColor} strokeWidth={x % 28 === 0 ? 2 : 1}/>)}
+        {[0,12,24,36,48,60,72,84,96].map(y => <line key={`h${y}`} x1="0" y1={`${y}%`} x2="100%" y2={`${y}%`} stroke={y % 24 === 0 ? roadBold : roadColor} strokeWidth={y % 24 === 0 ? 2 : 1}/>)}
+        <line x1="0" y1="38%" x2="100%" y2="55%" stroke={roadBold} strokeWidth="3"/>
+        <line x1="20%" y1="0" x2="35%" y2="100%" stroke={roadBold} strokeWidth="2"/>
+        <line x1="65%" y1="0" x2="55%" y2="100%" stroke={roadBold} strokeWidth="2"/>
+        <circle cx="43%" cy="52%" r="2.5%" fill={dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"} stroke={roadBold} strokeWidth="1"/>
+      </svg>
+    </div>
+  );
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DRIVER APP SCREENS — DARK MODE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -168,68 +212,68 @@ function DarkDriverLogin() {
 function DarkDriverHome() {
   return (
     <PhoneFrame bg="#0a0a14">
-      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden" }}>
-        {/* Map bg */}
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 55%, #0d1f35 0%, #0a0a14 75%)" }}>
-          {[...Array(9)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${11 * i}%`, height: 1, background: "rgba(255,255,255,0.025)" }} />)}
-          {[...Array(7)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${14 * i}%`, width: 1, background: "rgba(255,255,255,0.025)" }} />)}
-          <div style={{ position: "absolute", left: "28%", right: "28%", top: "30%", bottom: "20%", border: "1px solid rgba(245,158,11,0.12)", borderRadius: 4 }} />
-          <div style={{ position: "absolute", top: "50%", left: "46%",
-            width: 24, height: 24, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 0 8px rgba(245,158,11,0.12), 0 0 0 16px rgba(245,158,11,0.05)", fontSize: 11,
-          }}>🚗</div>
+      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark driverMode />
+
+        {/* Driver location pin */}
+        <div style={{ position: "absolute", top: "43%", left: "44%", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 8px rgba(245,158,11,0.15),0 0 0 16px rgba(245,158,11,0.06)", fontSize: 14 }}>🚗</div>
         </div>
 
-        {/* Top Bar */}
-        <div style={{ position: "relative", zIndex: 2, padding: "8px 14px 0" }}>
+        {/* Top bar */}
+        <div style={{ position: "relative", zIndex: 3, padding: "8px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <JagoLogo size={24} variant="amber" showPilot={true} />
-              <div>
-                <div style={{ fontSize: 7, color: "#475569" }}>Good Morning</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "white" }}>Anil Driver 👋</div>
+            <JagoLogo size={26} variant="amber" showPilot={true} />
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 10, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
+                </div>
+                <div style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: "#ef4444", border: "1.5px solid #0a0a14" }} />
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 5 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 9, background: "#111827", border: "1px solid #1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>🔔</div>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "white" }}>A</div>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "white" }}>A</div>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-            {[{l:"Today",v:"₹1,240",c:"#22c55e",ic:"💰"},{l:"Trips",v:"8",c:"#60a5fa",ic:"🚗"},{l:"Rating",v:"4.9★",c:"#f59e0b",ic:"⭐"}].map((s,i) => (
-              <div key={i} style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "7px 8px", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ fontSize: 11 }}>{s.ic}</div>
-                <div style={{ fontSize: 7, color: "#475569", marginTop: 2 }}>{s.l}</div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: s.c }}>{s.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Bottom Sheet */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0,
-          background: "linear-gradient(180deg, rgba(10,10,20,0) 0%, #0a0a14 25%)",
-          padding: "30px 14px 14px",
-        }}>
-          <div style={{ background: "#0f172a", borderRadius: 20, padding: "14px 15px", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(20px)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>You're ONLINE</div>
-                <div style={{ fontSize: 9, color: "#22c55e", marginTop: 2 }}>● Searching for rides...</div>
-              </div>
-              <div style={{ width: 48, height: 26, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 13, position: "relative", boxShadow: "0 4px 14px rgba(34,197,94,0.4)" }}>
-                <div style={{ position: "absolute", right: 3, top: 3, width: 20, height: 20, background: "white", borderRadius: "50%", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }} />
-              </div>
-            </div>
-            <div style={{ height: 1, background: "rgba(255,255,255,0.05)", margin: "10px 0" }} />
-            <div style={{ display: "flex", gap: 7 }}>
-              {["💰 Wallet: ₹240","📋 History","⚙️ Settings"].map((btn,i) => (
-                <div key={i} style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "6px 0", textAlign: "center", fontSize: 7.5, color: "#64748b" }}>{btn}</div>
+          {/* Today earnings hero */}
+          <div style={{ marginTop: 8, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)", borderRadius: 16, padding: "10px 14px", border: "1px solid rgba(245,158,11,0.2)" }}>
+            <div style={{ fontSize: 7, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>Today's Earnings</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#f59e0b", lineHeight: 1.1, marginTop: 2 }}>₹1,240</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+              {[{l:"8 Trips",c:"#60a5fa"},{l:"6.5 hrs",c:"#a78bfa"},{l:"4.9 ★",c:"#fbbf24"}].map((s,i) => (
+                <div key={i} style={{ fontSize: 9, fontWeight: 600, color: s.c }}>{s.l}</div>
               ))}
             </div>
           </div>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Bottom sheet */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(10,10,20,0.95) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "#111827", borderRadius: "20px 20px 0 0", padding: "16px 14px 12px", border: "1px solid rgba(255,255,255,0.07)", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#1e293b", borderRadius: 2, margin: "0 auto 12px" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>● ONLINE</div>
+                  <div style={{ fontSize: 8, color: "#22c55e", marginTop: 2 }}>Searching for rides nearby...</div>
+                </div>
+                <div style={{ width: 52, height: 28, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 14, position: "relative", boxShadow: "0 4px 14px rgba(34,197,94,0.4)", cursor: "pointer" }}>
+                  <div style={{ position: "absolute", right: 4, top: 4, width: 20, height: 20, background: "white", borderRadius: "50%", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[{l:"Wallet",v:"₹240"},{l:"Bonus",v:"₹50"},{l:"Online",v:"6.5h"}].map((s,i) => (
+                  <div key={i} style={{ flex: 1, background: "#1e293b", borderRadius: 10, padding: "7px 6px", textAlign: "center" }}>
+                    <div style={{ fontSize: 8, color: "#475569" }}>{s.l}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "white", marginTop: 2 }}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <BottomNav active="home" dark accent="#f59e0b" />
         </div>
       </div>
     </PhoneFrame>
@@ -239,70 +283,67 @@ function DarkDriverHome() {
 function DarkDriverNewTrip() {
   return (
     <PhoneFrame bg="#0a0a14">
-      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1 }} />
-        {/* Glow rings */}
-        {[80, 110, 140].map((s,i) => (
-          <div key={i} style={{
-            position: "absolute", top: "22%", left: "50%", transform: "translate(-50%,-50%)",
-            width: s, height: s, borderRadius: "50%",
-            border: `1.5px solid rgba(245,158,11,${0.3 - i * 0.08})`,
-            zIndex: 2,
-          }} />
-        ))}
-        <div style={{
-          position: "absolute", top: "22%", left: "50%", transform: "translate(-50%,-50%)",
-          width: 60, height: 60, borderRadius: "50%",
-          background: "linear-gradient(135deg,#f59e0b,#ef4444)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 0 40px rgba(245,158,11,0.7)", zIndex: 3, fontSize: 24,
-        }}>🔔</div>
+      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark driverMode />
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1 }} />
 
-        <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 4,
-          background: "linear-gradient(180deg, #0d1525 0%, #0a0f1a 100%)",
-          borderRadius: "26px 26px 0 0",
-          padding: "16px 16px 14px",
-          border: "1px solid rgba(245,158,11,0.2)",
-          boxShadow: "0 -20px 60px rgba(245,158,11,0.12)",
-        }}>
-          <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>🔔 New Ride Request!</div>
-            <div style={{ fontSize: 8, color: "#475569", marginTop: 3 }}>Auto-cancel in 28 seconds</div>
-            <div style={{ height: 4, background: "#1e293b", borderRadius: 2, marginTop: 8, overflow: "hidden" }}>
+        {/* Pulsing notification center */}
+        <div style={{ position: "absolute", top: "24%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {[90,120,150].map((s,i) => <div key={i} style={{ position: "absolute", width: s, height: s, borderRadius: "50%", border: `1.5px solid rgba(245,158,11,${0.28-i*0.07})` }} />)}
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 40px rgba(245,158,11,0.6)", fontSize: 26 }}>🔔</div>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Main trip card */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "#111827", borderRadius: "24px 24px 0 0", padding: "14px 14px 0", border: "1px solid rgba(245,158,11,0.15)", borderBottom: "none" }}>
+            <div style={{ width: 36, height: 4, background: "#1e293b", borderRadius: 2, margin: "0 auto 10px" }} />
+
+            {/* Timer bar */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>New Ride Request</div>
+              <div style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: "#f59e0b" }}>28s</div>
+            </div>
+            <div style={{ height: 3, background: "#1e293b", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
               <div style={{ width: "65%", height: "100%", background: "linear-gradient(90deg,#22c55e,#f59e0b,#ef4444)", borderRadius: 2 }} />
             </div>
-          </div>
 
-          <div style={{ background: "#111827", borderRadius: 14, padding: "11px 13px", marginBottom: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "white" }}>A</div>
+            {/* Customer info row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "white", fontSize: 14 }}>A</div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "white" }}>Arjun Reddy</div>
-                  <div style={{ display: "flex", gap: 2 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 7, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 7, color: "#64748b" }}>4.9</span></div>
+                  <div style={{ display: "flex", gap: 1, marginTop: 1 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#64748b", marginLeft: 3 }}>4.9</span></div>
                 </div>
               </div>
-              <div style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "4px 10px", fontSize: 13, color: "#f59e0b", fontWeight: 800 }}>₹185</div>
+              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "5px 10px", fontSize: 14, fontWeight: 900, color: "#22c55e" }}>₹185</div>
             </div>
-            {[
-              { dot: "#22c55e", label: "MGBS Bus Stand, Hyderabad" },
-              { dot: "#ef4444", label: "Banjara Hills Road No. 12" },
-            ].map((loc, i) => (
-              <div key={i} style={{ display: "flex", gap: 7, alignItems: "center", marginTop: i === 0 ? 0 : 5 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, flexShrink: 0, boxShadow: `0 0 6px ${loc.dot}` }} />
-                <span style={{ fontSize: 9, color: "#94a3b8" }}>{loc.label}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-              <span style={{ fontSize: 8.5, color: "#60a5fa" }}>📍 2.4 km away</span>
-              <span style={{ fontSize: 8.5, color: "#a78bfa" }}>⏱ 8 min pickup</span>
-            </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1, background: "#1e293b", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#64748b" }}>✕ Reject</div>
-            <div style={{ flex: 2, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 700, color: "white", boxShadow: "0 6px 20px rgba(34,197,94,0.4)" }}>✓ Accept Ride</div>
+            {/* Route */}
+            <div style={{ background: "#1e293b", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+              {[{dot:"#22c55e",label:"MGBS Bus Stand, Hyderabad"},{dot:"#ef4444",label:"Banjara Hills Rd No. 12"}].map((loc,i) => (
+                <div key={i}>
+                  {i > 0 && <div style={{ width: 1.5, height: 8, background: "#334155", marginLeft: 3, marginTop: 2, marginBottom: 2 }} />}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, boxShadow: `0 0 6px ${loc.dot}`, flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, color: "#94a3b8" }}>{loc.label}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 14, marginTop: 8, paddingTop: 8, borderTop: "1px solid #334155" }}>
+                <span style={{ fontSize: 9, color: "#60a5fa", fontWeight: 600 }}>📍 2.4 km pickup</span>
+                <span style={{ fontSize: 9, color: "#a78bfa", fontWeight: 600 }}>⏱ 8 min ETA</span>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>🛺 Auto</span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 8, paddingBottom: 12 }}>
+              <div style={{ flex: 1, background: "#1e293b", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#64748b" }}>✕  Decline</div>
+              <div style={{ flex: 2, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 800, color: "white", boxShadow: "0 6px 20px rgba(34,197,94,0.4)" }}>✓  Accept Ride</div>
+            </div>
           </div>
         </div>
       </div>
@@ -313,56 +354,63 @@ function DarkDriverNewTrip() {
 function DarkDriverOnTrip() {
   return (
     <PhoneFrame bg="#0a0a14">
-      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 45% 40%, #0d2137 0%, #0a0a14 80%)" }}>
-          <div style={{ position: "absolute", left: "38%", top: "22%", width: 2.5, height: "55%", background: "linear-gradient(180deg,#22c55e,#f59e0b50)", borderRadius: 2 }} />
-          <div style={{ position: "absolute", top: "22%", left: "36%", width: 10, height: 10, background: "#22c55e", borderRadius: "50%", boxShadow: "0 0 14px #22c55e" }} />
-          <div style={{ position: "absolute", top: "53%", left: "34%", width: 26, height: 26, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 0 6px rgba(245,158,11,0.15)", fontSize: 12,
-          }}>🚗</div>
-          <div style={{ position: "absolute", top: "77%", left: "36%", width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 14px #ef4444" }} />
+      <div style={{ minHeight: 428, background: "#0a0a14", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark driverMode />
+
+        {/* Route line + markers */}
+        <div style={{ position: "absolute", top: "22%", left: "38%", zIndex: 2 }}>
+          <div style={{ width: 10, height: 10, background: "#22c55e", borderRadius: "50%", boxShadow: "0 0 12px #22c55e" }} />
+          <div style={{ width: 2, height: 60, background: "linear-gradient(180deg,#22c55e,#f59e0b)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 22, height: 22, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, boxShadow: "0 0 0 5px rgba(245,158,11,0.2)", marginLeft: -4 }}>🚗</div>
+          <div style={{ width: 2, height: 40, background: "linear-gradient(180deg,#f59e0b,#ef4444)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 12px #ef4444" }} />
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, background: "rgba(10,10,20,0.92)", padding: "8px 14px 10px", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {/* Top nav bar */}
+        <div style={{ position: "relative", zIndex: 3, background: "rgba(10,10,20,0.9)", backdropFilter: "blur(16px)", padding: "8px 14px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 7.5, color: "#22c55e", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>● On The Way</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "white", marginTop: 1 }}>Banjara Hills Rd 12</div>
+              <div style={{ fontSize: 7, color: "#22c55e", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5 }}>● Dropping Customer</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>Banjara Hills Rd No. 12</div>
             </div>
-            <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 10, padding: "4px 10px" }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#22c55e" }}>12 min</span>
+            <div style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "5px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#22c55e" }}>12</div>
+              <div style={{ fontSize: 7, color: "#22c55e" }}>min</div>
             </div>
           </div>
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 3,
-          background: "linear-gradient(180deg, rgba(10,10,20,0) 0%, #0a0f1a 25%)",
-          padding: "30px 14px 14px",
-        }}>
-          <div style={{ background: "#0f172a", borderRadius: 20, padding: "13px 14px", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-              <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "white" }}>A</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "white" }}>Arjun Reddy</div>
-                <div style={{ display: "flex", gap: 3 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#64748b", marginLeft: 2 }}>4.9</span></div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["📞","💬"].map((ic,i) => <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{ic}</div>)}
-              </div>
-            </div>
+        <div style={{ flex: 1 }} />
 
-            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-              {[{l:"Distance",v:"7.2 km"},{l:"Duration",v:"12 min"},{l:"Fare",v:"₹185"}].map((s,i) => (
-                <div key={i} style={{ flex: 1, background: "#111827", borderRadius: 10, padding: "7px 0", textAlign: "center", border: "1px solid rgba(255,255,255,0.04)" }}>
-                  <div style={{ fontSize: 7.5, color: "#475569" }}>{s.l}</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "white", marginTop: 2 }}>{s.v}</div>
+        {/* Bottom customer card */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(10,10,20,0.95) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "#111827", borderRadius: "20px 20px 0 0", padding: "14px 14px 0", border: "1px solid rgba(255,255,255,0.07)", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#1e293b", borderRadius: 2, margin: "0 auto 12px" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "white", fontSize: 15 }}>A</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "white" }}>Arjun Reddy</div>
+                  <div style={{ display: "flex", gap: 1 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#64748b", marginLeft: 3 }}>4.9</span></div>
                 </div>
-              ))}
+                <div style={{ display: "flex", gap: 5 }}>
+                  {[{ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 11a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.07 6.07l.9-.9a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" fill="white"/></svg>}, {ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="white"/></svg>}].map((btn,i) => (
+                    <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#1e293b", border: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "center" }}>{btn.ic}</div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                {[{l:"Distance",v:"7.2 km"},{l:"Fare",v:"₹185"},{l:"ETA",v:"12 min"}].map((s,i) => (
+                  <div key={i} style={{ flex: 1, background: "#1e293b", borderRadius: 10, padding: "7px 0", textAlign: "center" }}>
+                    <div style={{ fontSize: 7, color: "#475569" }}>{s.l}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "white", marginTop: 2 }}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 800, color: "white", boxShadow: "0 6px 18px rgba(22,163,74,0.4)", marginBottom: 12 }}>Complete Trip</div>
             </div>
-
-            <div style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", borderRadius: 13, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 700, color: "white", boxShadow: "0 6px 18px rgba(22,163,74,0.4)" }}>🏁 Complete Trip</div>
           </div>
+          <BottomNav active="home" dark accent="#f59e0b" />
         </div>
       </div>
     </PhoneFrame>
@@ -491,54 +539,69 @@ function LightDriverLogin() {
 
 function LightDriverHome() {
   return (
-    <PhoneFrame bg="#f8fafc">
-      <div style={{ minHeight: 428, background: "#f8fafc", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(160deg, #fef3c7 0%, #e0f2fe 60%, #f8fafc 100%)" }}>
-          {[...Array(8)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${12 * i}%`, height: 1, background: "rgba(0,0,0,0.04)" }} />)}
-          {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${16 * i}%`, width: 1, background: "rgba(0,0,0,0.04)" }} />)}
-          <div style={{ position: "absolute", top: "50%", left: "46%", width: 24, height: 24, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 8px rgba(245,158,11,0.15)", fontSize: 11 }}>🚗</div>
+    <PhoneFrame bg="#fff8ed">
+      <div style={{ minHeight: 428, background: "#fff8ed", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark={false} driverMode />
+
+        {/* Driver pin */}
+        <div style={{ position: "absolute", top: "44%", left: "44%", zIndex: 2 }}>
+          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 8px rgba(245,158,11,0.15),0 0 0 16px rgba(245,158,11,0.06)", fontSize: 14 }}>🚗</div>
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, padding: "8px 14px 0" }}>
+        {/* Top bar */}
+        <div style={{ position: "relative", zIndex: 3, padding: "8px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <JagoLogo size={24} variant="amber" showPilot={true} darkBg={false} />
-              <div>
-                <div style={{ fontSize: 7, color: "#6b7280" }}>Good Morning</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Anil Driver 👋</div>
+            <JagoLogo size={26} variant="amber" showPilot={true} darkBg={false} />
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 10, background: "white", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="#374151" strokeWidth="2" strokeLinecap="round"/></svg>
+                </div>
+                <div style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: "#ef4444", border: "1.5px solid #fff8ed" }} />
               </div>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "white" }}>A</div>
             </div>
-            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "white" }}>A</div>
           </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-            {[{l:"Today",v:"₹1,240",c:"#16a34a",bg:"#dcfce7",ic:"💰"},{l:"Trips",v:"8",c:"#2563eb",bg:"#dbeafe",ic:"🚗"},{l:"Rating",v:"4.9★",c:"#d97706",bg:"#fef3c7",ic:"⭐"}].map((s,i) => (
-              <div key={i} style={{ flex: 1, background: "white", borderRadius: 12, padding: "7px 8px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.04)" }}>
-                <div style={{ fontSize: 11 }}>{s.ic}</div>
-                <div style={{ fontSize: 7, color: "#9ca3af", marginTop: 2 }}>{s.l}</div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: s.c }}>{s.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(180deg, rgba(248,250,252,0) 0%, #f8fafc 30%)", padding: "30px 14px 14px" }}>
-          <div style={{ background: "white", borderRadius: 20, padding: "14px 15px", boxShadow: "0 8px 30px rgba(0,0,0,0.1)", border: "1px solid rgba(0,0,0,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917" }}>You're ONLINE</div>
-                <div style={{ fontSize: 9, color: "#16a34a", marginTop: 2 }}>● Looking for rides...</div>
-              </div>
-              <div style={{ width: 48, height: 26, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 13, position: "relative", boxShadow: "0 4px 12px rgba(34,197,94,0.35)" }}>
-                <div style={{ position: "absolute", right: 3, top: 3, width: 20, height: 20, background: "white", borderRadius: "50%" }} />
-              </div>
-            </div>
-            <div style={{ height: 1, background: "#f3f4f6", margin: "10px 0" }} />
-            <div style={{ display: "flex", gap: 7 }}>
-              {["💰 ₹240","📋 History","⚙️ Settings"].map((btn,i) => (
-                <div key={i} style={{ flex: 1, background: "#f9fafb", borderRadius: 10, padding: "6px 0", textAlign: "center", fontSize: 7.5, color: "#6b7280", border: "1px solid #f3f4f6" }}>{btn}</div>
+          {/* Earnings card */}
+          <div style={{ marginTop: 8, background: "white", borderRadius: 16, padding: "10px 14px", boxShadow: "0 4px 20px rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.15)" }}>
+            <div style={{ fontSize: 7, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1 }}>Today's Earnings</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#d97706", lineHeight: 1.1, marginTop: 2 }}>₹1,240</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+              {[{l:"8 Trips",c:"#3b82f6"},{l:"6.5 hrs",c:"#8b5cf6"},{l:"4.9 ★",c:"#f59e0b"}].map((s,i) => (
+                <div key={i} style={{ fontSize: 9, fontWeight: 600, color: s.c }}>{s.l}</div>
               ))}
             </div>
           </div>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Bottom sheet */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(255,248,237,0.95) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "white", borderRadius: "20px 20px 0 0", padding: "16px 14px 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#f3f4f6", borderRadius: 2, margin: "0 auto 12px" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#1c1917" }}>● ONLINE</div>
+                  <div style={{ fontSize: 8, color: "#16a34a", marginTop: 2 }}>Searching for rides nearby...</div>
+                </div>
+                <div style={{ width: 52, height: 28, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 14, position: "relative", boxShadow: "0 4px 12px rgba(34,197,94,0.35)" }}>
+                  <div style={{ position: "absolute", right: 4, top: 4, width: 20, height: 20, background: "white", borderRadius: "50%", boxShadow: "0 2px 4px rgba(0,0,0,0.2)" }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[{l:"Wallet",v:"₹240"},{l:"Bonus",v:"₹50"},{l:"Online",v:"6.5h"}].map((s,i) => (
+                  <div key={i} style={{ flex: 1, background: "#f9fafb", borderRadius: 10, padding: "7px 6px", textAlign: "center", border: "1px solid #f3f4f6" }}>
+                    <div style={{ fontSize: 8, color: "#9ca3af" }}>{s.l}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#1c1917", marginTop: 2 }}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <BottomNav active="home" dark={false} accent="#f59e0b" />
         </div>
       </div>
     </PhoneFrame>
@@ -665,47 +728,84 @@ function DarkCustomerLogin() {
 function DarkCustomerHome() {
   return (
     <PhoneFrame bg="#0d0b1a">
-      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 55%, #13103a 0%, #0d0b1a 75%)" }}>
-          {[...Array(8)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${12 * i}%`, height: 1, background: "rgba(255,255,255,0.02)" }} />)}
-          {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${16 * i}%`, width: 1, background: "rgba(255,255,255,0.02)" }} />)}
-          {[{t:"38%",l:"26%"},{t:"55%",l:"62%"},{t:"65%",l:"42%"}].map((p,i) => (
-            <div key={i} style={{ position: "absolute", top: p.t, left: p.l, fontSize: 14 }}>🚗</div>
-          ))}
-          <div style={{ position: "absolute", top: "50%", left: "48%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ width: 14, height: 14, background: "#7c3aed", borderRadius: "50%", border: "3px solid rgba(255,255,255,0.2)", boxShadow: "0 0 0 6px rgba(124,58,237,0.2)" }} />
-            <div style={{ width: 2, height: 6, background: "#7c3aed" }} />
-          </div>
+      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark={true} driverMode={false} />
+
+        {/* Nearby vehicles on map */}
+        {[{t:"36%",l:"26%"},{t:"52%",l:"64%"},{t:"62%",l:"38%"}].map((p,i) => (
+          <div key={i} style={{ position: "absolute", top: p.t, left: p.l, zIndex: 2, width: 20, height: 20, background: "rgba(124,58,237,0.2)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🚗</div>
+        ))}
+
+        {/* User location pin */}
+        <div style={{ position: "absolute", top: "46%", left: "46%", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ width: 16, height: 16, background: "#7c3aed", borderRadius: "50%", border: "3px solid white", boxShadow: "0 0 0 6px rgba(124,58,237,0.25)" }} />
+          <div style={{ width: 2, height: 7, background: "#7c3aed" }} />
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, padding: "8px 14px" }}>
+        {/* Top bar */}
+        <div style={{ position: "relative", zIndex: 3, padding: "8px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <JagoLogo size={24} variant="purple" />
               <div>
-                <div style={{ fontSize: 7, color: "#475569" }}>Hello,</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "white" }}>Arjun Reddy 🙌</div>
+                <div style={{ fontSize: 7, color: "#475569" }}>Good Morning 👋</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "white" }}>Arjun Reddy</div>
               </div>
             </div>
-            <div style={{ padding: "4px 10px", background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 20, fontSize: 9, fontWeight: 700, color: "#a78bfa" }}>💰 ₹250</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)", borderRadius: 20, padding: "4px 10px", fontSize: 9, fontWeight: 700, color: "#a78bfa" }}>₹250</div>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 10, background: "rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round"/></svg>
+                </div>
+                <div style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: "#ef4444", border: "1.5px solid #0d0b1a" }} />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 3, background: "linear-gradient(180deg, rgba(13,11,26,0) 0%, #0d0b1a 25%)", padding: "30px 14px 14px" }}>
-          <div style={{ background: "#13103a", borderRadius: 20, padding: "14px", border: "1px solid rgba(124,58,237,0.2)", boxShadow: "0 -8px 30px rgba(124,58,237,0.1)" }}>
-            <div style={{ background: "#1e1a3a", borderRadius: 13, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, border: "1px solid rgba(124,58,237,0.15)" }}>
-              <span style={{ fontSize: 12 }}>🔍</span>
-              <span style={{ fontSize: 10, color: "#475569" }}>Where do you want to go?</span>
-            </div>
-            <div style={{ display: "flex", gap: 7 }}>
-              {[{ic:"🏠",l:"Home"},{ic:"💼",l:"Office"},{ic:"⭐",l:"Saved"}].map((q,i) => (
-                <div key={i} style={{ flex: 1, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.15)", borderRadius: 11, padding: "8px 0", textAlign: "center" }}>
-                  <div style={{ fontSize: 12 }}>{q.ic}</div>
-                  <div style={{ fontSize: 8, color: "#a78bfa", marginTop: 2, fontWeight: 600 }}>{q.l}</div>
+        <div style={{ flex: 1 }} />
+
+        {/* Bottom search sheet */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(13,11,26,0.96) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "#13103a", borderRadius: "22px 22px 0 0", padding: "14px 14px 0", border: "1px solid rgba(124,58,237,0.18)", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#1e1a3a", borderRadius: 2, margin: "0 auto 12px" }} />
+
+              {/* Search bar */}
+              <div style={{ background: "#1e1a3a", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 10, border: "1px solid rgba(124,58,237,0.2)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#7c3aed" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
+                <span style={{ fontSize: 10, color: "#64748b" }}>Where do you want to go?</span>
+              </div>
+
+              {/* Recent places */}
+              <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
+                {[{ic:"🏠",l:"Home",sub:"Ameerpet"},{ic:"💼",l:"Office",sub:"Hi-tech City"},{ic:"⭐",l:"Saved",sub:"2 places"}].map((q,i) => (
+                  <div key={i} style={{ flex: 1, background: "#1e1a3a", border: "1px solid rgba(124,58,237,0.15)", borderRadius: 12, padding: "8px 6px", textAlign: "center" }}>
+                    <div style={{ fontSize: 13 }}>{q.ic}</div>
+                    <div style={{ fontSize: 8, color: "#a78bfa", marginTop: 2, fontWeight: 700 }}>{q.l}</div>
+                    <div style={{ fontSize: 7, color: "#475569", marginTop: 1 }}>{q.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ride type tiles */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 8, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Choose Ride</div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  {[{ic:"🏍️",l:"Bike",p:"₹50",c:"#f97316"},{ic:"🛺",l:"Auto",p:"₹85",c:"#f59e0b",sel:true},{ic:"🚗",l:"Car",p:"₹180",c:"#7c3aed"}].map((r,i) => (
+                    <div key={i} style={{ flex: 1, background: r.sel ? "rgba(124,58,237,0.18)" : "#1e1a3a", border: `1.5px solid ${r.sel ? "#7c3aed" : "rgba(124,58,237,0.1)"}`, borderRadius: 14, padding: "9px 6px", textAlign: "center", boxShadow: r.sel ? "0 0 0 2px rgba(124,58,237,0.12)" : "none" }}>
+                      <div style={{ fontSize: 16 }}>{r.ic}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: r.sel ? "#a78bfa" : "#94a3b8", marginTop: 3 }}>{r.l}</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: r.c, marginTop: 1 }}>{r.p}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div style={{ height: 12 }} />
             </div>
           </div>
+          <BottomNav active="home" dark accent="#7c3aed" />
         </div>
       </div>
     </PhoneFrame>
@@ -715,38 +815,51 @@ function DarkCustomerHome() {
 function DarkCustomerTracking() {
   return (
     <PhoneFrame bg="#0d0b1a">
-      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 45% 35%, #13103a 0%, #0d0b1a 80%)" }}>
-          <div style={{ position: "absolute", left: "38%", top: "20%", width: 2, height: "50%", background: "linear-gradient(180deg,#7c3aed,#4f46e560)", borderRadius: 2 }} />
-          <div style={{ position: "absolute", top: "20%", left: "36%", width: 10, height: 10, background: "#7c3aed", borderRadius: "50%", boxShadow: "0 0 14px #7c3aed" }} />
-          <div style={{ position: "absolute", top: "53%", left: "34%", width: 24, height: 24, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 6px rgba(124,58,237,0.2)", fontSize: 12 }}>🚗</div>
-          <div style={{ position: "absolute", top: "70%", left: "36%", width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 12px #ef4444" }} />
+      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark driverMode={false} />
+
+        {/* Route line on map */}
+        <div style={{ position: "absolute", top: "20%", left: "38%", zIndex: 2 }}>
+          <div style={{ width: 10, height: 10, background: "#7c3aed", borderRadius: "50%", boxShadow: "0 0 12px #7c3aed" }} />
+          <div style={{ width: 2, height: 55, background: "linear-gradient(180deg,#7c3aed,#ef4444)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 22, height: 22, background: "linear-gradient(135deg,#f59e0b,#ef4444)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, boxShadow: "0 0 0 5px rgba(245,158,11,0.2)", marginLeft: -4 }}>🚗</div>
+          <div style={{ width: 2, height: 35, background: "linear-gradient(180deg,#f59e0b,#ef4444)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 12px #ef4444" }} />
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, background: "rgba(13,11,26,0.9)", padding: "8px 14px 10px", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(124,58,237,0.15)" }}>
-          <div style={{ fontSize: 7.5, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>● Driver On The Way</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "white", marginTop: 1 }}>Arriving in 4 min</div>
+        {/* Top status bar */}
+        <div style={{ position: "relative", zIndex: 3, background: "rgba(13,11,26,0.9)", backdropFilter: "blur(16px)", padding: "8px 14px 10px", borderBottom: "1px solid rgba(124,58,237,0.15)" }}>
+          <div style={{ fontSize: 7, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5 }}>● Driver On The Way</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>Arriving in 4 min</div>
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 3, background: "linear-gradient(180deg, rgba(13,11,26,0) 0%, #0d0b1a 25%)", padding: "30px 14px 14px" }}>
-          <div style={{ background: "#13103a", borderRadius: 20, padding: "13px 14px", border: "1px solid rgba(124,58,237,0.2)" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-              <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "white" }}>A</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "white" }}>Anil Driver</div>
-                <div style={{ display: "flex", gap: 3 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#64748b", marginLeft: 2 }}>4.9</span></div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["📞","💬"].map((ic,i) => <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#1e1a3a", border: "1px solid rgba(124,58,237,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{ic}</div>)}
-              </div>
-            </div>
+        <div style={{ flex: 1 }} />
 
-            <div style={{ background: "#1e1a3a", borderRadius: 13, padding: "10px 12px", border: "1px solid rgba(124,58,237,0.15)", textAlign: "center" }}>
-              <div style={{ fontSize: 8, color: "#a78bfa", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>🔐 Your OTP</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "white", letterSpacing: 6, marginTop: 4 }}>7 9 2 3</div>
-              <div style={{ fontSize: 7.5, color: "#64748b", marginTop: 3 }}>Share this with driver when they arrive</div>
+        {/* Bottom driver card */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(13,11,26,0.95) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "#13103a", borderRadius: "20px 20px 0 0", padding: "14px 14px 0", border: "1px solid rgba(124,58,237,0.2)", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#1e1a3a", borderRadius: 2, margin: "0 auto 12px" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "white", fontSize: 15 }}>A</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "white" }}>Anil Driver</div>
+                  <div style={{ display: "flex", gap: 1 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#64748b", marginLeft: 3 }}>4.9</span></div>
+                </div>
+                <div style={{ display: "flex", gap: 5 }}>
+                  {[{ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 11a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.07 6.07l.9-.9a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" fill="#a78bfa"/></svg>}, {ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#a78bfa"/></svg>}].map((btn,i) => (
+                    <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#1e1a3a", border: "1px solid rgba(124,58,237,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>{btn.ic}</div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: "#1e1a3a", borderRadius: 14, padding: "10px 12px", border: "1px solid rgba(124,58,237,0.15)", textAlign: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 8, color: "#a78bfa", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Your OTP</div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: "white", letterSpacing: 8, marginTop: 4 }}>7923</div>
+                <div style={{ fontSize: 7.5, color: "#475569", marginTop: 3 }}>Share with driver on arrival</div>
+              </div>
             </div>
           </div>
+          <BottomNav active="home" dark accent="#7c3aed" />
         </div>
       </div>
     </PhoneFrame>
@@ -871,47 +984,84 @@ function LightCustomerLogin() {
 function LightCustomerHome() {
   return (
     <PhoneFrame bg="#f5f3ff">
-      <div style={{ minHeight: 428, background: "#f5f3ff", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(160deg, #ddd6fe 0%, #e0e7ff 50%, #f5f3ff 100%)" }}>
-          {[...Array(8)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${12 * i}%`, height: 1, background: "rgba(124,58,237,0.05)" }} />)}
-          {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${16 * i}%`, width: 1, background: "rgba(124,58,237,0.05)" }} />)}
-          {[{t:"35%",l:"25%"},{t:"52%",l:"62%"},{t:"62%",l:"40%"}].map((p,i) => (
-            <div key={i} style={{ position: "absolute", top: p.t, left: p.l, fontSize: 14 }}>🚗</div>
-          ))}
-          <div style={{ position: "absolute", top: "48%", left: "48%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ width: 14, height: 14, background: "#7c3aed", borderRadius: "50%", border: "3px solid white", boxShadow: "0 4px 14px rgba(124,58,237,0.4)" }} />
-            <div style={{ width: 2, height: 6, background: "#7c3aed" }} />
-          </div>
+      <div style={{ minHeight: 428, background: "#f5f3ff", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark={false} driverMode={false} />
+
+        {/* Nearby vehicles */}
+        {[{t:"36%",l:"24%"},{t:"50%",l:"65%"},{t:"60%",l:"40%"}].map((p,i) => (
+          <div key={i} style={{ position: "absolute", top: p.t, left: p.l, zIndex: 2, width: 20, height: 20, background: "rgba(124,58,237,0.15)", borderRadius: "50%", border: "1px solid rgba(124,58,237,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🚗</div>
+        ))}
+
+        {/* User pin */}
+        <div style={{ position: "absolute", top: "46%", left: "46%", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ width: 16, height: 16, background: "#7c3aed", borderRadius: "50%", border: "3px solid white", boxShadow: "0 4px 14px rgba(124,58,237,0.4),0 0 0 8px rgba(124,58,237,0.1)" }} />
+          <div style={{ width: 2, height: 7, background: "#7c3aed" }} />
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, padding: "8px 14px" }}>
+        {/* Top bar */}
+        <div style={{ position: "relative", zIndex: 3, padding: "8px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <JagoLogo size={24} variant="purple" darkBg={false} />
               <div>
-                <div style={{ fontSize: 7, color: "#6b7280" }}>Hello,</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Arjun Reddy 🙌</div>
+                <div style={{ fontSize: 7, color: "#6b7280" }}>Good Morning 👋</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Arjun Reddy</div>
               </div>
             </div>
-            <div style={{ padding: "4px 10px", background: "white", borderRadius: 20, fontSize: 9, fontWeight: 700, color: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.15)", border: "1px solid #ede9fe" }}>💰 ₹250</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ background: "white", border: "1px solid #ede9fe", borderRadius: 20, padding: "4px 10px", fontSize: 9, fontWeight: 700, color: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.12)" }}>₹250</div>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 10, background: "white", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
+                </div>
+                <div style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: "#ef4444", border: "1.5px solid #f5f3ff" }} />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 3, background: "linear-gradient(180deg, rgba(245,243,255,0) 0%, #f5f3ff 30%)", padding: "30px 14px 14px" }}>
-          <div style={{ background: "white", borderRadius: 20, padding: "14px", boxShadow: "0 8px 30px rgba(124,58,237,0.12)", border: "1px solid #ede9fe" }}>
-            <div style={{ background: "#faf9ff", borderRadius: 13, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, border: "1.5px solid #ede9fe" }}>
-              <span style={{ fontSize: 12 }}>🔍</span>
-              <span style={{ fontSize: 10, color: "#9ca3af" }}>Where do you want to go?</span>
-            </div>
-            <div style={{ display: "flex", gap: 7 }}>
-              {[{ic:"🏠",l:"Home"},{ic:"💼",l:"Office"},{ic:"⭐",l:"Saved"}].map((q,i) => (
-                <div key={i} style={{ flex: 1, background: "#faf9ff", border: "1px solid #ede9fe", borderRadius: 11, padding: "8px 0", textAlign: "center" }}>
-                  <div style={{ fontSize: 12 }}>{q.ic}</div>
-                  <div style={{ fontSize: 8, color: "#7c3aed", marginTop: 2, fontWeight: 600 }}>{q.l}</div>
+        <div style={{ flex: 1 }} />
+
+        {/* Bottom search sheet */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(245,243,255,0.96) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "white", borderRadius: "22px 22px 0 0", padding: "14px 14px 0", boxShadow: "0 -8px 30px rgba(124,58,237,0.1)", border: "1px solid #ede9fe", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#f3f4f6", borderRadius: 2, margin: "0 auto 12px" }} />
+
+              {/* Search bar */}
+              <div style={{ background: "#faf9ff", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 10, border: "1.5px solid #ede9fe" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#7c3aed" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
+                <span style={{ fontSize: 10, color: "#9ca3af" }}>Where do you want to go?</span>
+              </div>
+
+              {/* Quick places */}
+              <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+                {[{ic:"🏠",l:"Home",sub:"Ameerpet"},{ic:"💼",l:"Office",sub:"Hi-tech City"},{ic:"⭐",l:"Saved",sub:"2 places"}].map((q,i) => (
+                  <div key={i} style={{ flex: 1, background: "#faf9ff", border: "1px solid #ede9fe", borderRadius: 12, padding: "8px 6px", textAlign: "center" }}>
+                    <div style={{ fontSize: 13 }}>{q.ic}</div>
+                    <div style={{ fontSize: 8, color: "#7c3aed", marginTop: 2, fontWeight: 700 }}>{q.l}</div>
+                    <div style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>{q.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ride type tiles */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 8, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Choose Ride</div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  {[{ic:"🏍️",l:"Bike",p:"₹50",c:"#f97316"},{ic:"🛺",l:"Auto",p:"₹85",c:"#f59e0b",sel:true},{ic:"🚗",l:"Car",p:"₹180",c:"#7c3aed"}].map((r,i) => (
+                    <div key={i} style={{ flex: 1, background: r.sel ? "#ede9fe" : "#faf9ff", border: `1.5px solid ${r.sel ? "#7c3aed" : "#ede9fe"}`, borderRadius: 14, padding: "9px 6px", textAlign: "center" }}>
+                      <div style={{ fontSize: 16 }}>{r.ic}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: r.sel ? "#7c3aed" : "#6b7280", marginTop: 3 }}>{r.l}</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: r.c, marginTop: 1 }}>{r.p}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div style={{ height: 12 }} />
             </div>
           </div>
+          <BottomNav active="home" dark={false} accent="#7c3aed" />
         </div>
       </div>
     </PhoneFrame>
@@ -921,38 +1071,51 @@ function LightCustomerHome() {
 function LightCustomerTracking() {
   return (
     <PhoneFrame bg="white">
-      <div style={{ minHeight: 428, background: "white", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(160deg, #ddd6fe 0%, #e0e7ff 50%, #f1f5f9 100%)" }}>
-          <div style={{ position: "absolute", left: "38%", top: "20%", width: 2, height: "50%", background: "linear-gradient(180deg,#7c3aed,#7c3aed40)", borderRadius: 2 }} />
-          <div style={{ position: "absolute", top: "20%", left: "36%", width: 10, height: 10, background: "#7c3aed", borderRadius: "50%", boxShadow: "0 0 12px rgba(124,58,237,0.5)" }} />
-          <div style={{ position: "absolute", top: "53%", left: "34%", width: 24, height: 24, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 6px rgba(124,58,237,0.15)", fontSize: 12 }}>🚗</div>
-          <div style={{ position: "absolute", top: "70%", left: "36%", width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 12px rgba(239,68,68,0.5)" }} />
+      <div style={{ minHeight: 428, background: "white", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark={false} driverMode={false} />
+
+        {/* Route on map */}
+        <div style={{ position: "absolute", top: "20%", left: "38%", zIndex: 2 }}>
+          <div style={{ width: 10, height: 10, background: "#7c3aed", borderRadius: "50%", boxShadow: "0 0 12px rgba(124,58,237,0.5)" }} />
+          <div style={{ width: 2, height: 55, background: "linear-gradient(180deg,#7c3aed,#ef4444)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 22, height: 22, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, boxShadow: "0 0 0 5px rgba(124,58,237,0.15)", marginLeft: -4 }}>🚗</div>
+          <div style={{ width: 2, height: 35, background: "linear-gradient(180deg,#a78bfa,#ef4444)", borderRadius: 2, marginLeft: 4 }} />
+          <div style={{ width: 10, height: 10, background: "#ef4444", borderRadius: "50%", boxShadow: "0 0 10px rgba(239,68,68,0.5)" }} />
         </div>
 
-        <div style={{ position: "relative", zIndex: 2, background: "rgba(255,255,255,0.9)", padding: "8px 14px 10px", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(124,58,237,0.1)" }}>
-          <div style={{ fontSize: 7.5, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>● Driver On The Way</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1c1917", marginTop: 1 }}>Arriving in 4 min</div>
+        {/* Top status bar */}
+        <div style={{ position: "relative", zIndex: 3, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(16px)", padding: "8px 14px 10px", borderBottom: "1px solid rgba(124,58,237,0.1)" }}>
+          <div style={{ fontSize: 7, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5 }}>● Driver On The Way</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917" }}>Arriving in 4 min</div>
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 3, background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, white 25%)", padding: "30px 14px 14px" }}>
-          <div style={{ background: "white", borderRadius: 20, padding: "13px 14px", boxShadow: "0 8px 30px rgba(124,58,237,0.12)", border: "1px solid #ede9fe" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-              <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "white" }}>A</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#1c1917" }}>Anil Driver</div>
-                <div style={{ display: "flex", gap: 3 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#9ca3af", marginLeft: 2 }}>4.9</span></div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["📞","💬"].map((ic,i) => <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#f5f3ff", border: "1px solid #ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{ic}</div>)}
-              </div>
-            </div>
+        <div style={{ flex: 1 }} />
 
-            <div style={{ background: "#f5f3ff", borderRadius: 13, padding: "10px 12px", border: "1px solid #ede9fe", textAlign: "center" }}>
-              <div style={{ fontSize: 8, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔐 Your OTP</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#7c3aed", letterSpacing: 6, marginTop: 4 }}>7 9 2 3</div>
-              <div style={{ fontSize: 7.5, color: "#9ca3af", marginTop: 3 }}>Share this with driver when they arrive</div>
+        {/* Bottom driver card */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "linear-gradient(180deg,transparent,rgba(255,255,255,0.97) 30%)", padding: "20px 14px 0" }}>
+            <div style={{ background: "white", borderRadius: "20px 20px 0 0", padding: "14px 14px 0", boxShadow: "0 -8px 30px rgba(124,58,237,0.1)", border: "1px solid #ede9fe", borderBottom: "none" }}>
+              <div style={{ width: 36, height: 4, background: "#f3f4f6", borderRadius: 2, margin: "0 auto 12px" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "white", fontSize: 15 }}>A</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#1c1917" }}>Anil Driver</div>
+                  <div style={{ display: "flex", gap: 1 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#9ca3af", marginLeft: 3 }}>4.9</span></div>
+                </div>
+                <div style={{ display: "flex", gap: 5 }}>
+                  {[{ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 11a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.07 6.07l.9-.9a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" fill="#7c3aed"/></svg>}, {ic:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#7c3aed"/></svg>}].map((btn,i) => (
+                    <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#f5f3ff", border: "1px solid #ede9fe", display: "flex", alignItems: "center", justifyContent: "center" }}>{btn.ic}</div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: "#f5f3ff", borderRadius: 14, padding: "10px 12px", border: "1px solid #ede9fe", textAlign: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 8, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Your OTP</div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: "#7c3aed", letterSpacing: 8, marginTop: 4 }}>7923</div>
+                <div style={{ fontSize: 7.5, color: "#9ca3af", marginTop: 3 }}>Share with driver on arrival</div>
+              </div>
             </div>
           </div>
+          <BottomNav active="home" dark={false} accent="#7c3aed" />
         </div>
       </div>
     </PhoneFrame>
@@ -1008,68 +1171,66 @@ function LightCustomerWallet() {
 function LightDriverNewTrip() {
   return (
     <PhoneFrame bg="#fff8ed">
-      <div style={{ minHeight: 428, background: "linear-gradient(160deg,#fff8ed 0%,#fef3c7 50%,#fff8ed 100%)", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: "8%", left: "50%", transform: "translateX(-50%)", textAlign: "center", zIndex: 2 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: "#d97706", textTransform: "uppercase", letterSpacing: 1.5 }}>New Ride Request</div>
-        </div>
-        {[80, 112, 146].map((s, i) => (
-          <div key={i} style={{
-            position: "absolute", top: "26%", left: "50%", transform: "translate(-50%,-50%)",
-            width: s, height: s, borderRadius: "50%",
-            border: `1.5px solid rgba(245,158,11,${0.28 - i * 0.07})`,
-            zIndex: 2,
-          }} />
-        ))}
-        <div style={{
-          position: "absolute", top: "26%", left: "50%", transform: "translate(-50%,-50%)",
-          width: 62, height: 62, borderRadius: "50%",
-          background: "linear-gradient(135deg,#f59e0b,#ef4444)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 0 40px rgba(245,158,11,0.45)", zIndex: 3, fontSize: 26,
-        }}>🔔</div>
+      <div style={{ minHeight: 428, background: "#fff8ed", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <CityMap dark={false} driverMode />
+        <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.55)", zIndex: 1 }} />
 
-        <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 4,
-          background: "white", borderRadius: "26px 26px 0 0", padding: "16px 16px 14px",
-          border: "1.5px solid rgba(245,158,11,0.18)", boxShadow: "0 -12px 40px rgba(245,158,11,0.1)",
-        }}>
-          <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: "#d97706", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>🔔 New Ride Request!</div>
-            <div style={{ fontSize: 8, color: "#9ca3af", marginTop: 3 }}>Auto-cancel in 28 seconds</div>
-            <div style={{ height: 4, background: "#f3f4f6", borderRadius: 2, marginTop: 8, overflow: "hidden" }}>
+        {/* Pulsing notification center */}
+        <div style={{ position: "absolute", top: "24%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {[90,120,150].map((s,i) => <div key={i} style={{ position: "absolute", width: s, height: s, borderRadius: "50%", border: `1.5px solid rgba(245,158,11,${0.25-i*0.06})` }} />)}
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#ef4444)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 40px rgba(245,158,11,0.45)", fontSize: 26 }}>🔔</div>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Main trip card */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <div style={{ background: "white", borderRadius: "24px 24px 0 0", padding: "14px 14px 0", boxShadow: "0 -12px 40px rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.15)", borderBottom: "none" }}>
+            <div style={{ width: 36, height: 4, background: "#f3f4f6", borderRadius: 2, margin: "0 auto 10px" }} />
+
+            {/* Timer */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#d97706", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>New Ride Request</div>
+              <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: "#d97706" }}>28s</div>
+            </div>
+            <div style={{ height: 3, background: "#f3f4f6", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
               <div style={{ width: "65%", height: "100%", background: "linear-gradient(90deg,#22c55e,#f59e0b,#ef4444)", borderRadius: 2 }} />
             </div>
-          </div>
 
-          <div style={{ background: "#fafafa", borderRadius: 14, padding: "11px 13px", marginBottom: 10, border: "1px solid #f3f4f6" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "white" }}>A</div>
+            {/* Customer */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "white", fontSize: 14 }}>A</div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Arjun Reddy</div>
-                  <div style={{ display: "flex", gap: 2 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 7, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 7, color: "#9ca3af" }}>4.9</span></div>
+                  <div style={{ display: "flex", gap: 1 }}>{[...Array(5)].map((_,i) => <span key={i} style={{ fontSize: 8, color: "#f59e0b" }}>★</span>)}<span style={{ fontSize: 8, color: "#9ca3af", marginLeft: 3 }}>4.9</span></div>
                 </div>
               </div>
-              <div style={{ background: "#fef3c7", border: "1.5px solid #f59e0b", borderRadius: 10, padding: "4px 10px", fontSize: 13, color: "#d97706", fontWeight: 800 }}>₹185</div>
+              <div style={{ background: "#fef3c7", border: "1.5px solid #f59e0b", borderRadius: 10, padding: "5px 10px", fontSize: 14, fontWeight: 900, color: "#d97706" }}>₹185</div>
             </div>
-            {[
-              { dot: "#22c55e", label: "MGBS Bus Stand, Hyderabad" },
-              { dot: "#ef4444", label: "Banjara Hills Road No. 12" },
-            ].map((loc, i) => (
-              <div key={i} style={{ display: "flex", gap: 7, alignItems: "center", marginTop: i === 0 ? 0 : 5 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, flexShrink: 0, boxShadow: `0 0 6px ${loc.dot}` }} />
-                <span style={{ fontSize: 9, color: "#4b5563" }}>{loc.label}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-              <span style={{ fontSize: 8.5, color: "#3b82f6" }}>📍 2.4 km away</span>
-              <span style={{ fontSize: 8.5, color: "#7c3aed" }}>⏱ 8 min pickup</span>
-            </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1, background: "#f3f4f6", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#6b7280" }}>✕ Reject</div>
-            <div style={{ flex: 2, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 12, padding: "11px 0", textAlign: "center", fontSize: 11, fontWeight: 700, color: "white", boxShadow: "0 6px 20px rgba(34,197,94,0.35)" }}>✓ Accept Ride</div>
+            {/* Route */}
+            <div style={{ background: "#fafafa", borderRadius: 12, padding: "10px 12px", marginBottom: 10, border: "1px solid #f3f4f6" }}>
+              {[{dot:"#22c55e",label:"MGBS Bus Stand, Hyderabad"},{dot:"#ef4444",label:"Banjara Hills Rd No. 12"}].map((loc,i) => (
+                <div key={i}>
+                  {i > 0 && <div style={{ width: 1.5, height: 8, background: "#e5e7eb", marginLeft: 3, marginTop: 2, marginBottom: 2 }} />}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, color: "#4b5563" }}>{loc.label}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 14, marginTop: 8, paddingTop: 8, borderTop: "1px solid #f3f4f6" }}>
+                <span style={{ fontSize: 9, color: "#3b82f6", fontWeight: 600 }}>📍 2.4 km pickup</span>
+                <span style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600 }}>⏱ 8 min ETA</span>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 8, paddingBottom: 12 }}>
+              <div style={{ flex: 1, background: "#f3f4f6", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#6b7280" }}>✕  Decline</div>
+              <div style={{ flex: 2, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 800, color: "white", boxShadow: "0 6px 20px rgba(34,197,94,0.35)" }}>✓  Accept Ride</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1081,55 +1242,55 @@ function LightDriverNewTrip() {
 // CUSTOMER — BOOKING CONFIRMATION SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function DarkCustomerBooking() {
+  const vehicles = [
+    {ic:"🏍️",l:"Bike",p:"₹50",eta:"1 min",n:3,c:"#f97316",active:false},
+    {ic:"🛺",l:"Auto",p:"₹85",eta:"2 min",n:5,c:"#f59e0b",active:true},
+    {ic:"🚗",l:"Car",p:"₹180",eta:"3 min",n:2,c:"#7c3aed",active:false},
+    {ic:"🚙",l:"SUV",p:"₹350",eta:"5 min",n:1,c:"#3b82f6",active:false},
+  ];
   return (
     <PhoneFrame bg="#0d0b1a">
-      <div style={{ minHeight: 428, background: "#0d0b1a", position: "relative", overflow: "hidden" }}>
-        <div style={{ background: "linear-gradient(135deg,#13103a,#1e1a3a)", padding: "10px 14px 14px", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: -20, right: -20, width: 90, height: 90, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.3) 0%, transparent 70%)" }} />
-          <div style={{ fontSize: 7.5, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Book a Ride</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>Choose Vehicle Type</div>
-        </div>
-
-        <div style={{ padding: "10px 12px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 10 }}>
-            {[
-              { icon: "🚗", label: "Car", price: "₹180", eta: "3 min", active: false },
-              { icon: "🛺", label: "Auto", price: "₹85", eta: "2 min", active: true },
-              { icon: "🏍️", label: "Bike", price: "₹50", eta: "1 min", active: false },
-              { icon: "🚙", label: "SUV", price: "₹350", eta: "5 min", active: false },
-            ].map((v, i) => (
-              <div key={i} style={{
-                background: v.active ? "rgba(124,58,237,0.15)" : "#13103a",
-                border: `1.5px solid ${v.active ? "#7c3aed" : "rgba(124,58,237,0.1)"}`,
-                borderRadius: 13, padding: "10px 10px 8px", cursor: "pointer",
-                boxShadow: v.active ? "0 0 0 3px rgba(124,58,237,0.12)" : "none",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 20 }}>{v.icon}</span>
-                  {v.active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed", boxShadow: "0 0 8px #7c3aed" }} />}
+      <div style={{ minHeight: 428, background: "#0d0b1a", display: "flex", flexDirection: "column" }}>
+        {/* Top route bar */}
+        <div style={{ background: "linear-gradient(135deg,#13103a,#1e1a3a)", padding: "10px 14px 12px", borderBottom: "1px solid rgba(124,58,237,0.15)" }}>
+          <div style={{ fontSize: 7, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Choose Your Ride</div>
+          <div style={{ background: "#1e1a3a", borderRadius: 12, padding: "9px 12px", border: "1px solid rgba(124,58,237,0.15)" }}>
+            {[{dot:"#22c55e",label:"MGBS Bus Stand, Hyderabad"},{dot:"#ef4444",label:"Banjara Hills Road No. 12"}].map((loc,i) => (
+              <div key={i}>
+                {i > 0 && <div style={{ width: 1.5, height: 7, background: "#334155", marginLeft: 3, marginTop: 2, marginBottom: 2 }} />}
+                <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, boxShadow: `0 0 6px ${loc.dot}`, flexShrink: 0 }} />
+                  <span style={{ fontSize: 9, color: "#94a3b8" }}>{loc.label}</span>
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: v.active ? "#a78bfa" : "white", marginTop: 4 }}>{v.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 900, color: v.active ? "#7c3aed" : "#a78bfa", marginTop: 1 }}>{v.price}</div>
-                <div style={{ fontSize: 7.5, color: "#475569", marginTop: 2 }}>⏱ {v.eta}</div>
               </div>
             ))}
           </div>
+        </div>
 
-          <div style={{ background: "#13103a", borderRadius: 14, padding: "10px 12px", marginBottom: 9, border: "1px solid rgba(124,58,237,0.12)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-              <span style={{ fontSize: 9, color: "#94a3b8", flex: 1 }}>MGBS Bus Stand, Hyderabad</span>
+        {/* Vertical vehicle list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 14px" }}>
+          {vehicles.map((v,i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: v.active ? "rgba(124,58,237,0.15)" : "#13103a", border: `1.5px solid ${v.active ? "#7c3aed" : "rgba(124,58,237,0.08)"}`, borderRadius: 14, marginBottom: 7, position: "relative", overflow: "hidden" }}>
+              {v.active && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "#7c3aed", borderRadius: "3px 0 0 3px" }} />}
+              <div style={{ width: 40, height: 40, background: v.active ? "rgba(124,58,237,0.2)" : "#1e1a3a", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: `1px solid ${v.active ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.04)"}` }}>{v.ic}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: v.active ? "#a78bfa" : "white" }}>{v.l}</span>
+                  {v.active && <span style={{ fontSize: 7, background: "#7c3aed", color: "white", borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>SELECTED</span>}
+                </div>
+                <div style={{ fontSize: 8, color: "#475569", marginTop: 2 }}>⏱ {v.eta} · {v.n} nearby</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 900, color: v.c }}>{v.p}</div>
+                <div style={{ fontSize: 7, color: "#475569", marginTop: 1 }}>per ride</div>
+              </div>
             </div>
-            <div style={{ height: 1, background: "rgba(255,255,255,0.04)", marginLeft: 8, marginBottom: 6 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444", boxShadow: "0 0 6px #ef4444" }} />
-              <span style={{ fontSize: 9, color: "#94a3b8", flex: 1 }}>Banjara Hills Road No. 12</span>
-            </div>
-          </div>
+          ))}
+        </div>
 
-          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
-            🚀 Book Auto — ₹85
-          </div>
+        {/* Book button */}
+        <div style={{ padding: "10px 14px 12px", background: "#0d0b1a", borderTop: "1px solid rgba(124,58,237,0.1)" }}>
+          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 16, padding: "13px 0", textAlign: "center", fontSize: 13, fontWeight: 800, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>Book Auto Ride — ₹85</div>
         </div>
       </div>
     </PhoneFrame>
@@ -1137,54 +1298,55 @@ function DarkCustomerBooking() {
 }
 
 function LightCustomerBooking() {
+  const vehicles = [
+    {ic:"🏍️",l:"Bike",p:"₹50",eta:"1 min",n:3,c:"#f97316",active:false},
+    {ic:"🛺",l:"Auto",p:"₹85",eta:"2 min",n:5,c:"#d97706",active:true},
+    {ic:"🚗",l:"Car",p:"₹180",eta:"3 min",n:2,c:"#7c3aed",active:false},
+    {ic:"🚙",l:"SUV",p:"₹350",eta:"5 min",n:1,c:"#2563eb",active:false},
+  ];
   return (
     <PhoneFrame bg="white">
-      <div style={{ minHeight: 428, background: "white", position: "relative", overflow: "hidden" }}>
-        <div style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", padding: "10px 14px 14px" }}>
-          <div style={{ fontSize: 7.5, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Book a Ride</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917" }}>Choose Vehicle Type</div>
-        </div>
-
-        <div style={{ padding: "10px 12px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 10 }}>
-            {[
-              { icon: "🚗", label: "Car", price: "₹180", eta: "3 min", active: false },
-              { icon: "🛺", label: "Auto", price: "₹85", eta: "2 min", active: true },
-              { icon: "🏍️", label: "Bike", price: "₹50", eta: "1 min", active: false },
-              { icon: "🚙", label: "SUV", price: "₹350", eta: "5 min", active: false },
-            ].map((v, i) => (
-              <div key={i} style={{
-                background: v.active ? "#ede9fe" : "#faf9ff",
-                border: `1.5px solid ${v.active ? "#7c3aed" : "#e5e7eb"}`,
-                borderRadius: 13, padding: "10px 10px 8px", cursor: "pointer",
-                boxShadow: v.active ? "0 0 0 3px rgba(124,58,237,0.08), 0 4px 16px rgba(124,58,237,0.12)" : "none",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 20 }}>{v.icon}</span>
-                  {v.active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />}
+      <div style={{ minHeight: 428, background: "white", display: "flex", flexDirection: "column" }}>
+        {/* Top route bar */}
+        <div style={{ background: "linear-gradient(135deg,#ede9fe,#f5f3ff)", padding: "10px 14px 12px", borderBottom: "1px solid #e5e7eb" }}>
+          <div style={{ fontSize: 7, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Choose Your Ride</div>
+          <div style={{ background: "white", borderRadius: 12, padding: "9px 12px", border: "1px solid #ede9fe", boxShadow: "0 2px 8px rgba(124,58,237,0.06)" }}>
+            {[{dot:"#22c55e",label:"MGBS Bus Stand, Hyderabad"},{dot:"#ef4444",label:"Banjara Hills Road No. 12"}].map((loc,i) => (
+              <div key={i}>
+                {i > 0 && <div style={{ width: 1.5, height: 7, background: "#e5e7eb", marginLeft: 3, marginTop: 2, marginBottom: 2 }} />}
+                <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: loc.dot, flexShrink: 0 }} />
+                  <span style={{ fontSize: 9, color: "#6b7280" }}>{loc.label}</span>
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#1c1917", marginTop: 4 }}>{v.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#7c3aed", marginTop: 1 }}>{v.price}</div>
-                <div style={{ fontSize: 7.5, color: "#9ca3af", marginTop: 2 }}>⏱ {v.eta}</div>
               </div>
             ))}
           </div>
+        </div>
 
-          <div style={{ background: "#faf9ff", borderRadius: 14, padding: "10px 12px", marginBottom: 9, border: "1.5px solid #ede9fe" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
-              <span style={{ fontSize: 9, color: "#6b7280", flex: 1 }}>MGBS Bus Stand, Hyderabad</span>
+        {/* Vertical vehicle list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 14px" }}>
+          {vehicles.map((v,i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: v.active ? "#faf5ff" : "#faf9ff", border: `1.5px solid ${v.active ? "#7c3aed" : "#f3f4f6"}`, borderRadius: 14, marginBottom: 7, position: "relative", overflow: "hidden", boxShadow: v.active ? "0 4px 16px rgba(124,58,237,0.1)" : "none" }}>
+              {v.active && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "#7c3aed", borderRadius: "3px 0 0 3px" }} />}
+              <div style={{ width: 40, height: 40, background: v.active ? "#ede9fe" : "#f9fafb", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: `1px solid ${v.active ? "#c4b5fd" : "#e5e7eb"}` }}>{v.ic}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: v.active ? "#7c3aed" : "#1c1917" }}>{v.l}</span>
+                  {v.active && <span style={{ fontSize: 7, background: "#7c3aed", color: "white", borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>SELECTED</span>}
+                </div>
+                <div style={{ fontSize: 8, color: "#9ca3af", marginTop: 2 }}>⏱ {v.eta} · {v.n} nearby</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 900, color: v.c }}>{v.p}</div>
+                <div style={{ fontSize: 7, color: "#9ca3af", marginTop: 1 }}>per ride</div>
+              </div>
             </div>
-            <div style={{ height: 1, background: "#f3f4f6", marginLeft: 8, marginBottom: 6 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} />
-              <span style={{ fontSize: 9, color: "#6b7280", flex: 1 }}>Banjara Hills Road No. 12</span>
-            </div>
-          </div>
+          ))}
+        </div>
 
-          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 14, padding: "12px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
-            🚀 Book Auto — ₹85
-          </div>
+        {/* Book button */}
+        <div style={{ padding: "10px 14px 12px", background: "white", borderTop: "1px solid #f3f4f6" }}>
+          <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 16, padding: "13px 0", textAlign: "center", fontSize: 13, fontWeight: 800, color: "white", boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>Book Auto Ride — ₹85</div>
         </div>
       </div>
     </PhoneFrame>
