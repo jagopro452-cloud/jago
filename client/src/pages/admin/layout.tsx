@@ -157,6 +157,12 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    category: "Developer",
+    items: [
+      { label: "API Reference", icon: "bi-code-square", href: "/admin/api-docs" },
+    ],
+  },
+  {
     category: "Reviews",
     items: [
       { label: "Reviews", icon: "bi-star-fill", href: "/admin/reviews" },

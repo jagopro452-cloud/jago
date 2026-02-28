@@ -42,6 +42,7 @@ import Subscriptions from "@/pages/admin/subscriptions";
 import RevenueModel from "@/pages/admin/revenue-model";
 import DriverWalletPage from "@/pages/admin/driver-wallet";
 import RefundRequestsPage from "@/pages/admin/refund-requests";
+import ApiDocsPage from "@/pages/admin/api-docs";
 import ParcelAttributes from "@/pages/admin/parcel-attributes";
 import VehicleAttributes from "@/pages/admin/vehicle-attributes";
 import VehicleRequests from "@/pages/admin/vehicle-requests";
@@ -139,6 +140,7 @@ function AdminRoutes() {
         <Route path="/admin/driver-earnings" component={DriverEarnings} />
         <Route path="/admin/driver-wallet" component={DriverWalletPage} />
         <Route path="/admin/refund-requests" component={RefundRequestsPage} />
+        <Route path="/admin/api-docs" component={ApiDocsPage} />
         {/* Referrals */}
         <Route path="/admin/referrals" component={Referrals} />
         <Route><Redirect to="/admin/dashboard" /></Route>
