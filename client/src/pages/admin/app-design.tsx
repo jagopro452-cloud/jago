@@ -4,22 +4,22 @@ type AppTab = "driver" | "customer";
 type ThemeMode = "dark" | "light";
 
 // ── JAGO Logo Component ──────────────────────────────────────────────────────
-function JagoLogo({ size = 56, variant = "amber", showPilot = false }: { size?: number; variant?: "amber" | "purple" | "white"; showPilot?: boolean }) {
+function JagoLogo({ size = 56, variant = "amber", showPilot = false, darkBg = true }: {
+  size?: number; variant?: "amber" | "purple" | "white"; showPilot?: boolean; darkBg?: boolean;
+}) {
   const src = showPilot ? "/jago-pilot-logo.png" : "/jago-logo.png";
-  const isLight = variant === "white";
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      borderRadius: size * 0.18,
+      padding: darkBg ? 0 : `${size * 0.1}px ${size * 0.25}px`,
+      background: darkBg ? "transparent" : "rgba(0,0,0,0.82)",
+      backdropFilter: darkBg ? "none" : "blur(6px)",
+    }}>
       <img
         src={src}
         alt={showPilot ? "JAGO Pilot" : "JAGO"}
-        style={{
-          height: size,
-          width: "auto",
-          objectFit: "contain",
-          filter: isLight ? "brightness(10)" : "none",
-          mixBlendMode: "screen",
-          maxWidth: size * 3,
-        }}
+        style={{ height: size, width: "auto", objectFit: "contain", maxWidth: size * 4, display: "block" }}
       />
     </div>
   );
@@ -115,9 +115,7 @@ function DarkDriverLogin() {
           background: "radial-gradient(circle at top right, rgba(245,158,11,0.08) 0%, transparent 70%)" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-          <JagoLogo size={32} variant="amber" />
-          <div style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#f59e0b", background: "rgba(245,158,11,0.15)", padding: "2px 7px", borderRadius: 6, marginLeft: 2, fontWeight: 800, letterSpacing: 0.5, border: "1px solid rgba(245,158,11,0.3)" }}>PILOT</div>
+          <JagoLogo size={38} variant="amber" showPilot={true} />
         </div>
 
         <div style={{ color: "white", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Welcome<br />Back <span style={{ fontSize: 18 }}>👋</span></div>
@@ -187,7 +185,7 @@ function DarkDriverHome() {
         <div style={{ position: "relative", zIndex: 2, padding: "8px 14px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <JagoLogo size={24} variant="amber" />
+              <JagoLogo size={24} variant="amber" showPilot={true} />
               <div>
                 <div style={{ fontSize: 7, color: "#475569" }}>Good Morning</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "white" }}>Anil Driver 👋</div>
@@ -378,7 +376,7 @@ function DarkDriverWallet() {
         <div style={{ background: "linear-gradient(135deg,#12112a,#0d1f35)", padding: "10px 16px 20px", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", top: 0, right: 0, width: 120, height: 120, background: "radial-gradient(circle at top right, rgba(245,158,11,0.1) 0%, transparent 70%)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <JagoLogo size={22} variant="amber" />
+            <JagoLogo size={22} variant="amber" showPilot={true} />
             <div style={{ fontSize: 8, color: "#64748b", textTransform: "uppercase", fontWeight: 600, letterSpacing: 1 }}>Driver Wallet</div>
           </div>
           <div style={{ textAlign: "center" }}>
@@ -453,9 +451,7 @@ function LightDriverLogin() {
         <div style={{ position: "absolute", top: 0, right: 0, width: 160, height: 160, background: "radial-gradient(circle at top right, rgba(245,158,11,0.08) 0%, transparent 70%)" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22 }}>
-          <JagoLogo size={32} variant="amber" />
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#d97706", background: "#fef3c7", padding: "2px 7px", borderRadius: 6, marginLeft: 2, fontWeight: 800, letterSpacing: 0.5, border: "1px solid #fde68a" }}>PILOT</div>
+          <JagoLogo size={32} variant="amber" showPilot={true} darkBg={false} />
         </div>
 
         <div style={{ color: "#1c1917", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Welcome<br />Back <span style={{ fontSize: 18 }}>👋</span></div>
@@ -506,7 +502,7 @@ function LightDriverHome() {
         <div style={{ position: "relative", zIndex: 2, padding: "8px 14px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <JagoLogo size={24} variant="amber" />
+              <JagoLogo size={24} variant="amber" showPilot={true} darkBg={false} />
               <div>
                 <div style={{ fontSize: 7, color: "#6b7280" }}>Good Morning</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Anil Driver 👋</div>
@@ -555,7 +551,7 @@ function LightDriverWallet() {
       <div style={{ minHeight: 428, background: "white" }}>
         <div style={{ background: "linear-gradient(135deg,#fffbeb,#fff7ed)", padding: "10px 16px 20px", position: "relative", overflow: "hidden", borderBottom: "1px solid #fef3c7" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <JagoLogo size={22} variant="amber" />
+            <JagoLogo size={22} variant="amber" showPilot={true} darkBg={false} />
             <div style={{ fontSize: 8, color: "#d97706", textTransform: "uppercase", fontWeight: 700, letterSpacing: 1 }}>Driver Wallet</div>
           </div>
           <div style={{ textAlign: "center" }}>
@@ -624,9 +620,7 @@ function DarkCustomerLogin() {
         <div style={{ position: "absolute", top: 0, right: 0, width: 140, height: 140, background: "radial-gradient(circle at top right, rgba(124,58,237,0.1) 0%, transparent 70%)" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-          <JagoLogo size={32} variant="purple" />
-          <div style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#a78bfa", background: "rgba(124,58,237,0.1)", padding: "2px 6px", borderRadius: 6, marginLeft: 4 }}>CUSTOMER</div>
+          <JagoLogo size={38} variant="purple" />
         </div>
 
         <div style={{ color: "white", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Hello <span style={{ fontSize: 18 }}>👋</span><br /><span style={{ color: "#a78bfa" }}>Where to?</span></div>
@@ -831,9 +825,7 @@ function LightCustomerLogin() {
         <div style={{ position: "absolute", top: 0, right: 0, width: 140, height: 140, background: "radial-gradient(circle at top right, rgba(124,58,237,0.06) 0%, transparent 70%)" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22 }}>
-          <JagoLogo size={32} variant="purple" />
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#1c1917", letterSpacing: 1 }}>JAGO</div>
-          <div style={{ fontSize: 8, color: "#7c3aed", background: "#ede9fe", padding: "2px 7px", borderRadius: 6, marginLeft: 4, fontWeight: 700 }}>CUSTOMER</div>
+          <JagoLogo size={32} variant="purple" darkBg={false} />
         </div>
 
         <div style={{ color: "#1c1917", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Hello <span style={{ fontSize: 18 }}>👋</span><br /><span style={{ color: "#7c3aed" }}>Where to?</span></div>
@@ -895,7 +887,7 @@ function LightCustomerHome() {
         <div style={{ position: "relative", zIndex: 2, padding: "8px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <JagoLogo size={24} variant="purple" />
+              <JagoLogo size={24} variant="purple" darkBg={false} />
               <div>
                 <div style={{ fontSize: 7, color: "#6b7280" }}>Hello,</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#1c1917" }}>Arjun Reddy 🙌</div>
@@ -973,7 +965,7 @@ function LightCustomerWallet() {
       <div style={{ minHeight: 428, background: "white" }}>
         <div style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", padding: "10px 16px 20px", position: "relative", overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <JagoLogo size={22} variant="purple" />
+            <JagoLogo size={22} variant="purple" darkBg={false} />
             <div style={{ fontSize: 8, color: "#7c3aed", textTransform: "uppercase", fontWeight: 700, letterSpacing: 1 }}>My Wallet</div>
           </div>
           <div style={{ textAlign: "center" }}>
