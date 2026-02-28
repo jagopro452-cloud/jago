@@ -136,6 +136,26 @@ function enableSmoothMarker(marker: any) {
   }, 50);
 }
 
+function createDriverIcon(L: any, status: string) {
+  const color = status === "active" ? "#16a34a" : "#94a3b8";
+  const bg = status === "active" ? "#f0fdf4" : "#f8fafc";
+  return L.divIcon({
+    html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
+      <div style="
+        width:36px;height:36px;border-radius:50%;
+        background:${bg};border:2.5px solid ${color};
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 3px 12px rgba(0,0,0,0.18);font-size:18px;
+      ">🧑‍✈️</div>
+      <div style="width:8px;height:8px;border-radius:50%;background:${color};margin-top:2px;box-shadow:0 0 0 2px white;"></div>
+    </div>`,
+    className: "",
+    iconSize: [36, 48],
+    iconAnchor: [18, 46],
+    popupAnchor: [0, -48],
+  });
+}
+
 export default function FleetViewPage() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -144,16 +164,32 @@ export default function FleetViewPage() {
   const [selected, setSelected] = useState<any>(null);
   const [filter, setFilter] = useState<"all" | "ride" | "parcel">("all");
   const [tileStyle, setTileStyle] = useState<"light" | "voyager" | "dark">("voyager");
+  const [viewMode, setViewMode] = useState<"trips" | "drivers">("trips");
+  const [driverStatusFilter, setDriverStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [zoneFilter, setZoneFilter] = useState<string>("all");
 
   const { data: trips = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/live-tracking"],
     refetchInterval: 5000,
   });
   const { data: allData } = useQuery<any>({ queryKey: ["/api/trips"] });
+  const { data: fleetDrivers = [], isLoading: driversLoading } = useQuery<any[]>({
+    queryKey: ["/api/fleet-drivers"],
+    refetchInterval: 8000,
+  });
+  const { data: zones = [] } = useQuery<any[]>({ queryKey: ["/api/zones"] });
 
   const filtered = filter === "all" ? trips : trips.filter((t: any) => t.type === filter);
   const rideCount = trips.filter((t: any) => t.type === "ride").length;
   const parcelCount = trips.filter((t: any) => t.type === "parcel").length;
+
+  const filteredDrivers = (fleetDrivers as any[]).filter(d => {
+    if (driverStatusFilter === "active") return d.status === "active";
+    if (driverStatusFilter === "inactive") return d.status !== "active";
+    return true;
+  });
+  const onlineDriverCount = (fleetDrivers as any[]).filter(d => d.status === "active").length;
+  const offlineDriverCount = (fleetDrivers as any[]).length - onlineDriverCount;
 
   const TILES: Record<string, { url: string; attr: string }> = {
     voyager: {
@@ -194,9 +230,84 @@ export default function FleetViewPage() {
     mapInstance.current = map;
   }, [mapReady]);
 
-  // Update markers on each data refresh
+  // Clear all map markers helper
+  const clearAllMarkers = useCallback(() => {
+    if (!mapInstance.current) return;
+    layersRef.current.forEach(entry => {
+      if (entry.all) entry.all.forEach((l: any) => { try { mapInstance.current.removeLayer(l); } catch {} });
+      else if (entry._leaflet_id !== undefined) { try { mapInstance.current.removeLayer(entry); } catch {} }
+    });
+    layersRef.current.clear();
+  }, []);
+
+  // Switch mode: clear all markers
   useEffect(() => {
-    if (!mapReady || !mapInstance.current) return;
+    if (mapReady && mapInstance.current) clearAllMarkers();
+  }, [viewMode, clearAllMarkers, mapReady]);
+
+  // Driver markers (when in drivers mode)
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current || viewMode !== "drivers") return;
+    const L = window.L;
+    const map = mapInstance.current;
+    const currentIds = new Set(filteredDrivers.map((d: any) => `drv-${d.id}`));
+
+    layersRef.current.forEach((entry, id) => {
+      if (!currentIds.has(id)) {
+        if (entry.all) entry.all.forEach((l: any) => { try { map.removeLayer(l); } catch {} });
+        layersRef.current.delete(id);
+      }
+    });
+
+    filteredDrivers.forEach((driver: any) => {
+      const key = `drv-${driver.id}`;
+      const existing = layersRef.current.get(key);
+      const statusColor = driver.status === "active" ? "#16a34a" : "#94a3b8";
+      const statusLabel = driver.status === "active" ? "Online" : "Offline";
+
+      if (existing) {
+        existing.marker.setLatLng([driver.lat, driver.lng]);
+      } else {
+        const marker = L.marker([driver.lat, driver.lng], {
+          icon: createDriverIcon(L, driver.status),
+          zIndexOffset: driver.status === "active" ? 800 : 400,
+        }).addTo(map);
+        marker.bindTooltip(driver.name, { className: "jago-marker-tooltip", direction: "top", offset: [0, -8] });
+        marker.bindPopup(`
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:200px">
+            <div style="background:${statusColor};padding:12px 14px;color:white">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:18px">🧑‍✈️</div>
+                <div>
+                  <div style="font-weight:700;font-size:14px">${driver.name}</div>
+                  <div style="font-size:11px;opacity:.85">${statusLabel}</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:12px 14px">
+              <div style="margin-bottom:8px">
+                <div style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Phone</div>
+                <div style="font-weight:600;font-size:13px">${driver.phone || "—"}</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <div style="flex:1;background:#f8fafc;border-radius:8px;padding:8px;text-align:center">
+                  <div style="font-weight:700;font-size:14px;color:${statusColor}">●</div>
+                  <div style="font-size:10px;color:#94a3b8">Status</div>
+                  <div style="font-size:11px;font-weight:600;color:${statusColor}">${statusLabel}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `, { className: "jago-popup", maxWidth: 200 });
+        marker.on("click", () => setSelected(driver));
+        layersRef.current.set(key, { marker, all: [marker] });
+      }
+    });
+  }, [mapReady, filteredDrivers, viewMode]);
+
+  // Update markers on each data refresh (TRIP mode)
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current || viewMode !== "trips") return;
     const L = window.L;
     const map = mapInstance.current;
     const currentIds = new Set(filtered.map((t: any) => t.id));
@@ -311,12 +422,19 @@ export default function FleetViewPage() {
     }
   }, []);
 
-  const stats = [
+  const tripStats = [
     { label: "Live Trips", val: trips.length, icon: "bi-broadcast-pin", color: "#ef4444", bg: "linear-gradient(135deg,#ef444415,#fca5a515)" },
     { label: "Rides", val: rideCount, icon: "bi-car-front-fill", color: "#1a73e8", bg: "linear-gradient(135deg,#1a73e815,#93c5fd15)" },
     { label: "Parcels", val: parcelCount, icon: "bi-box-seam-fill", color: "#16a34a", bg: "linear-gradient(135deg,#16a34a15,#86efac15)" },
     { label: "Total Trips", val: allData?.total || 0, icon: "bi-graph-up-arrow", color: "#8b5cf6", bg: "linear-gradient(135deg,#8b5cf615,#c4b5fd15)" },
   ];
+  const driverStats = [
+    { label: "Total Drivers", val: (fleetDrivers as any[]).length, icon: "bi-people-fill", color: "#0f172a", bg: "linear-gradient(135deg,#0f172a15,#64748b15)" },
+    { label: "Online", val: onlineDriverCount, icon: "bi-circle-fill", color: "#16a34a", bg: "linear-gradient(135deg,#16a34a15,#86efac15)" },
+    { label: "Offline", val: offlineDriverCount, icon: "bi-circle", color: "#94a3b8", bg: "linear-gradient(135deg,#94a3b815,#cbd5e115)" },
+    { label: "Zones", val: (zones as any[]).length, icon: "bi-map-fill", color: "#7c3aed", bg: "linear-gradient(135deg,#7c3aed15,#c4b5fd15)" },
+  ];
+  const stats = viewMode === "drivers" ? driverStats : tripStats;
 
   return (
     <>
@@ -324,18 +442,41 @@ export default function FleetViewPage() {
         <div className="container-fluid">
           <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
             <div className="d-flex align-items-center gap-3">
-              <h2 className="h5 mb-0 fw-bold">Live Vehicle Tracking</h2>
+              <h2 className="h5 mb-0 fw-bold">{viewMode === "drivers" ? "All Drivers Map" : "Live Vehicle Tracking"}</h2>
               <span className="live-badge">
                 <span className="live-dot"></span>
                 <span className="text-danger fw-semibold" style={{ fontSize: 12 }}>LIVE</span>
               </span>
             </div>
-            <div className="d-flex gap-2 align-items-center">
+            <div className="d-flex gap-2 align-items-center flex-wrap">
+              {/* Mode toggle */}
+              <div className="btn-group btn-group-sm" data-testid="btn-group-view-mode">
+                <button className={`btn ${viewMode === "trips" ? "btn-primary" : "btn-outline-secondary"}`}
+                  style={{ fontSize: 11 }} onClick={() => { setViewMode("trips"); setSelected(null); }}
+                  data-testid="btn-mode-trips">
+                  <i className="bi bi-broadcast-pin me-1"></i>Live Trips
+                </button>
+                <button className={`btn ${viewMode === "drivers" ? "btn-primary" : "btn-outline-secondary"}`}
+                  style={{ fontSize: 11 }} onClick={() => { setViewMode("drivers"); setSelected(null); }}
+                  data-testid="btn-mode-drivers">
+                  <i className="bi bi-people-fill me-1"></i>All Drivers
+                </button>
+              </div>
+              {/* Zone filter */}
+              {(zones as any[]).length > 0 && (
+                <select className="form-select form-select-sm" style={{ fontSize: 11, maxWidth: 150 }}
+                  value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}
+                  data-testid="select-zone-filter">
+                  <option value="all">All Zones</option>
+                  {(zones as any[]).map((z: any) => (
+                    <option key={z.id} value={z.id}>{z.name}</option>
+                  ))}
+                </select>
+              )}
               {/* Tile switcher */}
               <div className="btn-group btn-group-sm">
                 {(["voyager","light","dark"] as const).map(s => (
-                  <button
-                    key={s}
+                  <button key={s}
                     className={`btn ${tileStyle === s ? "btn-primary" : "btn-outline-secondary"}`}
                     style={{ fontSize: 11, textTransform: "capitalize" }}
                     onClick={() => {
@@ -353,11 +494,12 @@ export default function FleetViewPage() {
                   >{s}</button>
                 ))}
               </div>
-              <button
-                className="btn btn-sm btn-outline-danger"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/live-tracking"] })}
-                data-testid="button-refresh-tracking"
-              >
+              <button className="btn btn-sm btn-outline-danger"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ["/api/live-tracking"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/fleet-drivers"] });
+                }}
+                data-testid="button-refresh-tracking">
                 <i className="bi bi-arrow-clockwise me-1"></i>Refresh
               </button>
             </div>
@@ -419,112 +561,158 @@ export default function FleetViewPage() {
             </div>
           </div>
 
-          {/* Trip list */}
+          {/* Right panel */}
           <div className="col-lg-4">
             <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 16, overflow: "hidden" }}>
               <div className="card-header bg-white py-2 px-3" style={{ borderBottom: "1px solid #f1f5f9" }}>
-                <div className="d-flex gap-1">
-                  {(["all","ride","parcel"] as const).map(f => {
-                    const cnt = f === "all" ? trips.length : f === "ride" ? rideCount : parcelCount;
-                    const active = filter === f;
-                    return (
-                      <button key={f}
-                        className="btn btn-sm flex-fill fw-semibold"
-                        style={{
-                          fontSize: 12, borderRadius: 8,
-                          background: active ? "#1a73e8" : "#f1f5f9",
-                          color: active ? "white" : "#64748b",
-                          border: "none", transition: "all 0.2s",
-                        }}
-                        onClick={() => setFilter(f)}
-                        data-testid={`tab-${f}`}
-                      >
-                        {f === "all" ? "All" : f === "ride" ? "Rides" : "Parcels"}
-                        <span className="ms-1 badge rounded-pill"
-                          style={{ background: active ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: active ? "white" : "#475569", fontSize: 10 }}>
-                          {cnt}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {viewMode === "trips" ? (
+                  <div className="d-flex gap-1">
+                    {(["all","ride","parcel"] as const).map(f => {
+                      const cnt = f === "all" ? trips.length : f === "ride" ? rideCount : parcelCount;
+                      const active = filter === f;
+                      return (
+                        <button key={f} className="btn btn-sm flex-fill fw-semibold"
+                          style={{ fontSize: 12, borderRadius: 8, background: active ? "#1a73e8" : "#f1f5f9", color: active ? "white" : "#64748b", border: "none", transition: "all 0.2s" }}
+                          onClick={() => setFilter(f)} data-testid={`tab-trip-${f}`}>
+                          {f === "all" ? "All" : f === "ride" ? "Rides" : "Parcels"}
+                          <span className="ms-1 badge rounded-pill"
+                            style={{ background: active ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: active ? "white" : "#475569", fontSize: 10 }}>
+                            {cnt}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="d-flex gap-1">
+                    {(["all","active","inactive"] as const).map(f => {
+                      const cnt = f === "all" ? (fleetDrivers as any[]).length : f === "active" ? onlineDriverCount : offlineDriverCount;
+                      const active = driverStatusFilter === f;
+                      return (
+                        <button key={f} className="btn btn-sm flex-fill fw-semibold"
+                          style={{ fontSize: 12, borderRadius: 8, background: active ? "#16a34a" : "#f1f5f9", color: active ? "white" : "#64748b", border: "none", transition: "all 0.2s" }}
+                          onClick={() => setDriverStatusFilter(f)} data-testid={`tab-driver-${f}`}>
+                          {f === "all" ? "All" : f === "active" ? "Online" : "Offline"}
+                          <span className="ms-1 badge rounded-pill"
+                            style={{ background: active ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: active ? "white" : "#475569", fontSize: 10 }}>
+                            {cnt}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div style={{ overflowY: "auto", maxHeight: "58vh" }}>
-                {filtered.length === 0 ? (
-                  <div className="text-center py-5 text-muted">
-                    <div style={{ fontSize: 42, marginBottom: 10 }}>🛣️</div>
-                    <div className="fw-semibold">No active trips</div>
-                    <div className="small mt-1">Live trips appear here</div>
-                  </div>
-                ) : filtered.map((trip: any) => {
-                  const cfg = getVC(trip.vehicleType);
-                  const isSel = selected?.id === trip.id;
-                  return (
-                    <div key={trip.id}
-                      className={`px-3 py-2 border-bottom trip-card-hover ${isSel ? "trip-card-active" : ""}`}
-                      style={{ cursor: "pointer", borderLeft: `3.5px solid ${isSel ? cfg.color : "transparent"}` }}
-                      onClick={() => focusTrip(trip)}
-                      data-testid={`card-trip-${trip.id}`}
-                    >
-                      <div className="d-flex align-items-start gap-2">
-                        {/* Icon */}
-                        <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                          style={{ width: 40, height: 40, background: cfg.bg, fontSize: 20, border: `2px solid ${cfg.color}22` }}>
-                          {cfg.emoji}
-                        </div>
-
-                        <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                          <div className="d-flex justify-content-between align-items-center">
-                            <span className="fw-bold small" style={{ color: "#0f172a" }}>{trip.refId}</span>
-                            <span className="badge rounded-pill" style={{ background: cfg.color + "18", color: cfg.color, fontSize: 9, fontWeight: 700 }}>
-                              {cfg.label}
-                            </span>
+                {viewMode === "trips" ? (
+                  filtered.length === 0 ? (
+                    <div className="text-center py-5 text-muted">
+                      <div style={{ fontSize: 42, marginBottom: 10 }}>🛣️</div>
+                      <div className="fw-semibold">No active trips</div>
+                      <div className="small mt-1">Live trips appear here</div>
+                    </div>
+                  ) : filtered.map((trip: any) => {
+                    const cfg = getVC(trip.vehicleType);
+                    const isSel = selected?.id === trip.id;
+                    return (
+                      <div key={trip.id}
+                        className={`px-3 py-2 border-bottom trip-card-hover ${isSel ? "trip-card-active" : ""}`}
+                        style={{ cursor: "pointer", borderLeft: `3.5px solid ${isSel ? cfg.color : "transparent"}` }}
+                        onClick={() => focusTrip(trip)} data-testid={`card-trip-${trip.id}`}>
+                        <div className="d-flex align-items-start gap-2">
+                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: 40, height: 40, background: cfg.bg, fontSize: 20, border: `2px solid ${cfg.color}22` }}>
+                            {cfg.emoji}
                           </div>
-
-                          <div className="text-truncate mt-1" style={{ fontSize: 11, color: "#64748b" }}>
-                            👤 <b style={{ color: "#374151" }}>{trip.customerName}</b>
-                          </div>
-                          <div className="d-flex gap-1 mt-1" style={{ fontSize: 10.5, color: "#94a3b8" }}>
-                            <span className="text-truncate">📍 {trip.pickupAddress}</span>
-                          </div>
-                          <div className="d-flex gap-1" style={{ fontSize: 10.5, color: "#94a3b8" }}>
-                            <span className="text-truncate">🏁 {trip.destinationAddress}</span>
-                          </div>
-
-                          {/* Progress */}
-                          <div className="mt-2">
-                            <div className="d-flex justify-content-between align-items-center mb-1" style={{ fontSize: 10 }}>
-                              <span style={{ color: "#94a3b8" }}>Journey</span>
-                              <span className="fw-bold" style={{ color: cfg.color }}>{trip.progress}%</span>
+                          <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <span className="fw-bold small" style={{ color: "#0f172a" }}>{trip.refId}</span>
+                              <span className="badge rounded-pill" style={{ background: cfg.color + "18", color: cfg.color, fontSize: 9, fontWeight: 700 }}>{cfg.label}</span>
                             </div>
-                            <div style={{ height: 5, background: "#f1f5f9", borderRadius: 4, overflow: "hidden" }}>
-                              <div className="prog-bar-anim"
-                                style={{ height: "100%", width: `${trip.progress}%`, background: `linear-gradient(90deg,${cfg.color}99,${cfg.color})`, borderRadius: 4 }} />
+                            <div className="text-truncate mt-1" style={{ fontSize: 11, color: "#64748b" }}>
+                              👤 <b style={{ color: "#374151" }}>{trip.customerName}</b>
                             </div>
-                          </div>
-
-                          {/* Fare & distance */}
-                          <div className="d-flex justify-content-between mt-2" style={{ fontSize: 11 }}>
-                            <span className="fw-semibold" style={{ color: "#1e293b" }}>₹{parseFloat(trip.estimatedFare).toFixed(0)}</span>
-                            <span style={{ color: "#94a3b8" }}>{parseFloat(trip.estimatedDistance).toFixed(1)} km</span>
-                            <span className="badge rounded-pill"
-                              style={{ fontSize: 9, background: trip.type === "ride" ? "#dbeafe" : "#dcfce7", color: trip.type === "ride" ? "#1d4ed8" : "#166534" }}>
-                              {trip.type}
-                            </span>
+                            <div style={{ fontSize: 10.5, color: "#94a3b8" }} className="text-truncate">📍 {trip.pickupAddress}</div>
+                            <div style={{ fontSize: 10.5, color: "#94a3b8" }} className="text-truncate">🏁 {trip.destinationAddress}</div>
+                            <div className="mt-2">
+                              <div className="d-flex justify-content-between align-items-center mb-1" style={{ fontSize: 10 }}>
+                                <span style={{ color: "#94a3b8" }}>Journey</span>
+                                <span className="fw-bold" style={{ color: cfg.color }}>{trip.progress}%</span>
+                              </div>
+                              <div style={{ height: 5, background: "#f1f5f9", borderRadius: 4, overflow: "hidden" }}>
+                                <div className="prog-bar-anim"
+                                  style={{ height: "100%", width: `${trip.progress}%`, background: `linear-gradient(90deg,${cfg.color}99,${cfg.color})`, borderRadius: 4 }} />
+                              </div>
+                            </div>
+                            <div className="d-flex justify-content-between mt-2" style={{ fontSize: 11 }}>
+                              <span className="fw-semibold" style={{ color: "#1e293b" }}>₹{parseFloat(trip.estimatedFare).toFixed(0)}</span>
+                              <span style={{ color: "#94a3b8" }}>{parseFloat(trip.estimatedDistance).toFixed(1)} km</span>
+                              <span className="badge rounded-pill"
+                                style={{ fontSize: 9, background: trip.type === "ride" ? "#dbeafe" : "#dcfce7", color: trip.type === "ride" ? "#1d4ed8" : "#166534" }}>
+                                {trip.type}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
+                    );
+                  })
+                ) : (
+                  driversLoading ? (
+                    <div className="text-center py-5"><div className="spinner-border text-success" role="status" /></div>
+                  ) : filteredDrivers.length === 0 ? (
+                    <div className="text-center py-5 text-muted">
+                      <div style={{ fontSize: 42, marginBottom: 10 }}>🧑‍✈️</div>
+                      <div className="fw-semibold">No drivers found</div>
                     </div>
-                  );
-                })}
+                  ) : filteredDrivers.map((driver: any) => {
+                    const isOnline = driver.status === "active";
+                    const statusColor = isOnline ? "#16a34a" : "#94a3b8";
+                    const isSel = selected?.id === driver.id;
+                    return (
+                      <div key={driver.id}
+                        className={`px-3 py-2 border-bottom trip-card-hover ${isSel ? "trip-card-active" : ""}`}
+                        style={{ cursor: "pointer", borderLeft: `3.5px solid ${isSel ? statusColor : "transparent"}` }}
+                        onClick={() => {
+                          setSelected(driver);
+                          if (mapInstance.current) {
+                            mapInstance.current.flyTo([driver.lat, driver.lng], 15, { animate: true, duration: 1 });
+                            setTimeout(() => {
+                              const entry = layersRef.current.get(`drv-${driver.id}`);
+                              if (entry?.marker) entry.marker.openPopup();
+                            }, 1100);
+                          }
+                        }}
+                        data-testid={`card-driver-${driver.id}`}>
+                        <div className="d-flex align-items-center gap-2">
+                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{ width: 38, height: 38, background: statusColor + "15", fontSize: 18, border: `2px solid ${statusColor}33` }}>
+                            🧑‍✈️
+                          </div>
+                          <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <span className="fw-semibold" style={{ fontSize: 13, color: "#0f172a" }}>{driver.name}</span>
+                              <span className="badge rounded-pill"
+                                style={{ background: statusColor + "18", color: statusColor, fontSize: 9, fontWeight: 700 }}>
+                                {isOnline ? "● Online" : "○ Offline"}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                              <i className="bi bi-phone me-1"></i>{driver.phone || "—"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {filtered.length > 0 && (
-                <div className="card-footer bg-white border-0 text-center py-2" style={{ fontSize: 11, color: "#94a3b8" }}>
-                  <i className="bi bi-arrow-clockwise me-1"></i>Positions update every 5 seconds
-                </div>
-              )}
+              <div className="card-footer bg-white border-0 text-center py-2" style={{ fontSize: 11, color: "#94a3b8" }}>
+                <i className="bi bi-arrow-clockwise me-1"></i>
+                {viewMode === "trips" ? "Positions update every 5 seconds" : "Driver status updates every 8 seconds"}
+              </div>
             </div>
           </div>
         </div>

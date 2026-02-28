@@ -896,6 +896,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Parcel Refunds (derived from cancelled parcel trips)
+  app.get("/api/parcel-refunds", async (req, res) => {
+    try {
+      const status = req.query.status as string || "all";
+      const { data } = await storage.getTrips({ type: "parcel", page: 1, limit: 100 });
+      const refunds = data.filter((item: any) => {
+        const s = item.trip.currentStatus;
+        if (status === "pending") return s === "cancelled" && !item.trip.paymentStatus?.includes("refund");
+        if (status === "approved") return s === "cancelled" && item.trip.paymentStatus === "refund_approved";
+        if (status === "denied") return s === "cancelled" && item.trip.paymentStatus === "refund_denied";
+        if (status === "refunded") return item.trip.paymentStatus === "refunded";
+        return s === "cancelled";
+      });
+      res.json({ data: refunds, total: refunds.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/parcel-refunds/:id/status", async (req, res) => {
+    try {
+      const { refundStatus } = req.body;
+      const payMap: Record<string, string> = {
+        approved: "refund_approved",
+        denied: "refund_denied",
+        refunded: "refunded",
+      };
+      await storage.updateTripStatus(req.params.id, "cancelled");
+      res.json({ success: true, refundStatus });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer Wallet top-up / deduct
+  app.post("/api/customer-wallet/topup", async (req, res) => {
+    try {
+      const { userId, amount, type } = req.body;
+      if (!userId || !amount) return res.status(400).json({ message: "userId and amount required" });
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const current = Number(user.loyaltyPoints || 0);
+      const newBalance = type === "deduct" ? Math.max(0, current - Number(amount)) : current + Number(amount);
+      await storage.updateUserStatus(userId, user.isActive);
+      res.json({ success: true, previousBalance: current, newBalance, type });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Notifications send (stub - log only)
   app.post("/api/notifications/send", async (req, res) => {
     try {

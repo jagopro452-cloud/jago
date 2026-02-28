@@ -41,6 +41,8 @@ export const zones = pgTable("zones", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull(),
   coordinates: text("coordinates"),
+  serviceType: varchar("service_type", { length: 50 }).notNull().default("both"),
+  surgeFactor: doublePrecision("surge_factor").notNull().default(1.0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
