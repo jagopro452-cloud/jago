@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+declare global { interface Window { L: any; } }
 
 const SERVICE_TYPES = [
   { value: "both", label: "Ride & Parcel", icon: "bi-grid-fill", color: "#7c3aed" },
@@ -9,85 +11,429 @@ const SERVICE_TYPES = [
   { value: "parcel", label: "Parcel Only", icon: "bi-box-seam-fill", color: "#16a34a" },
 ];
 
-function ZoneModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function loadScript(src: string): Promise<void> {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement("script");
+    s.src = src; s.onload = () => res(); s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+function loadLeafletCss() {
+  if (document.querySelector('link[href*="leaflet.css"]')) return;
+  const l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(l);
+}
+
+// Calculate polygon area in km² using equirectangular projection + Shoelace
+function polygonAreaKm2(coords: [number, number][]): number {
+  if (coords.length < 3) return 0;
+  const latC = coords.reduce((s, c) => s + c[0], 0) / coords.length * Math.PI / 180;
+  let area = 0;
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length;
+    const x1 = coords[i][1] * Math.cos(latC) * 111.32;
+    const y1 = coords[i][0] * 111.32;
+    const x2 = coords[j][1] * Math.cos(latC) * 111.32;
+    const y2 = coords[j][0] * 111.32;
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area) / 2;
+}
+
+// Calculate perimeter in km
+function polygonPerimKm(coords: [number, number][]): number {
+  if (coords.length < 2) return 0;
+  let p = 0;
+  const R = 6371;
+  const toR = (d: number) => d * Math.PI / 180;
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length;
+    const dLat = toR(coords[j][0] - coords[i][0]);
+    const dLng = toR(coords[j][1] - coords[i][1]);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toR(coords[i][0])) * Math.cos(toR(coords[j][0])) * Math.sin(dLng/2)**2;
+    p += 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  return p;
+}
+
+// ── Map Modal ─────────────────────────────────────────────────────────────────
+function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
+  open: boolean; onClose: () => void; editing: any; initialForm: any;
+  onSave: (data: any) => void; saving: boolean;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInst = useRef<any>(null);
+  const polylineRef = useRef<any>(null);
+  const polygonRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const firstCircleRef = useRef<any>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [drawMode, setDrawMode] = useState<"pan" | "draw">("pan");
+  const [points, setPoints] = useState<[number, number][]>([]);
+  const [closed, setClosed] = useState(false);
+  const [form, setForm] = useState(initialForm);
+
+  useEffect(() => { setForm(initialForm); }, [JSON.stringify(initialForm)]);
+
+  // Load initial points from existing coordinates
+  useEffect(() => {
+    if (!open) return;
+    try {
+      if (initialForm.coordinates) {
+        const geo = JSON.parse(initialForm.coordinates);
+        if (geo.type === "Polygon" && geo.coordinates?.[0]) {
+          const ring = geo.coordinates[0];
+          const pts: [number, number][] = ring.slice(0, -1).map(([lng, lat]: number[]) => [lat, lng] as [number, number]);
+          setPoints(pts);
+          setClosed(true);
+          return;
+        }
+      }
+    } catch {}
+    setPoints([]);
+    setClosed(false);
+  }, [open, initialForm.coordinates]);
+
+  // Init Leaflet
+  useEffect(() => {
+    if (!open) return;
+    loadLeafletCss();
+    loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js").then(() => setMapReady(true));
+    return () => {
+      if (mapInst.current) { mapInst.current.remove(); mapInst.current = null; }
+      setMapReady(false);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || mapInst.current) return;
+    const L = window.L;
+    const map = L.map(mapRef.current, { center: [17.43, 78.49], zoom: 10, zoomControl: true });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; CARTO', maxZoom: 19, subdomains: "abcd",
+    }).addTo(map);
+    mapInst.current = map;
+
+    // Fit to points if editing
+    if (points.length > 0) {
+      try { map.fitBounds(points.map(p => p as [number, number])); } catch {}
+    }
+  }, [mapReady]);
+
+  // Redraw polygon/markers when points change
+  useEffect(() => {
+    if (!mapReady || !mapInst.current) return;
+    const L = window.L;
+    const map = mapInst.current;
+
+    // Clear old layers
+    markersRef.current.forEach(m => { try { map.removeLayer(m); } catch {} });
+    markersRef.current = [];
+    if (polylineRef.current) { try { map.removeLayer(polylineRef.current); } catch {} polylineRef.current = null; }
+    if (polygonRef.current) { try { map.removeLayer(polygonRef.current); } catch {} polygonRef.current = null; }
+    if (firstCircleRef.current) { try { map.removeLayer(firstCircleRef.current); } catch {} firstCircleRef.current = null; }
+
+    if (points.length === 0) return;
+
+    // Point markers
+    points.forEach((pt, i) => {
+      const isFirst = i === 0;
+      const icon = L.divIcon({
+        html: `<div style="
+          width:${isFirst ? 14 : 10}px;height:${isFirst ? 14 : 10}px;
+          border-radius:50%;background:${isFirst ? "#ef4444" : "#1a73e8"};
+          border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);
+        "></div>`,
+        className: "", iconSize: [isFirst ? 14 : 10, isFirst ? 14 : 10],
+        iconAnchor: [isFirst ? 7 : 5, isFirst ? 7 : 5],
+      });
+      const m = L.marker(pt, { icon, interactive: false }).addTo(map);
+      markersRef.current.push(m);
+    });
+
+    if (closed && points.length >= 3) {
+      // Filled polygon
+      const poly = L.polygon(points, {
+        color: "#1a73e8", weight: 2.5, fillColor: "#1a73e8", fillOpacity: 0.18, dashArray: undefined,
+      }).addTo(map);
+      polygonRef.current = poly;
+    } else {
+      // Open polyline + ghost circle on first point
+      const line = L.polyline(points, { color: "#1a73e8", weight: 2.5 }).addTo(map);
+      polylineRef.current = line;
+      if (points.length >= 2 && !closed) {
+        const c = L.circle(points[0], { radius: 60, color: "#ef4444", fillColor: "#ef4444", fillOpacity: 0.2, weight: 1.5 }).addTo(map);
+        firstCircleRef.current = c;
+      }
+    }
+  }, [points, closed, mapReady]);
+
+  // Click to draw
+  useEffect(() => {
+    if (!mapReady || !mapInst.current) return;
+    const map = mapInst.current;
+    const L = window.L;
+
+    const onClick = (e: any) => {
+      if (drawMode !== "draw" || closed) return;
+      const { lat, lng } = e.latlng;
+      const newPt: [number, number] = [lat, lng];
+
+      setPoints(prev => {
+        if (prev.length >= 2) {
+          // Check proximity to first point
+          const first = prev[0];
+          const dx = (first[1] - lng) * Math.cos(first[0] * Math.PI / 180) * 111320;
+          const dy = (first[0] - lat) * 111320;
+          const distPx = Math.sqrt(dx*dx + dy*dy);
+          const zoomScale = 111320 / Math.pow(2, map.getZoom()) * 256 / map.getContainer().offsetWidth;
+          if (distPx < 400) {
+            setClosed(true);
+            return prev;
+          }
+        }
+        return [...prev, newPt];
+      });
+    };
+
+    map.on("click", onClick);
+    map.getContainer().style.cursor = drawMode === "draw" ? "crosshair" : "";
+    return () => { map.off("click", onClick); map.getContainer().style.cursor = ""; };
+  }, [mapReady, drawMode, closed]);
+
+  const clearDraw = () => { setPoints([]); setClosed(false); };
+  const completePolygon = () => { if (points.length >= 3) setClosed(true); };
+
+  const area = polygonAreaKm2(points);
+  const perim = polygonPerimKm(points);
+
+  const buildGeoJson = () => {
+    if (points.length < 3) return "";
+    const ring = [...points, points[0]].map(([lat, lng]) => [lng, lat]);
+    return JSON.stringify({ type: "Polygon", coordinates: [ring] });
+  };
+
+  const handleSave = () => {
+    if (!form.name) return;
+    const coords = closed && points.length >= 3 ? buildGeoJson() : form.coordinates;
+    onSave({ ...form, coordinates: coords });
+  };
+
   if (!open) return null;
+
   return (
-    <div className="modal-backdrop-jago">
-      <div className="modal-jago" style={{ maxWidth: 540 }}>
-        <div className="modal-jago-header">
-          <h5 className="modal-jago-title">
-            <i className={`bi ${editing ? "bi-pencil-fill" : "bi-plus-circle-fill"} me-2 text-primary`}></i>
-            {editing ? "Edit Service Zone" : "Add Service Zone"}
-          </h5>
-          <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+    }}>
+      <div style={{
+        background: "white", borderRadius: 16, width: "100%", maxWidth: 1100, maxHeight: "94vh",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.25)",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "16px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <i className="bi bi-map-fill" style={{ color: "#1a73e8", fontSize: 16 }}></i>
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: "#0f172a" }}>
+              {editing ? "Edit Service Zone" : "Create Service Zone"}
+            </div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>Draw polygon on map to define zone boundary</div>
+          </div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#94a3b8", lineHeight: 1, padding: 4 }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
         </div>
-        <div className="d-flex flex-column gap-3">
-          <div>
-            <label className="form-label-jago">Zone Name <span className="text-danger">*</span></label>
-            <input className="admin-form-control" value={form.name}
-              onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Hyderabad Central" data-testid="input-zone-name" />
-          </div>
 
-          <div>
-            <label className="form-label-jago">Service Type <span className="text-danger">*</span></label>
-            <div className="d-flex gap-2 flex-wrap">
-              {SERVICE_TYPES.map(st => (
-                <button key={st.value} type="button"
-                  onClick={() => setForm((f: any) => ({ ...f, serviceType: st.value }))}
-                  data-testid={`btn-service-${st.value}`}
-                  style={{
-                    background: form.serviceType === st.value ? st.color : "#f8fafc",
-                    color: form.serviceType === st.value ? "#fff" : "#64748b",
-                    border: `1.5px solid ${form.serviceType === st.value ? st.color : "#e2e8f0"}`,
-                    borderRadius: 10, padding: "6px 14px", fontWeight: 600, fontSize: 12,
-                    cursor: "pointer", transition: "all 0.15s",
-                  }}>
-                  <i className={`bi ${st.icon} me-1`}></i>{st.label}
-                </button>
-              ))}
+        {/* Body */}
+        <div style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+          {/* Left panel */}
+          <div style={{ width: 300, borderRight: "1px solid #f1f5f9", padding: "20px 18px", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+
+            {/* Instructions */}
+            <div style={{ background: "#f8fafc", borderRadius: 12, padding: 14 }}>
+              <div style={{ fontWeight: 700, color: "#1a73e8", fontSize: 14, marginBottom: 10 }}>
+                <i className="bi bi-info-circle-fill me-2"></i>Instructions
+              </div>
+              <p style={{ fontSize: 12.5, color: "#475569", margin: 0, lineHeight: 1.6 }}>
+                Create zone by clicking on map to place points and connect them.
+              </p>
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#e0e7ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <i className="bi bi-hand-index-fill" style={{ color: "#6366f1", fontSize: 14 }}></i>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                    <b>Pan mode:</b> Drag map to find the right area
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <i className="bi bi-bounding-box" style={{ color: "#16a34a", fontSize: 14 }}></i>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                    <b>Draw mode:</b> Click to add points. Click near first point (red dot) to close polygon. Min 3 points.
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="form-label-jago">Surge Factor</label>
-            <div className="d-flex align-items-center gap-2">
+            {/* Zone name */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>
+                Zone Name <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <input className="admin-form-control" value={form.name}
+                onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Hyderabad Central" data-testid="input-zone-name"
+                style={{ width: "100%" }} />
+            </div>
+
+            {/* Service Type */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 8, display: "block" }}>Service Type</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {SERVICE_TYPES.map(st => (
+                  <button key={st.value} type="button"
+                    onClick={() => setForm((f: any) => ({ ...f, serviceType: st.value }))}
+                    data-testid={`btn-service-${st.value}`}
+                    style={{
+                      padding: "8px 12px", borderRadius: 9, fontWeight: 600, fontSize: 12, cursor: "pointer",
+                      textAlign: "left", transition: "all 0.15s",
+                      background: form.serviceType === st.value ? st.color : "#f8fafc",
+                      color: form.serviceType === st.value ? "#fff" : "#64748b",
+                      border: `1.5px solid ${form.serviceType === st.value ? st.color : "#e2e8f0"}`,
+                    }}>
+                    <i className={`bi ${st.icon} me-2`}></i>{st.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Surge Factor */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>
+                Surge Factor
+              </label>
               <input type="number" step="0.1" min="1" max="5" className="admin-form-control"
-                style={{ maxWidth: 130 }} value={form.surgeFactor}
+                value={form.surgeFactor}
                 onChange={e => setForm((f: any) => ({ ...f, surgeFactor: parseFloat(e.target.value) || 1.0 }))}
-                placeholder="1.0" data-testid="input-surge-factor" />
-              <span className="text-muted small">× base fare (1.0 = normal, 2.0 = 2× surge)</span>
+                placeholder="1.0" data-testid="input-surge-factor" style={{ width: "100%" }} />
+              <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 4 }}>× base fare (1.0 = normal)</div>
+            </div>
+
+            {/* Status */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Status</label>
+              <label className="switcher ms-auto">
+                <input type="checkbox" className="switcher_input" checked={form.isActive}
+                  onChange={e => setForm((f: any) => ({ ...f, isActive: e.target.checked }))} />
+                <span className="switcher_control"></span>
+              </label>
+              <span style={{ fontSize: 11, color: form.isActive ? "#16a34a" : "#94a3b8", fontWeight: 600 }}>
+                {form.isActive ? "Active" : "Inactive"}
+              </span>
+            </div>
+
+            {/* Area info */}
+            {points.length >= 3 && (
+              <div style={{ background: closed ? "#f0fdf4" : "#fefce8", border: `1px solid ${closed ? "#86efac" : "#fde047"}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: closed ? "#16a34a" : "#ca8a04", marginBottom: 8 }}>
+                  <i className={`bi ${closed ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill"} me-1`}></i>
+                  {closed ? "Polygon Complete" : `${points.length} points — click first point to close`}
+                </div>
+                {closed && (
+                  <>
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <div style={{ flex: 1, textAlign: "center" }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#16a34a" }}>{area.toFixed(2)}</div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>km² Area</div>
+                      </div>
+                      <div style={{ flex: 1, textAlign: "center" }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#1a73e8" }}>{perim.toFixed(2)}</div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>km Perimeter</div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="btn btn-primary w-100" disabled={!form.name || saving} onClick={handleSave}
+                data-testid="btn-save-zone">
+                {saving ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</> :
+                  editing ? "Update Zone" : "Create Zone"}
+              </button>
+              <button className="btn btn-outline-secondary w-100" onClick={onClose}>Cancel</button>
             </div>
           </div>
 
-          <div>
-            <label className="form-label-jago">Zone Coordinates <span className="text-muted fw-normal">(optional)</span></label>
-            <textarea className="admin-form-control" rows={3} value={form.coordinates}
-              onChange={e => setForm((f: any) => ({ ...f, coordinates: e.target.value }))}
-              placeholder='{"type":"Polygon","coordinates":[[[78.4,17.3],[78.5,17.3],[78.5,17.4],[78.4,17.3]]]}'
-              data-testid="input-zone-coordinates"
-              style={{ fontFamily: "monospace", fontSize: 11 }} />
-            <div className="text-muted" style={{ fontSize: 10.5, marginTop: 4 }}>GeoJSON Polygon format. Used for map overlay display.</div>
-          </div>
+          {/* Right: map */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Toolbar */}
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: "#64748b", marginRight: 4 }}>Mode:</div>
+              <button
+                onClick={() => setDrawMode("pan")}
+                data-testid="btn-mode-pan"
+                style={{
+                  padding: "6px 14px", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer",
+                  background: drawMode === "pan" ? "#0f172a" : "#f8fafc",
+                  color: drawMode === "pan" ? "white" : "#64748b",
+                  border: `1.5px solid ${drawMode === "pan" ? "#0f172a" : "#e2e8f0"}`,
+                }}>
+                <i className="bi bi-hand-index-fill me-1"></i>Pan
+              </button>
+              <button
+                onClick={() => setDrawMode("draw")}
+                data-testid="btn-mode-draw"
+                style={{
+                  padding: "6px 14px", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer",
+                  background: drawMode === "draw" ? "#1a73e8" : "#f8fafc",
+                  color: drawMode === "draw" ? "white" : "#64748b",
+                  border: `1.5px solid ${drawMode === "draw" ? "#1a73e8" : "#e2e8f0"}`,
+                }}>
+                <i className="bi bi-bounding-box me-1"></i>Draw Zone
+              </button>
+              {points.length >= 3 && !closed && (
+                <button onClick={completePolygon}
+                  style={{ padding: "6px 14px", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", background: "#16a34a", color: "white", border: "none" }}>
+                  <i className="bi bi-check-lg me-1"></i>Complete
+                </button>
+              )}
+              {points.length > 0 && (
+                <button onClick={clearDraw} data-testid="btn-clear-draw"
+                  style={{ padding: "6px 14px", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", background: "#fee2e2", color: "#dc2626", border: "1.5px solid #fca5a5", marginLeft: "auto" }}>
+                  <i className="bi bi-trash me-1"></i>Clear
+                </button>
+              )}
+              <div style={{ marginLeft: points.length > 0 ? 0 : "auto", fontSize: 11, color: "#94a3b8" }}>
+                {points.length} point{points.length !== 1 ? "s" : ""} placed
+              </div>
+            </div>
 
-          <div className="d-flex align-items-center gap-2">
-            <label className="form-label-jago mb-0">Status</label>
-            <label className="switcher ms-2">
-              <input type="checkbox" className="switcher_input" checked={form.isActive}
-                onChange={e => setForm((f: any) => ({ ...f, isActive: e.target.checked }))} />
-              <span className="switcher_control"></span>
-            </label>
-            <span className="small" style={{ color: form.isActive ? "#16a34a" : "#94a3b8", fontWeight: 600 }}>
-              {form.isActive ? "Active" : "Inactive"}
-            </span>
-          </div>
-
-          <div className="d-flex gap-2 justify-content-end mt-1 pt-2 border-top">
-            <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={onSave} disabled={!form.name || saving}
-              data-testid="btn-save-zone">
-              {saving ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</> : editing ? "Update Zone" : "Create Zone"}
-            </button>
+            {/* Map */}
+            <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+              {!mapReady && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", zIndex: 10 }}>
+                  <div className="spinner-border text-primary" role="status" />
+                </div>
+              )}
+              {drawMode === "draw" && (
+                <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1000, background: "rgba(26,115,232,0.92)", color: "white", borderRadius: 20, padding: "5px 14px", fontSize: 11, fontWeight: 600, pointerEvents: "none", whiteSpace: "nowrap" }}>
+                  <i className="bi bi-plus-circle me-1"></i>
+                  {closed ? "Polygon drawn — clear to redraw" : points.length < 2 ? "Click map to place first point" : "Click near 🔴 red dot to close polygon"}
+                </div>
+              )}
+              <div ref={mapRef} data-testid="zone-map" style={{ width: "100%", height: "100%", minHeight: 400 }} />
+            </div>
           </div>
         </div>
       </div>
@@ -95,6 +441,7 @@ function ZoneModal({ open, onClose, editing, form, setForm, onSave, saving }: an
   );
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Zones() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -102,8 +449,9 @@ export default function Zones() {
   const [editing, setEditing] = useState<any>(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
+
   const defaultForm = { name: "", coordinates: "", serviceType: "both", surgeFactor: 1.0, isActive: true };
-  const [form, setForm] = useState(defaultForm);
+  const [formForModal, setFormForModal] = useState(defaultForm);
 
   const { data = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/zones"] });
 
@@ -114,7 +462,7 @@ export default function Zones() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/zones"] });
       toast({ title: editing ? "Zone updated" : "Zone created successfully" });
-      setOpen(false); setEditing(null); setForm(defaultForm);
+      setOpen(false); setEditing(null);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -132,7 +480,7 @@ export default function Zones() {
 
   const openEdit = (zone: any) => {
     setEditing(zone);
-    setForm({ name: zone.name, coordinates: zone.coordinates || "", serviceType: zone.serviceType || "both", surgeFactor: Number(zone.surgeFactor) || 1.0, isActive: zone.isActive });
+    setFormForModal({ name: zone.name, coordinates: zone.coordinates || "", serviceType: zone.serviceType || "both", surgeFactor: Number(zone.surgeFactor) || 1.0, isActive: zone.isActive });
     setOpen(true);
   };
 
@@ -146,15 +494,28 @@ export default function Zones() {
   const activeCount = zones.filter(z => z.isActive).length;
   const getServiceConfig = (type: string) => SERVICE_TYPES.find(s => s.value === type) || SERVICE_TYPES[0];
 
+  // Calculate area from stored coordinates for display
+  const getZoneArea = (zone: any): number => {
+    try {
+      if (!zone.coordinates) return 0;
+      const geo = JSON.parse(zone.coordinates);
+      if (geo.type === "Polygon" && geo.coordinates?.[0]) {
+        const pts: [number, number][] = geo.coordinates[0].map(([lng, lat]: number[]) => [lat, lng] as [number, number]);
+        return polygonAreaKm2(pts.slice(0, -1));
+      }
+    } catch {}
+    return 0;
+  };
+
   return (
     <div className="container-fluid">
       <div className="d-flex align-items-center justify-content-between mb-4">
         <div>
           <h4 className="fw-bold mb-0" data-testid="page-title">Zone Setup</h4>
-          <div className="text-muted small">Configure service zones, service types and surge pricing</div>
+          <div className="text-muted small">Draw service zones on map with area calculations</div>
         </div>
-        <button className="btn btn-primary" onClick={() => { setEditing(null); setForm(defaultForm); setOpen(true); }}
-          data-testid="btn-add-zone">
+        <button className="btn btn-primary" data-testid="btn-add-zone"
+          onClick={() => { setEditing(null); setFormForModal(defaultForm); setOpen(true); }}>
           <i className="bi bi-plus-circle me-1"></i> Add Zone
         </button>
       </div>
@@ -210,8 +571,8 @@ export default function Zones() {
             <table className="table table-borderless align-middle table-hover mb-0">
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  {["#","Zone Name","Service Type","Surge","Status","Active","Actions"].map((h, i) => (
-                    <th key={i} className={i === 0 ? "ps-4" : i === 6 ? "text-center pe-4" : ""}
+                  {["#","Zone Name","Service Type","Area (km²)","Surge","Status","Active","Actions"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 7 ? "text-center pe-4" : ""}
                       style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", paddingTop: 12, paddingBottom: 12 }}>
                       {h}
                     </th>
@@ -221,12 +582,13 @@ export default function Zones() {
               <tbody>
                 {isLoading ? (
                   Array(3).fill(0).map((_, i) => (
-                    <tr key={i}>{Array(7).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
+                    <tr key={i}>{Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
                   ))
                 ) : filtered.length ? (
                   filtered.map((zone: any, idx: number) => {
                     const sc = getServiceConfig(zone.serviceType || "both");
                     const surge = Number(zone.surgeFactor) || 1;
+                    const area = getZoneArea(zone);
                     return (
                       <tr key={zone.id} data-testid={`zone-row-${zone.id}`}>
                         <td className="ps-4 text-muted small">{idx + 1}</td>
@@ -238,8 +600,8 @@ export default function Zones() {
                             </div>
                             <div>
                               <div className="fw-semibold" style={{ fontSize: 13 }}>{zone.name}</div>
-                              <div className="text-muted" style={{ fontSize: 10.5 }}>
-                                {zone.coordinates ? "📍 Coordinates set" : "No coordinates"}
+                              <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
+                                {zone.coordinates ? "📍 Boundary set" : "No boundary drawn"}
                               </div>
                             </div>
                           </div>
@@ -249,6 +611,14 @@ export default function Zones() {
                             style={{ background: sc.color + "18", color: sc.color, fontSize: 11, padding: "4px 10px", fontWeight: 600 }}>
                             <i className={`bi ${sc.icon} me-1`}></i>{sc.label}
                           </span>
+                        </td>
+                        <td>
+                          {area > 0 ? (
+                            <div>
+                              <div className="fw-semibold" style={{ fontSize: 13, color: "#0f172a" }}>{area.toFixed(2)}</div>
+                              <div style={{ fontSize: 10, color: "#94a3b8" }}>km²</div>
+                            </div>
+                          ) : <span className="text-muted small">—</span>}
                         </td>
                         <td>
                           <span className={`badge ${surge > 1 ? "bg-warning text-dark" : "bg-secondary"}`} style={{ fontSize: 11 }}>
@@ -285,11 +655,11 @@ export default function Zones() {
                     );
                   })
                 ) : (
-                  <tr><td colSpan={7}>
+                  <tr><td colSpan={8}>
                     <div className="text-center py-5 text-muted">
                       <i className="bi bi-map fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
                       <p className="fw-semibold mb-1">No zones found</p>
-                      <p className="small">Create your first zone to get started</p>
+                      <p className="small">Click "Add Zone" to draw your first service zone on the map</p>
                     </div>
                   </td></tr>
                 )}
@@ -299,9 +669,14 @@ export default function Zones() {
         </div>
       </div>
 
-      <ZoneModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
-        editing={editing} form={form} setForm={setForm}
-        onSave={() => save.mutate(form)} saving={save.isPending} />
+      <ZoneMapModal
+        open={open}
+        onClose={() => { setOpen(false); setEditing(null); }}
+        editing={editing}
+        initialForm={formForModal}
+        onSave={d => save.mutate(d)}
+        saving={save.isPending}
+      />
     </div>
   );
 }
