@@ -3,14 +3,40 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
+const ROLES = ["employee", "manager", "zone_manager", "support", "admin"];
+const ROLE_COLORS: Record<string, string> = {
+  employee: "#64748b", manager: "#1a73e8", zone_manager: "#7c3aed",
+  support: "#16a34a", admin: "#dc2626",
+};
+
+const avatarBg = (name: string) => {
+  const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626"];
+  return colors[(name || "A").charCodeAt(0) % colors.length];
+};
+const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+
 export default function EmployeesPage() {
   const { toast } = useToast();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "employee", isActive: true });
+  const [zoneFilter, setZoneFilter] = useState("");
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "employee", zoneId: "", isActive: true });
 
-  const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/employees"] });
+  const { data, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/employees", zoneFilter],
+    queryFn: () => {
+      const url = zoneFilter ? `/api/employees?zoneId=${zoneFilter}` : "/api/employees";
+      return fetch(url).then(r => r.json());
+    },
+  });
+
+  const { data: zones = [] } = useQuery<any[]>({
+    queryKey: ["/api/zones"],
+    queryFn: () => fetch("/api/zones").then(r => r.json()),
+  });
+
   const employees = Array.isArray(data) ? data : [];
+  const zonesArr = Array.isArray(zones) ? zones : (Array.isArray((zones as any)?.data) ? (zones as any).data : []);
 
   const saveMutation = useMutation({
     mutationFn: (payload: any) =>
@@ -30,119 +56,231 @@ export default function EmployeesPage() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: any) => apiRequest("PUT", `/api/employees/${id}`, { isActive }),
+    mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/employees/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/employees"] }),
   });
 
-  const openAdd = () => { setEditing(null); setForm({ name: "", email: "", phone: "", role: "employee", isActive: true }); setShowModal(true); };
-  const openEdit = (e: any) => { setEditing(e); setForm({ name: e.name, email: e.email, phone: e.phone || "", role: e.role, isActive: e.isActive }); setShowModal(true); };
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ name: "", email: "", phone: "", role: "employee", zoneId: "", isActive: true });
+    setShowModal(true);
+  };
+  const openEdit = (e: any) => {
+    setEditing(e);
+    setForm({ name: e.name, email: e.email, phone: e.phone || "", role: e.role, zoneId: e.zoneId || "", isActive: e.isActive });
+    setShowModal(true);
+  };
+
+  const managerCount = employees.filter(e => e.role === "manager" || e.role === "zone_manager").length;
+  const activeCount = employees.filter(e => e.isActive).length;
 
   return (
-    <>
-    
-      <div className="content-header">
-        <div className="container-fluid">
-          <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
-            <h2 className="h5 mb-0">Employee Setup</h2>
-            <button className="btn btn-primary btn-sm" onClick={openAdd} data-testid="btn-add-employee">
-              <i className="bi bi-plus me-1"></i>Add Employee
-            </button>
+    <div className="container-fluid">
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <div>
+          <h4 className="fw-bold mb-0" data-testid="page-title">Employee Management</h4>
+          <div className="text-muted small">Manage zone managers, support staff, and admin users</div>
+        </div>
+        <button className="btn btn-primary" onClick={openAdd} data-testid="btn-add-employee">
+          <i className="bi bi-person-plus-fill me-1"></i>Add Employee
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="row g-3 mb-3">
+        {[
+          { label: "Total Staff", val: employees.length, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe" },
+          { label: "Active", val: activeCount, icon: "bi-person-check-fill", color: "#16a34a", bg: "#f0fdf4" },
+          { label: "Managers", val: managerCount, icon: "bi-person-badge-fill", color: "#7c3aed", bg: "#f5f3ff" },
+          { label: "Zones Covered", val: zonesArr.length, icon: "bi-map-fill", color: "#d97706", bg: "#fefce8" },
+        ].map((s, i) => (
+          <div key={i} className="col-6 col-xl-3">
+            <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+              <div className="card-body d-flex align-items-center gap-3 py-3">
+                <div className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+                  style={{ width: 42, height: 42, background: s.bg, color: s.color, fontSize: "1.1rem" }}>
+                  <i className={`bi ${s.icon}`}></i>
+                </div>
+                <div>
+                  <div className="fw-bold lh-1 mb-1" style={{ fontSize: 22, color: s.color }}>
+                    {isLoading ? "—" : s.val}
+                  </div>
+                  <div className="text-muted small">{s.label}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+        <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2"
+          style={{ borderBottom: "1px solid #f1f5f9" }}>
+          <div className="fw-semibold" style={{ fontSize: 14 }}>
+            <i className="bi bi-people-fill me-2 text-primary"></i>Staff List
+            <span className="badge ms-2" style={{ background: "#e8f0fe", color: "#1a73e8", fontSize: 10 }}>{employees.length}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select className="admin-form-control" style={{ fontSize: 12, width: 180 }}
+              value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}
+              data-testid="select-zone-filter">
+              <option value="">All Zones</option>
+              {zonesArr.map((z: any) => (
+                <option key={z.id} value={z.id}>{z.name}</option>
+              ))}
+            </select>
           </div>
         </div>
-      </div>
-      <div className="container-fluid">
-        <div className="card">
-          <div className="card-body">
-            <div className="table-responsive">
-              <table className="table table-borderless align-middle table-hover">
-                <thead className="table-light">
-                  <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr><td colSpan={7} className="text-center py-4"><div className="spinner-border spinner-border-sm" role="status" /></td></tr>
-                  ) : employees.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-5 text-muted">
-                        <i className="bi bi-person-square fs-2 d-block mb-2 opacity-25"></i>
-                        No employees found. Click Add Employee to create one.
-                      </td>
-                    </tr>
-                  ) : employees.map((e: any, idx: number) => (
-                    <tr key={e.id} data-testid={`row-employee-${e.id}`}>
-                      <td>{idx + 1}</td>
-                      <td className="fw-semibold">{e.name}</td>
-                      <td>{e.email}</td>
-                      <td>{e.phone || "—"}</td>
-                      <td className="text-capitalize">{e.role}</td>
-                      <td>
-                        <label className="switcher">
-                          <input className="switcher_input" type="checkbox" checked={e.isActive} onChange={ev => toggleMutation.mutate({ id: e.id, isActive: ev.target.checked })} />
-                          <span className="switcher_control"></span>
-                        </label>
-                      </td>
-                      <td>
-                        <button className="btn btn-sm btn-outline-primary me-1" onClick={() => openEdit(e)}><i className="bi bi-pencil-fill"></i></button>
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(e.id); }}><i className="bi bi-trash-fill"></i></button>
-                      </td>
-                    </tr>
+
+        <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-borderless align-middle table-hover mb-0">
+              <thead style={{ background: "#f8fafc" }}>
+                <tr>
+                  {["#", "Employee", "Contact", "Role", "Zone", "Active", "Action"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 6 ? "text-center pe-4" : ""}
+                      style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", paddingTop: 12, paddingBottom: 12 }}>
+                      {h}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? Array(3).fill(0).map((_, i) => (
+                  <tr key={i}>{Array(7).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
+                )) : employees.length === 0 ? (
+                  <tr><td colSpan={7}>
+                    <div className="text-center py-5 text-muted">
+                      <i className="bi bi-person-square fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
+                      <p className="fw-semibold mb-1">No employees found</p>
+                      <button className="btn btn-sm btn-outline-primary mt-1" onClick={openAdd}>
+                        <i className="bi bi-person-plus me-1"></i>Add First Employee
+                      </button>
+                    </div>
+                  </td></tr>
+                ) : employees.map((e: any, idx: number) => (
+                  <tr key={e.id} data-testid={`row-employee-${e.id}`}>
+                    <td className="ps-4 text-muted small">{idx + 1}</td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                          style={{ width: 36, height: 36, background: avatarBg(e.name), color: "white", fontSize: 12, fontWeight: 700 }}>
+                          {initials(e.name)}
+                        </div>
+                        <div>
+                          <div className="fw-semibold" style={{ fontSize: 13 }}>{e.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{e.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12, color: "#64748b" }}>{e.phone || "—"}</td>
+                    <td>
+                      <span className="badge rounded-pill"
+                        style={{ background: ROLE_COLORS[e.role] + "18" || "#f1f5f9", color: ROLE_COLORS[e.role] || "#64748b", fontSize: 10 }}>
+                        {e.role?.replace("_", " ")}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: "#64748b" }}>{e.zoneName || "—"}</td>
+                    <td>
+                      <label className="switcher">
+                        <input className="switcher_input" type="checkbox" checked={!!e.isActive}
+                          onChange={ev => toggleMutation.mutate({ id: e.id, isActive: ev.target.checked })}
+                          data-testid={`toggle-employee-${e.id}`} />
+                        <span className="switcher_control"></span>
+                      </label>
+                    </td>
+                    <td className="text-center pe-4">
+                      <div className="d-flex justify-content-center gap-1">
+                        <button className="btn btn-sm btn-outline-primary" style={{ borderRadius: 8 }}
+                          onClick={() => openEdit(e)} data-testid={`btn-edit-emp-${e.id}`}>
+                          <i className="bi bi-pencil-fill"></i>
+                        </button>
+                        <button className="btn btn-sm btn-outline-danger" style={{ borderRadius: 8 }}
+                          onClick={() => { if (confirm("Delete employee?")) deleteMutation.mutate(e.id); }}
+                          data-testid={`btn-delete-emp-${e.id}`}>
+                          <i className="bi bi-trash-fill"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
       {showModal && (
-        <div className="modal fade show d-block" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">{editing ? "Edit Employee" : "Add Employee"}</h5>
-                <button className="btn-close" onClick={() => setShowModal(false)} />
+        <div className="modal-backdrop-jago" onClick={() => setShowModal(false)}>
+          <div className="modal-jago" onClick={e => e.stopPropagation()}>
+            <div className="modal-jago-header">
+              <h5 className="modal-jago-title">
+                <i className={`bi ${editing ? "bi-pencil-fill" : "bi-person-plus-fill"} me-2 text-primary`}></i>
+                {editing ? "Edit Employee" : "Add Employee"}
+              </h5>
+              <button className="modal-jago-close" onClick={() => setShowModal(false)}><i className="bi bi-x-lg"></i></button>
+            </div>
+
+            <div className="d-flex flex-column gap-3">
+              <div>
+                <label className="form-label-jago">Full Name <span className="text-danger">*</span></label>
+                <input className="admin-form-control" value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Ravi Kumar" data-testid="input-employee-name" />
               </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Full Name <span className="text-danger">*</span></label>
-                  <input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="input-employee-name" />
+              <div className="row g-3">
+                <div className="col-6">
+                  <label className="form-label-jago">Email <span className="text-danger">*</span></label>
+                  <input type="email" className="admin-form-control" value={form.email}
+                    onChange={e => setForm({ ...form, email: e.target.value })}
+                    placeholder="ravi@jago.com" data-testid="input-employee-email" />
                 </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Email <span className="text-danger">*</span></label>
-                  <input className="form-control" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} data-testid="input-employee-email" />
+                <div className="col-6">
+                  <label className="form-label-jago">Phone</label>
+                  <input className="admin-form-control" value={form.phone}
+                    onChange={e => setForm({ ...form, phone: e.target.value })}
+                    placeholder="+91 9876543210" data-testid="input-employee-phone" />
                 </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Phone</label>
-                  <input className="form-control" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} data-testid="input-employee-phone" />
+              </div>
+              <div className="row g-3">
+                <div className="col-6">
+                  <label className="form-label-jago">Role</label>
+                  <select className="admin-form-control" value={form.role}
+                    onChange={e => setForm({ ...form, role: e.target.value })}
+                    data-testid="select-employee-role">
+                    {ROLES.map(r => <option key={r} value={r}>{r.replace("_", " ")}</option>)}
+                  </select>
                 </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Role</label>
-                  <select className="form-select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} data-testid="select-employee-role">
-                    <option value="employee">Employee</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
+                <div className="col-6">
+                  <label className="form-label-jago">Assign Zone</label>
+                  <select className="admin-form-control" value={form.zoneId}
+                    onChange={e => setForm({ ...form, zoneId: e.target.value })}
+                    data-testid="select-employee-zone">
+                    <option value="">No Zone</option>
+                    {zonesArr.map((z: any) => <option key={z.id} value={z.id}>{z.name}</option>)}
                   </select>
                 </div>
               </div>
-              <div className="modal-footer">
-                <button className="btn btn-light" onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="btn btn-primary" disabled={!form.name || !form.email || saveMutation.isPending} onClick={() => saveMutation.mutate(form)} data-testid="btn-save-employee">
-                  {saveMutation.isPending ? "Saving..." : editing ? "Update" : "Create"}
+              <div className="d-flex align-items-center gap-3">
+                <span className="form-label-jago mb-0">Active</span>
+                <label className="switcher">
+                  <input type="checkbox" className="switcher_input" checked={form.isActive}
+                    onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+                  <span className="switcher_control"></span>
+                </label>
+              </div>
+              <div className="d-flex gap-2 justify-content-end pt-2 border-top">
+                <button className="btn btn-outline-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button className="btn btn-primary"
+                  disabled={!form.name || !form.email || saveMutation.isPending}
+                  onClick={() => saveMutation.mutate(form)} data-testid="btn-save-employee">
+                  {saveMutation.isPending ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</> : editing ? "Update" : "Create"}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
-    
-    </>
+    </div>
   );
 }

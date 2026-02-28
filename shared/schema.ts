@@ -88,6 +88,7 @@ export const tripRequests = pgTable("trip_requests", {
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash"),
   paymentStatus: varchar("payment_status", { length: 50 }).default("unpaid"),
   type: varchar("type", { length: 50 }).default("ride"),
+  tripType: varchar("trip_type", { length: 30 }).notNull().default("ride"),
   currentStatus: varchar("current_status", { length: 50 }).default("pending"),
   isScheduled: boolean("is_scheduled").default(false),
   scheduledAt: timestamp("scheduled_at"),
@@ -245,7 +246,25 @@ export const employees = pgTable("employees", {
   email: varchar("email", { length: 191 }).notNull().unique(),
   phone: varchar("phone", { length: 20 }),
   role: varchar("role", { length: 50 }).default("employee"),
+  zoneId: uuid("zone_id"),
+  passwordHash: varchar("password_hash", { length: 255 }),
   isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const b2bCompanies = pgTable("b2b_companies", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  contactPerson: varchar("contact_person", { length: 255 }),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 191 }).unique(),
+  gstNumber: varchar("gst_number", { length: 50 }),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  commissionPct: numeric("commission_pct", { precision: 5, scale: 2 }).default("10"),
+  walletBalance: numeric("wallet_balance", { precision: 12, scale: 2 }).default("0"),
+  totalTrips: integer("total_trips").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

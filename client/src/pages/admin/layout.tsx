@@ -106,6 +106,12 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    category: "B2B / Porter",
+    items: [
+      { label: "B2B Companies", icon: "bi-building-fill", href: "/admin/b2b-companies" },
+    ],
+  },
+  {
     category: "Vehicle Management",
     items: [
       { label: "Vehicle Attribute Setup", icon: "bi-ev-front-fill", href: "/admin/vehicle-attributes" },

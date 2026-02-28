@@ -27,6 +27,18 @@ function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
 }
 
+// Convert snake_case keys to camelCase for frontend consumption
+function camelize(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(camelize);
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [
+      k.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase()),
+      v
+    ])
+  );
+}
+
 async function seedInitialTrips() {
   const trips = await storage.getTrips();
   if (trips.total === 0) {
@@ -681,13 +693,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/driver-levels", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='driver' ORDER BY min_points ASC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/driver-levels", async (req, res) => {
+    try {
+      const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'driver', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/driver-levels/:id", async (req, res) => {
+    try {
+      const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/driver-levels/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.get("/api/customer-levels", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='customer' ORDER BY min_points ASC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/customer-levels", async (req, res) => {
+    try {
+      const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'customer', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/customer-levels/:id", async (req, res) => {
+    try {
+      const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/customer-levels/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/user-levels", async (req, res) => {
@@ -705,22 +757,86 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Employees
-  app.get("/api/employees", async (_req, res) => {
+  app.get("/api/employees", async (req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`SELECT * FROM employees ORDER BY created_at DESC`);
-      res.json(r.rows);
+      const zoneId = req.query.zoneId as string | undefined;
+      const r = zoneId
+        ? await rawDb.execute(rawSql`SELECT e.*, z.name as zone_name FROM employees e LEFT JOIN zones z ON z.id=e.zone_id WHERE e.zone_id=${zoneId}::uuid ORDER BY e.created_at DESC`)
+        : await rawDb.execute(rawSql`SELECT e.*, z.name as zone_name FROM employees e LEFT JOIN zones z ON z.id=e.zone_id ORDER BY e.created_at DESC`);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/employees", async (req, res) => {
     try {
-      const { name, email, phone, role, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, is_active) VALUES (${name}, ${email}, ${phone}, ${role}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const { name, email, phone, role, zoneId, isActive } = req.body;
+      const r = zoneId
+        ? await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, zone_id, is_active) VALUES (${name}, ${email}, ${phone}, ${role ?? 'employee'}, ${zoneId}::uuid, ${isActive ?? true}) RETURNING *`)
+        : await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, is_active) VALUES (${name}, ${email}, ${phone}, ${role ?? 'employee'}, ${isActive ?? true}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/employees/:id", async (req, res) => {
+    try {
+      const { name, email, phone, role, zoneId, isActive } = req.body;
+      const r = zoneId
+        ? await rawDb.execute(rawSql`UPDATE employees SET name=${name}, email=${email}, phone=${phone}, role=${role}, zone_id=${zoneId}::uuid, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`)
+        : await rawDb.execute(rawSql`UPDATE employees SET name=${name}, email=${email}, phone=${phone}, role=${role}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/employees/:id", async (req, res) => {
+    try {
+      const updates: string[] = [];
+      if (req.body.isActive !== undefined) updates.push(`is_active=${req.body.isActive}`);
+      if (req.body.zoneId !== undefined) updates.push(`zone_id='${req.body.zoneId}'`);
+      if (updates.length === 0) return res.status(400).json({ message: "Nothing to update" });
+      const r = await rawDb.execute(rawSql`UPDATE employees SET is_active=${req.body.isActive ?? null} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/employees/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM employees WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // B2B Companies
+  app.get("/api/b2b-companies", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const r = status
+        ? await rawDb.execute(rawSql`SELECT * FROM b2b_companies WHERE status=${status} ORDER BY created_at DESC`)
+        : await rawDb.execute(rawSql`SELECT * FROM b2b_companies ORDER BY created_at DESC`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/b2b-companies", async (req, res) => {
+    try {
+      const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO b2b_companies (company_name, contact_person, phone, email, gst_number, address, city, status, commission_pct) VALUES (${companyName}, ${contactPerson}, ${phone}, ${email}, ${gstNumber}, ${address}, ${city}, ${status ?? 'active'}, ${commissionPct ?? 10}) RETURNING *`);
+      res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/b2b-companies/:id", async (req, res) => {
+    try {
+      const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE b2b_companies SET company_name=${companyName}, contact_person=${contactPerson}, phone=${phone}, email=${email}, gst_number=${gstNumber}, address=${address}, city=${city}, status=${status}, commission_pct=${commissionPct} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/b2b-companies/:id/wallet", async (req, res) => {
+    try {
+      const { amount, type } = req.body;
+      const r = type === "deduct"
+        ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${amount} WHERE id=${req.params.id}::uuid RETURNING *`)
+        : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${amount} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/b2b-companies/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM b2b_companies WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -809,14 +925,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/parcel-fares", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT pf.*, z.name as zone_name FROM parcel_fares pf LEFT JOIN zones z ON z.id::uuid=pf.zone_id ORDER BY pf.created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/parcel-fares", async (req, res) => {
     try {
-      const { zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zone_id}::uuid, ${base_fare}, ${fare_per_km}, ${fare_per_kg}, ${minimum_fare}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zoneId}::uuid, ${baseFare}, ${farePerKm}, ${farePerKg}, ${minimumFare}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/parcel-fares/:id", async (req, res) => {
+    try {
+      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare}, fare_per_km=${farePerKm}, fare_per_kg=${farePerKg}, minimum_fare=${minimumFare} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/parcel-fares/:id", async (req, res) => {
@@ -858,6 +981,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.patch("/api/vehicle-requests/:id/status", async (req, res) => {
+    try {
+      const { status } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/vehicle-requests/:id", async (req, res) => {
     try {
       const { status } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
@@ -965,6 +1095,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { title, message, target } = req.body;
       console.log(`[Notification] To=${target} Title=${title} Msg=${message}`);
       res.json({ success: true, message: "Notification queued" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Car Sharing trips
+  app.get("/api/car-sharing-trips", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT t.*, u.full_name as customer_name, u.phone as customer_phone,
+          d.full_name as driver_name, d.phone as driver_phone,
+          vc.name as vehicle_name
+        FROM trip_requests t
+        LEFT JOIN users u ON u.id = t.customer_id
+        LEFT JOIN users d ON d.id = t.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.trip_type = 'car_sharing'
+        ORDER BY t.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
