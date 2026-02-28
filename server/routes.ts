@@ -1462,5 +1462,243 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Safety Alerts ───────────────────────────────────────────────────────────
+  app.get("/api/safety-alerts", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const triggeredBy = req.query.triggered_by as string;
+      // Build different queries based on filters to avoid dynamic SQL
+      let r;
+      const base = rawSql`SELECT sa.*, u.full_name as user_name, u.phone as user_phone, u.user_type, u.gender FROM safety_alerts sa LEFT JOIN users u ON u.id = sa.user_id`;
+      if (status && status !== 'all' && triggeredBy && triggeredBy !== 'all') {
+        r = await rawDb.execute(rawSql`${base} WHERE sa.status=${status} AND sa.triggered_by=${triggeredBy} ORDER BY sa.created_at DESC LIMIT 100`);
+      } else if (status && status !== 'all') {
+        r = await rawDb.execute(rawSql`${base} WHERE sa.status=${status} ORDER BY sa.created_at DESC LIMIT 100`);
+      } else if (triggeredBy && triggeredBy !== 'all') {
+        r = await rawDb.execute(rawSql`${base} WHERE sa.triggered_by=${triggeredBy} ORDER BY sa.created_at DESC LIMIT 100`);
+      } else {
+        r = await rawDb.execute(rawSql`${base} ORDER BY sa.created_at DESC LIMIT 100`);
+      }
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/safety-alerts/stats", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*) FILTER (WHERE status='active') as active_count,
+          COUNT(*) FILTER (WHERE status='acknowledged') as acknowledged_count,
+          COUNT(*) FILTER (WHERE status='resolved') as resolved_count,
+          COUNT(*) FILTER (WHERE triggered_by='customer') as customer_count,
+          COUNT(*) FILTER (WHERE triggered_by='driver') as driver_count,
+          COUNT(*) FILTER (WHERE DATE(created_at)=CURRENT_DATE) as today_count
+        FROM safety_alerts
+      `);
+      res.json(camelize(r.rows[0] || {}));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/safety-alerts", async (req, res) => {
+    try {
+      const { userId, tripId, alertType, triggeredBy, latitude, longitude, locationAddress } = req.body;
+      // Count nearby online drivers (within ~3km)
+      const nearbyR = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as cnt FROM users u
+        JOIN driver_details dd ON dd.user_id = u.id
+        WHERE u.user_type='driver' AND dd.is_online=true AND u.is_active=true
+      `);
+      const nearbyCount = Number((nearbyR.rows[0] as any)?.cnt || 0);
+      let r;
+      if (userId) {
+        r = await rawDb.execute(rawSql`
+          INSERT INTO safety_alerts (user_id, trip_id, alert_type, triggered_by, latitude, longitude, location_address, nearby_drivers_notified)
+          VALUES (${userId}::uuid, ${tripId ? tripId : null}, ${alertType||'sos'}, ${triggeredBy||'customer'},
+                  ${latitude||null}, ${longitude||null}, ${locationAddress||null}, ${nearbyCount})
+          RETURNING *
+        `);
+      } else {
+        r = await rawDb.execute(rawSql`
+          INSERT INTO safety_alerts (alert_type, triggered_by, latitude, longitude, location_address, nearby_drivers_notified)
+          VALUES (${alertType||'sos'}, ${triggeredBy||'customer'},
+                  ${latitude||null}, ${longitude||null}, ${locationAddress||null}, ${nearbyCount})
+          RETURNING *
+        `);
+      }
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/safety-alerts/:id/acknowledge", async (req, res) => {
+    try {
+      const { adminName, notes } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE safety_alerts SET status='acknowledged', acknowledged_by_name=${adminName||'Admin'},
+        acknowledged_at=now(), notes=${notes||null} WHERE id=${req.params.id}::uuid RETURNING *
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Alert not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/safety-alerts/:id/resolve", async (req, res) => {
+    try {
+      const { policeNotified, notes } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE safety_alerts SET status='resolved', resolved_at=now(),
+        police_notified=${policeNotified??false}, notes=${notes||null} WHERE id=${req.params.id}::uuid RETURNING *
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Alert not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/safety-alerts/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM safety_alerts WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── Police Stations ──────────────────────────────────────────────────────────
+  app.get("/api/police-stations", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT ps.*, z.name as zone_name FROM police_stations ps LEFT JOIN zones z ON z.id::uuid = ps.zone_id ORDER BY ps.name`);
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/police-stations", async (req, res) => {
+    try {
+      const { name, zoneId, address, phone, latitude, longitude } = req.body;
+      if (!name) return res.status(400).json({ message: "Station name required" });
+      let r;
+      if (zoneId) {
+        r = await rawDb.execute(rawSql`INSERT INTO police_stations (name, zone_id, address, phone, latitude, longitude) VALUES (${name}, ${zoneId}::uuid, ${address||null}, ${phone||null}, ${latitude||null}, ${longitude||null}) RETURNING *`);
+      } else {
+        r = await rawDb.execute(rawSql`INSERT INTO police_stations (name, address, phone, latitude, longitude) VALUES (${name}, ${address||null}, ${phone||null}, ${latitude||null}, ${longitude||null}) RETURNING *`);
+      }
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.put("/api/police-stations/:id", async (req, res) => {
+    try {
+      const { name, zoneId, address, phone, latitude, longitude, isActive } = req.body;
+      let r;
+      if (zoneId) {
+        r = await rawDb.execute(rawSql`UPDATE police_stations SET name=${name}, zone_id=${zoneId}::uuid, address=${address||null}, phone=${phone||null}, latitude=${latitude||null}, longitude=${longitude||null}, is_active=${isActive??true} WHERE id=${req.params.id}::uuid RETURNING *`);
+      } else {
+        r = await rawDb.execute(rawSql`UPDATE police_stations SET name=${name}, zone_id=NULL, address=${address||null}, phone=${phone||null}, latitude=${latitude||null}, longitude=${longitude||null}, is_active=${isActive??true} WHERE id=${req.params.id}::uuid RETURNING *`);
+      }
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/police-stations/:id", async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM police_stations WHERE id=${req.params.id}::uuid`);
+      res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── Female Matching Algorithm — Driver Pool ──────────────────────────────────
+  // GET matching algorithm stats
+  app.get("/api/matching/stats", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*) FILTER (WHERE user_type='driver' AND gender='female') as female_drivers,
+          COUNT(*) FILTER (WHERE user_type='driver' AND gender='male') as male_drivers,
+          COUNT(*) FILTER (WHERE user_type='customer' AND gender='female') as female_customers,
+          COUNT(*) FILTER (WHERE user_type='customer' AND prefer_female_driver=true) as prefer_female_customers
+        FROM users WHERE user_type IN ('driver','customer')
+      `);
+      const settings = await rawDb.execute(rawSql`
+        SELECT key_name, value FROM business_settings WHERE settings_type='safety_settings'
+      `);
+      const settingsMap = Object.fromEntries((settings.rows as any[]).map((s: any) => [s.key_name, s.value]));
+      res.json({ stats: camelize(r.rows[0] || {}), settings: settingsMap });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET available drivers with matching algorithm applied
+  app.get("/api/matching/drivers", async (req, res) => {
+    try {
+      const { customerGender, vehicleCategoryId } = req.query;
+      const settings = await rawDb.execute(rawSql`
+        SELECT key_name, value FROM business_settings WHERE key_name IN ('female_to_female_matching','vehicle_type_matching')
+      `);
+      const sMap = Object.fromEntries((settings.rows as any[]).map((s: any) => [s.key_name, s.value]));
+      const femalePriority = sMap['female_to_female_matching'] === '1' && customerGender === 'female';
+      const vehicleMatch = sMap['vehicle_type_matching'] === '1' && vehicleCategoryId;
+
+      let r;
+      if (vehicleMatch && femalePriority) {
+        r = await rawDb.execute(rawSql`
+          SELECT u.id, u.full_name, u.phone, u.gender, u.vehicle_number, u.vehicle_model,
+                 dd.avg_rating, dd.availability_status, vc.name as vehicle_category, vc.id as vehicle_category_id,
+                 CASE WHEN u.gender='female' THEN 1 ELSE 2 END as gender_priority
+          FROM users u
+          JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type='driver' AND u.is_active=true AND dd.availability_status='online'
+            AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid
+          ORDER BY gender_priority ASC, dd.avg_rating DESC
+        `);
+      } else if (vehicleMatch) {
+        r = await rawDb.execute(rawSql`
+          SELECT u.id, u.full_name, u.phone, u.gender, u.vehicle_number, u.vehicle_model,
+                 dd.avg_rating, dd.availability_status, vc.name as vehicle_category, vc.id as vehicle_category_id
+          FROM users u
+          JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type='driver' AND u.is_active=true AND dd.availability_status='online'
+            AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid
+          ORDER BY dd.avg_rating DESC
+        `);
+      } else if (femalePriority) {
+        r = await rawDb.execute(rawSql`
+          SELECT u.id, u.full_name, u.phone, u.gender, u.vehicle_number, u.vehicle_model,
+                 dd.avg_rating, dd.availability_status, vc.name as vehicle_category, vc.id as vehicle_category_id,
+                 CASE WHEN u.gender='female' THEN 1 ELSE 2 END as gender_priority
+          FROM users u
+          JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type='driver' AND u.is_active=true AND dd.availability_status='online'
+          ORDER BY gender_priority ASC, dd.avg_rating DESC
+        `);
+      } else {
+        r = await rawDb.execute(rawSql`
+          SELECT u.id, u.full_name, u.phone, u.gender, u.vehicle_number, u.vehicle_model,
+                 dd.avg_rating, dd.availability_status, vc.name as vehicle_category, vc.id as vehicle_category_id
+          FROM users u
+          JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type='driver' AND u.is_active=true AND dd.availability_status='online'
+          ORDER BY dd.avg_rating DESC
+        `);
+      }
+      res.json(camelize(r.rows));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH user gender + preference
+  app.patch("/api/users/:id/gender", async (req, res) => {
+    try {
+      const { gender, preferFemaleDriver, emergencyContactName, emergencyContactPhone } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE users SET
+          gender = ${gender || 'male'},
+          prefer_female_driver = ${preferFemaleDriver ?? false},
+          emergency_contact_name = ${emergencyContactName || null},
+          emergency_contact_phone = ${emergencyContactPhone || null}
+        WHERE id = ${req.params.id}::uuid RETURNING id, full_name, gender, prefer_female_driver, emergency_contact_name, emergency_contact_phone
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "User not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }
