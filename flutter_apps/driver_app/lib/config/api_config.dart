@@ -49,4 +49,5 @@ class ApiConfig {
   static String get fatigueStatus => '$baseUrl/api/app/driver/fatigue-status';
   static String get tipDriver => '$baseUrl/api/app/tip-driver';
   static String get lostFound => '$baseUrl/api/app/lost-found';
+  static String get driverWithdrawRequest => '$baseUrl/api/app/driver/withdraw-request';
 }

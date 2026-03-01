@@ -2873,15 +2873,57 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`SELECT wallet_balance, is_locked, lock_reason, pending_payment_amount FROM users WHERE id=${driver.id}::uuid`);
-      const payments = await rawDb.execute(rawSql`SELECT * FROM driver_payments WHERE driver_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 20`);
+      const payments = await rawDb.execute(rawSql`SELECT * FROM driver_payments WHERE driver_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 50`);
+      const wdReqs = await rawDb.execute(rawSql`SELECT * FROM withdraw_requests WHERE user_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
       const d = r.rows[0] as any;
+      const bal = parseFloat(d?.wallet_balance || 0);
+      const historyRows = camelize(payments.rows).map((p: any) => ({
+        ...p,
+        type: p.paymentType || p.type || 'deduction',
+        description: p.description || 'Platform charge',
+        date: p.createdAt,
+        amount: parseFloat(p.amount || 0),
+      }));
       res.json({
-        walletBalance: parseFloat(d?.wallet_balance || 0),
+        walletBalance: bal,
+        balance: bal,
         isLocked: d?.is_locked || false,
         lockReason: d?.lock_reason || null,
         pendingPaymentAmount: parseFloat(d?.pending_payment_amount || 0),
-        history: camelize(payments.rows),
+        history: historyRows,
+        transactions: historyRows,
+        withdrawRequests: wdReqs.rows.map(camelize),
       });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Submit withdrawal request ────────────────────────────────────────
+  app.post("/api/app/driver/withdraw-request", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { amount, bankName, accountNumber, ifscCode, accountHolderName, upiId, method = "bank" } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
+      if (amt < 100) return res.status(400).json({ message: "Minimum withdrawal is ₹100" });
+      // Check wallet balance
+      const walR = await rawDb.execute(rawSql`SELECT wallet_balance, is_locked FROM users WHERE id=${driver.id}::uuid`);
+      const w = walR.rows[0] as any;
+      if (w?.is_locked) return res.status(403).json({ message: "Account locked. Please clear dues first." });
+      const bal = parseFloat(w?.wallet_balance || 0);
+      if (bal < amt) return res.status(400).json({ message: `Insufficient balance. Available: ₹${bal.toFixed(2)}` });
+      // Check no pending withdrawal exists
+      const pending = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM withdraw_requests WHERE user_id=${driver.id}::uuid AND status='pending'`).catch(() => ({ rows: [{ cnt: 0 }] }));
+      if (parseInt((pending.rows[0] as any)?.cnt || 0) > 0) return res.status(400).json({ message: "You already have a pending withdrawal request" });
+      // Insert withdraw request
+      const notes = method === "upi"
+        ? `UPI: ${upiId || ''}`
+        : `Bank: ${bankName || ''} | Acc: ${accountNumber || ''} | IFSC: ${ifscCode || ''} | Name: ${accountHolderName || ''}`;
+      const wr = await rawDb.execute(rawSql`
+        INSERT INTO withdraw_requests (user_id, amount, note, status, created_at)
+        VALUES (${driver.id}::uuid, ${amt}, ${notes}, 'pending', now())
+        RETURNING *
+      `);
+      res.json({ success: true, message: `Withdrawal request of ₹${amt} submitted. Will be processed in 2-3 business days.`, request: camelize(wr.rows[0]) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3250,7 +3292,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { lat, lng, tripId, message } = req.body;
       await rawDb.execute(rawSql`
         INSERT INTO sos_alerts (user_id, trip_id, lat, lng, message, status)
-        VALUES (${user.id}::uuid, ${tripId ? tripId + '::uuid' : null}, ${lat||0}, ${lng||0}, ${message||'SOS triggered from app'}, 'active')
+        VALUES (${user.id}::uuid, ${tripId || null}, ${lat||0}, ${lng||0}, ${message||'SOS triggered from app'}, 'active')
       `).catch(() => {}); // if sos_alerts table doesn't exist, ignore
       console.log(`[SOS] ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng}`);
       res.json({ success: true, message: "SOS alert sent. Help is on the way." });
@@ -4036,7 +4078,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const result = await rawDb.execute(rawSql`
         INSERT INTO lost_found_reports (customer_id, trip_id, description, contact_phone, driver_id)
-        VALUES (${user.id}::uuid, ${tripId ? `${tripId}::uuid` : null}, ${description}, ${contactPhone || user.phone}, ${driverId ? `${driverId}::uuid` : null})
+        VALUES (${user.id}::uuid, ${tripId || null}, ${description}, ${contactPhone || user.phone}, ${driverId || null})
         RETURNING id
       `);
       res.json({ success: true, reportId: (result.rows[0] as any).id, message: "Report submitted! We will contact the driver and update you within 2 hours." });
@@ -4048,7 +4090,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await requireAppAuth(req, res); if (!user) return;
       const rows = await rawDb.execute(rawSql`
         SELECT l.*, t.pickup_address, t.destination_address,
-               u.name as driver_name, u.phone as driver_phone
+               u.full_name as driver_name, u.phone as driver_phone
         FROM lost_found_reports l
         LEFT JOIN trip_requests t ON l.trip_id = t.id
         LEFT JOIN users u ON l.driver_id = u.id
