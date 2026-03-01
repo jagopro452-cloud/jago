@@ -3361,6 +3361,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
+  app.post("/api/app/customer/wallet/create-order", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { amount } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt < 10 || amt > 50000) return res.status(400).json({ message: "Amount must be ₹10–₹50,000" });
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const Razorpay = require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({
+        amount: Math.round(amt * 100),
+        currency: "INR",
+        receipt: `cust_${customer.id}_${Date.now()}`,
+        notes: { customer_id: customer.id, purpose: "wallet_topup" }
+      });
+      res.json({ order, keyId, amount: amt });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Razorpay – Verify & credit wallet ───────────────────────────
+  app.post("/api/app/customer/wallet/verify-payment", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret) {
+        const crypto = require("crypto");
+        const expectedSig = crypto.createHmac("sha256", keySecret)
+          .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      const amt = parseFloat(amount);
+      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
+      await rawDb.execute(rawSql`
+        INSERT INTO transactions (user_id, amount, type, description, payment_method, reference_id, status)
+        VALUES (${customer.id}::uuid, ${amt}, 'credit', ${'Wallet recharge via Razorpay'}, ${'razorpay'}, ${razorpayPaymentId}, 'completed')
+      `).catch(() => {});
+      const newBal = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+      res.json({ success: true, balance: parseFloat((newBal.rows[0] as any).wallet_balance || "0"), message: `₹${amt.toFixed(0)} added to wallet` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── CUSTOMER: Update profile ──────────────────────────────────────────────
   app.patch("/api/app/customer/profile", authApp, async (req, res) => {
     try {
