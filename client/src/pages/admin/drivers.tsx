@@ -283,8 +283,21 @@ export default function Drivers() {
   const [verifyTab, setVerifyTab] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [page, setPage] = useState(1);
   const [verifyTarget, setVerifyTarget] = useState<any>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ fullName: "", phone: "", email: "", vehicleNumber: "", vehicleModel: "", licenseNumber: "" });
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  const addDriver = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/users", { ...form, userType: "driver" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Driver added successfully" });
+      setShowAdd(false);
+      setForm({ fullName: "", phone: "", email: "", vehicleNumber: "", vehicleModel: "", licenseNumber: "" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/users", { userType: "driver", search, page }],
@@ -320,7 +333,77 @@ export default function Drivers() {
           <h4 className="fw-bold mb-0" data-testid="page-title">Driver Management</h4>
           <div className="text-muted small">Onboarding, verification, and driver administration</div>
         </div>
+        <button className="btn btn-primary btn-sm d-flex align-items-center gap-1"
+          onClick={() => setShowAdd(true)} data-testid="btn-add-driver">
+          <i className="bi bi-person-plus-fill"></i> Add Driver
+        </button>
       </div>
+
+      {showAdd && (
+        <div className="modal show d-block" style={{ background: "rgba(0,0,0,0.4)" }}>
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title fw-bold">Add New Driver (JAGO Pilot)</h5>
+                <button className="btn-close" onClick={() => setShowAdd(false)}></button>
+              </div>
+              <div className="modal-body px-4 pb-4">
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Full Name <span className="text-danger">*</span></label>
+                    <input className="form-control" placeholder="e.g. Suresh Reddy"
+                      value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                      data-testid="input-driver-name" />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Phone Number <span className="text-danger">*</span></label>
+                    <input className="form-control" placeholder="+91 9876543210" type="tel"
+                      value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                      data-testid="input-driver-phone" />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Email <span className="text-muted">(optional)</span></label>
+                    <input className="form-control" placeholder="suresh@example.com" type="email"
+                      value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                      data-testid="input-driver-email" />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">License Number</label>
+                    <input className="form-control" placeholder="e.g. AP1234567890"
+                      value={form.licenseNumber} onChange={e => setForm(f => ({ ...f, licenseNumber: e.target.value }))}
+                      data-testid="input-driver-license" />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Vehicle Number</label>
+                    <input className="form-control" placeholder="e.g. TS 09 AB 1234"
+                      value={form.vehicleNumber} onChange={e => setForm(f => ({ ...f, vehicleNumber: e.target.value }))}
+                      data-testid="input-driver-vehicle-number" />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Vehicle Model</label>
+                    <input className="form-control" placeholder="e.g. Honda Activa, TVS Jupiter"
+                      value={form.vehicleModel} onChange={e => setForm(f => ({ ...f, vehicleModel: e.target.value }))}
+                      data-testid="input-driver-vehicle-model" />
+                  </div>
+                </div>
+                <div className="alert alert-info mt-3 mb-0 py-2" style={{ fontSize: 12, borderRadius: 8 }}>
+                  <i className="bi bi-info-circle me-1"></i>
+                  Driver will be added with <strong>Pending Verification</strong> status. Upload documents and approve from the driver list.
+                </div>
+                <div className="d-flex gap-2 mt-4">
+                  <button className="btn btn-light flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
+                  <button className="btn btn-primary flex-1"
+                    disabled={!form.fullName || !form.phone || addDriver.isPending}
+                    onClick={() => addDriver.mutate()}
+                    data-testid="btn-save-driver">
+                    {addDriver.isPending ? "Saving…" : "Add Driver"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="row g-3 mb-3">

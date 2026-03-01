@@ -280,15 +280,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/users", async (req, res) => {
     try {
-      const { fullName, phone, email, userType = "customer" } = req.body;
+      const { fullName, phone, email, userType = "customer", vehicleNumber, vehicleModel, licenseNumber } = req.body;
       if (!fullName || !phone) return res.status(400).json({ message: "Name and phone are required" });
-      const { db: rDb } = await import("./db");
-      const { users } = await import("@shared/schema");
-      const [user] = await rDb.insert(users).values({
-        fullName, phone, email: email || null,
-        userType, isActive: true, loyaltyPoints: 0,
-      } as any).returning();
-      res.status(201).json(user);
+      const { db: xDb, sql: xSql } = await import("./db").then(async m => ({ db: m.db, sql: (await import("drizzle-orm")).sql }));
+      const result = await xDb.execute(xSql`
+        INSERT INTO users (full_name, phone, email, user_type, is_active, loyalty_points, vehicle_number, vehicle_model, license_number)
+        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${vehicleNumber || null}, ${vehicleModel || null}, ${licenseNumber || null})
+        RETURNING *
+      `);
+      res.status(201).json(result.rows[0]);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -296,9 +296,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/users/:id", async (req, res) => {
     try {
-      const { db: rDb } = await import("./db");
-      const { users } = await import("@shared/schema");
-      await rDb.delete(users).where(eq(users.id as any, req.params.id));
+      const { db: xDb, sql: xSql } = await import("./db").then(async m => ({ db: m.db, sql: (await import("drizzle-orm")).sql }));
+      await xDb.execute(xSql`DELETE FROM users WHERE id::text = ${req.params.id}`);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
