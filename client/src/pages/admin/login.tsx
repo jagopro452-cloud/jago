@@ -42,12 +42,6 @@ const FEATURES = [
   { icon: "bi-bell-fill", label: "Smart alerts & surge pricing" },
 ];
 
-function genCaptcha() {
-  const a = Math.floor(Math.random() * 9) + 1;
-  const b = Math.floor(Math.random() * 9) + 1;
-  return { a, b, ans: a + b };
-}
-
 export default function AdminLogin() {
   useAdminBootstrap();
   const [, setLocation] = useLocation();
@@ -58,10 +52,6 @@ export default function AdminLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [captcha, setCaptcha] = useState(genCaptcha);
-  const [captchaVal, setCaptchaVal] = useState("");
-  const [captchaErr, setCaptchaErr] = useState(false);
-
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("jago-admin");
@@ -71,13 +61,6 @@ export default function AdminLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (parseInt(captchaVal) !== captcha.ans) {
-      setCaptchaErr(true);
-      setCaptcha(genCaptcha());
-      setCaptchaVal("");
-      return;
-    }
-    setCaptchaErr(false);
     setLoading(true);
     try {
       const res = await fetch("/api/admin/login", {
@@ -221,40 +204,6 @@ export default function AdminLogin() {
               </div>
             </div>
 
-            {/* Math Captcha */}
-            <div className="jl-field">
-              <label className="jl-label">Security Check</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  background: "linear-gradient(135deg, #1e3a5f 0%, #0f3460 100%)",
-                  color: "#60a5fa", fontFamily: "monospace", fontSize: 18, fontWeight: 800,
-                  padding: "10px 18px", borderRadius: 10, letterSpacing: 2, flexShrink: 0,
-                  border: "1px solid rgba(96,165,250,0.25)", userSelect: "none",
-                }}>
-                  {captcha.a} + {captcha.b} = ?
-                </div>
-                <div className="jl-input-wrap" style={{ flex: 1 }}>
-                  <span className="jl-input-icon"><i className="bi bi-shield-check"></i></span>
-                  <input
-                    type="number"
-                    className="jl-input"
-                    placeholder="Answer"
-                    value={captchaVal}
-                    onChange={e => { setCaptchaVal(e.target.value); setCaptchaErr(false); }}
-                    required
-                    data-testid="input-captcha"
-                    style={captchaErr ? { borderColor: "#ef4444" } : {}}
-                  />
-                </div>
-                <button type="button" onClick={() => { setCaptcha(genCaptcha()); setCaptchaVal(""); setCaptchaErr(false); }}
-                  style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", cursor: "pointer", color: "#64748b", flexShrink: 0 }}
-                  title="Refresh captcha">
-                  <i className="bi bi-arrow-clockwise"></i>
-                </button>
-              </div>
-              {captchaErr && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>Incorrect answer. Try again.</div>}
-            </div>
-
             <div className="jl-row">
               <label className="jl-check-label">
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} data-testid="input-remember" />
@@ -270,8 +219,10 @@ export default function AdminLogin() {
             </button>
           </form>
 
-          <div className="jl-demo-box">
-            <div className="jl-demo-title"><i className="bi bi-info-circle me-1"></i>Demo Credentials</div>
+          <div className="jl-demo-box" style={{ cursor: "pointer" }}
+            onClick={() => { setEmail("admin@admin.com"); setPassword("admin123"); setError(""); }}
+            title="Click to auto-fill credentials">
+            <div className="jl-demo-title"><i className="bi bi-info-circle me-1"></i>Demo Credentials <small style={{fontSize:11,opacity:0.7}}>(click to fill)</small></div>
             <div className="jl-demo-row"><span>Email:</span><code>admin@admin.com</code></div>
             <div className="jl-demo-row"><span>Password:</span><code>admin123</code></div>
           </div>
