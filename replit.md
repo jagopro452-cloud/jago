@@ -161,13 +161,24 @@ Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP
 
 ### Driver App (JAGO Pilot) — `flutter_apps/driver_app/`
 - **Theme**: Dark navy (#060D1E) + Blue (#2563EB)
-- **Screens**: Splash → Login (OTP) → Home (Map + Online Toggle) → Incoming Trip Sheet → Active Trip (Pickup → OTP Verify → Complete) → Rating → Wallet → Earnings → Trip History → Profile
-- **Key features**: Live GPS location update, 5s trip polling, 30s accept timer, withdrawal request, earnings by period (today/week/month/all)
+- **Screens**: Home (Map) → Incoming Trip → Active Trip → KYC Documents → Performance → Face Verification → Break Mode → Fatigue Alert → Wallet → Trip History → Profile
+- **Key features**: Live GPS, Face verification (daily + 10-trip trigger), KYC doc upload, Performance score (Bronze/Silver/Gold), **Break Mode** (set 5-60 min break, auto go-online), **Fatigue Alert** (8+ hrs driving warning), earnings by period
 
 ### Customer App (JAGO) — `flutter_apps/customer_app/`
-- **Theme**: Light white + Blue (#2563EB) — standard material style
-- **Screens**: Splash → Login (OTP) → Home (Map + Quick Actions) → Booking (Map tap → Vehicle select → Payment → Coupon) → Tracking (Live driver + OTP display + Cancel) → Rating → Wallet (Recharge) → Trip History → Saved Places → Profile
-- **Key features**: Fare estimate by vehicle category, coupon apply, real-time driver tracking, wallet recharge with UPI ref
+- **Theme**: Light white + Blue (#2563EB)
+- **Screens**: Home → Booking → Tracking → Tip Driver → JAGO Coins → Monthly Pass → Ride Preferences → Lost & Found → Scheduled Rides → Emergency Contacts → Saved Places → Wallet → Profile
+- **Key features**: **JAGO Coins** (earn per ride, redeem for discounts), **Monthly Pass** (20/40/80 rides, save 35%), **Ride Preferences** (AC, quiet, women driver), **Post-Ride Tip** (₹10-50 + bonus coins), **Lost & Found** (report forgotten items), **Surge Alert** (notify when surge drops), Fare estimate, Coupon, Scheduled rides, Emergency contacts
+
+### Unique Feature APIs added:
+- `GET /api/app/customer/coins` — JAGO Coins balance + history
+- `POST /api/app/customer/redeem-coins` — Redeem coins for discount
+- `GET/POST /api/app/customer/preferences` — Ride preferences (AC, quiet, gender)
+- `POST /api/app/tip-driver` — Tip driver + earn 10x coins
+- `POST /api/app/lost-found` — Report lost item
+- `GET/POST/DELETE /api/app/driver/break` — Break mode management
+- `GET /api/app/driver/fatigue-status` — Fatigue hours check
+- `GET/POST /api/app/customer/monthly-pass` — Monthly pass plans
+- `POST /api/app/customer/surge-alert` — Subscribe to surge notifications
 
 ### Setup Required by Developer:
 1. Flutter SDK 3.0+ install

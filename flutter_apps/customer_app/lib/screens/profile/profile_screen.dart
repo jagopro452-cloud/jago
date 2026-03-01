@@ -4,6 +4,10 @@ import '../auth/login_screen.dart';
 import '../saved_places/saved_places_screen.dart';
 import '../scheduled/scheduled_rides_screen.dart';
 import '../safety/emergency_contacts_screen.dart';
+import '../coins/coins_screen.dart';
+import '../monthly_pass/monthly_pass_screen.dart';
+import '../preferences/ride_preferences_screen.dart';
+import '../lost_found/lost_found_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -152,6 +156,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _tile(Icons.bookmark, 'Saved Places', color: const Color(0xFF2563EB), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()))),
         _div(),
         _tile(Icons.schedule, 'Scheduled Rides', color: const Color(0xFF7C3AED), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduledRidesScreen()))),
+        _div(),
+        _tile(Icons.stars_rounded, 'JAGO Coins', color: const Color(0xFFF59E0B), badge: 'Earn & Redeem', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CoinsScreen()))),
+        _div(),
+        _tile(Icons.confirmation_number_outlined, 'Monthly Pass', color: const Color(0xFF059669), badge: 'Save 35%', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()))),
+        _div(),
+        _tile(Icons.tune, 'Ride Preferences', color: const Color(0xFF2563EB), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RidePreferencesScreen()))),
+        _div(),
+        _tile(Icons.search, 'Lost & Found', color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LostFoundScreen()))),
         _div(),
         _tile(Icons.local_offer, 'My Coupons', color: const Color(0xFF059669), badge: 'SAVE 20%'),
         _div(),

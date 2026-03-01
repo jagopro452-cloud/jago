@@ -7,6 +7,8 @@ import '../../config/api_config.dart';
 import '../auth/login_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
 import '../performance/performance_screen.dart';
+import '../break_mode/break_mode_screen.dart';
+import '../fatigue/fatigue_alert_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -176,6 +178,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _menuItem(Icons.trending_up, 'Performance & Stats', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PerformanceScreen()))),
         _divider(),
         _menuItem(Icons.verified_user, 'KYC Documents', badge: 'Verify', badgeColor: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KycDocumentsScreen()))),
+        _divider(),
+        _menuItem(Icons.coffee, 'Break Mode', badge: 'New', badgeColor: Colors.amber, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen()))),
+        _divider(),
+        _menuItem(Icons.monitor_heart, 'Fatigue Alert', badge: 'Safety', badgeColor: const Color(0xFFEF4444), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FatigueAlertScreen()))),
         _divider(),
         _menuItem(Icons.share, 'Refer & Earn', badge: '₹100/Refer', badgeColor: const Color(0xFF22C55E)),
         _divider(),

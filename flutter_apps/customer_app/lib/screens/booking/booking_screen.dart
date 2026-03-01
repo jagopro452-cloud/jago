@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../../services/trip_service.dart';
+import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 import '../tracking/tracking_screen.dart';
 
 class BookingScreen extends StatefulWidget {
@@ -239,7 +243,9 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         const SizedBox(height: 12),
         ...cats.map((cat) => _categoryCard(cat)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        _surgeAlertBanner(),
+        const SizedBox(height: 8),
         _paymentRow(),
         const SizedBox(height: 8),
         TextButton.icon(
@@ -257,6 +263,44 @@ class _BookingScreenState extends State<BookingScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _surgeAlertBanner() {
+    final surge = _fareData?['surgeMultiplier'] ?? 1.0;
+    final hasSurge = (surge is num) && surge > 1.1;
+    if (!hasSurge) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(children: [
+        const Icon(Icons.trending_up, color: Colors.orange),
+        const SizedBox(width: 8),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${(surge * 100 - 100).round()}% Surge Pricing active', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text('High demand area. Notify you when it drops?', style: TextStyle(color: Colors.grey, fontSize: 11)),
+          ],
+        )),
+        TextButton(
+          onPressed: () async {
+            try {
+              final headers = await AuthService.getHeaders();
+              headers['Content-Type'] = 'application/json';
+              await http.post(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/surge-alert'), headers: headers,
+                body: jsonEncode({'lat': _pickupLatLng?.latitude, 'lng': _pickupLatLng?.longitude, 'address': _pickupCtrl.text}));
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("We'll notify you when surge drops!"), backgroundColor: Colors.green));
+            } catch (_) {}
+          },
+          style: TextButton.styleFrom(foregroundColor: Colors.orange, padding: const EdgeInsets.symmetric(horizontal: 8)),
+          child: const Text('Notify Me', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+      ]),
     );
   }
 

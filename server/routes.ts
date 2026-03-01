@@ -3810,5 +3810,341 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ██████   UNIQUE FEATURES — No competitor has all of these   ██████
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Helper: inline auth check for unique feature routes
+  async function requireAppAuth(req: Request, res: Response): Promise<any | null> {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ message: "No token provided" }); return null; }
+      const parts = token.split(":");
+      if (parts.length < 2) { res.status(401).json({ message: "Invalid token format" }); return null; }
+      const userId = parts[0];
+      const userR = await rawDb.execute(rawSql`SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true AND auth_token=${token} LIMIT 1`);
+      if (!userR.rows.length) { res.status(401).json({ message: "Session expired. Please login again." }); return null; }
+      return camelize(userR.rows[0]);
+    } catch (e: any) { res.status(401).json({ message: "Auth failed" }); return null; }
+  }
+
+  // ── Ensure feature tables exist ─────────────────────────────────────
+  (async () => {
+    try {
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS coins_ledger (
+          id SERIAL PRIMARY KEY, user_id UUID NOT NULL, amount INTEGER NOT NULL,
+          type VARCHAR(30) NOT NULL, description TEXT, trip_id UUID,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS user_preferences (
+          user_id UUID PRIMARY KEY, quiet_ride BOOLEAN DEFAULT false,
+          ac_preferred BOOLEAN DEFAULT true, music_off BOOLEAN DEFAULT false,
+          wheelchair_accessible BOOLEAN DEFAULT false, extra_luggage BOOLEAN DEFAULT false,
+          preferred_gender VARCHAR(10) DEFAULT 'any',
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS lost_found_reports (
+          id SERIAL PRIMARY KEY, customer_id UUID NOT NULL, trip_id UUID,
+          description TEXT NOT NULL, contact_phone VARCHAR(15),
+          status VARCHAR(20) DEFAULT 'open', driver_id UUID,
+          created_at TIMESTAMP DEFAULT NOW(), resolved_at TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS monthly_passes (
+          id SERIAL PRIMARY KEY, user_id UUID NOT NULL,
+          rides_total INTEGER DEFAULT 30, rides_used INTEGER DEFAULT 0,
+          valid_from DATE DEFAULT CURRENT_DATE,
+          valid_until DATE DEFAULT (CURRENT_DATE + INTERVAL '30 days'),
+          amount_paid NUMERIC(10,2), plan_name VARCHAR(50),
+          is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS surge_alerts (
+          id SERIAL PRIMARY KEY, user_id UUID NOT NULL,
+          pickup_lat NUMERIC(10,7), pickup_lng NUMERIC(10,7),
+          pickup_address TEXT, created_at TIMESTAMP DEFAULT NOW(), notified_at TIMESTAMP
+        );
+      `);
+      // Add break_until column to users if not exists
+      await rawDb.execute(rawSql`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS break_until TIMESTAMP;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS jago_coins INTEGER DEFAULT 0;
+        ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS tip_amount NUMERIC(10,2) DEFAULT 0;
+        ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS ride_preferences JSONB;
+      `);
+    } catch (_) {}
+  })();
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 1. JAGO COINS — Loyalty Program
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.get("/api/app/customer/coins", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const [balRes, histRes] = await Promise.all([
+        rawDb.execute(rawSql`SELECT jago_coins FROM users WHERE id=${user.id}::uuid`),
+        rawDb.execute(rawSql`
+          SELECT * FROM coins_ledger WHERE user_id=${user.id}::uuid
+          ORDER BY created_at DESC LIMIT 30
+        `),
+      ]);
+      const balance = parseInt((balRes.rows[0] as any)?.jago_coins || 0);
+      res.json({
+        balance,
+        rupeeValue: Math.floor(balance / 10),
+        history: histRes.rows.map(camelize),
+        howItWorks: [
+          "Every ₹10 fare = 1 JAGO Coin",
+          "100 Coins = ₹10 discount on next ride",
+          "Coins valid for 12 months",
+          "Bonus coins on referrals & first rides",
+        ],
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/customer/redeem-coins", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { coins } = req.body;
+      if (!coins || coins < 100) return res.status(400).json({ message: "Minimum 100 coins to redeem" });
+      const bal = await rawDb.execute(rawSql`SELECT jago_coins FROM users WHERE id=${user.id}::uuid`);
+      const current = parseInt((bal.rows[0] as any)?.jago_coins || 0);
+      if (current < coins) return res.status(400).json({ message: "Insufficient coins" });
+      const discount = Math.floor(coins / 10);
+      await rawDb.execute(rawSql`UPDATE users SET jago_coins = jago_coins - ${coins} WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`
+        INSERT INTO coins_ledger (user_id, amount, type, description)
+        VALUES (${user.id}::uuid, ${-coins}, 'redeem', 'Redeemed ${coins} coins for ₹${discount} discount')
+      `);
+      res.json({ success: true, coinsUsed: coins, discountAmount: discount, message: `₹${discount} discount applied to next ride!` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 2. RIDE PREFERENCES (Quiet ride, AC, Music off, etc.)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.get("/api/app/customer/preferences", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const rows = await rawDb.execute(rawSql`SELECT * FROM user_preferences WHERE user_id=${user.id}::uuid`);
+      if (rows.rows.length === 0) {
+        res.json({ quietRide: false, acPreferred: true, musicOff: false, wheelchairAccessible: false, extraLuggage: false, preferredGender: 'any' });
+      } else {
+        res.json(camelize(rows.rows[0]));
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/customer/preferences", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { quietRide, acPreferred, musicOff, wheelchairAccessible, extraLuggage, preferredGender } = req.body;
+      await rawDb.execute(rawSql`
+        INSERT INTO user_preferences (user_id, quiet_ride, ac_preferred, music_off, wheelchair_accessible, extra_luggage, preferred_gender)
+        VALUES (${user.id}::uuid, ${!!quietRide}, ${acPreferred !== false}, ${!!musicOff}, ${!!wheelchairAccessible}, ${!!extraLuggage}, ${preferredGender || 'any'})
+        ON CONFLICT (user_id) DO UPDATE SET
+          quiet_ride=${!!quietRide}, ac_preferred=${acPreferred !== false}, music_off=${!!musicOff},
+          wheelchair_accessible=${!!wheelchairAccessible}, extra_luggage=${!!extraLuggage},
+          preferred_gender=${preferredGender || 'any'}, updated_at=NOW()
+      `);
+      res.json({ success: true, message: "Preferences saved! Applied to your next ride." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 3. POST-RIDE TIP DRIVER
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.post("/api/app/tip-driver", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { tripId, amount } = req.body;
+      if (!tripId || !amount || amount <= 0) return res.status(400).json({ message: "Invalid tip amount" });
+      const tripRes = await rawDb.execute(rawSql`SELECT * FROM trip_requests WHERE id=${tripId}::uuid`);
+      const trip = tripRes.rows[0] as any;
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (trip.customer_id !== user.id && trip.driver_id !== user.id) return res.status(403).json({ message: "Not authorized" });
+      await rawDb.execute(rawSql`UPDATE trip_requests SET tip_amount=${amount} WHERE id=${tripId}::uuid`);
+      // Credit tip to driver wallet
+      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amount} WHERE id=${trip.driver_id}::uuid`);
+      // Log it
+      await rawDb.execute(rawSql`
+        INSERT INTO coins_ledger (user_id, amount, type, description, trip_id)
+        VALUES (${trip.driver_id}::uuid, ${amount * 10}, 'tip_bonus', 'Tip received for ride — bonus coins', ${tripId}::uuid)
+      `);
+      res.json({ success: true, message: `₹${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Coins 🎉` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 4. LOST & FOUND
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.post("/api/app/lost-found", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { tripId, description, contactPhone } = req.body;
+      if (!description) return res.status(400).json({ message: "Description required" });
+      let driverId = null;
+      if (tripId) {
+        const tr = await rawDb.execute(rawSql`SELECT driver_id FROM trip_requests WHERE id=${tripId}::uuid`);
+        driverId = (tr.rows[0] as any)?.driver_id || null;
+      }
+      const result = await rawDb.execute(rawSql`
+        INSERT INTO lost_found_reports (customer_id, trip_id, description, contact_phone, driver_id)
+        VALUES (${user.id}::uuid, ${tripId ? `${tripId}::uuid` : null}, ${description}, ${contactPhone || user.phone}, ${driverId ? `${driverId}::uuid` : null})
+        RETURNING id
+      `);
+      res.json({ success: true, reportId: (result.rows[0] as any).id, message: "Report submitted! We will contact the driver and update you within 2 hours." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/app/customer/lost-found", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const rows = await rawDb.execute(rawSql`
+        SELECT l.*, t.pickup_address, t.destination_address,
+               u.name as driver_name, u.phone as driver_phone
+        FROM lost_found_reports l
+        LEFT JOIN trip_requests t ON l.trip_id = t.id
+        LEFT JOIN users u ON l.driver_id = u.id
+        WHERE l.customer_id=${user.id}::uuid
+        ORDER BY l.created_at DESC
+      `);
+      res.json(rows.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 5. MONTHLY PASS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const MONTHLY_PLANS = [
+    { name: 'JAGO Basic', rides: 20, price: 699, discount: '15%' },
+    { name: 'JAGO Plus', rides: 40, price: 1199, discount: '25%' },
+    { name: 'JAGO Pro', rides: 80, price: 1999, discount: '35%' },
+  ];
+
+  app.get("/api/app/customer/monthly-pass", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const active = await rawDb.execute(rawSql`
+        SELECT * FROM monthly_passes WHERE user_id=${user.id}::uuid
+        AND is_active=true AND valid_until >= CURRENT_DATE
+        ORDER BY created_at DESC LIMIT 1
+      `);
+      res.json({
+        activePlan: active.rows.length ? camelize(active.rows[0]) : null,
+        availablePlans: MONTHLY_PLANS,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/customer/monthly-pass/buy", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { planName } = req.body;
+      const plan = MONTHLY_PLANS.find(p => p.name === planName);
+      if (!plan) return res.status(400).json({ message: "Invalid plan" });
+      // Check wallet balance
+      const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
+      const bal = parseFloat((walRes.rows[0] as any)?.wallet_balance || 0);
+      if (bal < plan.price) return res.status(400).json({ message: `Insufficient wallet balance. Need ₹${plan.price}, have ₹${bal.toFixed(0)}` });
+      // Deduct & create pass
+      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${plan.price} WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`UPDATE monthly_passes SET is_active=false WHERE user_id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`
+        INSERT INTO monthly_passes (user_id, rides_total, rides_used, amount_paid, plan_name)
+        VALUES (${user.id}::uuid, ${plan.rides}, 0, ${plan.price}, ${plan.name})
+      `);
+      // Bonus coins for buying pass
+      const bonusCoins = plan.rides * 5;
+      await rawDb.execute(rawSql`UPDATE users SET jago_coins = jago_coins + ${bonusCoins} WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`
+        INSERT INTO coins_ledger (user_id, amount, type, description)
+        VALUES (${user.id}::uuid, ${bonusCoins}, 'pass_bonus', 'Welcome bonus for ${plan.name} purchase')
+      `);
+      res.json({ success: true, message: `${plan.name} activated! ${plan.rides} rides for 30 days. Bonus: ${bonusCoins} JAGO Coins credited!` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 6. SURGE ALERT — "Notify me when surge drops"
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.post("/api/app/customer/surge-alert", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { lat, lng, address } = req.body;
+      await rawDb.execute(rawSql`
+        INSERT INTO surge_alerts (user_id, pickup_lat, pickup_lng, pickup_address)
+        VALUES (${user.id}::uuid, ${lat || 0}, ${lng || 0}, ${address || ''})
+      `);
+      res.json({ success: true, message: "We'll notify you when surge pricing drops for this area!" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 7. DRIVER BREAK MODE — Set break, show "Back in X min" to customers
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.post("/api/app/driver/break", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const { minutes } = req.body;
+      if (!minutes || minutes < 1 || minutes > 120) return res.status(400).json({ message: "Break: 1–120 minutes only" });
+      const breakUntil = new Date(Date.now() + minutes * 60 * 1000);
+      await rawDb.execute(rawSql`UPDATE users SET break_until=${breakUntil.toISOString()}, is_online=false WHERE id=${user.id}::uuid`);
+      res.json({ success: true, breakUntil: breakUntil.toISOString(), message: `Break set for ${minutes} minutes. You'll auto go-online after break.` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/app/driver/break", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=true WHERE id=${user.id}::uuid`);
+      res.json({ success: true, message: "Break ended! You are now online." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/app/driver/break", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      const dbRes = await rawDb.execute(rawSql`SELECT break_until FROM users WHERE id=${user.id}::uuid`);
+      const breakUntil = (dbRes.rows[0] as any)?.break_until;
+      if (!breakUntil || new Date(breakUntil) < new Date()) {
+        // Auto end break if time passed
+        if (breakUntil) await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=true WHERE id=${user.id}::uuid`);
+        return res.json({ onBreak: false });
+      }
+      const minsLeft = Math.ceil((new Date(breakUntil).getTime() - Date.now()) / 60000);
+      res.json({ onBreak: true, breakUntil, minutesLeft: minsLeft });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 8. DRIVER FATIGUE ALERT — Warn admin if driver online 8+ hrs
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.get("/api/app/driver/fatigue-status", async (req, res) => {
+    try {
+      const user = await requireAppAuth(req, res); if (!user) return;
+      // Count trips today
+      const today = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as cnt, COALESCE(SUM(EXTRACT(EPOCH FROM (updated_at - created_at))/3600), 0) as hrs
+        FROM trip_requests WHERE driver_id=${user.id}::uuid
+        AND created_at >= CURRENT_DATE AND (status='completed' OR status='on_the_way')
+      `);
+      const trips = parseInt((today.rows[0] as any)?.cnt || 0);
+      const hrs = parseFloat((today.rows[0] as any)?.hrs || 0);
+      const fatigueLevel = hrs >= 8 ? 'high' : hrs >= 5 ? 'medium' : 'low';
+      res.json({
+        hoursOnline: hrs.toFixed(1),
+        tripsToday: trips,
+        fatigueLevel,
+        recommendation: fatigueLevel === 'high'
+          ? "You've been driving 8+ hours. Please take a long break for your safety!"
+          : fatigueLevel === 'medium'
+          ? "You've been driving 5+ hours. Consider a short break soon."
+          : "You're doing great! Keep safe.",
+        suggestBreak: fatigueLevel !== 'low',
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }

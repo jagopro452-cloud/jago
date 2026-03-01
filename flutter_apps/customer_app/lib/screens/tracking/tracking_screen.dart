@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../../services/trip_service.dart';
+import '../tip/tip_driver_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
   final Map<String, dynamic> tripData;
@@ -93,7 +94,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   Future<void> _submitRating() async {
     await TripService.rateDriver(tripId: _trip['id'] ?? '', rating: _rating);
-    if (mounted) { setState(() => _ratingSubmitted = true); Navigator.pop(context); }
+    if (!mounted) return;
+    setState(() => _ratingSubmitted = true);
+    // Show tip screen after rating
+    final driverName = _trip['driverName'] ?? _trip['driver_name'] ?? 'Your Driver';
+    final tripId = _trip['id'] ?? '';
+    Navigator.pushReplacement(context, MaterialPageRoute(
+      builder: (_) => TipDriverScreen(tripId: tripId, driverName: driverName),
+    ));
   }
 
   void _cancelTrip() {
