@@ -2,9 +2,11 @@ class ApiConfig {
   static const String prodBaseUrl = 'https://jagopro.org';
   static const String devBaseUrl = 'http://10.0.2.2:5000';
 
-  static bool _isProd = false;
+  static bool _isProd = true;
   static String get baseUrl => _isProd ? prodBaseUrl : devBaseUrl;
+  static bool get isDev => !_isProd;
   static void useProduction() => _isProd = true;
+  static void useDevelopment() => _isProd = false;
 
   static const String googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
 

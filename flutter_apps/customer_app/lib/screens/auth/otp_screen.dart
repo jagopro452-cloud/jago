@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
+import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../home/home_screen.dart';
 
@@ -73,7 +74,7 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 8),
             Text('Sent to +91-${widget.phone}',
               style: TextStyle(fontSize: 14, color: Colors.grey[500])),
-            if (widget.otp.isNotEmpty) ...[
+            if (ApiConfig.isDev && widget.otp.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text('Dev OTP: ${widget.otp}',
                 style: const TextStyle(fontSize: 12, color: Color(0xFF1E6DE5))),
