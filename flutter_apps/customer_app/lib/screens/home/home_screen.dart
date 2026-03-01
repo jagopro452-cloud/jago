@@ -34,16 +34,37 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _vehicleCategories = [];
 
-  static IconData _iconForVehicle(String name) {
+  static IconData _iconForVehicle(String name, {String? type}) {
     final n = name.toLowerCase();
+    if (n.contains('bike parcel') || n.contains('parcel bike')) return Icons.delivery_dining;
     if (n.contains('bike')) return Icons.electric_bike;
+    if (n.contains('mini auto') || n.contains('temo auto')) return Icons.electric_rickshaw;
     if (n.contains('auto')) return Icons.electric_rickshaw;
     if (n.contains('suv')) return Icons.directions_car;
-    if (n.contains('temo') || n.contains('tempo')) return Icons.airport_shuttle;
     if (n.contains('car')) return Icons.directions_car_filled;
+    if (n.contains('tata ace') || n.contains('mini cargo')) return Icons.local_shipping;
+    if (n.contains('cargo truck')) return Icons.fire_truck;
     if (n.contains('cargo')) return Icons.local_shipping;
     if (n.contains('parcel')) return Icons.delivery_dining;
+    if (type == 'cargo') return Icons.local_shipping;
+    if (type == 'parcel') return Icons.delivery_dining;
     return Icons.directions_car;
+  }
+
+  static Color _colorForType(String? type) {
+    switch (type) {
+      case 'parcel': return const Color(0xFF7C3AED);
+      case 'cargo': return const Color(0xFFEA580C);
+      default: return const Color(0xFF1E6DE5);
+    }
+  }
+
+  static String _labelForType(String? type) {
+    switch (type) {
+      case 'parcel': return 'Parcel';
+      case 'cargo': return 'Cargo';
+      default: return 'Ride';
+    }
   }
 
   @override
@@ -93,9 +114,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Map<String, dynamic>> _defaultVehicleCategories() => [
-    {'name': 'Bike', 'minimumFare': '20', 'baseFare': '20'},
-    {'name': 'Auto', 'minimumFare': '25', 'baseFare': '30'},
-    {'name': 'Car', 'minimumFare': '40', 'baseFare': '60'},
+    {'name': 'Bike', 'type': 'ride', 'minimumFare': '20', 'baseFare': '20'},
+    {'name': 'Mini Auto', 'type': 'ride', 'minimumFare': '30', 'baseFare': '30'},
+    {'name': 'Bike Parcel', 'type': 'parcel', 'minimumFare': '25', 'baseFare': '25'},
+    {'name': 'Tata Ace', 'type': 'cargo', 'minimumFare': '200', 'baseFare': '200'},
   ];
 
   void _bookRide() {
@@ -244,6 +266,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _rideTypeCard(int i, Map<String, dynamic> cat) {
     final selected = _selectedRide == i;
     final name = cat['name']?.toString() ?? '';
+    final type = cat['type']?.toString();
+    final typeColor = _colorForType(type);
     final minFare = double.tryParse(cat['minimumFare']?.toString() ?? '0') ?? 0;
     final fareLabel = minFare > 0 ? '₹${minFare.toInt()}+' : '—';
     return GestureDetector(
@@ -251,24 +275,34 @@ class _HomeScreenState extends State<HomeScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1E6DE5) : const Color(0xFFF5F7FA),
+          color: selected ? typeColor : const Color(0xFFF5F7FA),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? const Color(0xFF1E6DE5) : Colors.transparent, width: 1.5),
+            color: selected ? typeColor : Colors.transparent, width: 1.5),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(_iconForVehicle(name),
-            color: selected ? Colors.white : Colors.grey[600], size: 26),
+          Icon(_iconForVehicle(name, type: type),
+            color: selected ? Colors.white : typeColor, size: 26),
           const SizedBox(height: 4),
           Text(name,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : Colors.grey[700])),
+            textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : const Color(0xFF1A1A2E))),
           Text(fareLabel,
-            style: TextStyle(fontSize: 11,
+            style: TextStyle(fontSize: 10,
               color: selected ? Colors.white.withOpacity(0.85) : Colors.grey[500])),
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: selected ? Colors.white.withOpacity(0.25) : typeColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(4)),
+            child: Text(_labelForType(type),
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : typeColor)),
+          ),
         ]),
       ),
     );

@@ -962,17 +962,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Vehicle Brands & Models
-  app.get("/api/vehicle-brands", async (_req, res) => {
+  app.get("/api/vehicle-brands", async (req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`SELECT * FROM vehicle_brands ORDER BY name ASC`);
-      res.json(r.rows);
+      const { category } = req.query;
+      const r = category
+        ? await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true AND category=${category as string} ORDER BY name ASC`)
+        : await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true ORDER BY category, name ASC`);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/vehicle-brands", async (req, res) => {
     try {
-      const { name, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, is_active) VALUES (${name}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const { name, logo_url, category = 'two_wheeler', is_active } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, logo_url, category, is_active) VALUES (${name}, ${logo_url||null}, ${category}, ${is_active ?? true}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/vehicle-brands/:id", async (req, res) => {
+    try {
+      const { name, logo_url, category, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE vehicle_brands SET name=${name}, logo_url=${logo_url||null}, category=${category||'two_wheeler'}, is_active=${is_active??true} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/vehicle-brands/:id", async (req, res) => {
@@ -3219,6 +3229,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const nightMultiplier = parseFloat(f.nightChargeMultiplier || 1.25);
         const cancelFee = parseFloat(f.cancellationFee || 10);
         const waitingPerMin = parseFloat(f.waitingChargePerMin || 0);
+        const helperCharge = parseFloat(f.helperCharge || 0);
 
         // 500m threshold: base fare covers first 500m (0.5 km); beyond that per-km rate applies
         const THRESHOLD_KM = 0.5;
@@ -3252,6 +3263,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           waitingChargePerMin: +waitingPerMin.toFixed(2),
           isNightCharge: isNight,
           nightMultiplier: isNight ? nightMultiplier : 1,
+          helperCharge: +helperCharge.toFixed(2),
           estimatedTime: estTime + " min",
         };
       });
@@ -3294,16 +3306,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── SHARED: App configs (vehicle categories, cancellation reasons etc) ────
   app.get("/api/app/configs", async (_req, res) => {
     try {
-      const [cats, reasons, settings] = await Promise.all([
-        rawDb.execute(rawSql`SELECT * FROM vehicle_categories WHERE is_active=true ORDER BY name`),
+      const [cats, reasons, settings, brands, parcelCats, parcelWeights] = await Promise.all([
+        rawDb.execute(rawSql`SELECT id, name, icon, type, is_active FROM vehicle_categories WHERE is_active=true ORDER BY CASE type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, name`),
         rawDb.execute(rawSql`SELECT * FROM cancellation_reasons WHERE is_active=true`),
         rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE key_name IN ('otp_on_pickup','max_ride_radius_km','driver_auto_accept','sos_number','support_phone','currency','currency_symbol')`),
+        rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true ORDER BY category, name`),
+        rawDb.execute(rawSql`SELECT * FROM parcel_categories WHERE is_active=true ORDER BY name`),
+        rawDb.execute(rawSql`SELECT * FROM parcel_weights WHERE is_active=true ORDER BY min_weight`),
       ]);
       const configs: any = {};
       (settings.rows as any[]).forEach(r => { configs[r.key_name] = r.value; });
       res.json({
         vehicleCategories: camelize(cats.rows),
         cancellationReasons: camelize(reasons.rows),
+        vehicleBrands: camelize(brands.rows),
+        parcelCategories: camelize(parcelCats.rows),
+        parcelWeights: camelize(parcelWeights.rows),
         configs,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -3759,12 +3777,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `),
         rawDb.execute(rawSql`
           SELECT vc.id, vc.name, vc.type, vc.icon,
-            MIN(tf.minimum_fare) as minimum_fare, MIN(tf.base_fare) as base_fare, MIN(tf.fare_per_km) as fare_per_km
+            MIN(tf.minimum_fare) as minimum_fare, MIN(tf.base_fare) as base_fare,
+            MIN(tf.fare_per_km) as fare_per_km, MIN(tf.helper_charge) as helper_charge
           FROM vehicle_categories vc
           LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
-          WHERE vc.is_active = true AND (vc.type = 'ride' OR vc.type IS NULL)
+          WHERE vc.is_active = true
           GROUP BY vc.id, vc.name, vc.type, vc.icon
-          ORDER BY vc.name
+          ORDER BY CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, vc.name
         `),
       ]);
       res.json({

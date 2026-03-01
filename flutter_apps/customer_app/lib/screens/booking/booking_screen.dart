@@ -30,10 +30,15 @@ class _BookingScreenState extends State<BookingScreen> {
 
   static IconData _iconForVehicle(String name) {
     final n = name.toLowerCase();
+    if (n.contains('bike parcel') || n.contains('parcel bike')) return Icons.delivery_dining;
     if (n.contains('bike')) return Icons.electric_bike;
+    if (n.contains('mini auto') || n.contains('temo auto')) return Icons.electric_rickshaw;
     if (n.contains('auto')) return Icons.electric_rickshaw;
     if (n.contains('suv')) return Icons.directions_car;
-    if (n.contains('temo') || n.contains('tempo')) return Icons.airport_shuttle;
+    if (n.contains('tata ace') || n.contains('mini cargo')) return Icons.local_shipping;
+    if (n.contains('cargo truck')) return Icons.fire_truck;
+    if (n.contains('cargo')) return Icons.local_shipping;
+    if (n.contains('parcel')) return Icons.delivery_dining;
     if (n.contains('car')) return Icons.directions_car_filled;
     return Icons.directions_car;
   }
