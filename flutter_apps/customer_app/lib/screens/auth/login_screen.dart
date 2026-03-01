@@ -238,6 +238,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   length: 6,
                   controller: _otpCtrl,
                   keyboardType: TextInputType.number,
+                  textStyle: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: textColor),
                   pinTheme: PinTheme(
                     shape: PinCodeFieldShape.box,
                     borderRadius: BorderRadius.circular(12),
@@ -253,14 +257,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     activeColor: const Color(0xFF1E6DE5),
                     inactiveColor: dividerColor,
                     selectedColor: const Color(0xFF1E6DE5),
-                    activeTextStyle: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: textColor),
-                    inactiveTextStyle: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: textColor),
                   ),
                   enableActiveFill: true,
                   onCompleted: (_) => _verify(),

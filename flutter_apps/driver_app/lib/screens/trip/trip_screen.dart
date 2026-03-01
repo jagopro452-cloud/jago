@@ -97,7 +97,7 @@ class _TripScreenState extends State<TripScreen> {
           endpoint = ApiConfig.driverArrived;
           break;
         case 'on_the_way':
-          await _completeTrip(token);
+          await _completeTrip(token ?? '');
           return;
         default:
           endpoint = ApiConfig.driverArrived;

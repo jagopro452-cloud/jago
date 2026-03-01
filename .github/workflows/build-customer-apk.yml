@@ -1,4 +1,4 @@
-name: Build Customer App APK
+name: Build JAGO Customer APK
 
 on:
   push:
@@ -9,14 +9,14 @@ on:
 
 jobs:
   build:
-    name: Build JAGO Customer APK
+    name: Build JAGO Customer App
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -25,7 +25,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.27.1'
           channel: 'stable'
           cache: true
 
@@ -35,21 +35,21 @@ jobs:
           echo "flutter.sdk=$FLUTTER_ROOT" > local.properties
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
 
-      - name: Get dependencies
+      - name: Install dependencies
         working-directory: flutter_apps/customer_app
         run: flutter pub get
 
-      - name: Analyze (non-blocking)
+      - name: Analyze code
         working-directory: flutter_apps/customer_app
-        run: flutter analyze --no-fatal-infos || true
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
-      - name: Build Debug APK
+      - name: Build Release APK
         working-directory: flutter_apps/customer_app
-        run: flutter build apk --debug --no-shrink
+        run: flutter build apk --release --no-shrink
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JAGO-Customer-APK-${{ github.run_number }}
-          path: flutter_apps/customer_app/build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 30
+          name: JAGO-Customer-App-${{ github.run_number }}
+          path: flutter_apps/customer_app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
