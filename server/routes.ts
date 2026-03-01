@@ -3131,29 +3131,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── CUSTOMER: Fare estimate ────────────────────────────────────────────────
   app.post("/api/app/customer/estimate-fare", async (req, res) => {
     try {
-      const { pickupLat, pickupLng, destLat, destLng, vehicleCategoryId, distanceKm } = req.body;
-      // Get fare settings
+      const { pickupLat, pickupLng, destLat, destLng, vehicleCategoryId, distanceKm, durationMin = 0 } = req.body;
+      const dist = parseFloat(distanceKm || 1);
+      const dur = parseFloat(durationMin || 0);
+      // Night charge check: 22:00 - 06:00 IST
+      const nowHr = new Date().getUTCHours() + 5.5; // IST offset approx
+      const hr = nowHr >= 24 ? nowHr - 24 : nowHr;
+      const isNight = hr >= 22 || hr < 6;
       const fareR = await rawDb.execute(rawSql`
-        SELECT f.*, vc.name as vehicle_name FROM trip_fares f
+        SELECT f.*, vc.name as vehicle_name, vc.icon as vehicle_icon FROM trip_fares f
         LEFT JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
         ${vehicleCategoryId ? rawSql`WHERE f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
         ORDER BY vc.name
-        LIMIT 10
+        LIMIT 15
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
         const base = parseFloat(f.baseFare || 30);
         const perKm = parseFloat(f.farePerKm || 12);
-        const estimated = base + (distanceKm || 5) * perKm;
+        const perMin = parseFloat(f.farePerMin || 0);
+        const minFare = parseFloat(f.minimumFare || 20);
+        const nightMultiplier = parseFloat(f.nightChargeMultiplier || 1.25);
+        const cancelFee = parseFloat(f.cancellationFee || 10);
+        const waitingPerMin = parseFloat(f.waitingChargePerMin || 0);
+
+        // 500m threshold: base fare covers first 500m (0.5 km); beyond that per-km rate applies
+        const THRESHOLD_KM = 0.5;
+        const billableKm = Math.max(0, dist - THRESHOLD_KM);
+        const thresholdFare = dist <= THRESHOLD_KM ? 0 : 0; // base already covers first 500m
+        const distanceFare = billableKm * perKm;
+        const timeFare = dur * perMin;
+
+        let subtotal = base + distanceFare + timeFare + thresholdFare;
+        if (isNight) subtotal = subtotal * nightMultiplier;
+        const total = Math.max(subtotal, minFare);
+        const gst = +(total * 0.05).toFixed(2);
+        const grandTotal = +(total + gst).toFixed(2);
+        const estTime = Math.max(5, Math.round(dist * 3));
+
         return {
           vehicleCategoryId: f.vehicleCategoryId,
-          vehicleName: f.vehicleName || "Car",
-          baseFare: base,
-          farePerKm: perKm,
-          estimatedFare: Math.round(estimated),
-          estimatedTime: Math.round((distanceKm || 5) * 2.5) + " min",
+          vehicleName: f.vehicleName || "Ride",
+          vehicleIcon: f.vehicleIcon,
+          baseFare: +base.toFixed(2),
+          farePerKm: +perKm.toFixed(2),
+          thresholdKm: THRESHOLD_KM,
+          billableKm: +billableKm.toFixed(2),
+          distanceFare: +distanceFare.toFixed(2),
+          timeFare: +timeFare.toFixed(2),
+          subtotal: +total.toFixed(2),
+          gst,
+          estimatedFare: grandTotal,
+          minimumFare: +minFare.toFixed(2),
+          cancellationFee: +cancelFee.toFixed(2),
+          waitingChargePerMin: +waitingPerMin.toFixed(2),
+          isNightCharge: isNight,
+          nightMultiplier: isNight ? nightMultiplier : 1,
+          estimatedTime: estTime + " min",
         };
       });
-      res.json({ fares, distanceKm: distanceKm || 0 });
+      res.json({ fares, distanceKm: dist, durationMin: dur, isNight });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
