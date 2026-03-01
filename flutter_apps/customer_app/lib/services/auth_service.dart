@@ -60,4 +60,24 @@ class AuthService {
     } catch (_) {}
     return null;
   }
+
+  static Future<Map<String, dynamic>> updateProfile({
+    String? fullName,
+    String? email,
+  }) async {
+    try {
+      final headers = await getHeaders();
+      final body = <String, dynamic>{};
+      if (fullName != null) body['fullName'] = fullName;
+      if (email != null) body['email'] = email;
+      final res = await http.patch(
+        Uri.parse(ApiConfig.updateProfile),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }
