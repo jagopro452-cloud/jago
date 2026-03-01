@@ -278,6 +278,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/users", async (req, res) => {
+    try {
+      const { fullName, phone, email, userType = "customer" } = req.body;
+      if (!fullName || !phone) return res.status(400).json({ message: "Name and phone are required" });
+      const { db: rDb } = await import("./db");
+      const { users } = await import("@shared/schema");
+      const [user] = await rDb.insert(users).values({
+        fullName, phone, email: email || null,
+        userType, isActive: true, loyaltyPoints: 0,
+      } as any).returning();
+      res.status(201).json(user);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      const { db: rDb } = await import("./db");
+      const { users } = await import("@shared/schema");
+      await rDb.delete(users).where(eq(users.id as any, req.params.id));
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.patch("/api/users/:id/status", async (req, res) => {
     try {
       const { isActive } = req.body;

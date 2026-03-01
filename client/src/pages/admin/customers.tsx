@@ -9,15 +9,12 @@ const avatarBg = (name: string) => {
 };
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
 
-const seededSpend = (id: string) => {
-  const n = (id || "x").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  return ((n % 900) + 100);
-};
-
 export default function Customers() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ fullName: "", phone: "", email: "" });
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -31,6 +28,17 @@ export default function Customers() {
     },
   });
 
+  const addCustomer = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/users", { ...form, userType: "customer" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Customer added successfully" });
+      setShowAdd(false);
+      setForm({ fullName: "", phone: "", email: "" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/users/${id}/status`, { isActive }),
@@ -40,13 +48,16 @@ export default function Customers() {
     },
   });
 
-  const totalPages = Math.ceil((data?.total || 0) / 15);
+  const deleteCustomer = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/users/${id}`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Customer deleted" });
+    },
+  });
 
-  const counts = {
-    all: data?.total || 0,
-    active: Math.round((data?.total || 0) * 0.8),
-    inactive: Math.round((data?.total || 0) * 0.2),
-  };
+  const totalPages = Math.ceil((data?.total || 0) / 15);
+  const total = data?.total || 0;
 
   return (
     <div className="container-fluid">
@@ -57,9 +68,55 @@ export default function Customers() {
         </div>
         <div className="d-flex align-items-center gap-2">
           <span className="text-muted small">Total:</span>
-          <span className="fw-bold text-primary fs-5" data-testid="total-count">{data?.total || 0}</span>
+          <span className="fw-bold text-primary fs-5 me-3" data-testid="total-count">{total}</span>
+          <button className="btn btn-primary btn-sm d-flex align-items-center gap-1"
+            onClick={() => setShowAdd(true)} data-testid="btn-add-customer">
+            <i className="bi bi-person-plus-fill"></i> Add Customer
+          </button>
         </div>
       </div>
+
+      {showAdd && (
+        <div className="modal show d-block" style={{ background: "rgba(0,0,0,0.4)" }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title fw-bold">Add New Customer</h5>
+                <button className="btn-close" onClick={() => setShowAdd(false)}></button>
+              </div>
+              <div className="modal-body px-4 pb-4">
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Full Name <span className="text-danger">*</span></label>
+                  <input className="form-control" placeholder="e.g. Ravi Kumar"
+                    value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                    data-testid="input-customer-name" />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Phone Number <span className="text-danger">*</span></label>
+                  <input className="form-control" placeholder="+91 9876543210" type="tel"
+                    value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    data-testid="input-customer-phone" />
+                </div>
+                <div className="mb-4">
+                  <label className="form-label fw-semibold small">Email <span className="text-muted">(optional)</span></label>
+                  <input className="form-control" placeholder="ravi@example.com" type="email"
+                    value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    data-testid="input-customer-email" />
+                </div>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-light flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
+                  <button className="btn btn-primary flex-1"
+                    disabled={!form.fullName || !form.phone || addCustomer.isPending}
+                    onClick={() => addCustomer.mutate()}
+                    data-testid="btn-save-customer">
+                    {addCustomer.isPending ? "Saving…" : "Add Customer"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
         <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
@@ -71,10 +128,6 @@ export default function Customers() {
                     onClick={() => { setStatus(s); setPage(1); }}
                     data-testid={`tab-${s}`}>
                     {s.charAt(0).toUpperCase() + s.slice(1)}
-                    <span className="badge rounded-pill ms-1"
-                      style={{ background: status === s ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: status === s ? "inherit" : "#64748b", fontSize: 10 }}>
-                      {counts[s as keyof typeof counts]}
-                    </span>
                   </button>
                 </li>
               ))}
@@ -97,8 +150,8 @@ export default function Customers() {
             <table className="table table-borderless align-middle table-hover mb-0">
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  {["#","Customer","Contact","Wallet","Trips","Total Spend","Joined","Status",""].map((h, i) => (
-                    <th key={i} className={i === 0 ? "ps-4" : i === 8 ? "text-center pe-4" : ""}
+                  {["#","Customer","Contact","Wallet","Trips","Joined","Status","Actions"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 7 ? "text-center pe-4" : ""}
                       style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap" }}>
                       {h}
                     </th>
@@ -108,7 +161,7 @@ export default function Customers() {
               <tbody>
                 {isLoading ? (
                   Array(8).fill(0).map((_, i) => (
-                    <tr key={i}>{Array(9).fill(0).map((_, j) => (
+                    <tr key={i}>{Array(8).fill(0).map((_, j) => (
                       <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>
                     ))}</tr>
                   ))
@@ -116,7 +169,6 @@ export default function Customers() {
                   data.data.map((item: any, idx: number) => {
                     const user = item.user || item;
                     const name = user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Customer";
-                    const spend = seededSpend(user.id);
                     const wallet = Number(user.loyaltyPoints || 0).toFixed(0);
 
                     return (
@@ -147,15 +199,10 @@ export default function Customers() {
                             <i className="bi bi-wallet2" style={{ color: "#1a73e8", fontSize: 13 }}></i>
                             <span className="fw-semibold small" style={{ color: "#1a73e8" }}>₹{wallet}</span>
                           </div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>balance</div>
                         </td>
                         <td>
                           <div className="fw-semibold" style={{ fontSize: 14 }}>{item.tripCount || 0}</div>
                           <div style={{ fontSize: 10, color: "#94a3b8" }}>trips</div>
-                        </td>
-                        <td>
-                          <div className="fw-semibold small" style={{ color: "#16a34a" }}>₹{spend}</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>lifetime spend</div>
                         </td>
                         <td className="text-muted" style={{ fontSize: 12 }}>
                           {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
@@ -171,20 +218,30 @@ export default function Customers() {
                           </label>
                         </td>
                         <td className="text-center pe-4">
-                          <button className="btn btn-sm btn-outline-primary rounded-pill px-3" style={{ fontSize: 12 }}
-                            data-testid={`btn-view-customer-${user.id}`}>
-                            <i className="bi bi-eye me-1"></i>View
-                          </button>
+                          <div className="d-flex gap-1 justify-content-center">
+                            <button className="btn btn-sm btn-outline-primary rounded-pill px-3" style={{ fontSize: 12 }}
+                              data-testid={`btn-view-customer-${user.id}`}>
+                              <i className="bi bi-eye me-1"></i>View
+                            </button>
+                            <button className="btn btn-sm btn-outline-danger rounded-pill" style={{ fontSize: 12 }}
+                              onClick={() => { if (confirm("Delete this customer?")) deleteCustomer.mutate(user.id); }}
+                              data-testid={`btn-delete-customer-${user.id}`}>
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })
                 ) : (
-                  <tr><td colSpan={9}>
+                  <tr><td colSpan={8}>
                     <div className="text-center py-5 text-muted">
                       <i className="bi bi-people fs-1 d-block mb-2" style={{ opacity: 0.3 }}></i>
                       <p className="fw-semibold mb-1">No customers found</p>
-                      <p className="small">Try adjusting your search or filter</p>
+                      <p className="small mb-3">Customers register via the JAGO mobile app, or add manually above</p>
+                      <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+                        <i className="bi bi-person-plus-fill me-1"></i>Add Customer
+                      </button>
                     </div>
                   </td></tr>
                 )}
