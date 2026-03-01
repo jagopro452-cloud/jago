@@ -38,3 +38,8 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+FIREBASE_WEB_API_KEY = "AIzaSyCckhJY3NMZTjOkXWMJhor_GIMmQflo1U8"
