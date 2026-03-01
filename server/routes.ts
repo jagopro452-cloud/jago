@@ -1023,14 +1023,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/surge-pricing", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT sp.*, z.name as zone_name FROM surge_pricing sp LEFT JOIN zones z ON z.id::uuid=sp.zone_id ORDER BY sp.created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/surge-pricing", async (req, res) => {
     try {
-      const { zone_id, start_time, end_time, multiplier, reason, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO surge_pricing (zone_id, start_time, end_time, multiplier, reason, is_active) VALUES (${zone_id}::uuid, ${start_time}, ${end_time}, ${multiplier}, ${reason}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const { zoneId, zone_id, startTime, start_time, endTime, end_time, multiplier, reason, isActive, is_active } = req.body;
+      const zid = zoneId || zone_id || null;
+      const st = (startTime || start_time || '').trim() || null;
+      const et = (endTime || end_time || '').trim() || null;
+      const active = isActive ?? is_active ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO surge_pricing (zone_id, start_time, end_time, multiplier, reason, is_active) VALUES (${zid}, ${st}, ${et}, ${multiplier}, ${reason || null}, ${active}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/surge-pricing/:id", async (req, res) => {
+    try {
+      const { zoneId, zone_id, startTime, start_time, endTime, end_time, multiplier, reason, isActive, is_active } = req.body;
+      const zid = zoneId || zone_id || null;
+      const st = (startTime || start_time || '').trim() || null;
+      const et = (endTime || end_time || '').trim() || null;
+      const active = isActive ?? is_active ?? true;
+      await rawDb.execute(rawSql`UPDATE surge_pricing SET zone_id=${zid}, start_time=${st}, end_time=${et}, multiplier=${multiplier}, reason=${reason || null}, is_active=${active} WHERE id=${req.params.id}::uuid`);
+      const r = await rawDb.execute(rawSql`SELECT sp.*, z.name as zone_name FROM surge_pricing sp LEFT JOIN zones z ON z.id::uuid=sp.zone_id WHERE sp.id=${req.params.id}::uuid`);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/surge-pricing/:id", async (req, res) => {
