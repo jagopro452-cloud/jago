@@ -36,4 +36,17 @@ class ApiConfig {
   static String get scheduleRide => '$baseUrl/api/app/customer/schedule-ride';
   static String get scheduledRides => '$baseUrl/api/app/customer/scheduled-rides';
   static String get sos => '$baseUrl/api/app/sos';
+
+  // ── Unique Features ─────────────────────────────────────────────────
+  static String get coins => '$baseUrl/api/app/customer/coins';
+  static String get redeemCoins => '$baseUrl/api/app/customer/redeem-coins';
+  static String get monthlyPass => '$baseUrl/api/app/customer/monthly-pass';
+  static String get buyMonthlyPass => '$baseUrl/api/app/customer/monthly-pass/buy';
+  static String get preferences => '$baseUrl/api/app/customer/preferences';
+  static String get customerLostFound => '$baseUrl/api/app/customer/lost-found';
+  static String get lostFound => '$baseUrl/api/app/lost-found';
+  static String get tipDriver => '$baseUrl/api/app/tip-driver';
+  static String get surgeAlert => '$baseUrl/api/app/customer/surge-alert';
+  static String get fcmToken => '$baseUrl/api/app/fcm-token';
+  static String get referral => '$baseUrl/api/app/referral';
 }
