@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -22,10 +23,10 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _mapController;
-  LatLng _center = const LatLng(12.9716, 77.5946);
+  LatLng _center = const LatLng(16.5062, 80.6480);
   bool _isOnline = false;
   bool _loading = false;
   bool _toggling = false;
@@ -36,13 +37,28 @@ class _HomeScreenState extends State<HomeScreen> {
   double _earningsToday = 0;
   Map<String, dynamic>? _incomingTrip;
   Timer? _pollTimer;
+  late AnimationController _pulseCtrl;
+
+  static const Color _blue = Color(0xFF2563EB);
+  static const Color _bg = Color(0xFF060D1E);
+  static const Color _surface = Color(0xFF0D1B3E);
+  static const Color _green = Color(0xFF16A34A);
 
   @override
   void initState() {
     super.initState();
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
     _loadUser();
     _getLocation();
     _fetchDashboard();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _pulseCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUser() async {
@@ -58,11 +74,12 @@ class _HomeScreenState extends State<HomeScreen> {
       await Geolocator.requestPermission();
       final pos = await Geolocator.getCurrentPosition();
       setState(() => _center = LatLng(pos.latitude, pos.longitude));
-      _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
     } catch (_) {}
   }
 
   Future<void> _fetchDashboard() async {
+    setState(() => _loading = true);
     final token = await AuthService.getToken();
     try {
       final res = await http.get(Uri.parse(ApiConfig.driverDashboard),
@@ -78,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_isOnline) _startPolling();
       }
     } catch (_) {}
+    setState(() => _loading = false);
   }
 
   void _startPolling() {
@@ -121,8 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
               body: jsonEncode({'tripId': trip['id'] ?? ''}));
           } catch (_) {}
           if (!mounted) return;
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => TripScreen(trip: trip)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
         },
         onReject: () async {
           final trip = Map<String, dynamic>.from(_incomingTrip!);
@@ -149,164 +166,237 @@ class _HomeScreenState extends State<HomeScreen> {
         body: jsonEncode({'isOnline': !_isOnline, 'lat': _center.latitude, 'lng': _center.longitude}));
       if (res.statusCode == 200) {
         setState(() => _isOnline = !_isOnline);
-        if (_isOnline) _startPolling();
-        else _pollTimer?.cancel();
+        if (_isOnline) _startPolling(); else _pollTimer?.cancel();
       }
     } catch (_) {}
     setState(() => _toggling = false);
   }
 
   @override
-  void dispose() { _pollTimer?.cancel(); super.dispose(); }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: _buildDrawer(),
-      body: Stack(children: [
-        GoogleMap(
-          initialCameraPosition: CameraPosition(target: _center, zoom: 14),
-          onMapCreated: (c) => _mapController = c,
-          myLocationEnabled: true,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: _buildDrawer(),
+        body: Stack(children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+            onMapCreated: (c) { _mapController = c; },
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+          ),
+          SafeArea(
+            child: Column(children: [
+              _buildTopBar(),
+              const Spacer(),
+              _buildBottomPanel(),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(children: [
+        _iconBtn(Icons.menu_rounded, () => _scaffoldKey.currentState?.openDrawer()),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: _bg,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: Row(children: [
+              AnimatedBuilder(
+                animation: _pulseCtrl,
+                builder: (_, __) => Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isOnline ? _green : Colors.grey[600],
+                    boxShadow: _isOnline ? [BoxShadow(
+                      color: _green.withOpacity(0.4 + _pulseCtrl.value * 0.3),
+                      blurRadius: 6 + _pulseCtrl.value * 4,
+                    )] : [],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                _isOnline ? 'Online — Trips కోసం Ready' : 'Offline — Go Online చేయండి',
+                style: TextStyle(
+                  color: _isOnline ? Colors.white : Colors.white.withOpacity(0.5),
+                  fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ]),
+          ),
         ),
-        SafeArea(
+        const SizedBox(width: 12),
+        _iconBtn(Icons.my_location_rounded, _getLocation),
+      ]),
+    );
+  }
+
+  Widget _iconBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46, height: 46,
+        decoration: BoxDecoration(
+          color: _bg, borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        ),
+        child: Icon(icon, color: Colors.white.withOpacity(0.85), size: 20),
+      ),
+    );
+  }
+
+  Widget _buildBottomPanel() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 24, offset: const Offset(0, -4))],
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 36, height: 4,
+          margin: const EdgeInsets.only(top: 10, bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(2)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           child: Column(children: [
-            _buildTopBar(),
-            const Spacer(),
-            _buildBottomPanel(),
+            _buildStatsRow(),
+            const SizedBox(height: 16),
+            _buildToggleBtn(),
+            const SizedBox(height: 12),
+            _buildActionRow(),
+            const SizedBox(height: 20),
           ]),
         ),
       ]),
     );
   }
 
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => _scaffoldKey.currentState?.openDrawer(),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)],
-            ),
-            child: const Icon(Icons.menu, color: Colors.white, size: 22),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)],
-            ),
-            child: Row(children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _isOnline ? Colors.green : Colors.grey)),
-              const SizedBox(width: 8),
-              Text(_isOnline ? 'Online — Ready for trips' : 'Offline',
-                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13, fontWeight: FontWeight.w500)),
-            ]),
-          ),
-        ),
-      ]),
-    );
+  Widget _buildStatsRow() {
+    return Row(children: [
+      _statTile('Today Earnings', '₹${_earningsToday.toStringAsFixed(0)}', Icons.currency_rupee_rounded, const Color(0xFF10B981)),
+      const SizedBox(width: 10),
+      _statTile('Trips Today', '$_tripsToday', Icons.route_rounded, _blue),
+      const SizedBox(width: 10),
+      _statTile('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded, const Color(0xFFF59E0B)),
+    ]);
   }
 
-  Widget _buildBottomPanel() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)],
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          _statCard('Today', '₹${_earningsToday.toStringAsFixed(0)}', Icons.account_balance_wallet_outlined),
-          const SizedBox(width: 12),
-          _statCard('Trips', '$_tripsToday', Icons.route_outlined),
-          const SizedBox(width: 12),
-          _statCard('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.savings_outlined),
-        ]),
-        const SizedBox(height: 20),
-        GestureDetector(
-          onTap: _toggling ? null : _toggleOnline,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: double.infinity, height: 56,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _isOnline
-                  ? [const Color(0xFF16A34A), const Color(0xFF15803D)]
-                  : [const Color(0xFF2563EB), const Color(0xFF1D4ED8)],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(
-                color: (_isOnline ? const Color(0xFF16A34A) : const Color(0xFF2563EB)).withOpacity(0.3),
-                blurRadius: 12, offset: const Offset(0, 4))],
-            ),
-            child: Center(
-              child: _toggling
-                ? const SizedBox(width: 22, height: 22,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(_isOnline ? Icons.stop_circle_outlined : Icons.play_circle_outline,
-                      color: Colors.white, size: 22),
-                    const SizedBox(width: 10),
-                    Text(_isOnline ? 'Go Offline' : 'Go Online',
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                  ]),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _actionBtn(Icons.coffee_outlined, 'Break', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen()));
-          })),
-          const SizedBox(width: 12),
-          Expanded(child: _actionBtn(Icons.location_on_outlined, 'My Location', _getLocation)),
-        ]),
-      ]),
-    );
-  }
-
-  Widget _statCard(String label, String value, IconData icon) {
+  Widget _statTile(String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.15), width: 1),
+        ),
         child: Column(children: [
-          Icon(icon, color: const Color(0xFF2563EB), size: 20),
-          const SizedBox(height: 6),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(height: 8),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 9, fontWeight: FontWeight.w500),
+            textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
       ),
     );
   }
 
-  Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
+  Widget _buildToggleBtn() {
+    final isOn = _isOnline;
+    return GestureDetector(
+      onTap: _toggling ? null : _toggleOnline,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        width: double.infinity,
+        height: 60,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isOn
+              ? [const Color(0xFF16A34A), const Color(0xFF15803D)]
+              : [const Color(0xFF1E3A8A), _blue],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(
+            color: (isOn ? _green : _blue).withOpacity(0.35),
+            blurRadius: 16, offset: const Offset(0, 5))],
+        ),
+        child: Center(
+          child: _toggling
+            ? const SizedBox(width: 24, height: 24,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(isOn ? Icons.power_settings_new_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white, size: 24),
+                const SizedBox(width: 10),
+                Text(
+                  isOn ? 'Online — Trip కోసం Ready ✓' : 'Go Online — Earn చేయండి',
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                ),
+              ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionRow() {
+    return Row(children: [
+      Expanded(child: _actionChip(Icons.coffee_rounded, 'Break', const Color(0xFFF59E0B), () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen()));
+      })),
+      const SizedBox(width: 10),
+      Expanded(child: _actionChip(Icons.account_balance_wallet_rounded, 'Wallet', const Color(0xFF10B981), () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
+      })),
+      const SizedBox(width: 10),
+      Expanded(child: _actionChip(Icons.history_rounded, 'Trips', _blue, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
+      })),
+    ]);
+  }
+
+  Widget _actionChip(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, color: Colors.white.withOpacity(0.7), size: 18),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w500)),
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.15), width: 1),
+        ),
+        child: Column(children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
         ]),
       ),
     );
@@ -315,72 +405,99 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDrawer() {
     return Drawer(
       child: Container(
-        color: const Color(0xFF0D1B4B),
+        color: _surface,
         child: SafeArea(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.all(24),
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [_blue.withOpacity(0.3), _blue.withOpacity(0.1)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _blue.withOpacity(0.2), width: 1),
+              ),
               child: Row(children: [
                 CircleAvatar(
-                  radius: 28, backgroundColor: const Color(0xFF2563EB),
+                  radius: 26,
+                  backgroundColor: _blue,
                   child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Hi, ${_userName.split(' ').first}!',
-                    style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-                  Text('+91-$_userPhone',
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
-                  const SizedBox(height: 4),
+                  Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text('+91 $_userPhone',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                  const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2563EB).withOpacity(0.2),
+                      color: _blue.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(6)),
-                    child: const Text('Driver',
-                      style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.w700)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.verified_rounded, color: Color(0xFF60A5FA), size: 12),
+                      SizedBox(width: 4),
+                      Text('JAGO PILOT', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 10, fontWeight: FontWeight.w800)),
+                    ]),
                   ),
                 ])),
               ]),
             ),
-            const Divider(color: Colors.white12, height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            ),
             const SizedBox(height: 8),
-            _drawerItem(Icons.route_outlined, 'My Trips', () {
+            _drawerItem(Icons.dashboard_rounded, 'Dashboard', null, () {}),
+            _drawerItem(Icons.route_rounded, 'My Trips', null, () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
             }),
-            _drawerItem(Icons.account_balance_wallet_outlined, 'Wallet', () {
+            _drawerItem(Icons.account_balance_wallet_rounded, 'Wallet', '₹${_walletBalance.toStringAsFixed(0)}', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
             }),
-            _drawerItem(Icons.person_outline, 'Profile', () {
+            _drawerItem(Icons.person_rounded, 'Profile', null, () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
-            _drawerItem(Icons.headset_mic_outlined, 'Support', () {}),
-            _drawerItem(Icons.card_giftcard_outlined, 'Refer & Earn', () {}),
+            _drawerItem(Icons.headset_mic_rounded, 'Support', null, () {}),
+            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', null, () {}),
             const Spacer(),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                width: double.infinity, height: 46,
-                child: OutlinedButton.icon(
-                  onPressed: () async { await AuthService.logout(); if (!mounted) return;
-                    Navigator.pushAndRemoveUntil(context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); },
-                  icon: const Icon(Icons.logout, size: 18, color: Colors.redAccent),
-                  label: const Text('Logout', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.redAccent, width: 1),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              padding: const EdgeInsets.all(16),
+              child: GestureDetector(
+                onTap: () async {
+                  await AuthService.logout();
+                  if (!mounted) return;
+                  Navigator.pushAndRemoveUntil(context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 18),
+                    SizedBox(width: 8),
+                    Text('Logout', style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.w700, fontSize: 14)),
+                  ]),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('v1.0.2 • MindWhile IT Solutions',
-                style: TextStyle(color: Colors.white.withOpacity(0.25), fontSize: 11)),
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Center(child: Text('v1.0.0 • MindWhile IT Solutions',
+                style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10))),
             ),
           ]),
         ),
@@ -388,12 +505,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
+  Widget _drawerItem(IconData icon, String label, String? badge, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white.withOpacity(0.7), size: 22),
-      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+      leading: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: _blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: _blue, size: 18),
+      ),
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+      trailing: badge != null
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8)),
+            child: Text(badge, style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w700)))
+        : Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 18),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
   }
 }

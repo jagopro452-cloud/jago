@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -21,19 +22,23 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
   String _userName = 'there';
   String _userPhone = '';
-  String _pickup = 'Current Location';
+  String _pickup = 'Getting location...';
   String _destination = '';
   double _pickupLat = 17.3850, _pickupLng = 78.4867;
   double _destLat = 0, _destLng = 0;
   int _selectedRide = 0;
   bool _loading = true;
   List<Map<String, dynamic>> _vehicleCategories = [];
+
+  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _dark = Color(0xFF111827);
+  static const Color _gray = Color(0xFF6B7280);
 
   static IconData _iconForVehicle(String name, {String? type}) {
     final n = name.toLowerCase();
@@ -71,23 +76,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _getLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) { setState(() => _pickup = 'Current Location'); return; }
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
-        if (perm == LocationPermission.denied) return;
+        if (perm == LocationPermission.denied) { setState(() => _pickup = 'Current Location'); return; }
       }
-      if (perm == LocationPermission.deniedForever) return;
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
+      if (perm == LocationPermission.deniedForever) { setState(() => _pickup = 'Current Location'); return; }
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       setState(() {
         _center = LatLng(pos.latitude, pos.longitude);
         _pickupLat = pos.latitude;
         _pickupLng = pos.longitude;
       });
-      _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
       _reverseGeocode(pos.latitude, pos.longitude);
-    } catch (_) {}
+    } catch (_) { setState(() => _pickup = 'Current Location'); }
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -98,8 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final data = jsonDecode(res.body);
         final results = data['results'] as List<dynamic>?;
         if (results != null && results.isNotEmpty) {
-          final address = results[0]['formatted_address'] as String? ?? 'Current Location';
-          setState(() => _pickup = address);
+          setState(() => _pickup = results[0]['formatted_address'] ?? 'Current Location');
         }
       }
     } catch (_) {}
@@ -112,8 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
         headers: {'Authorization': 'Bearer $token'});
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final cats = (data['vehicleCategories'] as List<dynamic>?)
-          ?.cast<Map<String, dynamic>>() ?? [];
+        final cats = (data['vehicleCategories'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
         setState(() {
           _vehicleCategories = cats.isNotEmpty ? cats : _defaultVehicleCategories();
           _loading = false;
@@ -133,8 +135,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _bookRide() {
     if (_destination.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Destination enter cheyyandi'), backgroundColor: Color(0xFF1E6DE5)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Destination enter cheyyandi', style: TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: _blue,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
       return;
     }
     final cat = _vehicleCategories.isNotEmpty ? _vehicleCategories[_selectedRide] : null;
@@ -153,58 +159,72 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: _buildDrawer(),
-      body: Stack(children: [
-        GoogleMap(
-          initialCameraPosition: CameraPosition(target: _center, zoom: 14),
-          onMapCreated: (c) => _mapController = c,
-          myLocationEnabled: true,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
-        ),
-        SafeArea(
-          child: Column(children: [
-            _buildTopBar(),
-            const Spacer(),
-            _buildBottomCard(),
-          ]),
-        ),
-      ]),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: _buildDrawer(),
+        body: Stack(children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+            onMapCreated: (c) => _mapController = c,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+          ),
+          SafeArea(
+            child: Column(children: [
+              _buildTopBar(),
+              const Spacer(),
+              _buildBottomSheet(),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(children: [
         GestureDetector(
           onTap: () => _scaffoldKey.currentState?.openDrawer(),
           child: Container(
-            padding: const EdgeInsets.all(10),
+            width: 46, height: 46,
             decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 3))],
             ),
-            child: const Icon(Icons.menu, color: Color(0xFF1A1A2E), size: 22),
+            child: const Icon(Icons.menu_rounded, color: Color(0xFF111827), size: 22),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 3))],
             ),
             child: Row(children: [
-              Expanded(
-                child: Text('Hi ${_userName.split(' ').first} 👋',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1A1A2E))),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: _blue.withOpacity(0.12), shape: BoxShape.circle),
+                child: Text(
+                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                  style: TextStyle(color: _blue, fontSize: 12, fontWeight: FontWeight.w800),
+                ),
               ),
-              const Icon(Icons.notifications_none, color: Color(0xFF1E6DE5), size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Hi, ${_userName.split(' ').first} 👋',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+              ),
+              const Icon(Icons.notifications_none_rounded, color: Color(0xFF1E6DE5), size: 22),
             ]),
           ),
         ),
@@ -212,72 +232,132 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBottomCard() {
-    final cats = _vehicleCategories;
+  Widget _buildBottomSheet() {
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 20, offset: const Offset(0, -4))],
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+        boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4))],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _locationRow(Icons.location_on, const Color(0xFF1E6DE5), _pickup, 'Current Location'),
-        const Padding(padding: EdgeInsets.only(left: 11), child: Divider(height: 12)),
-        _locationRow(Icons.location_searching, Colors.grey, _destination, 'Where to?', onTap: _showDestinationSearch),
-        const SizedBox(height: 16),
-        if (_loading)
-          const Center(child: SizedBox(width: 24, height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5))))
-        else
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(cats.length, (i) {
-                return Padding(
-                  padding: EdgeInsets.only(right: i < cats.length - 1 ? 10 : 0),
-                  child: _rideTypeCard(i, cats[i]),
-                );
-              }),
-            ),
-          ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity, height: 50,
-          child: ElevatedButton(
-            onPressed: _bookRide,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1E6DE5),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
-            ),
-            child: const Text('Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          ),
+        Container(
+          width: 40, height: 4,
+          margin: const EdgeInsets.only(top: 10, bottom: 16),
+          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Where are you going?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+            const SizedBox(height: 14),
+            _buildLocationCard(),
+            const SizedBox(height: 16),
+            _buildVehicleSection(),
+            const SizedBox(height: 16),
+            _buildBookBtn(),
+          ]),
         ),
       ]),
     );
   }
 
-  Widget _locationRow(IconData icon, Color color, String value, String hint, {VoidCallback? onTap}) {
+  Widget _buildLocationCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5EAFF), width: 1),
+      ),
+      child: Column(children: [
+        _locationRow(
+          color: _blue,
+          icon: Icons.radio_button_checked_rounded,
+          label: _pickup,
+          hint: 'Current Location',
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(children: [
+            Container(width: 1, height: 16, color: Colors.grey.withOpacity(0.25),
+              margin: const EdgeInsets.only(left: 7)),
+          ]),
+        ),
+        _locationRow(
+          color: const Color(0xFFE53935),
+          icon: Icons.location_on_rounded,
+          label: _destination,
+          hint: 'Where to?',
+          onTap: _showDestinationSearch,
+          isEditable: true,
+        ),
+      ]),
+    );
+  }
+
+  Widget _locationRow({
+    required Color color,
+    required IconData icon,
+    required String label,
+    required String hint,
+    VoidCallback? onTap,
+    bool isEditable = false,
+  }) {
+    final isEmpty = label.isEmpty;
     return GestureDetector(
       onTap: onTap,
-      child: Row(children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(value.isEmpty ? hint : value,
-            style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.w500,
-              color: value.isEmpty ? Colors.grey[400] : const Color(0xFF1A1A2E),
-            )),
-        ),
-        if (value.isNotEmpty) Icon(Icons.edit_outlined, size: 16, color: Colors.grey[400]),
-      ]),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              isEmpty ? hint : label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isEmpty ? FontWeight.w400 : FontWeight.w600,
+                color: isEmpty ? Colors.grey[400] : _dark,
+              ),
+            ),
+          ),
+          if (isEditable)
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(color: _blue.withOpacity(0.08), shape: BoxShape.circle),
+              child: Icon(Icons.search_rounded, color: _blue, size: 14),
+            ),
+        ]),
+      ),
     );
   }
 
-  Widget _rideTypeCard(int i, Map<String, dynamic> cat) {
+  Widget _buildVehicleSection() {
+    if (_loading) {
+      return const Center(child: SizedBox(height: 80, child: Center(
+        child: CircularProgressIndicator(color: Color(0xFF1E6DE5), strokeWidth: 2))));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Choose Vehicle', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+          color: Colors.grey[500], letterSpacing: 0.5)),
+      const SizedBox(height: 10),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(_vehicleCategories.length, (i) {
+            return Padding(
+              padding: EdgeInsets.only(right: i < _vehicleCategories.length - 1 ? 10 : 0),
+              child: _vehicleCard(i, _vehicleCategories[i]),
+            );
+          }),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _vehicleCard(int i, Map<String, dynamic> cat) {
     final selected = _selectedRide == i;
     final name = cat['name']?.toString() ?? '';
     final type = cat['type']?.toString();
@@ -286,26 +366,53 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () => setState(() => _selectedRide = i),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        width: 88,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1E6DE5) : const Color(0xFFF5F7FA),
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? _blue : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? const Color(0xFF1E6DE5) : Colors.transparent, width: 1.5),
+            color: selected ? _blue : const Color(0xFFE5E9F5),
+            width: selected ? 0 : 1.5,
+          ),
+          boxShadow: selected ? [BoxShadow(
+            color: _blue.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))] : [],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(_iconForVehicle(name, type: type),
-            color: selected ? Colors.white : Colors.grey[600], size: 26),
-          const SizedBox(height: 4),
+            color: selected ? Colors.white : Colors.grey[600], size: 28),
+          const SizedBox(height: 6),
           Text(name,
             textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : Colors.grey[700])),
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : _dark, height: 1.3)),
+          const SizedBox(height: 3),
           Text(fareLabel,
-            style: TextStyle(fontSize: 10,
-              color: selected ? Colors.white.withOpacity(0.85) : Colors.grey[500])),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+              color: selected ? Colors.white.withOpacity(0.9) : _blue)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildBookBtn() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: _bookRide,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _blue,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
+        ),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.directions_rounded, size: 20),
+          SizedBox(width: 8),
+          Text('Find Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.2)),
         ]),
       ),
     );
@@ -316,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _PlaceSearchSheet(
         pickupLat: _pickupLat,
         pickupLng: _pickupLng,
@@ -334,37 +441,57 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDrawer() {
     return Drawer(
       child: Container(
-        color: const Color(0xFF0D1B4B),
+        color: const Color(0xFF111827),
         child: SafeArea(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.all(24),
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1E6DE5), Color(0xFF1244A2)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Row(children: [
                 CircleAvatar(
-                  radius: 28, backgroundColor: const Color(0xFF1E6DE5),
+                  radius: 26,
+                  backgroundColor: Colors.white.withOpacity(0.2),
                   child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Hi, ${_userName.split(' ').first}!',
-                    style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-                  Text('+91-$_userPhone',
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                  Text(_userName,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text('+91 $_userPhone',
+                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: const Text('JAGO Customer',
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                  ),
                 ])),
-                IconButton(
-                  icon: Icon(Icons.logout, color: Colors.white.withOpacity(0.5), size: 20),
-                  onPressed: () => _logout(),
-                ),
               ]),
             ),
-            const Divider(color: Colors.white12, height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            ),
             const SizedBox(height: 8),
-            _drawerItem(Icons.directions_bike, 'My Rides', () {
+            _drawerItem(Icons.directions_bike_rounded, 'My Rides', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
             }),
-            _drawerItem(Icons.account_balance_wallet, 'Payments', () {
+            _drawerItem(Icons.account_balance_wallet_rounded, 'Payments & Wallet', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
             }),
@@ -372,21 +499,45 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const CoinsScreen()));
             }),
-            _drawerItem(Icons.card_membership, 'Monthly Pass', () {
+            _drawerItem(Icons.card_membership_rounded, 'Monthly Pass', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()));
             }),
-            _drawerItem(Icons.person_outline, 'Profile', () {
+            _drawerItem(Icons.person_rounded, 'Profile', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
-            _drawerItem(Icons.headset_mic_outlined, 'Support', () {}),
-            _drawerItem(Icons.card_giftcard_outlined, 'Refer & Earn', () {}),
+            _drawerItem(Icons.headset_mic_rounded, 'Support', () {}),
+            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', () {}),
             const Spacer(),
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('v1.0.2 • MindWhile IT Solutions',
-                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11)),
+              padding: const EdgeInsets.all(16),
+              child: GestureDetector(
+                onTap: () async {
+                  await AuthService.logout();
+                  if (!mounted) return;
+                  Navigator.pushAndRemoveUntil(context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 18),
+                    SizedBox(width: 8),
+                    Text('Logout', style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.w700, fontSize: 14)),
+                  ]),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Center(child: Text('v1.0.0 • MindWhile IT Solutions',
+                style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10))),
             ),
           ]),
         ),
@@ -396,22 +547,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white.withOpacity(0.75), size: 22),
-      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+      leading: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: _blue.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: _blue, size: 18),
+      ),
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+      trailing: Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2), size: 18),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
-  }
-
-  Future<void> _logout() async {
-    await AuthService.logout();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
   }
 }
 
-// ── Google Places Search Sheet ─────────────────────────────────────────────
+// ── Google Places Search Sheet ──────────────────────────────────────────────
 class _PlaceSearchSheet extends StatefulWidget {
   final double pickupLat, pickupLng;
   final Function(String name, double lat, double lng) onPlaceSelected;
@@ -425,6 +577,8 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   List<Map<String, dynamic>> _predictions = [];
   bool _searching = false;
   Timer? _debounce;
+
+  static const Color _blue = Color(0xFF1E6DE5);
 
   @override
   void dispose() { _ctrl.dispose(); _debounce?.cancel(); super.dispose(); }
@@ -441,8 +595,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
       final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
         '?input=${Uri.encodeComponent(q)}'
         '&location=${widget.pickupLat},${widget.pickupLng}'
-        '&radius=50000'
-        '&components=country:in'
+        '&radius=50000&components=country:in'
         '&key=${ApiConfig.googleMapsApiKey}';
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -470,10 +623,9 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
         final results = data['results'] as List<dynamic>?;
         if (results != null && results.isNotEmpty) {
           final loc = results[0]['geometry']['location'];
-          final lat = (loc['lat'] as num).toDouble();
-          final lng = (loc['lng'] as num).toDouble();
           if (mounted) Navigator.pop(context);
-          widget.onPlaceSelected(place['description'], lat, lng);
+          widget.onPlaceSelected(place['description'],
+            (loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
           return;
         }
       }
@@ -489,64 +641,86 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 12),
         Container(width: 40, height: 4,
-          decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 16),
+          margin: const EdgeInsets.only(top: 10, bottom: 16),
+          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2))),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            controller: _ctrl,
-            autofocus: true,
-            onChanged: _onChanged,
-            decoration: InputDecoration(
-              hintText: 'Where to go?',
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF1E6DE5)),
-              filled: true, fillColor: const Color(0xFFF5F7FA),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              suffixIcon: _searching
-                ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5))))
-                : null,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Where to?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7FA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5EAFF), width: 1),
+              ),
+              child: TextField(
+                controller: _ctrl,
+                autofocus: true,
+                onChanged: _onChanged,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF111827)),
+                decoration: InputDecoration(
+                  hintText: 'Search destination...',
+                  hintStyle: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w400),
+                  prefixIcon: Icon(Icons.search_rounded, color: _blue, size: 22),
+                  suffixIcon: _searching
+                    ? const Padding(padding: EdgeInsets.all(14),
+                        child: SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5))))
+                    : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
             ),
-          ),
+          ]),
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
           child: _predictions.isEmpty
             ? Padding(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(40),
                 child: Column(children: [
-                  Icon(Icons.location_on_outlined, color: Colors.grey[300], size: 48),
-                  const SizedBox(height: 12),
-                  Text('Destination search cheyyandi', textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[400], fontSize: 14)),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _blue.withOpacity(0.06),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.location_on_outlined, color: _blue.withOpacity(0.4), size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Start typing to search', textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14, fontWeight: FontWeight.w500)),
                 ]))
             : ListView.separated(
                 shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 itemCount: _predictions.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[100]),
                 itemBuilder: (_, i) {
                   final p = _predictions[i];
                   return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                     leading: Container(
-                      padding: const EdgeInsets.all(8),
+                      width: 38, height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E6DE5).withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.location_on, color: Color(0xFF1E6DE5), size: 18)),
-                    title: Text(p['mainText'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: p['secondaryText'] != ''
-                      ? Text(p['secondaryText'], style: TextStyle(color: Colors.grey[500], fontSize: 12), maxLines: 1)
+                        color: _blue.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.location_on_rounded, color: Color(0xFF1E6DE5), size: 18)),
+                    title: Text(p['mainText'] ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+                    subtitle: (p['secondaryText'] ?? '') != ''
+                      ? Text(p['secondaryText'],
+                          style: TextStyle(color: Colors.grey[500], fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)
                       : null,
                     onTap: () => _selectPlace(p),
                   );
                 }),
         ),
-        const SizedBox(height: 16),
       ]),
     );
   }
