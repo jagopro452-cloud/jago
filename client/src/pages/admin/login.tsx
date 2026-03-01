@@ -29,12 +29,6 @@ function useAdminBootstrap() {
   }, []);
 }
 
-const STATS = [
-  { icon: "🏍️", value: "1,240+", label: "Active Drivers" },
-  { icon: "🚗", value: "8,500+", label: "Trips Today" },
-  { icon: "🌆", value: "12", label: "Cities Covered" },
-];
-
 const FEATURES = [
   { icon: "bi-geo-alt-fill", label: "Real-time GPS fleet tracking" },
   { icon: "bi-shield-fill-check", label: "Secure pilot verification & KYC" },
@@ -52,6 +46,12 @@ export default function AdminLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [stats, setStats] = useState<{drivers: number; trips: number; zones: number} | null>(null);
+  useEffect(() => {
+    fetch("/api/dashboard/stats").then(r => r.json()).then(d => {
+      setStats({ drivers: d.totalDrivers || 0, trips: d.totalTrips || 0, zones: d.totalZones || 0 });
+    }).catch(() => {});
+  }, []);
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("jago-admin");
@@ -110,7 +110,11 @@ export default function AdminLogin() {
 
           {/* Live stat chips */}
           <div className="jl-stats">
-            {STATS.map((s, i) => (
+            {[
+              { icon: "🏍️", value: stats ? String(stats.drivers) : "—", label: "Active Drivers" },
+              { icon: "🚗", value: stats ? String(stats.trips) : "—", label: "Total Trips" },
+              { icon: "🌆", value: stats ? String(stats.zones) : "—", label: "Zones" },
+            ].map((s, i) => (
               <div key={i} className={`jl-stat ${mounted ? "jl-stat-in" : ""}`} style={{ animationDelay: `${i * 0.12}s` }}>
                 <span className="jl-stat-icon">{s.icon}</span>
                 <div>

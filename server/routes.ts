@@ -43,60 +43,6 @@ function camelize(obj: any): any {
   );
 }
 
-async function seedInitialTrips() {
-  const trips = await storage.getTrips();
-  if (trips.total === 0) {
-    const customers = await storage.getUsers('customer');
-    const drivers = await storage.getUsers('driver');
-    const cats = await storage.getVehicleCategories();
-    const zones = await storage.getZones();
-
-    if (customers.data.length && cats.length && zones.length) {
-      const statuses = ['completed', 'completed', 'completed', 'cancelled', 'ongoing', 'pending', 'completed'];
-      const types = ['ride', 'ride', 'parcel', 'ride', 'ride', 'parcel', 'ride'];
-      const pickups = [
-        'Banjara Hills, Hyderabad', 'Jubilee Hills, Hyderabad', 'Secunderabad Station',
-        'HITEC City, Hyderabad', 'Gachibowli, Hyderabad', 'Ameerpet, Hyderabad', 'LB Nagar, Hyderabad'
-      ];
-      const destinations = [
-        'HITEC City, Hyderabad', 'Miyapur, Hyderabad', 'Gachibowli, Hyderabad',
-        'Charminar, Hyderabad', 'Banjara Hills, Hyderabad', 'Uppal, Hyderabad', 'Kukatpally, Hyderabad'
-      ];
-
-      for (let i = 0; i < 7; i++) {
-        const customer = customers.data[i % customers.data.length];
-        const driver = drivers.data[i % drivers.data.length];
-        const cat = cats[i % cats.length];
-        const zone = zones[i % zones.length];
-        const fare = (Math.random() * 200 + 50).toFixed(3);
-
-        await storage.getTrips(); // just to avoid TS error, replace with actual insert via db
-        const { db } = await import("./db");
-        const { tripRequests } = await import("@shared/schema");
-        await db.insert(tripRequests).values({
-          refId: generateRefId(),
-          customerId: customer.id,
-          driverId: statuses[i] !== 'pending' ? driver?.id : undefined,
-          vehicleCategoryId: cat.id,
-          zoneId: zone.id,
-          pickupAddress: pickups[i],
-          destinationAddress: destinations[i],
-          pickupLat: 17.4 + Math.random() * 0.2,
-          pickupLng: 78.4 + Math.random() * 0.2,
-          destinationLat: 17.4 + Math.random() * 0.2,
-          destinationLng: 78.4 + Math.random() * 0.2,
-          estimatedFare: fare,
-          actualFare: statuses[i] === 'completed' ? fare : '0',
-          estimatedDistance: Math.random() * 15 + 2,
-          paymentMethod: ['cash', 'wallet', 'card'][i % 3],
-          paymentStatus: statuses[i] === 'completed' ? 'paid' : 'unpaid',
-          type: types[i],
-          currentStatus: statuses[i],
-        } as any).onConflictDoNothing();
-      }
-    }
-  }
-}
 
 // Login rate limiter — max 10 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
@@ -108,9 +54,6 @@ const loginLimiter = rateLimit({
 });
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  // Seed trips after a short delay
-  setTimeout(seedInitialTrips, 2000);
-
   // Health check endpoint
   app.get("/api/health", async (_req, res) => {
     try {
@@ -210,15 +153,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/fleet-drivers", async (_req, res) => {
     try {
       const drivers = await storage.getUsers('driver');
-      // Return drivers with simulated lat/lng around Hyderabad if no real location
-      const result = drivers.data.map((d: any, i: number) => ({
-        id: d.id,
-        name: d.fullName || `${d.f_name || d.firstName || ""} ${d.l_name || d.lastName || ""}`.trim() || "Driver",
-        phone: d.phone,
-        status: (d.isActive ?? d.is_active) ? 'active' : 'inactive',
-        lat: 17.385 + (Math.random() - 0.5) * 0.2,
-        lng: 78.486 + (Math.random() - 0.5) * 0.2,
-      }));
+      const result = drivers.data
+        .filter((d: any) => d.currentLat && d.currentLng && d.currentLat !== 0 && d.currentLng !== 0)
+        .map((d: any) => ({
+          id: d.id,
+          name: d.fullName || `${d.firstName || ""} ${d.lastName || ""}`.trim() || "Driver",
+          phone: d.phone,
+          status: (d.isActive ?? d.is_active) ? 'active' : 'inactive',
+          lat: d.currentLat,
+          lng: d.currentLng,
+        }));
       res.json(result);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -267,13 +211,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         parcels: parseInt(row.parcels || 0),
         revenue: parseFloat(row.revenue || 0) + (txMap[row.month_key] || 0),
       }));
-      if (chart.length === 0) {
-        const months = ["Jan","Feb","Mar","Apr","May","Jun"];
-        const seed = [2,3,4,6,8,11];
-        res.json(months.map((m, i) => ({ day: m, trips: seed[i], rides: Math.round(seed[i]*0.65), parcels: Math.round(seed[i]*0.35), revenue: seed[i]*180 })));
-      } else {
-        res.json(chart);
-      }
+      res.json(chart);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -1539,9 +1477,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) {
-        // Return mock order for testing
-        const mockOrder = { id: `order_mock_${Date.now()}`, amount: amount * 100, currency: "INR", mock: true };
-        return res.json({ order: mockOrder, keyId: "test_key" });
+        return res.status(503).json({ message: "Payment gateway not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET." });
       }
       const Razorpay = require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
