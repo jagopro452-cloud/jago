@@ -1,446 +1,607 @@
-import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import jagoLogoWhite from "@assets/JAGO_LOGO_WightPNG_1772377612337.png";
+import jagoLogoBlue  from "@assets/JAGO_LOGOPNG_(1)_1772377612339.png";
+import pilotLogo     from "@assets/PILOT_LOGOPNG_1772377649091.png";
 
-const LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/about-us", label: "About Us" },
-  { href: "/privacy", label: "Privacy Policy" },
-  { href: "/terms", label: "Terms & Condition" },
-];
-
-function useJagoCSS() {
+// ── Animated counter ─────────────────────────────────────────────────────────
+function Counter({ to, suffix = "" }: { to: number; suffix?: string }) {
+  const [val, setVal] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
-    const cssFiles = [
-      "/landing-page/assets/css/bootstrap-icons.min.css",
-      "/landing-page/assets/css/bootstrap.min.css",
-      "/landing-page/assets/css/animate.css",
-      "/landing-page/assets/css/line-awesome.min.css",
-      "/landing-page/assets/css/odometer.css",
-      "/landing-page/assets/css/owl.min.css",
-      "/landing-page/assets/css/main.css",
-      "/landing-page/assets/css/jago-custom.css",
-    ];
-    const tags: HTMLLinkElement[] = [];
-    cssFiles.forEach((href) => {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = href;
-      link.dataset.jagoLanding = "1";
-      document.head.appendChild(link);
-      tags.push(link);
-    });
-    const fonts = document.createElement("link");
-    fonts.rel = "stylesheet";
-    fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap";
-    fonts.dataset.jagoLanding = "1";
-    document.head.appendChild(fonts);
-    tags.push(fonts);
-
-    return () => {
-      document.querySelectorAll('[data-jago-landing="1"]').forEach(el => el.remove());
-    };
-  }, []);
+    const obs = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      obs.disconnect();
+      const start = Date.now();
+      const dur = 1800;
+      const tick = () => {
+        const p = Math.min((Date.now() - start) / dur, 1);
+        const ease = 1 - Math.pow(1 - p, 3);
+        setVal(Math.floor(ease * to));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, { threshold: 0.3 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [to]);
+  return <span ref={ref}>{val.toLocaleString("en-IN")}{suffix}</span>;
 }
 
-function useJagoJS() {
-  useEffect(() => {
-    if ((window as any).__jagoJsLoaded) return;
-    (window as any).__jagoJsLoaded = true;
-    const scripts = [
-      "/landing-page/assets/js/jquery-3.6.0.min.js",
-      "/landing-page/assets/js/bootstrap.min.js",
-      "/landing-page/assets/js/viewport.jquery.js",
-      "/landing-page/assets/js/wow.min.js",
-      "/landing-page/assets/js/owl.min.js",
-      "/landing-page/assets/js/main.js",
-    ];
-    let idx = 0;
-    function loadNext() {
-      if (idx >= scripts.length) return;
-      const src = scripts[idx++];
-      if (document.querySelector(`script[src="${src}"]`)) { loadNext(); return; }
-      const s = document.createElement("script");
-      s.src = src;
-      s.async = false;
-      s.dataset.jagoScript = "1";
-      s.onload = loadNext;
-      document.body.appendChild(s);
-    }
-    loadNext();
-  }, []);
+// ── Phone mockup ─────────────────────────────────────────────────────────────
+function PhoneMockup({ type }: { type: "customer" | "driver" }) {
+  const isDriver = type === "driver";
+  return (
+    <div style={{
+      width: 200, height: 410,
+      background: isDriver ? "#060D1E" : "white",
+      borderRadius: 40,
+      border: "6px solid #1a2035",
+      boxShadow: isDriver
+        ? "0 40px 80px rgba(37,99,235,0.25), 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(37,99,235,0.15)"
+        : "0 40px 80px rgba(30,109,229,0.18), 0 20px 40px rgba(0,0,0,0.15)",
+      overflow: "hidden", position: "relative", flexShrink: 0,
+    }}>
+      <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 80, height: 26, background: "#0a0a0a", borderRadius: "0 0 16px 16px", zIndex: 10 }} />
+      <div style={{ padding: "32px 0 0" }}>
+        {isDriver ? (
+          <div style={{ height: "100%", background: "#060D1E", position: "relative" }}>
+            <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translate(-50%,-50%)", width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.2) 0%, transparent 70%)" }} />
+            <div style={{ padding: "14px", position: "relative" }}>
+              <div style={{ background: "#0D1B3E", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 8px rgba(34,197,94,0.8)" }} />
+                <img src={pilotLogo} style={{ height: 16, objectFit: "contain" }} alt="" />
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>Online ✓</span>
+              </div>
+              <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                <div style={{ height: 70, background: "#0a1628", borderRadius: 8, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+                  {[0,1,2,3].map(i=><div key={i} style={{ position: "absolute", left: `${i*30}px`, top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.04)" }}/>)}
+                  {[0,1,2,3,4].map(i=><div key={i} style={{ position: "absolute", top: `${i*18}px`, left: 0, right: 0, height: 1, background: "rgba(255,255,255,0.04)" }}/>)}
+                  <div style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "#2563EB", boxShadow: "0 0 0 6px rgba(37,99,235,0.15)" }} />
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[["💰","₹1,240","Earnings"],["🛺","8","Trips"],["👛","₹340","Wallet"]].map(([e,v,l],i)=>(
+                    <div key={i} style={{ flex: 1, background: "#0D1B3E", borderRadius: 8, padding: "8px 4px", textAlign: "center" }}>
+                      <div style={{ fontSize: 14, marginBottom: 2 }}>{e}</div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "white" }}>{v}</div>
+                      <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: "linear-gradient(135deg,#16A34A,#15803D)", borderRadius: 10, height: 40, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "white", boxShadow: "0 4px 14px rgba(22,163,74,0.4)" }}>
+                Online — Ready ✓
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ height: "100%", background: "#F0F4FF", position: "relative" }}>
+            <div style={{ height: 130, background: "#DDE8FF", position: "relative", overflow: "hidden", marginBottom: 0 }}>
+              {[0,1,2,3,4].map(i=><div key={i} style={{ position: "absolute", left: `${i*45}px`, top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.7)" }}/>)}
+              {[0,1,2,3].map(i=><div key={i} style={{ position: "absolute", top: `${i*33}px`, left: 0, right: 0, height: 1, background: "rgba(255,255,255,0.7)" }}/>)}
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(240,244,255,1) 0%, transparent 100%)" }} />
+              <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", width: 10, height: 10, borderRadius: "50%", background: "#1E6DE5", boxShadow: "0 0 0 8px rgba(30,109,229,0.15)" }} />
+            </div>
+            <div style={{ background: "white", borderRadius: "24px 24px 0 0", padding: "10px 10px 0", marginTop: -16 }}>
+              <div style={{ width: 30, height: 3, background: "#E5E7EB", borderRadius: 2, margin: "0 auto 10px" }} />
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#0F172A", marginBottom: 8 }}>Where are you going?</div>
+              <div style={{ background: "#F8FAFF", borderRadius: 10, border: "1px solid #E5EAFF", marginBottom: 8, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", border: "2px solid #1E6DE5" }} />
+                  <span style={{ fontSize: 10, color: "#1E6DE5", fontWeight: 600 }}>Current Location</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px" }}>
+                  <div style={{ width: 7, height: 7, borderRadius: 2, background: "#EF4444" }} />
+                  <span style={{ fontSize: 10, color: "#9CA3AF" }}>Where to?</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+                {[["🏍","Bike","₹20+"],["🛺","Auto","₹35+"],["📦","Parcel","₹25+"]].map(([e,n,f],i)=>(
+                  <div key={i} style={{ flex: 1, background: i===0?"linear-gradient(135deg,#1E6DE5,#1244A2)":"white", border: `1px solid ${i===0?"#1E6DE5":"#E5E7EB"}`, borderRadius: 8, padding: "7px 3px", textAlign: "center", boxShadow: i===0?"0 4px 10px rgba(30,109,229,0.3)":"none" }}>
+                    <div style={{ fontSize: 14, marginBottom: 2 }}>{e}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: i===0?"white":"#374151" }}>{n}</div>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: i===0?"rgba(255,255,255,0.8)":"#1E6DE5" }}>{f}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: "linear-gradient(135deg,#1565C0,#1E6DE5)", borderRadius: 10, height: 36, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "white", boxShadow: "0 4px 14px rgba(30,109,229,0.4)" }}>
+                Find Ride →
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
+// ── Main Landing Page ─────────────────────────────────────────────────────────
 export default function LandingPage() {
-  useJagoCSS();
-  useJagoJS();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const nav = [
+    { label: "Rides", href: "#solutions" },
+    { label: "Parcels", href: "#solutions" },
+    { label: "Cities", href: "#cities" },
+    { label: "Drive with Us", href: "#driver" },
+    { label: "About", href: "/about-us" },
+  ];
 
   return (
-    <>
+    <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", margin: 0, padding: 0, overflowX: "hidden" }}>
       <style>{`
-        html, body { margin:0; padding:0; }
-        #root { min-height:100vh; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; scroll-behavior: smooth; }
+        #root { min-height: 100vh; }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+        @keyframes floatR { 0%,100%{transform:translateY(0) rotate(3deg)} 50%{transform:translateY(-10px) rotate(3deg)} }
+        @keyframes pulse-ring { 0%{transform:scale(1);opacity:0.6} 100%{transform:scale(1.6);opacity:0} }
+        @keyframes slide-up { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .float-card { animation: float 4s ease-in-out infinite; }
+        .float-card-r { animation: floatR 5s ease-in-out infinite; }
+        .slide-up { animation: slide-up 0.7s ease-out forwards; }
+        a { text-decoration: none; }
+        section { padding: 80px 0; }
+        @media(max-width:768px){ section { padding: 48px 0; } }
       `}</style>
 
-      {/* Preloader */}
-      <div className="preloader" id="preloader" style={{ display: "none" }}></div>
+      {/* ── NAVBAR ── */}
+      <nav style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000,
+        background: scrolled ? "rgba(8,12,30,0.95)" : "transparent",
+        backdropFilter: scrolled ? "blur(20px)" : "none",
+        borderBottom: scrolled ? "1px solid rgba(255,255,255,0.06)" : "none",
+        transition: "all 0.3s ease",
+      }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", height: 72, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <a href="/">
+            <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain" }} alt="JAGO" />
+          </a>
+          <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
+            {nav.map(n => (
+              <a key={n.label} href={n.href} style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, fontWeight: 500, transition: "color 0.2s", display: window.innerWidth < 768 ? "none" : "block" }}
+                onMouseEnter={e => (e.target as HTMLElement).style.color = "white"}
+                onMouseLeave={e => (e.target as HTMLElement).style.color = "rgba(255,255,255,0.75)"}
+              >{n.label}</a>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <a href="/admin/login" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600 }}>
+              Admin Login
+            </a>
+            <a href="#download" style={{ padding: "9px 22px", borderRadius: 10, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)" }}>
+              Download App
+            </a>
+          </div>
+        </div>
+      </nav>
 
-      {/* Header */}
-      <header>
-        <div className="navbar-bottom">
-          <div className="container">
-            <div className="navbar-bottom-wrapper">
-              <a href="/" className="logo" style={{ maxWidth: "320px", height: "auto" }}>
-                <img src="/jago-logo-white.png" alt="JAGO" style={{ width: "100%", height: "auto", maxHeight: "80px", objectFit: "contain" }} />
+      {/* ── HERO ── */}
+      <section style={{
+        minHeight: "100vh", background: "linear-gradient(140deg, #050b1f 0%, #071230 40%, #0a1a40 70%, #08122e 100%)",
+        display: "flex", alignItems: "center", position: "relative", overflow: "hidden", padding: "80px 0 40px",
+      }}>
+        {/* Background effects */}
+        <div style={{ position: "absolute", top: "20%", left: "60%", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(30,109,229,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: "10%", left: "10%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
+        {/* Grid */}
+        <svg style={{ position: "absolute", inset: 0, opacity: 0.03, pointerEvents: "none" }} width="100%" height="100%">
+          {Array.from({length:30},(_,i)=><line key={`v${i}`} x1={`${i*5}%`} y1="0%" x2={`${i*5}%`} y2="100%" stroke="white" strokeWidth="0.5"/>)}
+          {Array.from({length:20},(_,i)=><line key={`h${i}`} x1="0%" y1={`${i*5}%`} x2="100%" y2={`${i*5}%`} stroke="white" strokeWidth="0.5"/>)}
+        </svg>
+
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 48, flexWrap: "wrap" }}>
+          {/* Left */}
+          <div style={{ flex: 1, minWidth: 300, maxWidth: 580 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(30,109,229,0.12)", border: "1px solid rgba(30,109,229,0.25)", borderRadius: 20, padding: "6px 16px", marginBottom: 28 }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 8px rgba(34,197,94,0.7)" }} />
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", fontWeight: 600, letterSpacing: 0.3 }}>Now Live — Hyderabad &amp; Andhra Pradesh</span>
+            </div>
+
+            <h1 style={{ fontSize: "clamp(36px, 5vw, 64px)", fontWeight: 900, color: "white", lineHeight: 1.1, margin: "0 0 20px", letterSpacing: -1 }}>
+              Move Smarter.<br />
+              <span style={{ background: "linear-gradient(135deg, #3B82F6, #60A5FA, #93C5FD)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                Travel Faster.
+              </span>
+            </h1>
+
+            <p style={{ fontSize: 18, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, marginBottom: 36, maxWidth: 480 }}>
+              Book rides, send parcels, and manage deliveries — JAGO connects you with trusted pilots across Hyderabad &amp; Andhra Pradesh in seconds.
+            </p>
+
+            {/* CTA Buttons */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 48 }}>
+              <a href="#download" style={{ display: "flex", alignItems: "center", gap: 10, background: "white", borderRadius: 14, padding: "14px 24px", color: "#0F172A", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 24px rgba(0,0,0,0.2)", transition: "transform 0.2s", textDecoration: "none" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="#00C773"/><path d="M3.609 1.814L14.3 12 3.61 22.186" fill="none"/></svg>
+                Get JAGO App
               </a>
-              <ul className={`menu me-lg-4${menuOpen ? " show" : ""}`} style={{ display: menuOpen ? "flex" : undefined, flexDirection: menuOpen ? "column" : undefined }}>
-                {LINKS.map(l => (
-                  <li key={l.href}>
-                    <a href={l.href} className={window.location.pathname === l.href ? "active" : ""}>
-                      <span>{l.label}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              <div className="nav-toggle d-lg-none ms-auto me-2 me-sm-4" onClick={() => setMenuOpen(o => !o)}>
-                <span></span><span></span><span></span>
+              <a href="#driver" style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: "14px 24px", color: "white", fontWeight: 700, fontSize: 15, backdropFilter: "blur(10px)", textDecoration: "none" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"/><path d="M12 8l4 4-4 4M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
+                Drive &amp; Earn
+              </a>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
+              {[
+                { n: 10000, sfx: "+", label: "Trips Completed" },
+                { n: 500, sfx: "+", label: "Active Pilots" },
+                { n: 9, sfx: "", label: "Cities Covered" },
+              ].map((s, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: 32, fontWeight: 900, color: "white", lineHeight: 1 }}>
+                    <Counter to={s.n} suffix={s.sfx} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4, fontWeight: 500 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right — Phone mockups */}
+          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 20, justifyContent: "center", flexShrink: 0 }}>
+            <div className="float-card" style={{ marginBottom: 30 }}>
+              <PhoneMockup type="customer" />
+            </div>
+            <div className="float-card-r">
+              <PhoneMockup type="driver" />
+            </div>
+
+            {/* Floating badges */}
+            <div style={{ position: "absolute", top: -10, left: -20, background: "white", borderRadius: 14, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 12px 30px rgba(0,0,0,0.2)", zIndex: 5 }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#22C55E,#16A34A)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
               </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#0F172A" }}>Pilot Assigned!</div>
+                <div style={{ fontSize: 10, color: "#6B7280" }}>ETA 3 min · Arjun</div>
+              </div>
+            </div>
+
+            <div style={{ position: "absolute", bottom: 20, right: -30, background: "#0D1B3E", border: "1px solid rgba(37,99,235,0.25)", borderRadius: 14, padding: "10px 14px", boxShadow: "0 12px 30px rgba(0,0,0,0.4)", zIndex: 5 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 3, fontWeight: 600 }}>Today's Earnings</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#22C55E" }}>₹1,240</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>8 trips completed</div>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* Banner Section */}
-      <section className="banner-section">
-        <div className="container">
-          <div className="banner-wrapper justify-content-between" style={{ paddingTop: "80px", paddingBottom: "60px" }}>
-            <div className="banner-content text-center text-sm-start">
-              <h1 className="title">
-                Your Smart <span className="text--base">Logistics &amp; Mobility</span> Platform
-              </h1>
-              <p className="txt">
-                Powering seamless parcel delivery, smart fleet management, and real-time tracking — JAGO is the all-in-one logistics and ride-sharing solution built for modern businesses.
+        {/* Scroll indicator */}
+        <div style={{ position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: 2, textTransform: "uppercase" }}>Scroll</span>
+          <div style={{ width: 1, height: 40, background: "linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)" }} />
+        </div>
+      </section>
+
+      {/* ── STATS BAR ── */}
+      <section style={{ padding: "0", background: "linear-gradient(135deg, #1244A2, #1E6DE5)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px", display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 24 }}>
+          {[
+            { icon: "🚀", n: 30, sfx: " sec", label: "Avg. Pilot Arrival" },
+            { icon: "⭐", n: 48, sfx: "/5.0", label: "Average Rating" },
+            { icon: "🛡️", n: 100, sfx: "%", label: "OTP Secured" },
+            { icon: "📍", n: 9, sfx: "+", label: "Active Zones" },
+          ].map((s, i) => (
+            <div key={i} style={{ textAlign: "center", color: "white" }}>
+              <div style={{ fontSize: 28, marginBottom: 4 }}>{s.icon}</div>
+              <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1 }}>
+                {s.sfx === "/5.0" ? "4.8" : <Counter to={s.n} suffix={s.sfx} />}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 4, fontWeight: 500 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section style={{ background: "#F8FAFF" }} id="solutions">
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>HOW IT WORKS</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 16px", letterSpacing: -0.5 }}>Ride in <span style={{ color: "#1E6DE5" }}>4 Simple Steps</span></h2>
+            <p style={{ fontSize: 17, color: "#64748B", maxWidth: 500, margin: "0 auto" }}>From booking to arrival — it's fast, transparent, and reliable every time.</p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 24 }}>
+            {[
+              { n: "01", emoji: "📱", title: "Open App", desc: "Open JAGO app and tap 'Where are you going?'", color: "#EFF6FF", border: "#BFDBFE" },
+              { n: "02", emoji: "📍", title: "Set Destination", desc: "Choose pickup point and enter your destination", color: "#F0FDF4", border: "#BBF7D0" },
+              { n: "03", emoji: "🏍", title: "Pilot Assigned", desc: "Nearest verified pilot is assigned instantly to you", color: "#FFFBEB", border: "#FDE68A" },
+              { n: "04", emoji: "✅", title: "Arrive Safely", desc: "Reach your destination safely with OTP-verified handoff", color: "#FFF1F2", border: "#FECDD3" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "white", borderRadius: 22, padding: 28, border: `1px solid #F1F5F9`, boxShadow: "0 2px 12px rgba(0,0,0,0.05)", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: 16, right: 16, fontSize: 40, fontWeight: 900, color: "#F1F5F9", fontFamily: "monospace" }}>{s.n}</div>
+                <div style={{ width: 56, height: 56, background: s.color, border: `1.5px solid ${s.border}`, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, marginBottom: 20 }}>{s.emoji}</div>
+                <h4 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>{s.title}</h4>
+                <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.6 }}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SERVICES ── */}
+      <section style={{ background: "white" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>OUR SERVICES</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Everything You Need</h2>
+            <p style={{ fontSize: 17, color: "#64748B", maxWidth: 500, margin: "0 auto" }}>One platform for rides, parcels, and business logistics — all in one place.</p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+            {[
+              { emoji: "🏍", title: "Bike Rides", desc: "Beat traffic with quick, affordable bike rides. Fastest way to get around the city.", tag: "₹20+ /km", tagColor: "#EFF6FF", tagText: "#1E6DE5" },
+              { emoji: "🛺", title: "Auto Rides", desc: "Comfortable auto rides for daily commutes with transparent fares and no surge.", tag: "₹35+ /km", tagColor: "#F0FDF4", tagText: "#16A34A" },
+              { emoji: "📦", title: "Parcel Delivery", desc: "Send parcels across the city in under 60 minutes with real-time OTP tracking.", tag: "₹25+ /order", tagColor: "#FFFBEB", tagText: "#D97706" },
+              { emoji: "🚛", title: "Cargo & Logistics", desc: "Move heavy goods and cargo with our trusted cargo pilots and smart fleet system.", tag: "₹200+", tagColor: "#FFF1F2", tagText: "#E11D48" },
+              { emoji: "📅", title: "Scheduled Trips", desc: "Book in advance — set date, time, and destination. We'll be ready when you are.", tag: "Pre-book", tagColor: "#F5F3FF", tagText: "#7C3AED" },
+              { emoji: "🏢", title: "B2B Solutions", desc: "Scalable fleet management and delivery solutions for businesses of all sizes.", tag: "Enterprise", tagColor: "#F0F9FF", tagText: "#0284C7" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "#FAFAFA", border: "1.5px solid #F1F5F9", borderRadius: 22, padding: 28, transition: "all 0.2s", cursor: "default" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = "0 12px 30px rgba(30,109,229,0.1)"; (e.currentTarget as HTMLElement).style.borderColor = "#BFDBFE"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; (e.currentTarget as HTMLElement).style.borderColor = "#F1F5F9"; }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ fontSize: 38 }}>{s.emoji}</div>
+                  <div style={{ background: s.tagColor, color: s.tagText, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>{s.tag}</div>
+                </div>
+                <h4 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>{s.title}</h4>
+                <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.65 }}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── DRIVER CTA ── */}
+      <section id="driver" style={{ background: "linear-gradient(140deg, #050b1f 0%, #081535 50%, #0a1a40 100%)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "50%", right: "5%", transform: "translateY(-50%)", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)" }} />
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", position: "relative" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60, alignItems: "center", flexWrap: "wrap" }}>
+            {/* Left */}
+            <div>
+              <img src={pilotLogo} style={{ height: 40, objectFit: "contain", marginBottom: 24 }} alt="JAGO Pilot" />
+              <h2 style={{ fontSize: "clamp(28px, 3.5vw, 50px)", fontWeight: 900, color: "white", lineHeight: 1.15, margin: "0 0 20px", letterSpacing: -0.5 }}>
+                Drive With JAGO.<br />
+                <span style={{ background: "linear-gradient(135deg,#3B82F6,#60A5FA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                  Earn Every Day.
+                </span>
+              </h2>
+              <p style={{ fontSize: 17, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, marginBottom: 32 }}>
+                Join thousands of JAGO Pilots earning ₹800–₹1,500/day. Flexible hours, weekly payments, and full support.
               </p>
-              <div className="app--btns d-flex flex-wrap flex-column flex-sm-row gap-3 mt-4">
-                <div className="dropdown py-0">
-                  <a href="#" className="cmn--btn h-50 d-flex gap-2 lh-1" data-bs-toggle="dropdown">
-                    Download User App <i className="bi bi-chevron-down"></i>
-                  </a>
-                  <div className="dropdown-menu dropdown-button-menu">
-                    <ul className="list-unstyled mb-0">
-                      <li className="border-bottom">
-                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
-                          <img width="20" src="/landing-page/assets/img/play-fav.png" alt="" />
-                          <span>Play Store</span>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
-                          <img width="20" src="/landing-page/assets/img/apple.png" alt="" />
-                          <span>App Store</span>
-                        </a>
-                      </li>
-                    </ul>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 36 }}>
+                {[
+                  { icon: "💰", title: "₹800–₹1,500/day", sub: "Average pilot earnings" },
+                  { icon: "🕐", title: "Flexible Hours", sub: "Work on your schedule" },
+                  { icon: "📊", title: "Weekly Payouts", sub: "Direct to your wallet" },
+                  { icon: "🛡️", title: "Insurance Cover", sub: "Ride with protection" },
+                ].map((b, i) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "16px" }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>{b.icon}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "white", marginBottom: 3 }}>{b.title}</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{b.sub}</div>
                   </div>
-                </div>
-                <div className="dropdown py-0">
-                  <a href="#" className="cmn--btn btn-white text-nowrap h-50 d-flex gap-2 lh-1" data-bs-toggle="dropdown">
-                    Earn From JAGO <i className="bi bi-chevron-down"></i>
-                  </a>
-                  <div className="dropdown-menu dropdown-button-menu">
-                    <ul className="list-unstyled mb-0">
-                      <li className="border-bottom">
-                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
-                          <img width="20" src="/landing-page/assets/img/play-fav.png" alt="" />
-                          <span>Play Store</span>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="#" target="_blank" className="d-flex align-items-center gap-2 p-3">
-                          <img width="20" src="/landing-page/assets/img/apple.png" alt="" />
-                          <span>App Store</span>
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                <a href="https://play.google.com/store" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#2563EB,#1D4ED8)", borderRadius: 12, padding: "12px 22px", color: "white", fontSize: 14, fontWeight: 700, textDecoration: "none", boxShadow: "0 6px 20px rgba(37,99,235,0.4)" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="white"/></svg>
+                  Download Pilot App
+                </a>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Why JAGO Section */}
-      <section className="why-jago-section">
-        <div className="container">
-          <div className="mb-4 mb-sm-5 text-center">
-            <h2 className="section-title mb-2 mb-sm-3">Why <span style={{ color: "var(--jago-primary, #2563EB)" }}>JAGO</span></h2>
-            <p className="fs-18 mb-0">Everything you need to power your logistics and mobility operations</p>
-          </div>
-          <div className="row g-4">
-            {[
-              { icon: "bi-geo-alt", title: "Real-Time Tracking", desc: "Track every delivery and vehicle in real time with precise GPS location updates and live status notifications." },
-              { icon: "bi-truck", title: "Smart Fleet Management", desc: "Optimize routes, monitor driver performance, and manage your entire fleet from a single powerful dashboard." },
-              { icon: "bi-box-seam", title: "Parcel Delivery", desc: "Fast and reliable parcel delivery with custom fare setup, weight-based pricing, and instant booking." },
-              { icon: "bi-car-front", title: "Ride Sharing", desc: "Comfortable and affordable rides at your fingertips. Book instantly and travel to any destination with ease." },
-              { icon: "bi-shield-check", title: "Secure Payments", desc: "Multiple secure payment options including digital wallets, cards, and cash on delivery for every transaction." },
-              { icon: "bi-headset", title: "24/7 Support", desc: "Round-the-clock customer support to ensure smooth operations and quick resolution of any issues." },
-            ].map((item) => (
-              <div key={item.title} className="col-lg-4 col-md-6">
-                <div className="why-jago-card">
-                  <div className="icon-circle">
-                    <i className={`bi ${item.icon}`}></i>
+            {/* Right — Earnings card */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <div style={{ background: "#0D1B3E", border: "1px solid rgba(37,99,235,0.2)", borderRadius: 28, padding: 28, width: "100%", maxWidth: 360, boxShadow: "0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(37,99,235,0.1)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, color: "white" }}>R</div>
+                  <div>
+                    <div style={{ fontWeight: 800, color: "white", fontSize: 15 }}>Ravi Kumar</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>⭐ 4.9 · JAGO Pilot · Hyderabad</div>
                   </div>
-                  <h5>{item.title}</h5>
-                  <p>{item.desc}</p>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="how-it-works-section mt-4 mt-sm-60" id="jago-flow">
-        <div className="container">
-          <div className="text-center mb-4 mb-sm-5">
-            <span className="jago-section-badge">How It Works</span>
-            <h2 className="jago-section-heading mt-3">Your Parcel, <span className="text-gradient">Delivered Safely</span></h2>
-            <p className="jago-section-sub mx-auto">From booking to doorstep delivery — see how JAGO makes logistics simple, fast, and secure.</p>
-          </div>
-
-          <div className="jago-flow-scene">
-            <div className="jago-flow-connector">
-              <svg className="jago-flow-svg" viewBox="0 0 1100 120" preserveAspectRatio="none">
-                <path className="jago-flow-path" d="M80,60 C200,60 200,60 300,60 C400,60 400,60 550,60 C700,60 700,60 800,60 C900,60 900,60 1020,60" fill="none" stroke="#DBEAFE" strokeWidth="3" strokeDasharray="8,6" />
-                <path className="jago-flow-path-active" d="M80,60 C200,60 200,60 300,60 C400,60 400,60 550,60 C700,60 700,60 800,60 C900,60 900,60 1020,60" fill="none" stroke="url(#jagoGrad)" strokeWidth="3" />
-                <defs>
-                  <linearGradient id="jagoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" style={{ stopColor: "#2563EB" }} />
-                    <stop offset="50%" style={{ stopColor: "#3B82F6" }} />
-                    <stop offset="100%" style={{ stopColor: "#10B981" }} />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <div className="jago-flow-nodes">
-              <div className="jago-flow-node" data-step="1">
-                <div className="jago-node-visual">
-                  <div className="jago-node-phone">
-                    <div className="jago-phone-screen">
-                      <div className="jago-phone-header"><span>JAGO</span></div>
-                      <div className="jago-phone-map"><i className="bi bi-geo-alt-fill"></i></div>
-                      <div className="jago-phone-btn">Book Now</div>
+                <div style={{ background: "#060D1E", borderRadius: 18, padding: 18, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</div>
+                  <div style={{ fontSize: 42, fontWeight: 900, color: "white", lineHeight: 1, marginBottom: 4 }}>₹32,400</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ background: "rgba(34,197,94,0.15)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#22C55E" }}>↑ +18%</div>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>vs last month</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                  {[["186", "Trips"],["4.91","Rating"],["₹174","Avg/Trip"]].map(([v,l],i)=>(
+                    <div key={i} style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: "white" }}>{v}</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{l}</div>
                     </div>
-                  </div>
-                  <div className="jago-node-badge">1</div>
-                </div>
-                <h5>Book on App</h5>
-                <p>Enter pickup &amp; drop location, select vehicle, confirm booking</p>
-              </div>
-              <div className="jago-flow-node" data-step="2">
-                <div className="jago-node-visual">
-                  <div className="jago-node-rider">
-                    <div className="jago-rider-bike"><i className="bi bi-bicycle"></i></div>
-                    <div className="jago-rider-parcel"><i className="bi bi-box-seam-fill"></i></div>
-                  </div>
-                  <div className="jago-node-badge">2</div>
-                </div>
-                <h5>Pilot Picks Up</h5>
-                <p>Nearest Pilot arrives, collects parcel with OTP verification</p>
-              </div>
-              <div className="jago-flow-node" data-step="3">
-                <div className="jago-node-visual">
-                  <div className="jago-node-tracking">
-                    <div className="jago-tracking-map">
-                      <div className="jago-tracking-route"></div>
-                      <div className="jago-tracking-dot jago-dot-start"><i className="bi bi-circle-fill"></i></div>
-                      <div className="jago-tracking-dot jago-dot-moving"><i className="bi bi-truck"></i></div>
-                      <div className="jago-tracking-dot jago-dot-end"><i className="bi bi-geo-alt-fill"></i></div>
-                    </div>
-                  </div>
-                  <div className="jago-node-badge">3</div>
-                </div>
-                <h5>Live Tracking</h5>
-                <p>Real-time GPS tracking on map with status notifications</p>
-              </div>
-              <div className="jago-flow-node" data-step="4">
-                <div className="jago-node-visual">
-                  <div className="jago-node-delivered">
-                    <div className="jago-delivered-check"><i className="bi bi-patch-check-fill"></i></div>
-                    <div className="jago-delivered-otp">
-                      <span>OTP</span>
-                      <div className="jago-otp-dots"><span></span><span></span><span></span><span></span></div>
-                    </div>
-                  </div>
-                  <div className="jago-node-badge jago-badge-success">4</div>
-                </div>
-                <h5>Delivered &amp; Verified</h5>
-                <p>Receiver OTP verified, payment processed automatically</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flow-features-bar mt-4 mt-sm-5">
-            {[
-              { icon: "bi-lightning-charge-fill", label: "30 Min Avg Delivery" },
-              { icon: "bi-shield-lock-fill", label: "OTP Secured" },
-              { icon: "bi-pin-map-fill", label: "Live GPS Tracking" },
-              { icon: "bi-cash-coin", label: "Transparent Pricing" },
-            ].map(f => (
-              <div key={f.label} className="flow-feature-item">
-                <div className="flow-feature-icon"><i className={`bi ${f.icon}`}></i></div>
-                <span>{f.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Our Solutions Section */}
-      <section className="jago-solutions-section mt-4 mt-sm-60">
-        <div className="container">
-          <div className="text-center mb-5">
-            <span className="jago-section-badge">What We Offer</span>
-            <h2 className="jago-section-heading mt-3">Our <span className="text-gradient">Solutions</span></h2>
-            <p className="jago-section-sub mx-auto">End-to-end logistics and mobility solutions built for speed, reliability, and scale.</p>
-          </div>
-          <div className="row g-4">
-            {[
-              { icon: "bi-box-seam", title: "Parcel Delivery", desc: "Send parcels anywhere with real-time tracking, weight-based pricing, and OTP-verified handoffs. Fast, reliable, and transparent.", features: ["Real-time Tracking", "OTP Verified", "Weight-based Pricing"] },
-              { icon: "bi-car-front", title: "Ride Sharing", desc: "Book rides instantly with smart route matching, fare estimation, and safe travel. Affordable commuting made simple.", features: ["Instant Booking", "Fare Estimation", "Driver Tracking"] },
-              { icon: "bi-calendar-check", title: "Scheduled Trips", desc: "Plan ahead with pre-scheduled rides and deliveries. Set your time, date, and destination — we handle the rest.", features: ["Advance Booking", "Flexible Timing", "Auto Reminders"] },
-              { icon: "bi-building", title: "Business Logistics", desc: "Scalable fleet management for businesses. Route optimization, driver management, and analytics all in one dashboard.", features: ["Fleet Dashboard", "Route Optimization", "Analytics"] },
-              { icon: "bi-wallet2", title: "Digital Payments", desc: "Seamless and secure payment options including digital wallets, cards, and cash on delivery for every transaction.", features: ["Multiple Methods", "Wallet System", "Secure & Fast"] },
-              { icon: "bi-geo-alt", title: "Live Navigation", desc: "Real-time GPS navigation for drivers with optimized routes, turn-by-turn directions, and traffic-aware ETA calculations.", features: ["GPS Tracking", "Smart Routes", "Live ETA"] },
-            ].map(item => (
-              <div key={item.title} className="col-lg-4 col-md-6">
-                <div className="jago-solution-card">
-                  <div className="jago-solution-icon-wrap">
-                    <i className={`bi ${item.icon}`}></i>
-                  </div>
-                  <div className="jago-solution-body">
-                    <h4 className="jago-solution-title">{item.title}</h4>
-                    <p className="jago-solution-desc">{item.desc}</p>
-                    <div className="jago-solution-features">
-                      {item.features.map(f => (
-                        <span key={f}><i className="bi bi-check-circle-fill"></i> {f}</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Newsletter Section */}
-      <section className="newsletter-section p-0 mt-4 mt-sm-60">
-        <div className="container">
-          <div className="newsletter--wrapper bg__img" data-img="/landing-page/assets/img/newsletter-new-bg.png">
-            <div className="position-relative p-4 p-sm-5">
-              <div className="row g-4 align-items-center">
-                <div className="col-lg-8">
-                  <h4 className="text-white text-uppercase mb-2">GET ALL UPDATES &amp; EXCITING NEWS</h4>
-                  <p className="text-white opacity-75 lh-base">Subscribe to our newsletters to receive all the latest activity we provide for you</p>
-                </div>
-                <div className="col-lg-4">
-                  <div className="newsletter-right">
-                    <form className="newsletter-form" onSubmit={e => { e.preventDefault(); }}>
-                      <input type="email" className="form-control" placeholder="Type email..." autoComplete="off" required />
-                      <button type="submit" className="btn cmn--btn">Subscribe</button>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="jago-footer mt-4 mt-sm-60">
-        <div className="footer-top">
-          <div className="container">
-            <div className="row g-4 g-lg-5">
-              <div className="col-lg-4 col-md-6">
-                <div className="footer-brand">
-                  <a href="/" className="footer-logo d-inline-block mb-3">
-                    <img src="/jago-logo.png" alt="JAGO Logo" className="footer-logo-img" />
-                  </a>
-                  <p className="footer-desc">Your trusted logistics and mobility platform. Delivering parcels, connecting rides, and powering seamless transportation — anytime, anywhere.</p>
-                  <div className="footer-social">
-                    {[["bi-facebook", "#"], ["bi-instagram", "#"], ["bi-twitter-x", "#"], ["bi-linkedin", "#"]].map(([icon, href]) => (
-                      <a key={icon} href={href} className="social-link"><i className={`bi ${icon}`}></i></a>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="col-lg-2 col-md-6">
-                <h6 className="footer-widget-title">Quick Links</h6>
-                <ul className="footer-links">
-                  {[["Home", "/"], ["About Us", "/about-us"], ["Privacy Policy", "/privacy"], ["Terms & Condition", "/terms"], ["Contact Us", "/contact-us"]].map(([label, href]) => (
-                    <li key={label}><a href={href}>{label}</a></li>
                   ))}
-                </ul>
-              </div>
-              <div className="col-lg-3 col-md-6">
-                <h6 className="footer-widget-title">Our Services</h6>
-                <ul className="footer-links">
-                  {["Ride Sharing", "Parcel Delivery", "Scheduled Trips", "Business Logistics", "Driver App", "Customer App"].map(s => (
-                    <li key={s}><a href="#">{s}</a></li>
-                  ))}
-                </ul>
-              </div>
-              <div className="col-lg-3 col-md-6">
-                <h6 className="footer-widget-title">Contact Us</h6>
-                <div className="footer-contact-list">
-                  <div className="footer-contact-item">
-                    <div className="footer-contact-icon"><i className="bi bi-envelope-fill"></i></div>
-                    <div>
-                      <span className="footer-contact-label">Email</span>
-                      <a href="mailto:info@jagopro.org" className="footer-contact-value">info@jagopro.org</a>
-                    </div>
-                  </div>
-                  <div className="footer-contact-item">
-                    <div className="footer-contact-icon"><i className="bi bi-telephone-fill"></i></div>
-                    <div>
-                      <span className="footer-contact-label">Phone</span>
-                      <a href="tel:+918008101119" className="footer-contact-value">+91 80081 01119</a>
-                    </div>
-                  </div>
-                  <div className="footer-contact-item">
-                    <div className="footer-contact-icon"><i className="bi bi-geo-alt-fill"></i></div>
-                    <div>
-                      <span className="footer-contact-label">Address</span>
-                      <span className="footer-contact-value">Hyderabad, Telangana, India</span>
-                    </div>
-                  </div>
                 </div>
-                <div className="footer-apps-row">
-                  <div className="footer-app-group">
-                    <span className="footer-app-label">Download App:</span>
-                    <a href="#"><img src="/landing-page/assets/img/play-store.png" className="footer-store-badge" alt="Play Store" /></a>
-                    <a href="#"><img src="/landing-page/assets/img/app-store.png" className="footer-store-badge" alt="App Store" /></a>
-                  </div>
+                <div style={{ background: "linear-gradient(135deg,#16A34A,#15803D)", borderRadius: 14, padding: "14px", textAlign: "center", boxShadow: "0 6px 20px rgba(22,163,74,0.35)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>💰 Payout Today — ₹1,240</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>Credited to wallet ✓</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="footer-bottom">
-          <div className="container">
-            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <p className="mb-0">&copy; {new Date().getFullYear()} MindWhile IT Solutions Pvt Ltd. JAGO is a product of MindWhile IT Solutions Pvt Ltd.</p>
-              <div className="d-flex gap-3">
-                <a href="/privacy" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Privacy Policy</a>
-                <a href="/terms" className="text-white-50 text-decoration-none" style={{ fontSize: "13px" }}>Terms &amp; Conditions</a>
+      </section>
+
+      {/* ── CITIES ── */}
+      <section id="cities" style={{ background: "#F8FAFF" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>COVERAGE</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Cities We Serve</h2>
+            <p style={{ fontSize: 17, color: "#64748B" }}>Expanding across Telangana &amp; Andhra Pradesh</p>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center", marginBottom: 32 }}>
+            {[
+              { name: "Hyderabad", status: "live", zones: 5 },
+              { name: "Secunderabad", status: "live", zones: 1 },
+              { name: "Gachibowli", status: "live", zones: 1 },
+              { name: "Hitec City", status: "live", zones: 1 },
+              { name: "Vijayawada", status: "live", zones: 1 },
+              { name: "Amaravathi", status: "live", zones: 1 },
+              { name: "Mangalagiri", status: "live", zones: 1 },
+              { name: "Narasaraopet", status: "live", zones: 1 },
+              { name: "Guntur", status: "soon", zones: 0 },
+              { name: "Visakhapatnam", status: "soon", zones: 0 },
+              { name: "Warangal", status: "soon", zones: 0 },
+            ].map((c, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: c.status === "live" ? "white" : "#F8FAFF",
+                border: `1.5px solid ${c.status === "live" ? "#BFDBFE" : "#E2E8F0"}`,
+                borderRadius: 12, padding: "10px 18px",
+                boxShadow: c.status === "live" ? "0 2px 8px rgba(30,109,229,0.1)" : "none",
+              }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: c.status === "live" ? "#22C55E" : "#CBD5E1", boxShadow: c.status === "live" ? "0 0 6px rgba(34,197,94,0.6)" : "none" }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: c.status === "live" ? "#0F172A" : "#94A3B8" }}>{c.name}</span>
+                {c.status === "live" && <span style={{ fontSize: 11, background: "#EFF6FF", color: "#1E6DE5", borderRadius: 6, padding: "2px 7px", fontWeight: 600 }}>{c.zones} zone{c.zones > 1 ? "s" : ""}</span>}
+                {c.status === "soon" && <span style={{ fontSize: 10, color: "#CBD5E1", fontWeight: 600 }}>Coming Soon</span>}
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── APP DOWNLOAD ── */}
+      <section id="download" style={{ background: "linear-gradient(140deg, #050b1f 0%, #071230 60%, #0a1640 100%)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 800, height: 800, borderRadius: "50%", background: "radial-gradient(circle, rgba(30,109,229,0.1) 0%, transparent 65%)" }} />
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", position: "relative" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
+            {/* Customer */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 28, padding: 36 }}>
+              <img src={jagoLogoWhite} style={{ height: 34, objectFit: "contain", marginBottom: 20 }} alt="JAGO" />
+              <h3 style={{ fontSize: 28, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>JAGO Customer App</h3>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", marginBottom: 24, lineHeight: 1.65 }}>
+                Book rides, track parcels, and pay instantly — available on Android &amp; iOS.
+              </p>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <a href="https://play.google.com/store" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, background: "white", borderRadius: 12, padding: "12px 20px", textDecoration: "none", transition: "transform 0.2s" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="#00C773"/></svg>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#374151", fontWeight: 600 }}>GET IT ON</div>
+                    <div style={{ fontSize: 13, color: "#0F172A", fontWeight: 800 }}>Google Play</div>
+                  </div>
+                </a>
+                <a href="https://apps.apple.com" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, background: "white", borderRadius: 12, padding: "12px 20px", textDecoration: "none" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.78 22.05 6.8 20.68 5.96 19.47C4.25 17 2.94 12.45 4.7 9.39C5.57 7.87 7.13 6.91 8.82 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5Z" fill="#1C1C1C"/></svg>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#374151", fontWeight: 600 }}>DOWNLOAD ON</div>
+                    <div style={{ fontSize: 13, color: "#0F172A", fontWeight: 800 }}>App Store</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            {/* Driver */}
+            <div style={{ background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.2)", borderRadius: 28, padding: 36 }}>
+              <img src={pilotLogo} style={{ height: 34, objectFit: "contain", marginBottom: 20 }} alt="JAGO Pilot" />
+              <h3 style={{ fontSize: 28, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>JAGO Pilot App</h3>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", marginBottom: 24, lineHeight: 1.65 }}>
+                Accept trips, track earnings, and manage your schedule — built for pilots.
+              </p>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <a href="https://play.google.com/store" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#2563EB,#1D4ED8)", borderRadius: 12, padding: "12px 20px", textDecoration: "none", boxShadow: "0 6px 20px rgba(37,99,235,0.35)" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="white"/></svg>
+                  <div>
+                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>GET IT ON</div>
+                    <div style={{ fontSize: 13, color: "white", fontWeight: 800 }}>Google Play</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer style={{ background: "#030810", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "60px 24px 30px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 48, marginBottom: 48, flexWrap: "wrap" }}>
+            {/* Brand */}
+            <div>
+              <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />
+              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", lineHeight: 1.7, marginBottom: 20, maxWidth: 280 }}>
+                Your trusted ride-sharing and logistics platform. Connecting people and businesses across Telangana &amp; Andhra Pradesh.
+              </p>
+              <div style={{ display: "flex", gap: 10 }}>
+                {[
+                  ["Facebook", "M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"],
+                  ["Instagram", "M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z M17.5 6.5h.01 M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5z"],
+                  ["Twitter", "M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"],
+                ].map(([name, path]) => (
+                  <a key={name} href="#" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
+                      <path d={path}/>
+                    </svg>
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 20 }}>Company</div>
+              {["About Us", "Blog", "Careers", "Contact Us"].map(l => (
+                <a key={l} href="#" style={{ display: "block", fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 10, textDecoration: "none", transition: "color 0.2s" }}
+                  onMouseEnter={e => (e.target as HTMLElement).style.color = "white"}
+                  onMouseLeave={e => (e.target as HTMLElement).style.color = "rgba(255,255,255,0.5)"}
+                >{l}</a>
+              ))}
+            </div>
+
+            {/* Services */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 20 }}>Services</div>
+              {["Ride Sharing", "Parcel Delivery", "Cargo & Logistics", "B2B Solutions", "Scheduled Rides"].map(l => (
+                <a key={l} href="#" style={{ display: "block", fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 10, textDecoration: "none" }}>{l}</a>
+              ))}
+            </div>
+
+            {/* Contact */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 20 }}>Contact</div>
+              {[
+                { icon: "✉️", text: "info@jagopro.org", href: "mailto:info@jagopro.org" },
+                { icon: "📞", text: "+91 80081 01119", href: "tel:+918008101119" },
+                { icon: "📍", text: "Hyderabad, Telangana", href: "#" },
+              ].map((c, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
+                  <span style={{ fontSize: 14 }}>{c.icon}</span>
+                  <a href={c.href} style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", textDecoration: "none" }}>{c.text}</a>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 24, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", margin: 0 }}>
+              © {new Date().getFullYear()} MindWhile IT Solutions Pvt Ltd. All rights reserved.
+            </p>
+            <div style={{ display: "flex", gap: 24 }}>
+              {["Privacy Policy", "Terms & Conditions", "Cookie Policy"].map(l => (
+                <a key={l} href="#" style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textDecoration: "none" }}>{l}</a>
+              ))}
             </div>
           </div>
         </div>
       </footer>
-    </>
+    </div>
   );
 }
