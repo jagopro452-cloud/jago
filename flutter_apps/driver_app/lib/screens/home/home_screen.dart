@@ -208,34 +208,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(width: 12),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: _bg,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.07), width: 1),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 4))],
             ),
             child: Row(children: [
+              Image.asset('assets/images/pilot_logo.png', height: 22, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Text('PILOT',
+                  style: TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2))),
+              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.08), margin: const EdgeInsets.symmetric(horizontal: 10)),
               AnimatedBuilder(
                 animation: _pulseCtrl,
                 builder: (_, __) => Container(
-                  width: 10,
-                  height: 10,
+                  width: 8, height: 8,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: _isOnline ? _green : Colors.grey[600],
                     boxShadow: _isOnline ? [BoxShadow(
-                      color: _green.withOpacity(0.4 + _pulseCtrl.value * 0.3),
-                      blurRadius: 6 + _pulseCtrl.value * 4,
+                      color: _green.withOpacity(0.4 + _pulseCtrl.value * 0.35),
+                      blurRadius: 5 + _pulseCtrl.value * 6,
+                      spreadRadius: _pulseCtrl.value * 2,
                     )] : [],
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                _isOnline ? 'Online — Trips కోసం Ready' : 'Offline — Go Online చేయండి',
-                style: TextStyle(
-                  color: _isOnline ? Colors.white : Colors.white.withOpacity(0.5),
-                  fontSize: 13, fontWeight: FontWeight.w600),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _isOnline ? 'Online — Ready ✓' : 'Offline — Go Online',
+                  style: TextStyle(
+                    color: _isOnline ? Colors.white : Colors.white.withOpacity(0.45),
+                    fontSize: 13, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ]),
           ),

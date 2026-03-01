@@ -70,41 +70,65 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
   }
 
   Widget _buildTopBanner() {
+    final urgency = _countdown <= 10;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [_blue.withOpacity(0.25), _blue.withOpacity(0.1)],
+          colors: urgency
+            ? [const Color(0xFFF59E0B).withOpacity(0.2), const Color(0xFFF59E0B).withOpacity(0.08)]
+            : [_blue.withOpacity(0.22), _blue.withOpacity(0.06)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
       ),
       child: Row(children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('New Trip Request!',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 2),
-          Text('Accept karna cheyyi — expire avutundi!',
-            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-        ]),
-        const Spacer(),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: urgency ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                  boxShadow: [BoxShadow(
+                    color: (urgency ? const Color(0xFFF59E0B) : const Color(0xFF10B981)).withOpacity(0.5),
+                    blurRadius: 6)],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(urgency ? 'Expire అవుతోంది!' : 'New Trip Request!',
+                style: TextStyle(
+                  color: urgency ? const Color(0xFFF59E0B) : Colors.white,
+                  fontSize: 20, fontWeight: FontWeight.w900)),
+            ]),
+            const SizedBox(height: 4),
+            Text('Accept చేయండి — ₹ earn చేయండి',
+              style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12, fontWeight: FontWeight.w500)),
+          ]),
+        ),
+        const SizedBox(width: 16),
         Stack(alignment: Alignment.center, children: [
           SizedBox(
-            width: 56, height: 56,
+            width: 62, height: 62,
             child: AnimatedBuilder(
               animation: _ringCtrl,
               builder: (_, __) => CircularProgressIndicator(
                 value: 1 - _ringCtrl.value,
-                strokeWidth: 4,
-                backgroundColor: Colors.white.withOpacity(0.1),
-                color: _countdown > 10 ? _blue : const Color(0xFFF59E0B),
+                strokeWidth: 5,
+                backgroundColor: Colors.white.withOpacity(0.08),
+                color: urgency ? const Color(0xFFF59E0B) : _blue,
               ),
             ),
           ),
-          Text('$_countdown',
-            style: TextStyle(
-              color: _countdown > 10 ? Colors.white : const Color(0xFFF59E0B),
-              fontSize: 16, fontWeight: FontWeight.w900)),
+          Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('$_countdown',
+              style: TextStyle(
+                color: urgency ? const Color(0xFFF59E0B) : Colors.white,
+                fontSize: 20, fontWeight: FontWeight.w900, height: 1)),
+            Text('sec', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.w600)),
+          ]),
         ]),
       ]),
     );
@@ -112,44 +136,71 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
 
   Widget _buildAddressCard(String pickup, String dest) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
       ),
-      child: Column(children: [
-        Row(children: [
-          Container(width: 10, height: 10,
-            decoration: const BoxDecoration(color: Color(0xFF2563EB), shape: BoxShape.circle)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(pickup,
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-            maxLines: 1, overflow: TextOverflow.ellipsis)),
-        ]),
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Row(children: [
-            Container(width: 2, height: 16, color: Colors.white.withOpacity(0.12), margin: const EdgeInsets.only(left: 4)),
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(width: 12, height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, color: _blue,
+                boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 6)])),
+            Expanded(
+              child: Container(
+                width: 2, margin: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [_blue.withOpacity(0.5), const Color(0xFFF59E0B).withOpacity(0.5)]),
+                  borderRadius: BorderRadius.circular(1)),
+              ),
+            ),
+            Container(width: 12, height: 12,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                borderRadius: BorderRadius.circular(3),
+                boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.4), blurRadius: 6)])),
           ]),
-        ),
-        Row(children: [
-          Container(width: 10, height: 10,
-            decoration: BoxDecoration(color: const Color(0xFFF59E0B), borderRadius: BorderRadius.circular(3))),
-          const SizedBox(width: 12),
-          Expanded(child: Text(dest,
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-            maxLines: 1, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Pickup', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                Text(pickup,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              ]),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Container(height: 1, color: Colors.white.withOpacity(0.06)),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Destination', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                Text(dest,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              ]),
+            ]),
+          ),
         ]),
-      ]),
+      ),
     );
   }
 
   Widget _buildStatsRow(dynamic dist, dynamic fare, dynamic eta) {
+    final fareNum = double.tryParse(fare?.toString() ?? '0') ?? 0;
+    final fareLabel = fareNum > 0 ? '₹${fareNum.toStringAsFixed(0)}' : '₹--';
     return Row(children: [
       Expanded(child: _stat(Icons.route_rounded, '$dist km', 'Distance', const Color(0xFF10B981))),
       _vertDivider(),
-      Expanded(child: _stat(Icons.currency_rupee_rounded, 'Rs.$fare', 'Fare', const Color(0xFFF59E0B))),
+      Expanded(child: _stat(Icons.currency_rupee_rounded, fareLabel, 'Fare', const Color(0xFFF59E0B))),
       _vertDivider(),
       Expanded(child: _stat(Icons.access_time_rounded, '~$eta min', 'ETA', _blue)),
     ]);
@@ -157,16 +208,22 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
 
   Widget _stat(IconData icon, String value, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.12), width: 1),
       ),
-      child: Column(children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800)),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 9, fontWeight: FontWeight.w500)),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w900, height: 1)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
       ]),
     );
   }

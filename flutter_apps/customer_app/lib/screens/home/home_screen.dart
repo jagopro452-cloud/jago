@@ -192,11 +192,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         GestureDetector(
           onTap: () => _scaffoldKey.currentState?.openDrawer(),
           child: Container(
-            width: 46, height: 46,
+            width: 50, height: 50,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 3))],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.13), blurRadius: 16, offset: const Offset(0, 4))],
             ),
             child: const Icon(Icons.menu_rounded, color: Color(0xFF111827), size: 22),
           ),
@@ -207,24 +207,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 3))],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.13), blurRadius: 16, offset: const Offset(0, 4))],
             ),
             child: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: _blue.withOpacity(0.12), shape: BoxShape.circle),
-                child: Text(
-                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                  style: TextStyle(color: _blue, fontSize: 12, fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(width: 10),
+              Image.asset('assets/images/jago_logo.png', height: 22, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Text('JAGO',
+                  style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2))),
+              const SizedBox(width: 12),
+              Container(width: 1, height: 20, color: const Color(0xFFE5E7EB)),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text('Hi, ${_userName.split(' ').first} 👋',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
               ),
-              const Icon(Icons.notifications_none_rounded, color: Color(0xFF1E6DE5), size: 22),
+              Stack(children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.notifications_rounded, color: Color(0xFF1E6DE5), size: 20),
+                ),
+                Positioned(top: 7, right: 7,
+                  child: Container(width: 7, height: 7,
+                    decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle))),
+              ]),
             ]),
           ),
         ),
@@ -236,25 +242,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
-        boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4))],
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+        boxShadow: [BoxShadow(color: Color(0x1A000000), blurRadius: 32, spreadRadius: 2, offset: Offset(0, -6))],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          width: 40, height: 4,
-          margin: const EdgeInsets.only(top: 10, bottom: 16),
-          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2)),
+          width: 44, height: 5,
+          margin: const EdgeInsets.only(top: 12, bottom: 18),
+          decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(3)),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Where are you going?',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Where are you going?',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: -0.3)),
+                  const SizedBox(height: 3),
+                  Text('Hyderabad & Andhra Pradesh',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[400], fontWeight: FontWeight.w500)),
+                ]),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFF1E6DE5)),
+                  const SizedBox(width: 4),
+                  const Text('Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E6DE5))),
+                  const SizedBox(width: 3),
+                  Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: const Color(0xFF1E6DE5)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 16),
             _buildLocationCard(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             _buildVehicleSection(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             _buildBookBtn(),
           ]),
         ),
@@ -398,21 +428,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBookBtn() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _bookRide,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _blue,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 0,
+    final selected = _selectedRide < _vehicleCategories.length ? _vehicleCategories[_selectedRide] : null;
+    final hasDestination = _destination.isNotEmpty;
+    return GestureDetector(
+      onTap: _bookRide,
+      child: Container(
+        width: double.infinity,
+        height: 58,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: hasDestination
+              ? [const Color(0xFF1565C0), const Color(0xFF1E6DE5), const Color(0xFF1565C0)]
+              : [const Color(0xFF94A3B8), const Color(0xFF64748B)],
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: hasDestination ? [BoxShadow(
+            color: const Color(0xFF1E6DE5).withOpacity(0.45),
+            blurRadius: 20, offset: const Offset(0, 6),
+          )] : [],
         ),
-        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.directions_rounded, size: 20),
-          SizedBox(width: 8),
-          Text('Find Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.2)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.search_rounded, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Find Ride', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
+            if (selected != null)
+              Text('${selected['name'] ?? ''} · ${selected['minimumFare'] != null ? '₹${selected['minimumFare']}+' : '--'}',
+                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500)),
+          ]),
+          const SizedBox(width: 12),
+          const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
         ]),
       ),
     );
