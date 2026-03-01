@@ -3167,6 +3167,233 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── CUSTOMER: Wallet balance + transactions ───────────────────────────────
+  app.get("/api/app/customer/wallet", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+      const balance = parseFloat((walRes.rows[0] as any)?.wallet_balance || "0");
+      const txRes = await rawDb.execute(rawSql`
+        SELECT * FROM transactions WHERE user_id=${customer.id}::uuid ORDER BY created_at DESC LIMIT 50
+      `);
+      res.json({
+        balance,
+        transactions: txRes.rows.map(camelize),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Wallet recharge ─────────────────────────────────────────────
+  app.post("/api/app/customer/wallet/recharge", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { amount, paymentRef, paymentMethod = "upi" } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
+      await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid
+      `);
+      await rawDb.execute(rawSql`
+        INSERT INTO transactions (user_id, amount, type, description, payment_method, reference_id, status)
+        VALUES (${customer.id}::uuid, ${amt}, 'credit', ${`Wallet recharge via ${paymentMethod}`}, ${paymentMethod}, ${paymentRef||null}, 'completed')
+      `).catch(() => {});
+      const newBal = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+      res.json({ success: true, balance: parseFloat((newBal.rows[0] as any).wallet_balance || "0"), message: `₹${amt} added to wallet` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Update profile ──────────────────────────────────────────────
+  app.patch("/api/app/customer/profile", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { fullName, email, profileImage } = req.body;
+      if (!fullName && !email && !profileImage) return res.status(400).json({ message: "Nothing to update" });
+      if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${customer.id}::uuid`);
+      if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${customer.id}::uuid`);
+      if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${customer.id}::uuid`);
+      res.json({ success: true, message: "Profile updated" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Update profile ────────────────────────────────────────────────
+  app.patch("/api/app/driver/profile", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { fullName, email, profileImage } = req.body;
+      if (!fullName && !email && !profileImage) return res.status(400).json({ message: "Nothing to update" });
+      if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      res.json({ success: true, message: "Profile updated" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Earnings summary ──────────────────────────────────────────────
+  app.get("/api/app/driver/earnings", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { period = "today" } = req.query;
+      let r: any;
+      if (period === "today") {
+        r = await rawDb.execute(rawSql`
+          SELECT COUNT(*) FILTER (WHERE current_status='completed') as completed,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed'), 0) as gross_fare,
+            COALESCE(SUM(commission_amount) FILTER (WHERE current_status='completed'), 0) as commission,
+            COALESCE(SUM(actual_fare - COALESCE(commission_amount,0)) FILTER (WHERE current_status='completed'), 0) as net_earnings
+          FROM trip_requests WHERE driver_id=${driver.id}::uuid AND DATE(created_at) = CURRENT_DATE
+        `);
+      } else if (period === "week") {
+        r = await rawDb.execute(rawSql`
+          SELECT COUNT(*) FILTER (WHERE current_status='completed') as completed,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed'), 0) as gross_fare,
+            COALESCE(SUM(commission_amount) FILTER (WHERE current_status='completed'), 0) as commission,
+            COALESCE(SUM(actual_fare - COALESCE(commission_amount,0)) FILTER (WHERE current_status='completed'), 0) as net_earnings
+          FROM trip_requests WHERE driver_id=${driver.id}::uuid AND created_at >= date_trunc('week', now())
+        `);
+      } else if (period === "month") {
+        r = await rawDb.execute(rawSql`
+          SELECT COUNT(*) FILTER (WHERE current_status='completed') as completed,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed'), 0) as gross_fare,
+            COALESCE(SUM(commission_amount) FILTER (WHERE current_status='completed'), 0) as commission,
+            COALESCE(SUM(actual_fare - COALESCE(commission_amount,0)) FILTER (WHERE current_status='completed'), 0) as net_earnings
+          FROM trip_requests WHERE driver_id=${driver.id}::uuid AND created_at >= date_trunc('month', now())
+        `);
+      } else {
+        r = await rawDb.execute(rawSql`
+          SELECT COUNT(*) FILTER (WHERE current_status='completed') as completed,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed'), 0) as gross_fare,
+            COALESCE(SUM(commission_amount) FILTER (WHERE current_status='completed'), 0) as commission,
+            COALESCE(SUM(actual_fare - COALESCE(commission_amount,0)) FILTER (WHERE current_status='completed'), 0) as net_earnings
+          FROM trip_requests WHERE driver_id=${driver.id}::uuid
+        `);
+      }
+      const d = camelize(r.rows[0]) as any;
+      res.json({
+        period,
+        completedTrips: parseInt(d.completed || "0"),
+        cancelledTrips: parseInt(d.cancelled || "0"),
+        grossFare: parseFloat(d.grossFare || "0"),
+        commission: parseFloat(d.commission || "0"),
+        netEarnings: parseFloat(d.netEarnings || "0"),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Saved places ────────────────────────────────────────────────
+  app.get("/api/app/customer/saved-places", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM saved_places WHERE user_id=${customer.id}::uuid ORDER BY created_at DESC
+      `);
+      res.json({ data: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/customer/saved-places", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { label, address, lat, lng } = req.body;
+      if (!label || !address) return res.status(400).json({ message: "label and address required" });
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO saved_places (user_id, label, address, lat, lng)
+        VALUES (${customer.id}::uuid, ${label}, ${address}, ${lat||0}, ${lng||0})
+        RETURNING *
+      `);
+      res.json({ success: true, data: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/app/customer/saved-places/:id", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { id } = req.params;
+      await rawDb.execute(rawSql`
+        DELETE FROM saved_places WHERE id=${id}::uuid AND user_id=${customer.id}::uuid
+      `);
+      res.json({ success: true, message: "Place removed" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Apply coupon code ───────────────────────────────────────────
+  app.post("/api/app/customer/apply-coupon", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { code, fareAmount } = req.body;
+      if (!code) return res.status(400).json({ message: "Coupon code required" });
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM coupon_setups WHERE coupon_code=${code.toUpperCase()} AND is_active=true
+          AND (expiry_date IS NULL OR expiry_date >= now())
+          AND (usage_limit IS NULL OR used_count < usage_limit)
+        LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(400).json({ message: "Invalid or expired coupon" });
+      const coupon = camelize(r.rows[0]) as any;
+      let discount = 0;
+      if (coupon.discountType === "percentage") {
+        discount = (fareAmount * coupon.discountValue) / 100;
+        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+      } else {
+        discount = coupon.discountValue || 0;
+      }
+      discount = Math.min(discount, fareAmount);
+      res.json({
+        success: true,
+        couponId: coupon.id,
+        code: coupon.couponCode,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discount: parseFloat(discount.toFixed(2)),
+        finalFare: parseFloat((fareAmount - discount).toFixed(2)),
+        message: `Coupon applied! You save ₹${discount.toFixed(2)}`,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Change password ───────────────────────────────────────────────
+  app.post("/api/app/change-password", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { newPin } = req.body;
+      if (!newPin || newPin.length < 4) return res.status(400).json({ message: "PIN must be at least 4 digits" });
+      await rawDb.execute(rawSql`UPDATE users SET password=${newPin}, updated_at=now() WHERE id=${user.id}::uuid`);
+      res.json({ success: true, message: "PIN updated successfully" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Delete account ──────────────────────────────────────────────
+  app.delete("/api/app/customer/account", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      await rawDb.execute(rawSql`UPDATE users SET is_active=false, full_name='Deleted User', email=null, phone=null WHERE id=${customer.id}::uuid`);
+      res.json({ success: true, message: "Account deleted" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Referral info ─────────────────────────────────────────────────
+  app.get("/api/app/referral", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM referrals WHERE referrer_id=${user.id}::uuid ORDER BY created_at DESC
+      `);
+      const countRes = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as total, COALESCE(SUM(reward_amount),0) as total_earned FROM referrals WHERE referrer_id=${user.id}::uuid AND status='paid'
+      `);
+      const summary = camelize(countRes.rows[0]) as any;
+      res.json({
+        referralCode: user.phone,
+        totalReferrals: parseInt(summary.total || "0"),
+        totalEarned: parseFloat(summary.totalEarned || "0"),
+        referrals: r.rows.map(camelize),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ========== FLUTTER SDK FILES DOWNLOAD ==========
   app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 

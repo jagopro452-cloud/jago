@@ -375,6 +375,16 @@ export const notificationLogs = pgTable("notification_logs", {
   sentAt: timestamp("sent_at").defaultNow(),
 });
 
+export const savedPlaces = pgTable("saved_places", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull(),
+  label: varchar("label", { length: 50 }).notNull(),
+  address: text("address").notNull(),
+  lat: doublePrecision("lat").notNull().default(0),
+  lng: doublePrecision("lng").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripSchema = createInsertSchema(tripRequests).omit({ id: true, createdAt: true, updatedAt: true });
