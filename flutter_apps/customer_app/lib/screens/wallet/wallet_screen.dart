@@ -542,6 +542,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           final isRazorpay =
                               (t['paymentMethod'] ?? t['payment_method'] ?? '')
                                   .toString()
+                                  .toLowerCase()
                                   .contains('razorpay');
                           return Container(
                             margin: const EdgeInsets.only(bottom: 8),

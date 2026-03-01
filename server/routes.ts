@@ -652,8 +652,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             `);
             // Record transaction
             await rawDb.execute(rawSql`
-              INSERT INTO transactions (user_id, amount, type, description, status)
-              VALUES (${wd.user_id}::uuid, ${parseFloat(wd.amount)}, 'debit', 'Withdrawal processed', 'completed')
+              INSERT INTO transactions (user_id, account, debit, credit, balance, transaction_type)
+              VALUES (${wd.user_id}::uuid, ${'Withdrawal processed'}, ${parseFloat(wd.amount)}, 0, 0, ${'withdrawal'})
             `).catch(() => {});
           }
         }
@@ -3330,16 +3330,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
       const balance = parseFloat((walRes.rows[0] as any)?.wallet_balance || "0");
       const txRes = await rawDb.execute(rawSql`
-        SELECT * FROM transactions WHERE user_id=${customer.id}::uuid ORDER BY created_at DESC LIMIT 50
+        SELECT id, account, debit, credit, balance, transaction_type, ref_transaction_id, created_at
+        FROM transactions WHERE user_id=${customer.id}::uuid ORDER BY created_at DESC LIMIT 50
       `);
-      res.json({
-        balance,
-        transactions: txRes.rows.map(camelize),
-      });
+      const transactions = txRes.rows.map((r: any) => ({
+        id: r.id,
+        type: parseFloat(r.credit || 0) > 0 ? 'credit' : 'debit',
+        amount: parseFloat(r.credit || 0) > 0 ? parseFloat(r.credit) : parseFloat(r.debit || 0),
+        description: r.account || r.transaction_type || 'Transaction',
+        paymentMethod: r.account || '',
+        referenceId: r.ref_transaction_id || '',
+        balance: parseFloat(r.balance || 0),
+        date: r.created_at,
+      }));
+      res.json({ balance, transactions });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── CUSTOMER: Wallet recharge ─────────────────────────────────────────────
+  // ── CUSTOMER: Wallet recharge (manual / legacy) ───────────────────────────
   app.post("/api/app/customer/wallet/recharge", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -3349,15 +3357,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (amt < 10) return res.status(400).json({ message: "Minimum recharge is ₹10" });
       if (amt > 10000) return res.status(400).json({ message: "Maximum recharge is ₹10,000 per transaction" });
       if (!paymentRef) return res.status(400).json({ message: "Payment reference required" });
+      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
+      const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+      const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || "0");
       await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid
-      `);
-      await rawDb.execute(rawSql`
-        INSERT INTO transactions (user_id, amount, type, description, payment_method, reference_id, status)
-        VALUES (${customer.id}::uuid, ${amt}, 'credit', ${`Wallet recharge via ${paymentMethod}`}, ${paymentMethod}, ${paymentRef||null}, 'completed')
+        INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+        VALUES (${customer.id}::uuid, ${`Wallet recharge via ${paymentMethod}`}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${paymentRef||null})
       `).catch(() => {});
-      const newBal = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-      res.json({ success: true, balance: parseFloat((newBal.rows[0] as any).wallet_balance || "0"), message: `₹${amt} added to wallet` });
+      res.json({ success: true, balance: newBal, message: `₹${amt} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3398,12 +3405,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const amt = parseFloat(amount);
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
+      const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+      const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || "0");
       await rawDb.execute(rawSql`
-        INSERT INTO transactions (user_id, amount, type, description, payment_method, reference_id, status)
-        VALUES (${customer.id}::uuid, ${amt}, 'credit', ${'Wallet recharge via Razorpay'}, ${'razorpay'}, ${razorpayPaymentId}, 'completed')
+        INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+        VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
       `).catch(() => {});
-      const newBal = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-      res.json({ success: true, balance: parseFloat((newBal.rows[0] as any).wallet_balance || "0"), message: `₹${amt.toFixed(0)} added to wallet` });
+      res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
