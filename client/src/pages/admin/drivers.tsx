@@ -1,101 +1,19 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ImageUploader } from "@/components/image-uploader";
 
 const avatarBg = (name: string) => {
   const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626","#0ea5e9"];
   return colors[(name || "A").charCodeAt(0) % colors.length];
 };
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-const seededRating = (id: string) => {
-  const n = (id || "x").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  return (3.8 + (n % 12) / 10).toFixed(1);
-};
-
 const VSTATUS: Record<string, { label: string; cls: string; color: string }> = {
   pending:  { label: "Pending", cls: "badge bg-warning text-dark", color: "#d97706" },
   approved: { label: "Approved", cls: "badge bg-success", color: "#16a34a" },
   rejected: { label: "Rejected", cls: "badge bg-danger", color: "#dc2626" },
 };
-
-// ── Image Uploader component ──────────────────────────────────────────────────
-function ImageUploader({ label, value, onChange, testId }: {
-  label: string; value: string; onChange: (url: string) => void; testId: string;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) onChange(data.url);
-    } catch {}
-    setUploading(false);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>{label}</div>
-      <div style={{
-        border: `2px dashed ${value ? "#16a34a" : "#e2e8f0"}`, borderRadius: 12,
-        background: value ? "#f0fdf4" : "#fafafa",
-        minHeight: 130, display: "flex", flexDirection: "column", alignItems: "center",
-        justifyContent: "center", gap: 8, cursor: "pointer", transition: "all 0.2s",
-        overflow: "hidden", position: "relative",
-      }}
-        onClick={() => inputRef.current?.click()}
-        data-testid={`img-upload-area-${testId}`}
-      >
-        {value ? (
-          <>
-            <img src={value} alt={label}
-              style={{ width: "100%", height: 130, objectFit: "cover", borderRadius: 10 }}
-              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s" }}
-              className="img-hover-overlay">
-              <span style={{ background: "rgba(0,0,0,0.6)", color: "white", padding: "4px 10px", borderRadius: 20, fontSize: 11 }}>Change</span>
-            </div>
-          </>
-        ) : (
-          <>
-            {uploading ? (
-              <div className="spinner-border spinner-border-sm text-primary" role="status" />
-            ) : (
-              <>
-                <i className="bi bi-cloud-upload" style={{ fontSize: 24, color: "#94a3b8" }}></i>
-                <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.4 }}>
-                  Click to upload<br /><span style={{ fontSize: 10 }}>JPG, PNG, PDF — max 8MB</span>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-      {value && (
-        <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" style={{ flex: 1, fontSize: 10, padding: "4px 8px", borderRadius: 6, background: "#f1f5f9", border: "1px solid #e2e8f0", cursor: "pointer", color: "#64748b" }}
-            onClick={() => inputRef.current?.click()}>
-            <i className="bi bi-arrow-repeat me-1"></i>Replace
-          </button>
-          <button type="button" style={{ fontSize: 10, padding: "4px 8px", borderRadius: 6, background: "#fee2e2", border: "1px solid #fca5a5", cursor: "pointer", color: "#dc2626" }}
-            onClick={e => { e.stopPropagation(); onChange(""); }}>
-            <i className="bi bi-trash"></i>
-          </button>
-        </div>
-      )}
-      <input ref={inputRef} type="file" accept="image/*,.pdf" style={{ display: "none" }}
-        onChange={handleFile} data-testid={`input-upload-${testId}`} />
-    </div>
-  );
-}
 
 // ── Verify Modal ──────────────────────────────────────────────────────────────
 function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; onClose: () => void }) {
@@ -536,7 +454,7 @@ export default function Drivers() {
                       </td>
                       <td>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "#d97706" }}>
-                          ⭐ {seededRating(driver.id)}
+                          ⭐ {parseFloat(driver.rating || "5.0").toFixed(1)}
                         </div>
                       </td>
                       <td>

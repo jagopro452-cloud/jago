@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ImageUploader } from "@/components/image-uploader";
 
 function VehicleModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
   return (
     <div className="modal-backdrop-jago">
-      <div className="modal-jago">
+      <div className="modal-jago" style={{ maxWidth: 520 }}>
         <div className="modal-jago-header">
           <h5 className="modal-jago-title">{editing ? "Edit Vehicle Category" : "Add Vehicle Category"}</h5>
           <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
@@ -26,8 +27,23 @@ function VehicleModal({ open, onClose, editing, form, setForm, onSave, saving }:
             </select>
           </div>
           <div>
-            <label className="form-label-jago">Max Passengers</label>
-            <input type="number" className="form-control" value={form.maxPassengers} onChange={e => setForm((f: any) => ({ ...f, maxPassengers: e.target.value }))} />
+            <ImageUploader
+              label="Category Icon / Image"
+              value={form.icon}
+              onChange={url => setForm((f: any) => ({ ...f, icon: url }))}
+              testId="vehicle-icon"
+              height={100}
+            />
+            <div className="mt-2">
+              <label className="form-label small text-muted">Or paste image URL</label>
+              <input
+                className="form-control form-control-sm"
+                value={form.icon}
+                onChange={e => setForm((f: any) => ({ ...f, icon: e.target.value }))}
+                placeholder="https://... or emoji like 🚗"
+                data-testid="input-vehicle-icon"
+              />
+            </div>
           </div>
           <div className="d-flex gap-2 justify-content-end mt-2">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
@@ -46,7 +62,7 @@ export default function VehicleCategories() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", type: "car", maxPassengers: "4" });
+  const [form, setForm] = useState({ name: "", type: "car", icon: "" });
 
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/vehicle-categories"] });
 
@@ -57,7 +73,7 @@ export default function VehicleCategories() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] });
       toast({ title: editing ? "Updated successfully" : "Created successfully" });
-      setOpen(false); setEditing(null); setForm({ name: "", type: "car", maxPassengers: "4" });
+      setOpen(false); setEditing(null); setForm({ name: "", type: "car", icon: "" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -73,12 +89,13 @@ export default function VehicleCategories() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }),
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", type: "car", maxPassengers: "4" }); setOpen(true); };
-  const openEdit = (v: any) => { setEditing(v); setForm({ name: v.name, type: v.type || "car", maxPassengers: String(v.maxPassengers || 4) }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", type: "car", icon: "" }); setOpen(true); };
+  const openEdit = (v: any) => { setEditing(v); setForm({ name: v.name, type: v.type || "car", icon: v.icon || "" }); setOpen(true); };
   const vehicles = Array.isArray(data) ? data : [];
 
   const typeColors: Record<string, string> = { car: "bg-primary", motor_bike: "bg-success", auto: "bg-warning text-dark" };
   const typeLabels: Record<string, string> = { car: "Car", motor_bike: "Bike", auto: "Auto" };
+  const defaultIcon = (type: string) => type === "motor_bike" ? "bi-bicycle" : type === "auto" ? "bi-truck" : "bi-car-front-fill";
 
   return (
     <div className="container-fluid">
@@ -96,9 +113,8 @@ export default function VehicleCategories() {
               <thead className="table-light align-middle text-capitalize">
                 <tr>
                   <th>SL</th>
-                  <th>Category Name</th>
+                  <th>Category</th>
                   <th>Type</th>
-                  <th>Max Passengers</th>
                   <th>Status</th>
                   <th className="text-center">Action</th>
                 </tr>
@@ -106,18 +122,25 @@ export default function VehicleCategories() {
               <tbody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, i) => (
-                    <tr key={i}>{Array(6).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                    <tr key={i}>{Array(5).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
                   ))
                 ) : vehicles.length ? (
                   vehicles.map((v: any, idx: number) => (
                     <tr key={v.id} data-testid={`vehicle-row-${v.id}`}>
                       <td>{idx + 1}</td>
                       <td>
-                        <div className="media align-items-center gap-2">
-                          <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <i className={`bi ${v.type === "motor_bike" ? "bi-bicycle" : v.type === "auto" ? "bi-truck" : "bi-car-front-fill"}`} style={{ color: "#2563eb" }}></i>
+                        <div className="d-flex align-items-center gap-2">
+                          <div style={{ width: 40, height: 40, borderRadius: 8, background: "rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                            {v.icon && (v.icon.startsWith("http") || v.icon.startsWith("/")) ? (
+                              <img src={v.icon} alt={v.name} style={{ width: 40, height: 40, objectFit: "cover" }}
+                                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                            ) : v.icon ? (
+                              <span style={{ fontSize: 20 }}>{v.icon}</span>
+                            ) : (
+                              <i className={`bi ${defaultIcon(v.type)}`} style={{ color: "#2563eb", fontSize: 18 }}></i>
+                            )}
                           </div>
-                          <div className="media-body fw-medium title-color">{v.name}</div>
+                          <div className="fw-medium">{v.name}</div>
                         </div>
                       </td>
                       <td>
@@ -125,7 +148,6 @@ export default function VehicleCategories() {
                           {typeLabels[v.type] || v.type}
                         </span>
                       </td>
-                      <td>{v.maxPassengers || "—"}</td>
                       <td>
                         <label className="switcher">
                           <input type="checkbox" className="switcher_input" checked={v.isActive} onChange={() => toggleStatus.mutate({ id: v.id, isActive: !v.isActive })} data-testid={`toggle-vehicle-${v.id}`} />
@@ -141,7 +163,7 @@ export default function VehicleCategories() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={6}>
+                  <tr><td colSpan={5}>
                     <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
                       <i className="bi bi-car-front" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
                       <p className="text-muted mb-0">No vehicle categories found</p>
