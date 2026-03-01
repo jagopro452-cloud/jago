@@ -128,52 +128,62 @@ a:hover { color: var(--bs-primary); }
    03.3: ASIDE (SIDEBAR)
    ======================== */
 .aside {
-  width: 235px;
+  width: 240px;
   position: fixed;
   left: 0;
   top: 0;
   height: 100%;
   z-index: 1031;
   transition: width 150ms ease;
-  border-right: 0.5px dashed #ddd;
-  background-color: #fff;
+  border-right: none;
+  background-color: #0D1B4B;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 4px 0 20px rgba(0,0,0,0.15);
 }
 
 .aside-header {
   padding: 0 1.25rem;
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.625rem;
   position: relative;
   flex-shrink: 0;
-  border-bottom: 0.5px dashed #ddd;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .aside-header .logo {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--bs-primary);
+  gap: 0.6rem;
+  font-weight: 900;
+  font-size: 1.4rem;
+  color: #1E6DE5;
   text-decoration: none;
+  letter-spacing: 2px;
+}
+
+.aside-header .logo-text {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #1E6DE5;
+  letter-spacing: 3px;
 }
 
 .aside-header .logo-icon {
   width: 36px;
   height: 36px;
-  background-color: var(--bs-primary);
+  background-color: #1E6DE5;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-size: 1.1rem;
+  font-weight: 800;
   flex-shrink: 0;
 }
 
@@ -182,8 +192,8 @@ a:hover { color: var(--bs-primary); }
   right: -13px;
   width: 26px;
   height: 26px;
-  background-color: #fff;
-  border: 0.5px dashed #cbcbcb;
+  background-color: #0D1B4B;
+  border: 1px solid rgba(255,255,255,0.15);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -194,7 +204,7 @@ a:hover { color: var(--bs-primary); }
 
 .toggle-menu-button i {
   font-size: 0.8rem;
-  color: var(--bs-body-color);
+  color: rgba(255,255,255,0.7);
   transition: transform 150ms;
 }
 
@@ -203,13 +213,13 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .aside-body {
-  padding: 0 1rem 1rem;
+  padding: 0 0.75rem 1rem;
   overflow-y: auto;
   flex: 1;
 }
 
-.aside-body::-webkit-scrollbar { width: 4px; }
-.aside-body::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+.aside-body::-webkit-scrollbar { width: 3px; }
+.aside-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 
 /* Aside Body Wrapper (scroll container) */
 .aside-body-wrapper {
@@ -222,28 +232,31 @@ body.aside-folded .toggle-menu-button i {
 
 /* User Profile in Aside */
 .user-profile {
-  background-color: var(--bs-primary);
-  border-radius: 8px;
-  padding: 0.6rem 0.75rem;
-  margin: 0.6rem 0;
+  background-color: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  margin: 0.75rem 0 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.65rem;
   color: #fff;
   flex-shrink: 0;
 }
 
 .user-profile .avatar,
 .user-profile .avatar.rounded-circle {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background-color: rgba(255,255,255,0.25);
+  background-color: #1E6DE5;
   display: grid;
   place-items: center;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 700;
   flex-shrink: 0;
   color: #fff;
+  border: 2px solid rgba(255,255,255,0.2);
 }
 
 .user-profile .media-body {
@@ -252,7 +265,7 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .user-profile .card-title {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
@@ -263,22 +276,22 @@ body.aside-folded .toggle-menu-button i {
 
 .user-profile .card-text {
   font-size: 0.65rem;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.55);
   text-transform: capitalize;
 }
 
 /* Aside Search */
 .aside-search {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .search-form__input_group {
   position: relative;
   display: flex;
   align-items: center;
-  background-color: var(--input-bg);
-  border: 1px solid var(--input-border-color);
-  border-radius: 6px;
+  background-color: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -287,7 +300,7 @@ body.aside-folded .toggle-menu-button i {
   align-items: center;
   justify-content: center;
   padding: 0 0.625rem;
-  color: var(--bs-body-color);
+  color: rgba(255,255,255,0.4);
   font-size: 0.8rem;
   flex-shrink: 0;
 }
@@ -299,13 +312,13 @@ body.aside-folded .toggle-menu-button i {
   background: transparent;
   padding: 0.5rem 0.625rem 0.5rem 0;
   font-size: 0.8rem;
-  color: var(--title-color);
+  color: rgba(255,255,255,0.85);
   outline: none;
   font-family: var(--bs-body-font-family);
 }
 
 .search-form__input::placeholder {
-  color: var(--secondary-body-color);
+  color: rgba(255,255,255,0.3);
 }
 
 /* Main Nav */
@@ -316,23 +329,23 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav .nav-category {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--bs-body-color);
-  padding: 0.55rem 0.5rem 0.3rem;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.35);
+  padding: 0.7rem 0.5rem 0.25rem;
   display: block;
 }
 
 .main-nav li > a {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.38rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.775rem;
-  color: var(--bs-body-color);
+  gap: 0.55rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.65);
   font-weight: 500;
   transition: background-color 150ms, color 150ms;
   text-decoration: none;
@@ -341,20 +354,26 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav li > a:hover {
-  background-color: rgba(var(--bs-primary-rgb), 0.07);
-  color: var(--bs-primary);
+  background-color: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.95);
 }
 
 .main-nav li.active > a {
-  background-color: rgba(var(--bs-primary-rgb), 0.1);
-  color: var(--bs-primary);
+  background-color: #1E6DE5;
+  color: #fff;
+  font-weight: 600;
 }
 
 .main-nav li > a i {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   width: 1rem;
   text-align: center;
   flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.main-nav li.active > a i {
+  opacity: 1;
 }
 
 .main-nav li > a .link-title {
@@ -365,10 +384,10 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav .badge-count {
-  background-color: var(--bs-primary);
+  background-color: #1E6DE5;
   color: #fff;
-  font-size: 0.65rem;
-  padding: 0.15rem 0.4rem;
+  font-size: 0.62rem;
+  padding: 0.1rem 0.4rem;
   border-radius: 20px;
   margin-left: auto;
   flex-shrink: 0;
@@ -404,6 +423,7 @@ body.aside-folded .main-nav li > a {
 body.aside-folded .main-nav li > a i {
   font-size: 1.15rem;
   width: auto;
+  opacity: 0.75;
 }
 
 /* ========================
@@ -413,14 +433,15 @@ body.aside-folded .main-nav li > a i {
   position: fixed;
   top: 0;
   right: 0;
-  left: 235px;
-  height: 60px;
+  left: 240px;
+  height: 64px;
   z-index: 1030;
   background-color: #fff;
-  border-bottom: 0.5px dashed #ddd;
+  border-bottom: 1px solid #f0f4f8;
   display: flex;
   align-items: center;
   transition: left 150ms ease;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.06);
 }
 
 .header.fixed-top {
@@ -639,8 +660,8 @@ body.aside-folded .header {
    03.4: MAIN AREA
    ======================== */
 .main-area {
-  margin-left: 235px;
-  padding-top: 60px;
+  margin-left: 240px;
+  padding-top: 64px;
   min-height: 100vh;
   background-color: var(--bs-body-bg);
   transition: margin-left 150ms ease;
@@ -2612,6 +2633,14 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   max-width: 140px;
   filter: brightness(0) invert(1);
   opacity: 0.95;
+}
+.jl-logo-text {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 6px;
+  line-height: 1;
+  text-shadow: 0 0 40px rgba(96,165,250,0.4);
 }
 .jl-logo-tag {
   background: rgba(255,255,255,0.12);

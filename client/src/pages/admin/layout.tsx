@@ -265,7 +265,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             className="logo"
             onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
           >
-            <img width="115" src="/jago-logo.png" alt="JAGO" className="main-logo" />
+            <span className="logo-text">JAGO</span>
+            <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: 2, marginLeft: 2 }}>ADMIN</span>
           </a>
           <button
             className="toggle-menu-button"
