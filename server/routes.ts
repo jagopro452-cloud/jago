@@ -612,7 +612,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { status } = req.query;
       const result = await storage.getWithdrawRequests(status as string);
-      res.json(result);
+      // Normalize keys: storage returns { withdraw, user } but frontend expects { withdrawal, driver }
+      const normalized = result.map((r: any) => ({
+        withdrawal: r.withdraw || r.withdrawal || r,
+        driver: r.user || r.driver || null,
+      }));
+      res.json(normalized);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -621,6 +626,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/withdrawals/:id/status", async (req, res) => {
     try {
       const { status } = req.body;
+      const validStatuses = ["pending", "approved", "rejected", "paid"];
+      if (!validStatuses.includes(status)) return res.status(400).json({ message: "Invalid status" });
+
+      // If approving/paying, deduct from driver wallet and record transaction
+      if (status === "approved" || status === "paid") {
+        const wdRes = await rawDb.execute(rawSql`SELECT * FROM withdraw_requests WHERE id=${req.params.id}::uuid`);
+        if (wdRes.rows.length) {
+          const wd = wdRes.rows[0] as any;
+          if (wd.status === "pending") {
+            // Deduct from driver wallet
+            await rawDb.execute(rawSql`
+              UPDATE users SET wallet_balance = wallet_balance - ${parseFloat(wd.amount)}
+              WHERE id=${wd.user_id}::uuid
+            `);
+            // Record transaction
+            await rawDb.execute(rawSql`
+              INSERT INTO transactions (user_id, amount, type, description, status)
+              VALUES (${wd.user_id}::uuid, ${parseFloat(wd.amount)}, 'debit', 'Withdrawal processed', 'completed')
+            `).catch(() => {});
+          }
+        }
+      }
       const result = await storage.updateWithdrawStatus(req.params.id, status);
       res.json(result);
     } catch (e: any) {
@@ -2371,16 +2398,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
+      const phoneStr = phone.toString().replace(/\D/g, "");
+      if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+
+      // Rate limiting: max 5 OTPs per phone per hour
+      const recentCount = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as cnt FROM otp_logs WHERE phone=${phoneStr} AND created_at > NOW() - INTERVAL '1 hour'
+      `);
+      if (parseInt((recentCount.rows[0] as any)?.cnt || "0") >= 5) {
+        return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
+      }
+
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
-      // Invalidate previous OTPs for same phone
-      await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE phone=${phone} AND is_used=false`);
+      await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE phone=${phoneStr} AND is_used=false`);
       await rawDb.execute(rawSql`
-        INSERT INTO otp_logs (phone, otp, user_type, expires_at) VALUES (${phone}, ${otp}, ${userType}, ${expiresAt.toISOString()})
+        INSERT INTO otp_logs (phone, otp, user_type, expires_at) VALUES (${phoneStr}, ${otp}, ${userType}, ${expiresAt.toISOString()})
       `);
-      // In production: send via SMS gateway (Twilio / MSG91)
-      console.log(`[OTP] ${phone} → ${otp} (${userType})`);
-      res.json({ success: true, message: "OTP sent", ...(process.env.NODE_ENV === "development" ? { otp } : {}) });
+      // Production: OTP is sent via SMS gateway. Never log OTP in production.
+      if (process.env.NODE_ENV !== "production") console.log(`[OTP-DEV] ${phoneStr} → ${otp}`);
+      res.json({ success: true, message: "OTP sent", ...(process.env.NODE_ENV !== "production" ? { otp } : {}) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2420,13 +2457,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
       }
 
-      // Generate simple token (in production use JWT)
+      // Generate secure auth token
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      // Store token in user_devices table
-      await rawDb.execute(rawSql`
-        INSERT INTO user_devices (user_id, fcm_token, device_type) VALUES (${user.id}::uuid, ${token}, 'mobile')
-        ON CONFLICT (user_id) DO UPDATE SET fcm_token=${token}, updated_at=NOW()
-      `);
+      // Store auth token in users.auth_token (NOT in fcm_token — that's for Firebase)
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
 
       // If driver, get wallet info
       let walletBalance = 0;
@@ -2464,10 +2498,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
       if (!token) return res.status(401).json({ message: "No token provided" });
-      const userId = token.split(":")[0];
-      if (!userId) return res.status(401).json({ message: "Invalid token" });
-      const userR = await rawDb.execute(rawSql`SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true LIMIT 1`);
-      if (!userR.rows.length) return res.status(401).json({ message: "User not found or inactive" });
+      const parts = token.split(":");
+      if (parts.length < 2) return res.status(401).json({ message: "Invalid token format" });
+      const userId = parts[0];
+      // Validate full token against stored auth_token in DB
+      const userR = await rawDb.execute(rawSql`
+        SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true AND auth_token=${token} LIMIT 1
+      `);
+      if (!userR.rows.length) return res.status(401).json({ message: "Session expired or invalid. Please login again." });
       (req as any).currentUser = camelize(userR.rows[0]);
       next();
     } catch (e: any) { res.status(401).json({ message: "Auth failed" }); }
@@ -2703,16 +2741,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId, actualFare, actualDistance, tips = 0 } = req.body;
+      // Input validation
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
+      const fare = parseFloat(actualFare);
+      if (!fare || fare <= 0) return res.status(400).json({ message: "Invalid fare amount" });
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='completed', ride_ended_at=NOW(),
-            actual_fare=${actualFare}, actual_distance=${actualDistance || 0},
-            tips=${tips}, payment_status='paid'
+            actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || 0},
+            tips=${parseFloat(tips) || 0}, payment_status='paid'
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
-          AND (current_status = 'on_the_way' OR current_status = 'arrived' OR current_status = 'accepted')
+          AND current_status = 'on_the_way'
         RETURNING *
       `);
-      if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
+      if (!r.rows.length) {
+        const exists = await rawDb.execute(rawSql`SELECT current_status FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
+        const s = (exists.rows[0] as any)?.current_status;
+        if (!s) return res.status(404).json({ message: "Trip not found" });
+        return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
+      }
 
       // Auto-deduct platform commission from driver wallet
       const settingR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings WHERE key_name IN ('commission_pct','commission_gst_pct','commission_insurance_per_ride','auto_lock_threshold','active_model')`);
@@ -2723,9 +2771,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const commPct = parseFloat(s.commission_pct || "15") / 100;
         const gstPct = parseFloat(s.commission_gst_pct || "18") / 100;
         const ins = parseFloat(s.commission_insurance_per_ride || "2");
-        const comm = actualFare * commPct;
-        deductAmount = comm + (comm * gstPct) + ins;
+        const comm = fare * commPct;
+        deductAmount = parseFloat((comm + (comm * gstPct) + ins).toFixed(2));
       }
+      // Save commission_amount to trip record for reporting accuracy
+      await rawDb.execute(rawSql`UPDATE trip_requests SET commission_amount=${deductAmount} WHERE id=${tripId}::uuid`);
+
       if (deductAmount > 0) {
         const threshold = parseFloat(s.auto_lock_threshold || "-100");
         const wUpd = await rawDb.execute(rawSql`
@@ -2733,22 +2784,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
         `);
         const newBalance = parseFloat((wUpd.rows[0] as any)?.wallet_balance || 0);
+        // Auto-lock if balance falls below threshold AND not already locked
         if (newBalance < threshold && !(wUpd.rows[0] as any)?.is_locked) {
-          await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${'Balance below ₹' + Math.abs(threshold) + ' threshold. Please pay dues.'}, locked_at=NOW() WHERE id=${driver.id}::uuid`);
+          const lockMsg = `Balance below ₹${Math.abs(threshold)} threshold. Current: ₹${newBalance.toFixed(2)}. Please pay dues to go online.`;
+          await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW() WHERE id=${driver.id}::uuid`);
         }
         await rawDb.execute(rawSql`
           INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${'Commission + GST + Insurance for trip ' + tripId})
-        `);
+          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${'Platform commission + GST for trip ' + tripId})
+        `).catch(() => {});
       }
 
-      // 🔔 Notify customer — trip completed, show fare
+      // Notify customer — trip completed, show fare
       const completedTrip = camelize(r.rows[0]) as any;
       const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
       const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
       notifyCustomerTripCompleted({
         fcmToken: custFcmComp,
-        fare: actualFare,
+        fare,
         tripId,
       }).catch(() => {});
 
@@ -2848,9 +2901,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         fullName: d.fullName,
         phone: d.phone,
         email: d.email,
-        profilePhoto: d.profilePhoto,
+        profilePhoto: d.profileImage || null,
         rating: parseFloat(d.rating || "5.0"),
         walletBalance: parseFloat(d.walletBalance || "0"),
+        loyaltyPoints: parseFloat(d.loyaltyPoints || "0"),
         stats: {
           completedTrips: parseInt(d.completedTrips || "0"),
           totalSpent: parseFloat(d.totalSpent || "0"),
@@ -3190,6 +3244,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { amount, paymentRef, paymentMethod = "upi" } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
+      if (amt < 10) return res.status(400).json({ message: "Minimum recharge is ₹10" });
+      if (amt > 10000) return res.status(400).json({ message: "Maximum recharge is ₹10,000 per transaction" });
+      if (!paymentRef) return res.status(400).json({ message: "Payment reference required" });
       await rawDb.execute(rawSql`
         UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid
       `);
@@ -3351,6 +3408,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         finalFare: parseFloat((fareAmount - discount).toFixed(2)),
         message: `Coupon applied! You save ₹${discount.toFixed(2)}`,
       });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── LOGOUT: Invalidate auth token ────────────────────────────────────────
+  app.post("/api/app/logout", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=NULL WHERE id=${user.id}::uuid`);
+      res.json({ success: true, message: "Logged out successfully" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

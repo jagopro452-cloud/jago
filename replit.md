@@ -103,6 +103,10 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - Admin credentials: admin@admin.com / admin123 (bcrypt hashed in DB)
 - Admin login has math captcha (client-side: random X+Y=? question, refreshable)
 - Admin password change: POST /api/admin/change-password
+- **Mobile App Auth**: Full token stored in `users.auth_token` column (NOT just userId check). Token format: `userId:randomHex64`. Invalid on logout.
+- **OTP Rate Limiting**: Max 5 OTPs per phone per hour (429 response after limit)
+- **OTP Security**: OTP never logged in production mode, not returned in API response in production
+- **Input Validation**: Fare > 0 required, UUID format validated, wallet recharge ₹10–₹10,000 with paymentRef required
 
 ## New Features (Feb 2026)
 - **Fare Calculator** (`/admin/fares` page bottom): Admin tool to test fare calculations — select zone + vehicle + distance + duration → shows breakdown (base fare, per km, GST, total)
