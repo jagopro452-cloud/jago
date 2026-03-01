@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 import '../auth/login_screen.dart';
+import '../kyc/kyc_documents_screen.dart';
+import '../performance/performance_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -13,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   UserModel? _user;
   bool _loading = true;
+  int _unread = 0;
 
   @override
   void initState() {
@@ -21,8 +27,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    final user = await AuthService.getProfile();
-    if (mounted) setState(() { _user = user; _loading = false; });
+    final results = await Future.wait([
+      AuthService.getProfile(),
+      _loadNotifCount(),
+    ]);
+    if (mounted) setState(() { _user = results[0] as UserModel?; _loading = false; });
+  }
+
+  Future<void> _loadNotifCount() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.notifications), headers: headers);
+      if (res.statusCode == 200 && mounted) {
+        setState(() => _unread = jsonDecode(res.body)['unreadCount'] ?? 0);
+      }
+    } catch (_) {}
   }
 
   Future<void> _logout() async {
@@ -40,9 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (confirmed == true) {
       await AuthService.logout();
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-      }
+      if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
     }
   }
 
@@ -52,27 +69,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: const Color(0xFF060D1E),
       appBar: AppBar(
         backgroundColor: const Color(0xFF060D1E),
-        title: const Text('Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('My Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
+          Stack(
+            children: [
+              IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {}),
+              if (_unread > 0) Positioned(top: 8, right: 8, child: Container(width: 16, height: 16, decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle), child: Center(child: Text('$_unread', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold))))),
+            ],
+          ),
           IconButton(icon: const Icon(Icons.logout, color: Color(0xFFEF4444)), onPressed: _logout),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 24),
-                  _buildStatsRow(),
-                  const SizedBox(height: 24),
-                  _buildInfoSection(),
-                  const SizedBox(height: 24),
-                  _buildMenuSection(),
-                ],
-              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(children: [
+                _buildHeader(),
+                const SizedBox(height: 16),
+                _buildStatsRow(),
+                const SizedBox(height: 16),
+                _buildLockWarning(),
+                _buildMainMenu(),
+                const SizedBox(height: 12),
+                _buildSecondaryMenu(),
+              ]),
             ),
     );
   }
@@ -84,124 +106,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
         gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF2563EB)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 70, height: 70,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(Icons.person, color: Colors.white, size: 36),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_user?.fullName ?? 'Driver', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
-                Text(_user?.phone ?? '', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 14),
-                    Text(' ${_user?.rating.toStringAsFixed(1) ?? '5.0'}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                  ]),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+          child: _user?.profilePhoto != null
+              ? ClipRRect(borderRadius: BorderRadius.circular(20), child: Image.network(_user!.profilePhoto!, fit: BoxFit.cover))
+              : const Icon(Icons.person, color: Colors.white, size: 38),
+        ),
+        const SizedBox(width: 16),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_user?.fullName ?? 'Driver', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+          Text(_user?.phone ?? '', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 6),
+          Row(children: [
+            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(6)), child: const Text('JAGO Pilot', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+            const SizedBox(width: 8),
+            const Icon(Icons.star, color: Colors.amber, size: 14),
+            Text(' ${_user?.rating.toStringAsFixed(1) ?? '5.0'}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          ]),
+        ])),
+      ]),
     );
   }
 
   Widget _buildStatsRow() {
-    return Row(
-      children: [
-        _statCard('${_user?.stats.completedTrips ?? 0}', 'Trips', Icons.directions_car),
-        const SizedBox(width: 12),
-        _statCard('₹${_user?.stats.totalEarned.toStringAsFixed(0) ?? '0'}', 'Earned', Icons.payments),
-        const SizedBox(width: 12),
-        _statCard('₹${_user?.walletBalance.toStringAsFixed(0) ?? '0'}', 'Wallet', Icons.account_balance_wallet),
-      ],
-    );
+    return Row(children: [
+      _statCard('${_user?.stats.completedTrips ?? 0}', 'Trips', Icons.directions_car, const Color(0xFF3B82F6)),
+      const SizedBox(width: 8),
+      _statCard('₹${_user?.walletBalance.toStringAsFixed(0) ?? '0'}', 'Wallet', Icons.account_balance_wallet, const Color(0xFF22C55E)),
+      const SizedBox(width: 8),
+      _statCard(_user?.isOnline == true ? 'Online' : 'Offline', 'Status', Icons.circle, _user?.isOnline == true ? const Color(0xFF22C55E) : const Color(0xFF475569)),
+    ]);
   }
 
-  Widget _statCard(String value, String label, IconData icon) {
+  Widget _statCard(String value, String label, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF1E3A5F))),
         child: Column(children: [
-          Icon(icon, color: const Color(0xFF3B82F6), size: 20),
+          Icon(icon, color: color, size: 18),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
         ]),
       ),
     );
   }
 
-  Widget _buildInfoSection() {
+  Widget _buildLockWarning() {
+    if (_user?.isLocked != true) return const SizedBox();
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E3A5F))),
-      child: Column(
-        children: [
-          _infoRow(Icons.email, 'Email', _user?.email ?? 'Not set'),
-          _divider(),
-          _infoRow(Icons.lock, 'Account Status', _user?.isLocked == true ? '🔒 Locked' : '✅ Active'),
-        ],
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: const Color(0xFFEF4444).withOpacity(0.1), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.5))),
+      child: Row(children: [
+        const Icon(Icons.lock, color: Color(0xFFEF4444), size: 20),
+        const SizedBox(width: 10),
+        Expanded(child: Text(_user?.lockReason ?? 'Account locked. Pay dues to go online.', style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13))),
+      ]),
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF3B82F6), size: 18),
-          const SizedBox(width: 12),
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-          const Spacer(),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  Widget _divider() => const Divider(color: Color(0xFF1E3A5F), height: 1);
-
-  Widget _buildMenuSection() {
-    final items = [
-      {'icon': Icons.history, 'label': 'Trip History'},
-      {'icon': Icons.share, 'label': 'Refer & Earn'},
-      {'icon': Icons.headset_mic, 'label': 'Support'},
-      {'icon': Icons.privacy_tip, 'label': 'Privacy Policy'},
-      {'icon': Icons.description, 'label': 'Terms & Conditions'},
-    ];
+  Widget _buildMainMenu() {
     return Container(
       decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E3A5F))),
-      child: Column(
-        children: items.asMap().entries.map((e) {
-          final item = e.value;
-          return Column(
-            children: [
-              ListTile(
-                leading: Icon(item['icon'] as IconData, color: const Color(0xFF3B82F6), size: 20),
-                title: Text(item['label'] as String, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF334155), size: 14),
-                onTap: () {},
-              ),
-              if (e.key < items.length - 1) const Divider(color: Color(0xFF1E3A5F), height: 1, indent: 16),
-            ],
-          );
-        }).toList(),
-      ),
+      child: Column(children: [
+        _menuItem(Icons.trending_up, 'Performance & Stats', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PerformanceScreen()))),
+        _divider(),
+        _menuItem(Icons.verified_user, 'KYC Documents', badge: 'Verify', badgeColor: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KycDocumentsScreen()))),
+        _divider(),
+        _menuItem(Icons.share, 'Refer & Earn', badge: '₹100/Refer', badgeColor: const Color(0xFF22C55E)),
+        _divider(),
+        _menuItem(Icons.receipt_long, 'Trip History'),
+        _divider(),
+        _menuItem(Icons.account_balance_wallet, 'Wallet & Earnings'),
+      ]),
     );
   }
+
+  Widget _buildSecondaryMenu() {
+    return Container(
+      decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E3A5F))),
+      child: Column(children: [
+        _menuItem(Icons.headset_mic, 'Support & Help'),
+        _divider(),
+        _menuItem(Icons.privacy_tip, 'Privacy Policy'),
+        _divider(),
+        _menuItem(Icons.description, 'Terms & Conditions'),
+        _divider(),
+        _menuItem(Icons.info, 'About JAGO'),
+      ]),
+    );
+  }
+
+  Widget _menuItem(IconData icon, String label, {VoidCallback? onTap, String? badge, Color? badgeColor}) {
+    return ListTile(
+      leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: const Color(0xFF1E3A5F), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: const Color(0xFF3B82F6), size: 18)),
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (badge != null) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: (badgeColor ?? const Color(0xFF3B82F6)).withOpacity(0.15), borderRadius: BorderRadius.circular(6)), child: Text(badge, style: TextStyle(color: badgeColor ?? const Color(0xFF3B82F6), fontSize: 10, fontWeight: FontWeight.bold))),
+        if (badge != null) const SizedBox(width: 6),
+        const Icon(Icons.arrow_forward_ios, color: Color(0xFF334155), size: 13),
+      ]),
+      onTap: onTap ?? () {},
+    );
+  }
+
+  Widget _divider() => const Divider(color: Color(0xFF1E3A5F), height: 1, indent: 16);
 }

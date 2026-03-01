@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../saved_places/saved_places_screen.dart';
+import '../scheduled/scheduled_rides_screen.dart';
+import '../safety/emergency_contacts_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -26,7 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Logout'),
+        title: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
         content: const Text('Are you sure you want to logout?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -43,102 +45,168 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.logout, color: Color(0xFFEF4444)), onPressed: _logout),
-      ]),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+        centerTitle: true,
+        elevation: 0,
+        surfaceTintColor: Colors.white,
+        actions: [IconButton(icon: const Icon(Icons.logout, color: Color(0xFFEF4444)), onPressed: _logout)],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 20),
-                  _buildInfo(),
-                  const SizedBox(height: 20),
-                  _buildMenu(),
-                ],
-              ),
+              child: Column(children: [
+                _buildHeader(),
+                const SizedBox(height: 12),
+                _buildStatsRow(),
+                const SizedBox(height: 12),
+                _buildMainMenu(),
+                const SizedBox(height: 12),
+                _buildSafetyMenu(),
+                const SizedBox(height: 12),
+                _buildInfoMenu(),
+                const SizedBox(height: 24),
+              ]),
             ),
     );
   }
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)]),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(children: [
-        Container(
-          width: 70, height: 70,
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-          child: const Icon(Icons.person, color: Colors.white, size: 36),
-        ),
-        const SizedBox(width: 16),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_user?['fullName'] ?? 'User', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
-          Text(_user?['phone'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-            child: Text('JAGO Member', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-          ),
-        ])),
-      ]),
-    );
-  }
-
-  Widget _buildInfo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      decoration: const BoxDecoration(color: Colors.white),
       child: Column(children: [
-        _row(Icons.email_outlined, 'Email', _user?['email'] ?? 'Not set'),
-        const Divider(color: Color(0xFFE2E8F0)),
-        _row(Icons.account_balance_wallet_outlined, 'Wallet Balance', '₹${double.tryParse(_user?['walletBalance']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'}'),
-        const Divider(color: Color(0xFFE2E8F0)),
-        _row(Icons.star_outlined, 'Rating', '${double.tryParse(_user?['rating']?.toString() ?? '5')?.toStringAsFixed(1)} ⭐'),
-      ]),
-    );
-  }
-
-  Widget _row(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(children: [
-        Icon(icon, color: const Color(0xFF2563EB), size: 18),
-        const SizedBox(width: 12),
-        Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-        const Spacer(),
-        Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w500)),
-      ]),
-    );
-  }
-
-  Widget _buildMenu() {
-    final items = [
-      {'icon': Icons.bookmark_outline, 'label': 'Saved Places', 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()))},
-      {'icon': Icons.share_outlined, 'label': 'Refer & Earn', 'onTap': () {}},
-      {'icon': Icons.local_offer_outlined, 'label': 'My Coupons', 'onTap': () {}},
-      {'icon': Icons.headset_mic_outlined, 'label': 'Support', 'onTap': () {}},
-      {'icon': Icons.privacy_tip_outlined, 'label': 'Privacy Policy', 'onTap': () {}},
-      {'icon': Icons.description_outlined, 'label': 'Terms & Conditions', 'onTap': () {}},
-    ];
-    return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
-      child: Column(children: items.asMap().entries.map((e) => Column(children: [
-        ListTile(
-          leading: Icon(e.value['icon'] as IconData, color: const Color(0xFF2563EB), size: 20),
-          title: Text(e.value['label'] as String, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14)),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFFCBD5E1)),
-          onTap: e.value['onTap'] as VoidCallback?,
+        Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            Container(
+              width: 88, height: 88,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)]),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(Icons.person, color: Colors.white, size: 44),
+            ),
+            Container(
+              width: 26, height: 26,
+              decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
+              child: const Icon(Icons.edit, color: Colors.white, size: 14),
+            ),
+          ],
         ),
-        if (e.key < items.length - 1) const Divider(color: Color(0xFFE2E8F0), height: 1, indent: 16),
-      ])).toList()),
+        const SizedBox(height: 14),
+        Text(_user?['fullName'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Color(0xFF0F172A))),
+        const SizedBox(height: 4),
+        Text('+91 ${_user?['phone'] ?? ''}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 14)),
+        const SizedBox(height: 10),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _pill(Icons.star, '${double.tryParse(_user?['rating']?.toString() ?? '5')?.toStringAsFixed(1)} Rating', const Color(0xFFFACC15), const Color(0xFF78350F)),
+          const SizedBox(width: 8),
+          _pill(Icons.verified_user, 'JAGO Member', const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
+        ]),
+      ]),
     );
   }
+
+  Widget _pill(IconData icon, String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(children: [Icon(icon, size: 13, color: fg), const SizedBox(width: 4), Text(text, style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold))]),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)]),
+      child: Row(children: [
+        _stat('${_user?['totalTrips'] ?? 0}', 'Trips', Icons.directions_car),
+        _statDivider(),
+        _stat('₹${double.tryParse(_user?['walletBalance']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', 'Wallet', Icons.account_balance_wallet),
+        _statDivider(),
+        _stat('₹${double.tryParse(_user?['totalSpent']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', 'Spent', Icons.payments),
+      ]),
+    );
+  }
+
+  Widget _stat(String value, String label, IconData icon) {
+    return Expanded(child: Column(children: [
+      Icon(icon, color: const Color(0xFF2563EB), size: 20),
+      const SizedBox(height: 4),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A))),
+      Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+    ]));
+  }
+
+  Widget _statDivider() => Container(width: 1, height: 40, color: const Color(0xFFE2E8F0));
+
+  Widget _buildMainMenu() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
+      child: Column(children: [
+        _tile(Icons.bookmark, 'Saved Places', color: const Color(0xFF2563EB), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()))),
+        _div(),
+        _tile(Icons.schedule, 'Scheduled Rides', color: const Color(0xFF7C3AED), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduledRidesScreen()))),
+        _div(),
+        _tile(Icons.local_offer, 'My Coupons', color: const Color(0xFF059669), badge: 'SAVE 20%'),
+        _div(),
+        _tile(Icons.share, 'Refer & Earn', color: const Color(0xFFF59E0B), badge: '₹50/Refer'),
+      ]),
+    );
+  }
+
+  Widget _buildSafetyMenu() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+          child: const Row(children: [Icon(Icons.shield, color: Colors.red, size: 16), SizedBox(width: 6), Text('Safety', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5))]),
+        ),
+        _tile(Icons.emergency, 'Emergency Contacts', color: Colors.red, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyContactsScreen()))),
+        _div(),
+        _tile(Icons.sos, 'SOS Settings', color: Colors.red),
+        _div(),
+        _tile(Icons.share_location, 'Live Trip Sharing', color: Colors.red),
+      ]),
+    );
+  }
+
+  Widget _buildInfoMenu() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
+      child: Column(children: [
+        _tile(Icons.headset_mic, 'Help & Support', color: const Color(0xFF2563EB)),
+        _div(),
+        _tile(Icons.privacy_tip, 'Privacy Policy', color: const Color(0xFF2563EB)),
+        _div(),
+        _tile(Icons.description, 'Terms & Conditions', color: const Color(0xFF2563EB)),
+        _div(),
+        _tile(Icons.star_outline, 'Rate the App', color: const Color(0xFFF59E0B)),
+      ]),
+    );
+  }
+
+  Widget _tile(IconData icon, String label, {Color color = const Color(0xFF2563EB), VoidCallback? onTap, String? badge}) {
+    return ListTile(
+      leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
+      title: Text(label, style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (badge != null) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(badge, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold))),
+        if (badge != null) const SizedBox(width: 6),
+        const Icon(Icons.arrow_forward_ios, size: 13, color: Color(0xFFCBD5E1)),
+      ]),
+      onTap: onTap ?? () {},
+    );
+  }
+
+  Widget _div() => const Divider(height: 1, indent: 16, color: Color(0xFFF1F5F9));
 }

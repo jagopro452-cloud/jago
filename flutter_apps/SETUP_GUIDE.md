@@ -1,144 +1,230 @@
-# JAGO Flutter Apps - Setup Guide
-## MindWhile IT Solutions Pvt Ltd
+# JAGO Flutter Apps — Setup Guide
+## MindWhile IT Solutions Pvt Ltd | jagopro.org
 
 ---
 
-## Apps Overview
+## Apps Summary
 
-| App | Package | Description |
-|-----|---------|-------------|
-| `driver_app/` | JAGO Pilot | Driver App |
-| `customer_app/` | JAGO | Customer App |
+| App | Folder | Style | Target |
+|-----|--------|-------|--------|
+| JAGO Pilot | `driver_app/` | Dark Navy + Blue | Driver Android APK |
+| JAGO | `customer_app/` | White + Blue | Customer Android APK |
 
 ---
 
 ## Prerequisites
 
 1. Flutter SDK 3.0+ → https://docs.flutter.dev/get-started/install
-2. Android Studio / VS Code with Flutter plugin
-3. Google Maps API Key (see below)
-4. Firebase project (optional for FCM notifications)
+2. Android Studio or VS Code + Flutter plugin
+3. Google Maps API Key (from Google Cloud Console)
+4. Backend running at jagopro.org
 
 ---
 
 ## Step 1: Google Maps API Key
 
-1. Go to https://console.cloud.google.com
-2. Create a project → Enable "Maps SDK for Android" and "Maps SDK for iOS"
-3. Create an API key → Restrict to your app's package name
+1. Visit https://console.cloud.google.com
+2. Enable: Maps SDK for Android + Maps SDK for iOS + Places API
+3. Create API Key → Restrict to app package name
 4. Replace `YOUR_GOOGLE_MAPS_API_KEY` in:
    - `driver_app/android/app/src/main/AndroidManifest.xml`
    - `customer_app/android/app/src/main/AndroidManifest.xml`
-   - `driver_app/lib/config/api_config.dart` (googleMapsApiKey constant)
-   - `customer_app/lib/config/api_config.dart` (googleMapsApiKey constant)
+   - Both `lib/config/api_config.dart` files
 
 ---
 
-## Step 2: Production vs Development
-
-In `lib/config/api_config.dart`:
-- Production URL: `https://jagopro.org` (used by default)
-- Dev URL: `http://10.0.2.2:5000` (for Android emulator)
-
-To switch to dev mode, comment out `ApiConfig.useProduction()` in `main.dart`.
-
----
-
-## Step 3: Driver App Setup
-
-```bash
-cd driver_app
-flutter pub get
-flutter run
-```
-
-### Driver App Screens:
-- Splash → Login (OTP) → Home (Map + Online Toggle)
-- Incoming Trip Sheet (Accept/Decline with 30s timer)
-- Trip Flow: Go to Pickup → Arrived → Verify OTP → Complete
-- Wallet (Balance + Transactions + Withdrawal request)
-- Earnings (Today / Week / Month / All)
-- Trip History
-- Profile (Rating, Stats, Logout)
-
----
-
-## Step 4: Customer App Setup
-
-```bash
-cd customer_app
-flutter pub get
-flutter run
-```
-
-### Customer App Screens:
-- Splash → Login (OTP) → Home (Map + Search bar)
-- Booking (Select destination on map → Choose vehicle → Payment → Book)
-- Tracking (Live driver tracking + OTP display + Cancel)
-- Rating Screen (Rate driver after completion)
-- Wallet (Balance + Recharge)
-- Trip History
-- Saved Places (Home/Work/Other)
-- Profile (Stats + Menu)
-
----
-
-## Step 5: Build APK (Release)
+## Step 2: Install and Run
 
 ```bash
 # Driver App
 cd driver_app
-flutter build apk --release
+flutter pub get
+flutter run
 
 # Customer App
+cd customer_app
+flutter pub get
+flutter run
+```
+
+---
+
+## Step 3: Build Release APK
+
+```bash
+cd driver_app
+flutter build apk --release
+# Output: build/app/outputs/flutter-apk/app-release.apk
+
 cd customer_app
 flutter build apk --release
 ```
 
-APK will be at: `build/app/outputs/flutter-apk/app-release.apk`
+---
+
+## DRIVER APP — Feature List (JAGO Pilot)
+
+### Authentication
+- Phone OTP login
+- Secure token storage
+- Auto-login on app open
+
+### Face Verification (Rapido-style safety)
+- Triggers automatically:
+  - **Day 1**: First time opening app (first_time)
+  - **Daily**: Every 24 hours when opening app (daily_check)
+  - **After 10 trips**: After every 10 completed rides (after_10_trips)
+- Front camera selfie capture with oval face guide
+- 3-second countdown before photo
+- Retake option available
+- ✅ Success screen on verification
+
+### KYC Documents
+- Upload 6 documents: DL Front, DL Back, RC, Aadhar Front, Aadhar Back, Insurance
+- Status tracking: Not uploaded → Under Review → Approved/Rejected
+- Progress bar showing KYC completion %
+- Re-upload option for rejected docs
+
+### Home Screen (Map)
+- Google Maps with real GPS location
+- Online/Offline toggle switch
+- Earnings summary card (wallet, trips, rating)
+- Smooth animated toggle
+
+### Incoming Trip
+- Full-screen bottom sheet with:
+  - Customer name + rating
+  - Pickup & destination with distance
+  - Estimated fare in large text
+  - Vehicle type + payment method
+  - 30-second countdown auto-reject timer
+  - Accept (blue) / Decline (red) buttons
+
+### Active Trip Flow
+1. Navigate to Pickup (Google Maps directions)
+2. Mark Arrived → 4-digit OTP entry
+3. Verify OTP → Start Ride
+4. Complete Trip → Rating screen
+
+### Performance Dashboard
+- Score out of 100 (Bronze/Silver/Gold level)
+- Daily Goal: target 10 trips/day with progress bar
+- Weekly Goal: target 50 trips/week with progress bar
+- This month stats
+- Recent 5 trips
+- Tips & suggestions
+
+### Wallet & Earnings
+- Balance card with gradient
+- Request Withdrawal (specify amount)
+- Earnings by period: Today / This Week / This Month / All Time
+- Net earnings (after commission)
+- Transaction history
+
+### Profile
+- Driver avatar + rating + status
+- Trip count, wallet balance
+- Lock warning if balance < -₹100
+- Menu: Performance, KYC, Refer & Earn, Trip History, Support
 
 ---
 
-## API Integration
+## CUSTOMER APP — Feature List (JAGO)
 
-Both apps connect to the JAGO backend:
-- Base URL: `https://jagopro.org/api/app/`
-- Auth: Bearer token (stored locally after OTP login)
-- OTP sent via SMS to driver/customer phone
+### Authentication
+- Phone OTP login (6-digit)
+- Auto-login
+- Resend OTP with 60s countdown
 
-### Driver App APIs Used:
-- POST `/send-otp` - Send OTP
-- POST `/verify-otp` - Login
-- GET `/driver/profile` - Profile
-- PATCH `/driver/online-status` - Go Online/Offline
-- POST `/driver/location` - Update GPS location (every 5s)
-- GET `/driver/incoming-trip` - Poll for new trips (every 5s)
-- POST `/driver/accept-trip` - Accept trip
-- POST `/driver/arrived` - Mark arrived at pickup
-- POST `/driver/verify-pickup-otp` - Verify customer OTP
-- POST `/driver/complete-trip` - Complete trip
-- GET `/driver/wallet` - Wallet balance + history
-- GET `/driver/earnings?period=today` - Earnings stats
+### Home Screen
+- Full screen Google Maps
+- Search bar (tap to book)
+- Quick action tiles (Home / Work / Saved)
+- "Book a Ride" CTA button
+- My location button
+- Active trip auto-detection (polls every 10s)
 
-### Customer App APIs Used:
-- POST `/send-otp` - Send OTP
-- POST `/verify-otp` - Login
-- GET `/customer/profile` - Profile
-- POST `/customer/estimate-fare` - Get fare estimates
-- POST `/customer/book-ride` - Book a ride
-- GET `/customer/active-trip` - Check for active trip
-- GET `/customer/track-trip/:id` - Track driver location
-- POST `/customer/cancel-trip` - Cancel trip
-- POST `/customer/rate-driver` - Rate driver
-- GET `/customer/wallet` - Wallet balance
-- POST `/customer/wallet/recharge` - Add money
-- GET/POST/DELETE `/customer/saved-places` - Manage saved places
-- POST `/customer/apply-coupon` - Apply discount coupon
+### Booking Flow
+1. Tap on map OR search bar
+2. Select destination by tapping on map
+3. Tap "See Available Rides"
+4. Choose vehicle category (with fare + ETA + seats)
+5. Select payment: Cash / Wallet / UPI
+6. Apply coupon (discount code)
+7. Confirm Booking
+
+### Live Tracking
+- Real-time driver location on map
+- Status bar: Finding → Coming → Arrived → In Progress
+- Driver name, vehicle number, rating
+- YOUR OTP displayed prominently when driver arrives
+- Cancel ride option (with reason)
+- Live fare display
+
+### Rating
+- 5-star rating after trip complete
+- Skip option
+
+### Scheduled Rides
+- Book rides for future date/time
+- Date + time picker
+- View all upcoming scheduled rides
+- Calendar-style UI
+
+### Wallet
+- Balance card with gradient
+- Add Money (choose ₹50/100/200/500/1000)
+- UPI payment reference entry
+- Transaction history with credit/debit icons
+
+### Saved Places
+- Add Home / Work / Other places
+- Max unlimited places
+- Delete with swipe
+- Used in quick booking
+
+### Emergency Contacts
+- Add up to 3 emergency contacts
+- Name, phone, relation (Family/Friend/Spouse etc)
+- Auto-notified on SOS trigger
+
+### Safety
+- SOS button (sends GPS location to server + contacts)
+- Trip sharing → generates share link
+- Emergency contacts management
+
+### Profile
+- Avatar with edit button
+- Stats: Total trips, Wallet, Total spent
+- Menu: Saved Places, Scheduled Rides, Coupons, Refer & Earn
+- Safety section: Emergency Contacts, SOS, Live Sharing
+- Info: Support, Privacy Policy, Terms
+
+---
+
+## API Endpoints Used
+
+| App | Endpoint | Purpose |
+|-----|----------|---------|
+| Driver | GET /driver/check-verification | Check if face verify needed |
+| Driver | POST /driver/face-verify | Submit selfie |
+| Driver | POST /driver/upload-document | Upload KYC doc |
+| Driver | GET /driver/documents | Get doc status |
+| Driver | GET /driver/dashboard | Advanced stats + goals |
+| Driver | GET /driver/performance | Score + acceptance rate |
+| Customer | GET /customer/home-data | Home screen data |
+| Customer | POST /customer/schedule-ride | Book scheduled ride |
+| Customer | GET /customer/scheduled-rides | List scheduled rides |
+| Both | POST /trip-share | Generate share link |
+| Both | GET /emergency-contacts | List contacts |
+| Both | POST /emergency-contacts | Add contact |
+| Both | DELETE /emergency-contacts/:id | Remove contact |
+| Both | GET /notifications | In-app notifications |
 
 ---
 
 ## Contact
 
-- Email: info@jagopro.org
-- Website: https://jagopro.org
-- Company: MindWhile IT Solutions Pvt Ltd
+- **Email**: info@jagopro.org
+- **Website**: https://jagopro.org
+- **Company**: MindWhile IT Solutions Pvt Ltd

@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../../models/trip_model.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/trip_service.dart';
+import '../../config/api_config.dart';
 import '../trip/trip_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
+import '../verification/face_verification_screen.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -38,6 +42,34 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProfile();
     _initLocation();
     _startPolling();
+    _checkFaceVerificationOnStart();
+  }
+
+  Future<void> _checkFaceVerificationOnStart() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.checkVerification), headers: headers);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['needsVerification'] == true && mounted) {
+          _showFaceVerification(data['reason'] ?? 'daily_check');
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _showFaceVerification(String reason) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaceVerificationScreen(
+          reason: reason,
+          onVerified: () => Navigator.pop(context),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadProfile() async {

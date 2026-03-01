@@ -14,6 +14,10 @@ class ApiConfig {
   static String get fcmToken => '$baseUrl/api/app/fcm-token';
   static String get configs => '$baseUrl/api/app/configs';
   static String get sos => '$baseUrl/api/app/sos';
+  static String get notifications => '$baseUrl/api/app/notifications';
+  static String get notificationsReadAll => '$baseUrl/api/app/notifications/read-all';
+  static String get emergencyContacts => '$baseUrl/api/app/emergency-contacts';
+  static String get tripShare => '$baseUrl/api/app/trip-share';
 
   static String get driverProfile => '$baseUrl/api/app/driver/profile';
   static String get driverLocation => '$baseUrl/api/app/driver/location';
@@ -32,4 +36,11 @@ class ApiConfig {
   static String get updateProfile => '$baseUrl/api/app/driver/profile';
   static String get changePassword => '$baseUrl/api/app/change-password';
   static String get referral => '$baseUrl/api/app/referral';
+
+  static String get checkVerification => '$baseUrl/api/app/driver/check-verification';
+  static String get faceVerify => '$baseUrl/api/app/driver/face-verify';
+  static String get uploadDocument => '$baseUrl/api/app/driver/upload-document';
+  static String get driverDocuments => '$baseUrl/api/app/driver/documents';
+  static String get driverDashboard => '$baseUrl/api/app/driver/dashboard';
+  static String get performance => '$baseUrl/api/app/driver/performance';
 }

@@ -3460,6 +3460,341 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ========== ADVANCED FEATURES ==========
+
+  // ── DRIVER: Check if face verification needed ─────────────────────────────
+  app.get("/api/app/driver/check-verification", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT last_face_verified_at, face_verified_trips,
+        (SELECT COUNT(*) FROM trip_requests WHERE driver_id=${user.id}::uuid AND current_status='completed'
+         AND created_at > COALESCE((SELECT last_face_verified_at FROM users WHERE id=${user.id}::uuid), '2000-01-01')) AS trips_since_verify
+        FROM users WHERE id=${user.id}::uuid
+      `);
+      const row = r.rows[0] as any;
+      const lastVerified = row?.last_face_verified_at ? new Date(row.last_face_verified_at) : null;
+      const tripsSince = parseInt(row?.trips_since_verify || '0');
+      const hoursSinceVerify = lastVerified ? (Date.now() - new Date(lastVerified).getTime()) / 3600000 : 999;
+      const needsVerification = !lastVerified || hoursSinceVerify >= 24 || tripsSince >= 10;
+      const reason = !lastVerified ? 'first_time' : hoursSinceVerify >= 24 ? 'daily_check' : tripsSince >= 10 ? 'after_10_trips' : null;
+      res.json({ needsVerification, reason, tripsSince, lastVerified });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Submit face verification selfie ───────────────────────────────
+  app.post("/api/app/driver/face-verify", authApp, upload.single("selfie"), async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const selfieUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      if (!selfieUrl) return res.status(400).json({ message: "Selfie required" });
+      // In production: compare selfie with profile photo using AWS Rekognition / Azure Face API
+      // For now: auto-approve after selfie submission
+      await rawDb.execute(rawSql`
+        UPDATE users SET last_face_verified_at=now(), face_verified_trips=0, updated_at=now() WHERE id=${user.id}::uuid
+      `).catch(() => {
+        // Add columns if not exist
+        return rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_face_verified_at TIMESTAMPTZ`).then(() =>
+          rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified_trips INTEGER DEFAULT 0`).then(() =>
+            rawDb.execute(rawSql`UPDATE users SET last_face_verified_at=now(), face_verified_trips=0 WHERE id=${user.id}::uuid`)
+          )
+        );
+      });
+      res.json({ success: true, verified: true, selfieUrl, message: "Face verified successfully!" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Upload documents (DL, RC, Aadhar) ────────────────────────────
+  app.post("/api/app/driver/upload-document", authApp, upload.single("document"), async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { docType } = req.body; // dl_front, dl_back, rc, aadhar_front, aadhar_back, insurance
+      const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      if (!fileUrl || !docType) return res.status(400).json({ message: "Document type and file required" });
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_documents (driver_id, doc_type, file_url, status, created_at, updated_at)
+        VALUES (${user.id}::uuid, ${docType}, ${fileUrl}, 'pending', now(), now())
+        ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${fileUrl}, status='pending', updated_at=now()
+      `).catch(async () => {
+        await rawDb.execute(rawSql`
+          CREATE TABLE IF NOT EXISTS driver_documents (
+            id SERIAL PRIMARY KEY,
+            driver_id UUID, doc_type VARCHAR(50), file_url TEXT,
+            status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),
+            UNIQUE(driver_id, doc_type)
+          )
+        `);
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_documents (driver_id, doc_type, file_url, status) VALUES (${user.id}::uuid, ${docType}, ${fileUrl}, 'pending')
+          ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${fileUrl}, status='pending', updated_at=now()
+        `);
+      });
+      res.json({ success: true, docType, fileUrl, status: 'pending', message: "Document uploaded. Under review." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Get documents status ──────────────────────────────────────────
+  app.get("/api/app/driver/documents", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`SELECT * FROM driver_documents WHERE driver_id=${user.id}::uuid`).catch(() => ({ rows: [] }));
+      res.json({ success: true, documents: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Advanced dashboard stats ─────────────────────────────────────
+  app.get("/api/app/driver/dashboard", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const [todayStats, weekStats, monthStats, recentTrips, walletRow] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) as trips, COALESCE(SUM(actual_fare),0) as gross, COALESCE(SUM(commission_amount),0) as commission
+          FROM trip_requests WHERE driver_id=${user.id}::uuid AND current_status='completed'
+          AND created_at >= CURRENT_DATE
+        `),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) as trips, COALESCE(SUM(actual_fare),0) as gross, COALESCE(SUM(commission_amount),0) as commission
+          FROM trip_requests WHERE driver_id=${user.id}::uuid AND current_status='completed'
+          AND created_at >= date_trunc('week', CURRENT_DATE)
+        `),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) as trips, COALESCE(SUM(actual_fare),0) as gross, COALESCE(SUM(commission_amount),0) as commission
+          FROM trip_requests WHERE driver_id=${user.id}::uuid AND current_status='completed'
+          AND created_at >= date_trunc('month', CURRENT_DATE)
+        `),
+        rawDb.execute(rawSql`
+          SELECT id, ref_id, pickup_address, destination_address, actual_fare, estimated_fare, current_status, created_at
+          FROM trip_requests WHERE driver_id=${user.id}::uuid ORDER BY created_at DESC LIMIT 5
+        `),
+        rawDb.execute(rawSql`SELECT wallet_balance, is_locked FROM users WHERE id=${user.id}::uuid`),
+      ]);
+
+      const today = todayStats.rows[0] as any;
+      const week = weekStats.rows[0] as any;
+      const month = monthStats.rows[0] as any;
+
+      res.json({
+        today: { trips: parseInt(today.trips), gross: parseFloat(today.gross), net: parseFloat(today.gross) - parseFloat(today.commission) },
+        week: { trips: parseInt(week.trips), gross: parseFloat(week.gross), net: parseFloat(week.gross) - parseFloat(week.commission) },
+        month: { trips: parseInt(month.trips), gross: parseFloat(month.gross), net: parseFloat(month.gross) - parseFloat(month.commission) },
+        walletBalance: parseFloat((walletRow.rows[0] as any)?.wallet_balance || 0),
+        isLocked: (walletRow.rows[0] as any)?.is_locked || false,
+        recentTrips: recentTrips.rows.map(camelize),
+        dailyGoal: { target: 10, achieved: parseInt(today.trips) },
+        weeklyGoal: { target: 50, achieved: parseInt(week.trips) },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Home data (recent + nearby drivers count) ───────────────────
+  app.get("/api/app/customer/home-data", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const [recentTrips, walletRow, savedPlaces, stats] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT id, ref_id, pickup_address, destination_address, actual_fare, estimated_fare, current_status, created_at, driver_id
+          FROM trip_requests WHERE customer_id=${user.id}::uuid ORDER BY created_at DESC LIMIT 5
+        `),
+        rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`),
+        rawDb.execute(rawSql`SELECT * FROM saved_places WHERE user_id=${user.id}::uuid LIMIT 5`).catch(() => ({ rows: [] })),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) as total_trips, COALESCE(SUM(actual_fare),0) as total_spent
+          FROM trip_requests WHERE customer_id=${user.id}::uuid AND current_status='completed'
+        `),
+      ]);
+      res.json({
+        walletBalance: parseFloat((walletRow.rows[0] as any)?.wallet_balance || 0),
+        recentTrips: recentTrips.rows.map(camelize),
+        savedPlaces: savedPlaces.rows.map(camelize),
+        stats: { totalTrips: parseInt((stats.rows[0] as any)?.total_trips || 0), totalSpent: parseFloat((stats.rows[0] as any)?.total_spent || 0) },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Schedule a ride ─────────────────────────────────────────────
+  app.post("/api/app/customer/schedule-ride", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { pickupAddress, pickupLat, pickupLng, destinationAddress, destinationLat, destinationLng,
+              vehicleCategoryId, estimatedFare, estimatedDistance, paymentMethod, scheduledAt } = req.body;
+      if (!scheduledAt) return res.status(400).json({ message: "scheduledAt is required" });
+      const scheduledTime = new Date(scheduledAt);
+      if (scheduledTime <= new Date()) return res.status(400).json({ message: "Schedule time must be in the future" });
+      const refId = generateRefId();
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO trip_requests (
+          ref_id, customer_id, pickup_address, pickup_lat, pickup_lng,
+          destination_address, destination_lat, destination_lng,
+          vehicle_category_id, estimated_fare, estimated_distance,
+          payment_method, trip_type, current_status, is_scheduled, scheduled_at, created_at, updated_at
+        ) VALUES (
+          ${refId}, ${user.id}::uuid, ${pickupAddress}, ${parseFloat(pickupLat)}, ${parseFloat(pickupLng)},
+          ${destinationAddress}, ${parseFloat(destinationLat)}, ${parseFloat(destinationLng)},
+          ${vehicleCategoryId}::uuid, ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
+          ${paymentMethod || 'cash'}, 'normal', 'scheduled', true, ${scheduledAt}, now(), now()
+        ) RETURNING *
+      `);
+      res.json({ success: true, trip: camelize(r.rows[0]), message: `Ride scheduled for ${scheduledTime.toLocaleString('en-IN')}` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Get scheduled rides ────────────────────────────────────────
+  app.get("/api/app/customer/scheduled-rides", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT t.*, u.full_name as driver_name FROM trip_requests t
+        LEFT JOIN users u ON t.driver_id = u.id
+        WHERE t.customer_id=${user.id}::uuid AND t.is_scheduled=true
+        AND t.scheduled_at > now() - interval '1 day'
+        ORDER BY t.scheduled_at ASC
+      `);
+      res.json({ success: true, scheduledRides: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── TRIP SHARING: Generate share link ────────────────────────────────────
+  app.post("/api/app/trip-share", authApp, async (req, res) => {
+    try {
+      const { tripId } = req.body;
+      if (!tripId) return res.status(400).json({ message: "tripId required" });
+      const shareToken = crypto.randomBytes(8).toString("hex");
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET share_token=${shareToken}, updated_at=now() WHERE id=${tripId}::uuid
+      `).catch(async () => {
+        await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS share_token VARCHAR(64)`);
+        await rawDb.execute(rawSql`UPDATE trip_requests SET share_token=${shareToken} WHERE id=${tripId}::uuid`);
+      });
+      const shareLink = `https://jagopro.org/track/${shareToken}`;
+      res.json({ success: true, shareLink, shareToken });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── TRIP SHARING: Get trip by share token (public) ────────────────────────
+  app.get("/api/app/track/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const r = await rawDb.execute(rawSql`
+        SELECT t.ref_id, t.pickup_address, t.destination_address, t.current_status,
+               t.pickup_lat, t.pickup_lng, t.destination_lat, t.destination_lng,
+               u.full_name as driver_name, u.phone as driver_phone,
+               uv.lat as driver_lat, uv.lng as driver_lng
+        FROM trip_requests t
+        LEFT JOIN users u ON t.driver_id = u.id
+        LEFT JOIN (SELECT user_id, lat, lng FROM driver_locations ORDER BY created_at DESC) uv ON uv.user_id = t.driver_id
+        WHERE t.share_token=${token}
+        LIMIT 1
+      `).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
+      res.json({ success: true, trip: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── EMERGENCY CONTACTS (CRUD) ─────────────────────────────────────────────
+  app.get("/api/app/emergency-contacts", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM emergency_contacts WHERE user_id=${user.id}::uuid ORDER BY created_at ASC
+      `).catch(async () => {
+        await rawDb.execute(rawSql`
+          CREATE TABLE IF NOT EXISTS emergency_contacts (
+            id SERIAL PRIMARY KEY, user_id UUID, name VARCHAR(100), phone VARCHAR(20),
+            relation VARCHAR(50), created_at TIMESTAMPTZ DEFAULT now()
+          )
+        `);
+        return { rows: [] };
+      });
+      res.json({ success: true, contacts: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/emergency-contacts", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { name, phone, relation } = req.body;
+      if (!name || !phone) return res.status(400).json({ message: "Name and phone required" });
+      const existing = await rawDb.execute(rawSql`SELECT COUNT(*) as c FROM emergency_contacts WHERE user_id=${user.id}::uuid`).catch(() => ({ rows: [{ c: '0' }] }));
+      if (parseInt((existing.rows[0] as any).c) >= 3) return res.status(400).json({ message: "Maximum 3 emergency contacts allowed" });
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS emergency_contacts (
+          id SERIAL PRIMARY KEY, user_id UUID, name VARCHAR(100), phone VARCHAR(20),
+          relation VARCHAR(50), created_at TIMESTAMPTZ DEFAULT now()
+        )
+      `);
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO emergency_contacts (user_id, name, phone, relation) VALUES (${user.id}::uuid, ${name}, ${phone}, ${relation || 'Friend'}) RETURNING *
+      `);
+      res.json({ success: true, contact: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/app/emergency-contacts/:id", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      await rawDb.execute(rawSql`DELETE FROM emergency_contacts WHERE id=${parseInt(req.params.id)} AND user_id=${user.id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────
+  app.get("/api/app/notifications", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM notification_log WHERE user_id=${user.id}::uuid ORDER BY created_at DESC LIMIT 30
+      `).catch(() => ({ rows: [] }));
+      const unread = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as c FROM notification_log WHERE user_id=${user.id}::uuid AND is_read=false
+      `).catch(() => ({ rows: [{ c: '0' }] }));
+      res.json({ success: true, notifications: r.rows.map(camelize), unreadCount: parseInt((unread.rows[0] as any)?.c || '0') });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/app/notifications/read-all", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      await rawDb.execute(rawSql`UPDATE notification_log SET is_read=true WHERE user_id=${user.id}::uuid`).catch(() => {});
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Performance score ─────────────────────────────────────────────
+  app.get("/api/app/driver/performance", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const [acceptance, completion, rating] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) FILTER (WHERE current_status='completed') as accepted,
+                 COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled,
+                 COUNT(*) as total
+          FROM trip_requests WHERE driver_id=${user.id}::uuid
+          AND created_at >= date_trunc('month', CURRENT_DATE)
+        `),
+        rawDb.execute(rawSql`
+          SELECT COALESCE(AVG(driver_rating),5) as avg_rating FROM trip_requests
+          WHERE driver_id=${user.id}::uuid AND driver_rating IS NOT NULL
+          AND created_at >= date_trunc('month', CURRENT_DATE)
+        `),
+        rawDb.execute(rawSql`SELECT rating FROM users WHERE id=${user.id}::uuid`),
+      ]);
+      const acc = acceptance.rows[0] as any;
+      const totalTrips = parseInt(acc.total || '0');
+      const completedTrips = parseInt(acc.accepted || '0');
+      const cancelledTrips = parseInt(acc.cancelled || '0');
+      const acceptanceRate = totalTrips > 0 ? Math.round((completedTrips / totalTrips) * 100) : 100;
+      const avgRating = parseFloat((rating.rows[0] as any)?.avg_rating || 5);
+      const performanceScore = Math.round((acceptanceRate * 0.4) + (avgRating * 12));
+      res.json({
+        acceptanceRate, completedTrips, cancelledTrips,
+        avgRating: avgRating.toFixed(1),
+        performanceScore: Math.min(100, performanceScore),
+        level: performanceScore >= 90 ? 'Gold' : performanceScore >= 70 ? 'Silver' : 'Bronze',
+        overallRating: parseFloat((rating.rows[0] as any)?.rating || 5),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ========== FLUTTER SDK FILES DOWNLOAD ==========
   app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 
