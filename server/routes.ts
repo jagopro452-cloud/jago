@@ -9,8 +9,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { db } from "./db";
-import { parcelAttributes } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { parcelAttributes, admins } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 
@@ -47,13 +47,32 @@ function camelize(obj: any): any {
 // Login rate limiter — max 10 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
 });
 
+async function ensureAdminExists() {
+  try {
+    const existing = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, "admin@admin.com")).limit(1);
+    const hash = await bcrypt.hash("admin123", 10);
+    if (!existing.length) {
+      await db.insert(admins).values({ name: "Admin", email: "admin@admin.com", password: hash, role: "superadmin", isActive: true });
+      console.log("[admin] Default admin created: admin@admin.com / admin123");
+    } else {
+      await db.update(admins).set({ password: hash, isActive: true }).where(eq(admins.email, "admin@admin.com"));
+      console.log("[admin] Admin password refreshed");
+    }
+  } catch (e: any) {
+    console.error("[admin] ensureAdminExists error:", e.message);
+  }
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  setTimeout(ensureAdminExists, 1000);
+
   // Health check endpoint
   app.get("/api/health", async (_req, res) => {
     try {

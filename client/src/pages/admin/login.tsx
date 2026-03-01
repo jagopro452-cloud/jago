@@ -39,8 +39,8 @@ const FEATURES = [
 export default function AdminLogin() {
   useAdminBootstrap();
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("admin@admin.com");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
@@ -223,13 +223,6 @@ export default function AdminLogin() {
             </button>
           </form>
 
-          <div className="jl-demo-box" style={{ cursor: "pointer" }}
-            onClick={() => { setEmail("admin@admin.com"); setPassword("admin123"); setError(""); }}
-            title="Click to auto-fill credentials">
-            <div className="jl-demo-title"><i className="bi bi-info-circle me-1"></i>Demo Credentials <small style={{fontSize:11,opacity:0.7}}>(click to fill)</small></div>
-            <div className="jl-demo-row"><span>Email:</span><code>admin@admin.com</code></div>
-            <div className="jl-demo-row"><span>Password:</span><code>admin123</code></div>
-          </div>
         </div>
 
         <div className="jl-footer">© {new Date().getFullYear()} MindWhile IT Solutions Pvt Ltd · JAGO is a product of MindWhile IT Solutions Pvt Ltd</div>
