@@ -2,6 +2,11 @@ name: Build All APKs
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'flutter_apps/**'
+      - '.github/workflows/build-all-apks.yml'
 
 jobs:
   build-driver:
@@ -17,18 +22,25 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Create local.properties
         working-directory: flutter_apps/driver_app/android
-        run: echo "flutter.sdk=$FLUTTER_ROOT" > local.properties
+        run: |
+          echo "flutter.sdk=$FLUTTER_ROOT" > local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
 
       - name: Get dependencies
         working-directory: flutter_apps/driver_app
         run: flutter pub get
 
-      - name: Build APK
+      - name: Analyze (non-blocking)
+        working-directory: flutter_apps/driver_app
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Build Debug APK
         working-directory: flutter_apps/driver_app
         run: flutter build apk --debug
 
@@ -52,18 +64,25 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Create local.properties
         working-directory: flutter_apps/customer_app/android
-        run: echo "flutter.sdk=$FLUTTER_ROOT" > local.properties
+        run: |
+          echo "flutter.sdk=$FLUTTER_ROOT" > local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
 
       - name: Get dependencies
         working-directory: flutter_apps/customer_app
         run: flutter pub get
 
-      - name: Build APK
+      - name: Analyze (non-blocking)
+        working-directory: flutter_apps/customer_app
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Build Debug APK
         working-directory: flutter_apps/customer_app
         run: flutter build apk --debug
 

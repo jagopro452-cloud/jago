@@ -1,0 +1,33 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Provide flutter extension compatibility for plugin sub-projects (not :app)
+// This allows plugins like geolocator_android to resolve flutter.compileSdkVersion
+subprojects {
+    if (project.name != "app") {
+        project.ext {
+            flutter = [
+                compileSdkVersion: 34,
+                minSdkVersion: 21,
+                targetSdkVersion: 34,
+                ndkVersion: "25.1.8937393"
+            ]
+        }
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

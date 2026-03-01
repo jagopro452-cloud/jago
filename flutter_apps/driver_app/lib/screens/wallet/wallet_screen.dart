@@ -323,7 +323,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                                 children: [
                                   Text(t['description']?.toString() ?? 'Transaction',
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
-                                  Text(t['date']?.toString()?.substring(0, 10) ?? t['createdAt']?.toString()?.substring(0, 10) ?? '',
+                                  Text((t['date'] ?? t['createdAt'] ?? '').toString().split('T').first,
                                     style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11)),
                                 ],
                               )),

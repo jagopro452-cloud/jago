@@ -23,10 +23,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadProfile() async {
     final data = await AuthService.getProfile();
     setState(() {
-      _name = data?['fullName'] ?? 'Driver';
-      _phone = data?['phone'] ?? '';
-      _rating = (data?['rating'] ?? 5.0).toDouble();
-      _totalTrips = data?['stats']?['completedTrips'] ?? 0;
+      _name = data?.fullName ?? 'Driver';
+      _phone = data?.phone ?? '';
+      _rating = data?.rating ?? 5.0;
+      _totalTrips = data?.stats.completedTrips ?? 0;
       _loading = false;
     });
   }

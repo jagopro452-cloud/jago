@@ -22,17 +22,17 @@ class AuthService {
     return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
   }
 
-  static Future<Map<String, dynamic>> sendOtp(String phone) async {
+  static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'customer']) async {
     final res = await http.post(Uri.parse(ApiConfig.sendOtp),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'userType': 'customer'}));
+      body: jsonEncode({'phone': phone, 'userType': userType}));
     return jsonDecode(res.body);
   }
 
-  static Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
+  static Future<Map<String, dynamic>> verifyOtp(String phone, String otp, [String userType = 'customer']) async {
     final res = await http.post(Uri.parse(ApiConfig.verifyOtp),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'otp': otp, 'userType': 'customer'}));
+      body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}));
     final data = jsonDecode(res.body);
     if (res.statusCode == 200 && data['token'] != null) {
       final prefs = await SharedPreferences.getInstance();
