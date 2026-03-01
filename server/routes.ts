@@ -1,6 +1,7 @@
 import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled } from "./fcm";
+import { sendOtpSms } from "./sms";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -2427,7 +2428,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ██  MOBILE APP APIs — Driver App + Customer App                       ██
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ── OTP SEND (mock — logs OTP to console; plug real SMS later) ──────────
+  // ── OTP SEND (Twilio SMS gateway) ──────────────────────────────────────
   app.post("/api/app/send-otp", async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
@@ -2445,13 +2446,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
+
+      // Invalidate old OTPs and store new one
       await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE phone=${phoneStr} AND is_used=false`);
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, expires_at) VALUES (${phoneStr}, ${otp}, ${userType}, ${expiresAt.toISOString()})
       `);
-      // Production: OTP is sent via SMS gateway. Never log OTP in production.
-      if (process.env.NODE_ENV !== "production") console.log(`[OTP-DEV] ${phoneStr} → ${otp}`);
-      res.json({ success: true, message: "OTP sent", ...(process.env.NODE_ENV !== "production" ? { otp } : {}) });
+
+      // Send real SMS via Twilio
+      const smsResult = await sendOtpSms(phoneStr, otp);
+
+      if (smsResult.provider === "none") {
+        // No SMS provider — dev mode fallback (return OTP in response for testing)
+        console.log(`[OTP-DEV] ${phoneStr} → ${otp}`);
+        return res.json({
+          success: true,
+          message: "OTP sent (dev mode — check console)",
+          otp,
+          dev: true,
+        });
+      }
+
+      if (!smsResult.success) {
+        // SMS failed — don't block login in dev, but fail in production
+        console.error(`[OTP-ERROR] SMS failed for ${phoneStr}: ${smsResult.error}`);
+        if (process.env.NODE_ENV === "production") {
+          return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+        }
+        return res.json({ success: true, message: "OTP sent (SMS failed — check console)", otp, dev: true });
+      }
+
+      // SMS sent successfully
+      res.json({ success: true, message: "OTP sent to your mobile number" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
