@@ -51,22 +51,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Icons.directions_car;
   }
 
-  static Color _colorForType(String? type) {
-    switch (type) {
-      case 'parcel': return const Color(0xFF7C3AED);
-      case 'cargo': return const Color(0xFFEA580C);
-      default: return const Color(0xFF1E6DE5);
-    }
-  }
-
-  static String _labelForType(String? type) {
-    switch (type) {
-      case 'parcel': return 'Parcel';
-      case 'cargo': return 'Cargo';
-      default: return 'Ride';
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -267,7 +251,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final selected = _selectedRide == i;
     final name = cat['name']?.toString() ?? '';
     final type = cat['type']?.toString();
-    final typeColor = _colorForType(type);
     final minFare = double.tryParse(cat['minimumFare']?.toString() ?? '0') ?? 0;
     final fareLabel = minFare > 0 ? '₹${minFare.toInt()}+' : '—';
     return GestureDetector(
@@ -275,34 +258,24 @@ class _HomeScreenState extends State<HomeScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: selected ? typeColor : const Color(0xFFF5F7FA),
+          color: selected ? const Color(0xFF1E6DE5) : const Color(0xFFF5F7FA),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? typeColor : Colors.transparent, width: 1.5),
+            color: selected ? const Color(0xFF1E6DE5) : Colors.transparent, width: 1.5),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(_iconForVehicle(name, type: type),
-            color: selected ? Colors.white : typeColor, size: 26),
+            color: selected ? Colors.white : Colors.grey[600], size: 26),
           const SizedBox(height: 4),
           Text(name,
             textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : const Color(0xFF1A1A2E))),
+              color: selected ? Colors.white : Colors.grey[700])),
           Text(fareLabel,
             style: TextStyle(fontSize: 10,
               color: selected ? Colors.white.withOpacity(0.85) : Colors.grey[500])),
-          const SizedBox(height: 2),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: selected ? Colors.white.withOpacity(0.25) : typeColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(4)),
-            child: Text(_labelForType(type),
-              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : typeColor)),
-          ),
         ]),
       ),
     );
