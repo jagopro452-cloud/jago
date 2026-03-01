@@ -1,26 +1,9 @@
 import { useState } from "react";
+import jagoLogoWhite from "@assets/JAGO_LOGO_WightPNG_1772377612337.png";
+import jagoLogoBlue  from "@assets/JAGO_LOGOPNG_(1)_1772377612339.png";
+import pilotLogo     from "@assets/PILOT_LOGOPNG_1772377649091.png";
 
 type AppTab = "customer" | "driver";
-
-// ── SVG Logo Components ────────────────────────────────────────────────────────
-function JagoLogoSvg({ size = 60, dark = true }: { size?: number; dark?: boolean }) {
-  return (
-    <svg width={size} height={size * 0.45} viewBox="0 0 120 54" fill="none">
-      <text x="50%" y="40" textAnchor="middle" fontSize="42" fontWeight="900" fontFamily="system-ui,-apple-system,sans-serif"
-        letterSpacing="4" fill={dark ? "white" : "#1E6DE5"}>JAGO</text>
-    </svg>
-  );
-}
-function PilotLogoSvg({ size = 60 }: { size?: number }) {
-  return (
-    <svg width={size} height={size * 0.55} viewBox="0 0 150 60" fill="none">
-      <text x="50%" y="35" textAnchor="middle" fontSize="32" fontWeight="900" fontFamily="system-ui,-apple-system,sans-serif"
-        letterSpacing="4" fill="white">JAGO</text>
-      <text x="50%" y="55" textAnchor="middle" fontSize="14" fontWeight="800" fontFamily="system-ui,-apple-system,sans-serif"
-        letterSpacing="8" fill="#2563EB">PILOT</text>
-    </svg>
-  );
-}
 
 // ── Phone Frame ────────────────────────────────────────────────────────────────
 function Phone({ children, bg = "#fff", h = 490 }: { children: React.ReactNode; bg?: string; h?: number }) {
@@ -104,9 +87,7 @@ function CustSplash() {
         <div style={{ width: 112, height: 112, background: "white", borderRadius: 32, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.25), 0 8px 20px rgba(30,109,229,0.3)", position: "relative" }}>
           {/* Inner glow */}
           <div style={{ position: "absolute", inset: 0, borderRadius: 32, boxShadow: "inset 0 0 0 1px rgba(30,109,229,0.1)" }} />
-          <img src="/jago-logo.png" style={{ width: 70, height: 70, objectFit: "contain" }} alt=""
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          <div style={{ position: "absolute", width: 70, fontSize: 18, fontWeight: 900, color: "#1E6DE5", letterSpacing: 3, textAlign: "center" }}>JAGO</div>
+          <img src={jagoLogoBlue} style={{ width: 80, height: 80, objectFit: "contain" }} alt="JAGO" />
         </div>
         {/* Text */}
         <div style={{ marginTop: 32, textAlign: "center" }}>
@@ -133,10 +114,8 @@ function CustLogin() {
           <div style={{ position: "absolute", top: -20, right: -20, width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.1)" }} />
           <div style={{ position: "absolute", bottom: -30, left: -15, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
           {/* Logo badge */}
-          <div style={{ display: "inline-flex", alignItems: "center", background: "rgba(255,255,255,0.18)", backdropFilter: "blur(8px)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", padding: "5px 14px", marginBottom: 22, position: "relative" }}>
-            <img src="/jago-logo.png" style={{ height: 18, objectFit: "contain", marginRight: 6 }} alt=""
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <span style={{ fontSize: 16, fontWeight: 900, color: "white", letterSpacing: 3 }}>JAGO</span>
+          <div style={{ display: "inline-flex", alignItems: "center", background: "rgba(255,255,255,0.18)", backdropFilter: "blur(8px)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", padding: "6px 14px", marginBottom: 22, position: "relative" }}>
+            <img src={jagoLogoWhite} style={{ height: 24, objectFit: "contain" }} alt="JAGO" />
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: "white", lineHeight: 1.25, position: "relative" }}>Welcome to<br />JAGO 👋</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 7, position: "relative" }}>Safe, affordable rides — ఎక్కడైనా</div>
@@ -316,21 +295,12 @@ function PilotSplash() {
 
         <div style={{ flex: 2 }} />
         {/* Logo */}
-        <div style={{ width: 118, height: 118, background: "#0D1B3E", borderRadius: 34, border: "1.5px solid rgba(37,99,235,0.35)", boxShadow: "0 0 60px rgba(37,99,235,0.35), 0 20px 40px rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: 34, background: "linear-gradient(135deg,rgba(37,99,235,0.08),transparent)" }} />
-          <img src="/jago-pilot-logo.png" style={{ width: 72, height: 72, objectFit: "contain", position: "relative" }} alt=""
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          <div style={{ position: "absolute", textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "white", letterSpacing: 3 }}>JAGO</div>
-            <div style={{ fontSize: 9, fontWeight: 800, color: "#2563EB", letterSpacing: 5, marginTop: 1 }}>PILOT</div>
-          </div>
+        <div style={{ width: 130, height: 130, background: "#0D1B3E", borderRadius: 36, border: "1.5px solid rgba(37,99,235,0.35)", boxShadow: "0 0 60px rgba(37,99,235,0.35), 0 20px 40px rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: 36, background: "linear-gradient(135deg,rgba(37,99,235,0.08),transparent)" }} />
+          <img src={pilotLogo} style={{ width: 92, height: 92, objectFit: "contain", position: "relative" }} alt="JAGO Pilot" />
         </div>
         {/* Text */}
-        <div style={{ marginTop: 34, textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-            <span style={{ fontSize: 38, fontWeight: 900, color: "white", letterSpacing: 6 }}>JAGO</span>
-            <span style={{ fontSize: 38, fontWeight: 900, color: "#2563EB", letterSpacing: 6 }}>PILOT</span>
-          </div>
+        <div style={{ marginTop: 32, textAlign: "center" }}>
           <div style={{ marginTop: 10, display: "inline-block", background: "rgba(37,99,235,0.1)", borderRadius: 20, border: "1px solid rgba(37,99,235,0.2)", padding: "5px 18px", fontSize: 12, color: "rgba(255,255,255,0.6)", letterSpacing: 2.5 }}>Drive Smarter.</div>
         </div>
         <div style={{ flex: 3 }} />
@@ -351,11 +321,8 @@ function PilotLogin() {
         <div style={{ position: "absolute", top: -60, right: -60, width: 260, height: 260, borderRadius: "50%", background: "radial-gradient(circle,rgba(37,99,235,0.18) 0%,transparent 70%)" }} />
         <div style={{ padding: "20px 22px 0" }}>
           {/* Logo badge */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(37,99,235,0.12)", borderRadius: 10, border: "1px solid rgba(37,99,235,0.25)", padding: "5px 12px", marginBottom: 28 }}>
-            <img src="/jago-pilot-logo.png" style={{ height: 18, objectFit: "contain" }} alt=""
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <span style={{ fontSize: 14, fontWeight: 900, color: "white", letterSpacing: 2 }}>JAGO</span>
-            <span style={{ fontSize: 14, fontWeight: 900, color: "#2563EB", letterSpacing: 2 }}>PILOT</span>
+          <div style={{ display: "inline-flex", alignItems: "center", background: "rgba(37,99,235,0.12)", borderRadius: 10, border: "1px solid rgba(37,99,235,0.25)", padding: "7px 14px", marginBottom: 28 }}>
+            <img src={pilotLogo} style={{ height: 28, objectFit: "contain" }} alt="JAGO Pilot" />
           </div>
           <div style={{ fontSize: 28, fontWeight: 900, color: "white", lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 8 }}>Pilot గా<br />Login చేయండి 🏍️</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 26 }}>ప్రతి trip తో earn చేయండి</div>
