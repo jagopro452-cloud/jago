@@ -109,14 +109,32 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => IncomingTripSheet(
         trip: _incomingTrip!,
-        onAccept: () {
+        onAccept: () async {
+          final trip = Map<String, dynamic>.from(_incomingTrip!);
           Navigator.pop(context);
           setState(() => _incomingTrip = null);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const TripScreen()));
+          _pollTimer?.cancel();
+          final token = await AuthService.getToken();
+          try {
+            await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
+              headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+              body: jsonEncode({'tripId': trip['id'] ?? ''}));
+          } catch (_) {}
+          if (!mounted) return;
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => TripScreen(trip: trip)));
         },
-        onReject: () {
+        onReject: () async {
+          final trip = Map<String, dynamic>.from(_incomingTrip!);
           Navigator.pop(context);
           setState(() => _incomingTrip = null);
+          final token = await AuthService.getToken();
+          try {
+            await http.post(Uri.parse(ApiConfig.driverRejectTrip),
+              headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+              body: jsonEncode({'tripId': trip['id'] ?? ''}));
+          } catch (_) {}
+          if (_isOnline && mounted) _startPolling();
         },
       ),
     );
