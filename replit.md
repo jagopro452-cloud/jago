@@ -154,3 +154,23 @@ Tables: users, trips, vehicle_categories, zones, trip_fares, coupons, reviews, b
 - `client/src/index.css`: Full JAGO design system with CSS custom properties
 - Tables created via executeSql (db:push has interactive prompt issue in Replit)
 - No Shadcn/Tailwind classes in admin pages — pure JAGO CSS for authentic look
+
+## Flutter Mobile Apps
+
+Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP_GUIDE.md`
+
+### Driver App (JAGO Pilot) — `flutter_apps/driver_app/`
+- **Theme**: Dark navy (#060D1E) + Blue (#2563EB)
+- **Screens**: Splash → Login (OTP) → Home (Map + Online Toggle) → Incoming Trip Sheet → Active Trip (Pickup → OTP Verify → Complete) → Rating → Wallet → Earnings → Trip History → Profile
+- **Key features**: Live GPS location update, 5s trip polling, 30s accept timer, withdrawal request, earnings by period (today/week/month/all)
+
+### Customer App (JAGO) — `flutter_apps/customer_app/`
+- **Theme**: Light white + Blue (#2563EB) — standard material style
+- **Screens**: Splash → Login (OTP) → Home (Map + Quick Actions) → Booking (Map tap → Vehicle select → Payment → Coupon) → Tracking (Live driver + OTP display + Cancel) → Rating → Wallet (Recharge) → Trip History → Saved Places → Profile
+- **Key features**: Fare estimate by vehicle category, coupon apply, real-time driver tracking, wallet recharge with UPI ref
+
+### Setup Required by Developer:
+1. Flutter SDK 3.0+ install
+2. Replace `YOUR_GOOGLE_MAPS_API_KEY` in both AndroidManifest.xml files
+3. `flutter pub get` in each app directory
+4. Set production URL in `api_config.dart` (already set to jagopro.org)
