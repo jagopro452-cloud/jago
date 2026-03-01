@@ -2639,21 +2639,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const stage = (active.rows[0] as any).current_status;
         return res.json({ trip: camelize(active.rows[0]), stage });
       }
-      // 2. Check driver location to find nearby searching trips
-      const locR = await rawDb.execute(rawSql`SELECT lat, lng FROM driver_locations WHERE driver_id=${driver.id}::uuid`);
+      // 2. Check driver location + vehicle category to find matching nearby trips
+      const locR = await rawDb.execute(rawSql`
+        SELECT dl.lat, dl.lng, dd.vehicle_category_id
+        FROM driver_locations dl
+        LEFT JOIN driver_details dd ON dd.user_id = dl.driver_id
+        WHERE dl.driver_id=${driver.id}::uuid
+      `);
       if (!locR.rows.length) return res.json({ trip: null });
-      const { lat, lng } = locR.rows[0] as any;
-      // Show any searching trip within 10km radius
+      const { lat, lng, vehicle_category_id } = locR.rows[0] as any;
+      // Show matching searching trip within 15km radius
       const searching = await rawDb.execute(rawSql`
         SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
-          vc.name as vehicle_name,
-          (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) as dist_sq
+          vc.name as vehicle_name, vc.icon as vehicle_icon,
+          ROUND(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111, 1) as distance_km
         FROM trip_requests t
         LEFT JOIN users c ON c.id = t.customer_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
         WHERE t.current_status = 'searching' AND t.driver_id IS NULL
           AND t.created_at > NOW() - INTERVAL '10 minutes'
-        ORDER BY dist_sq ASC LIMIT 1
+          ${vehicle_category_id ? rawSql`AND t.vehicle_category_id = ${vehicle_category_id}::uuid` : rawSql``}
+          AND (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) < 0.02
+        ORDER BY (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) ASC LIMIT 1
       `);
       if (searching.rows.length) {
         return res.json({ trip: camelize(searching.rows[0]), stage: "new_request" });
@@ -2778,12 +2785,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Input validation
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
-      const fare = parseFloat(actualFare);
-      if (!fare || fare <= 0) return res.status(400).json({ message: "Invalid fare amount" });
+      // Get trip details to use estimated_fare as fallback
+      const tripInfo = await rawDb.execute(rawSql`SELECT estimated_fare, estimated_distance, current_status FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
+      if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
+      const tripRow = tripInfo.rows[0] as any;
+      if (tripRow.current_status !== 'on_the_way') return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
+      const fare = parseFloat(actualFare) || parseFloat(tripRow.estimated_fare) || 0;
+      if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='completed', ride_ended_at=NOW(),
-            actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || 0},
+            actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
             tips=${parseFloat(tips) || 0}, payment_status='paid'
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status = 'on_the_way'
@@ -3015,14 +3027,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Generate ref_id
       const refId = "TRP" + Date.now().toString().slice(-8).toUpperCase();
 
-      // Find nearest available driver
+      // Find nearest available driver matching vehicle category
       const drivers = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.phone, dl.lat, dl.lng,
-          (dl.lat - ${pickupLat})*(dl.lat - ${pickupLat}) + (dl.lng - ${pickupLng})*(dl.lng - ${pickupLng}) as dist_sq
+        SELECT u.id, u.full_name, u.phone, dl.lat, dl.lng, dd.vehicle_category_id,
+          (dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)}) as dist_sq
         FROM users u
         JOIN driver_locations dl ON dl.driver_id = u.id
+        JOIN driver_details dd ON dd.user_id = u.id
         WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false AND dl.is_online=true
-          AND u.current_trip_id IS NULL
+          AND u.current_trip_id IS NULL AND u.verification_status = 'approved'
+          ${vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
         ORDER BY dist_sq ASC LIMIT 1
       `);
 
@@ -3123,11 +3137,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.json({ trip: null });
       const trip = camelize(r.rows[0]) as any;
-      if (trip.currentStatus === "arrived" || trip.currentStatus === "accepted") {
-        trip.pickupOtpVisible = trip.pickupOtp;
-      } else {
-        delete trip.pickupOtp;
-      }
+      // Show OTP to customer when driver is assigned/on the way (share with driver to start ride)
+      const showOtp = ['driver_assigned','accepted','arrived'].includes(trip.currentStatus);
+      if (!showOtp) delete trip.pickupOtp;
       res.json({ trip });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

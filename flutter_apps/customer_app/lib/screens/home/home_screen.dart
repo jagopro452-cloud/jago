@@ -24,13 +24,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _mapController;
-  LatLng _center = const LatLng(12.9716, 77.5946);
+  LatLng _center = const LatLng(17.3850, 78.4867);
   String _userName = 'there';
   String _userPhone = '';
   String _pickup = 'Current Location';
   String _destination = '';
+  double _pickupLat = 17.3850, _pickupLng = 78.4867;
+  double _destLat = 0, _destLng = 0;
   int _selectedRide = 0;
-  Map<String, dynamic>? _homeData;
   bool _loading = true;
   List<Map<String, dynamic>> _vehicleCategories = [];
 
@@ -41,11 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (n.contains('mini auto') || n.contains('temo auto')) return Icons.electric_rickshaw;
     if (n.contains('auto')) return Icons.electric_rickshaw;
     if (n.contains('suv')) return Icons.directions_car;
-    if (n.contains('car')) return Icons.directions_car_filled;
     if (n.contains('tata ace') || n.contains('mini cargo')) return Icons.local_shipping;
     if (n.contains('cargo truck')) return Icons.fire_truck;
     if (n.contains('cargo')) return Icons.local_shipping;
     if (n.contains('parcel')) return Icons.delivery_dining;
+    if (n.contains('car')) return Icons.directions_car_filled;
     if (type == 'cargo') return Icons.local_shipping;
     if (type == 'parcel') return Icons.delivery_dining;
     return Icons.directions_car;
@@ -69,11 +70,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _getLocation() async {
     try {
-      final perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied) return;
-      final pos = await Geolocator.getCurrentPosition();
-      setState(() => _center = LatLng(pos.latitude, pos.longitude));
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+        if (perm == LocationPermission.denied) return;
+      }
+      if (perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        _center = LatLng(pos.latitude, pos.longitude);
+        _pickupLat = pos.latitude;
+        _pickupLng = pos.longitude;
+      });
       _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+      _reverseGeocode(pos.latitude, pos.longitude);
+    } catch (_) {}
+  }
+
+  Future<void> _reverseGeocode(double lat, double lng) async {
+    try {
+      final url = 'https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=${ApiConfig.googleMapsApiKey}';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final results = data['results'] as List<dynamic>?;
+        if (results != null && results.isNotEmpty) {
+          final address = results[0]['formatted_address'] as String? ?? 'Current Location';
+          setState(() => _pickup = address);
+        }
+      }
     } catch (_) {}
   }
 
@@ -87,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final cats = (data['vehicleCategories'] as List<dynamic>?)
           ?.cast<Map<String, dynamic>>() ?? [];
         setState(() {
-          _homeData = data;
           _vehicleCategories = cats.isNotEmpty ? cats : _defaultVehicleCategories();
           _loading = false;
         });
@@ -107,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _bookRide() {
     if (_destination.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter destination'), backgroundColor: Color(0xFF1E6DE5)));
+        const SnackBar(content: Text('Destination enter cheyyandi'), backgroundColor: Color(0xFF1E6DE5)));
       return;
     }
     final cat = _vehicleCategories.isNotEmpty ? _vehicleCategories[_selectedRide] : null;
@@ -115,6 +142,10 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => BookingScreen(
         pickup: _pickup,
         destination: _destination,
+        pickupLat: _pickupLat,
+        pickupLng: _pickupLng,
+        destLat: _destLat,
+        destLng: _destLng,
         vehicleCategoryId: cat?['id']?.toString(),
         vehicleCategoryName: cat?['name']?.toString(),
       )));
@@ -193,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         _locationRow(Icons.location_on, const Color(0xFF1E6DE5), _pickup, 'Current Location'),
         const Padding(padding: EdgeInsets.only(left: 11), child: Divider(height: 12)),
-        _locationRow(Icons.location_searching, Colors.grey, _destination, 'Where to?', onTap: _showDestinationDialog),
+        _locationRow(Icons.location_searching, Colors.grey, _destination, 'Where to?', onTap: _showDestinationSearch),
         const SizedBox(height: 16),
         if (_loading)
           const Center(child: SizedBox(width: 24, height: 24,
@@ -203,7 +234,6 @@ class _HomeScreenState extends State<HomeScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: List.generate(cats.length, (i) {
-                if (i >= cats.length) return const SizedBox.shrink();
                 return Padding(
                   padding: EdgeInsets.only(right: i < cats.length - 1 ? 10 : 0),
                   child: _rideTypeCard(i, cats[i]),
@@ -281,47 +311,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showDestinationDialog() {
-    final ctrl = TextEditingController(text: _destination);
+  void _showDestinationSearch() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 24, right: 24, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 20),
-          const Text('Where to?',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-          const SizedBox(height: 16),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'Enter destination',
-              prefixIcon: const Icon(Icons.location_searching, color: Color(0xFF1E6DE5)),
-              filled: true, fillColor: const Color(0xFFF5F7FA),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, height: 50,
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() => _destination = ctrl.text);
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E6DE5), foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-              child: const Text('Confirm', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            )),
-        ]),
+      builder: (_) => _PlaceSearchSheet(
+        pickupLat: _pickupLat,
+        pickupLng: _pickupLng,
+        onPlaceSelected: (name, lat, lng) {
+          setState(() {
+            _destination = name;
+            _destLat = lat;
+            _destLng = lng;
+          });
+        },
       ),
     );
   }
@@ -403,5 +408,146 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(context,
       MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+  }
+}
+
+// ── Google Places Search Sheet ─────────────────────────────────────────────
+class _PlaceSearchSheet extends StatefulWidget {
+  final double pickupLat, pickupLng;
+  final Function(String name, double lat, double lng) onPlaceSelected;
+  const _PlaceSearchSheet({required this.pickupLat, required this.pickupLng, required this.onPlaceSelected});
+  @override
+  State<_PlaceSearchSheet> createState() => _PlaceSearchSheetState();
+}
+
+class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
+  final _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _predictions = [];
+  bool _searching = false;
+  Timer? _debounce;
+
+  @override
+  void dispose() { _ctrl.dispose(); _debounce?.cancel(); super.dispose(); }
+
+  void _onChanged(String q) {
+    _debounce?.cancel();
+    if (q.length < 2) { setState(() => _predictions = []); return; }
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(q));
+  }
+
+  Future<void> _search(String q) async {
+    setState(() => _searching = true);
+    try {
+      final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
+        '?input=${Uri.encodeComponent(q)}'
+        '&location=${widget.pickupLat},${widget.pickupLng}'
+        '&radius=50000'
+        '&components=country:in'
+        '&key=${ApiConfig.googleMapsApiKey}';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final preds = (data['predictions'] as List<dynamic>? ?? [])
+          .map((p) => {
+            'placeId': p['place_id'],
+            'description': p['description'],
+            'mainText': p['structured_formatting']?['main_text'] ?? p['description'],
+            'secondaryText': p['structured_formatting']?['secondary_text'] ?? '',
+          }).toList();
+        if (mounted) setState(() => _predictions = preds.cast<Map<String, dynamic>>());
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _searching = false);
+  }
+
+  Future<void> _selectPlace(Map<String, dynamic> place) async {
+    try {
+      final placeId = place['placeId'];
+      final url = 'https://maps.googleapis.com/maps/api/geocode/json?place_id=$placeId&key=${ApiConfig.googleMapsApiKey}';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final results = data['results'] as List<dynamic>?;
+        if (results != null && results.isNotEmpty) {
+          final loc = results[0]['geometry']['location'];
+          final lat = (loc['lat'] as num).toDouble();
+          final lng = (loc['lng'] as num).toDouble();
+          if (mounted) Navigator.pop(context);
+          widget.onPlaceSelected(place['description'], lat, lng);
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) {
+      Navigator.pop(context);
+      widget.onPlaceSelected(place['description'], 0, 0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 12),
+        Container(width: 40, height: 4,
+          decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            controller: _ctrl,
+            autofocus: true,
+            onChanged: _onChanged,
+            decoration: InputDecoration(
+              hintText: 'Where to go?',
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF1E6DE5)),
+              filled: true, fillColor: const Color(0xFFF5F7FA),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              suffixIcon: _searching
+                ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5))))
+                : null,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45),
+          child: _predictions.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(children: [
+                  Icon(Icons.location_on_outlined, color: Colors.grey[300], size: 48),
+                  const SizedBox(height: 12),
+                  Text('Destination search cheyyandi', textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14)),
+                ]))
+            : ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                itemCount: _predictions.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final p = _predictions[i];
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E6DE5).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8)),
+                      child: const Icon(Icons.location_on, color: Color(0xFF1E6DE5), size: 18)),
+                    title: Text(p['mainText'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: p['secondaryText'] != ''
+                      ? Text(p['secondaryText'], style: TextStyle(color: Colors.grey[500], fontSize: 12), maxLines: 1)
+                      : null,
+                    onTap: () => _selectPlace(p),
+                  );
+                }),
+        ),
+        const SizedBox(height: 16),
+      ]),
+    );
   }
 }
