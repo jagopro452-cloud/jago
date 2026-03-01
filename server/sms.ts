@@ -8,27 +8,40 @@ async function sendViaFast2Sms(phone: string, otp: string): Promise<SmsResult> {
 
   const tenDigit = phone.slice(-10);
 
+  // Try OTP route first (fast, template-based)
   try {
-    const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+    const otpRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
       method: "POST",
-      headers: {
-        authorization: apiKey,
-        "Content-Type": "application/json",
-      },
+      headers: { authorization: apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ route: "otp", variables_values: otp, flash: 0, numbers: tenDigit }),
+    });
+    const otpData = (await otpRes.json()) as any;
+    if (otpData.return === true) {
+      console.log(`[SMS-FAST2SMS-OTP] OTP sent to ${tenDigit}`);
+      return { success: true, provider: "fast2sms" };
+    }
+    console.warn(`[SMS-FAST2SMS-OTP] ${otpData.message} — trying Quick SMS route...`);
+  } catch (_) {}
+
+  // Fallback: Quick SMS route (works without website verification — good for testing)
+  try {
+    const quickRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+      method: "POST",
+      headers: { authorization: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        route: "otp",
-        variables_values: otp,
+        route: "q",
+        message: `Your JAGO OTP is ${otp}. Valid for 5 minutes. Do not share. -JAGO`,
         flash: 0,
         numbers: tenDigit,
       }),
     });
-    const data = (await response.json()) as any;
-    if (data.return === true) {
-      console.log(`[SMS-FAST2SMS] OTP sent to ${tenDigit}`);
-      return { success: true, provider: "fast2sms" };
+    const quickData = (await quickRes.json()) as any;
+    if (quickData.return === true) {
+      console.log(`[SMS-FAST2SMS-QUICK] OTP sent to ${tenDigit}`);
+      return { success: true, provider: "fast2sms-quick" };
     }
-    console.error(`[SMS-FAST2SMS] Failed:`, data.message);
-    return { success: false, provider: "fast2sms", error: data.message?.join?.(" ") || "Failed" };
+    console.error(`[SMS-FAST2SMS-QUICK] Failed:`, quickData.message);
+    return { success: false, provider: "fast2sms", error: quickData.message?.join?.(" ") || "Failed" };
   } catch (err: any) {
     console.error(`[SMS-FAST2SMS] Error:`, err.message);
     return { success: false, provider: "fast2sms", error: err.message };
