@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/trip_service.dart';
+import '../../services/socket_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../auth/login_screen.dart';
 import '../wallet/wallet_screen.dart';
@@ -25,19 +26,22 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(16.5062, 80.6480);
   bool _isOnline = false;
   bool _loading = false;
   bool _toggling = false;
+  bool _socketConnected = false;
   String _userName = 'Pilot';
   String _userPhone = '';
   double _walletBalance = 0;
   int _tripsToday = 0;
   double _earningsToday = 0;
   Map<String, dynamic>? _incomingTrip;
-  Timer? _pollTimer;
+  Timer? _locationTimer;
   late AnimationController _pulseCtrl;
+  final List<StreamSubscription> _subs = [];
 
   static const Color _blue = Color(0xFF2563EB);
   static const Color _bg = Color(0xFF060D1E);
@@ -52,11 +56,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadUser();
     _getLocation();
     _fetchDashboard();
+    _connectSocket();
+  }
+
+  Future<void> _connectSocket() async {
+    await _socket.connect(ApiConfig.socketUrl);
+
+    // Listen for connection status
+    _subs.add(_socket.onConnectionChanged.listen((connected) {
+      if (mounted) setState(() => _socketConnected = connected);
+    }));
+
+    // New trip request via real-time socket
+    _subs.add(_socket.onNewTrip.listen((trip) {
+      if (!mounted) return;
+      if (_incomingTrip == null) {
+        setState(() => _incomingTrip = trip);
+        _showIncomingTrip();
+      }
+    }));
+
+    // Trip cancelled by customer
+    _subs.add(_socket.onTripCancelled.listen((data) {
+      if (!mounted) return;
+      setState(() => _incomingTrip = null);
+      Navigator.of(context).popUntil((r) => r.isFirst);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Customer cancelled the trip', style: TextStyle(fontWeight: FontWeight.w700)),
+        backgroundColor: Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }));
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    for (final s in _subs) s.cancel();
+    _locationTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -92,30 +128,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _tripsToday = data['tripsToday'] ?? 0;
           _earningsToday = (data['earningsToday'] ?? 0).toDouble();
         });
-        if (_isOnline) _startPolling();
+        if (_isOnline) _startLocationStreaming();
       }
     } catch (_) {}
     setState(() => _loading = false);
   }
 
-  void _startPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) => _checkIncomingTrip());
+  // Real-time GPS location streaming to server via socket
+  void _startLocationStreaming() {
+    _locationTimer?.cancel();
+    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+        final lat = pos.latitude;
+        final lng = pos.longitude;
+        setState(() => _center = LatLng(lat, lng));
+
+        // Send via socket (real-time)
+        _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+
+        // Fallback HTTP if socket not connected
+        if (!_socketConnected) {
+          final token = await AuthService.getToken();
+          await http.post(Uri.parse(ApiConfig.driverLocation),
+            headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+            body: jsonEncode({'lat': lat, 'lng': lng}));
+        }
+      } catch (_) {}
+    });
   }
 
-  Future<void> _checkIncomingTrip() async {
-    final token = await AuthService.getToken();
-    try {
-      final res = await http.get(Uri.parse(ApiConfig.driverIncomingTrip),
-        headers: {'Authorization': 'Bearer $token'});
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['trip'] != null && _incomingTrip == null) {
-          setState(() => _incomingTrip = data['trip']);
-          _showIncomingTrip();
-        }
-      }
-    } catch (_) {}
+  void _stopLocationStreaming() {
+    _locationTimer?.cancel();
+    _locationTimer = null;
   }
 
   void _showIncomingTrip() {
@@ -131,13 +177,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final trip = Map<String, dynamic>.from(_incomingTrip!);
           Navigator.pop(context);
           setState(() => _incomingTrip = null);
-          _pollTimer?.cancel();
-          final token = await AuthService.getToken();
-          try {
-            await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
-              headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-              body: jsonEncode({'tripId': trip['id'] ?? ''}));
-          } catch (_) {}
+
+          // Accept via socket (real-time) + HTTP fallback
+          final tripId = trip['tripId'] ?? trip['id'] ?? '';
+          bool accepted = false;
+          if (_socketConnected) {
+            accepted = await _socket.acceptTrip(tripId);
+          }
+          if (!accepted) {
+            final token = await AuthService.getToken();
+            try {
+              await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
+                headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                body: jsonEncode({'tripId': tripId}));
+            } catch (_) {}
+          }
           if (!mounted) return;
           Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
         },
@@ -149,9 +203,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           try {
             await http.post(Uri.parse(ApiConfig.driverRejectTrip),
               headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-              body: jsonEncode({'tripId': trip['id'] ?? ''}));
+              body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}));
           } catch (_) {}
-          if (_isOnline && mounted) _startPolling();
         },
       ),
     );
@@ -159,14 +212,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _toggleOnline() async {
     setState(() => _toggling = true);
-    final token = await AuthService.getToken();
+    final newStatus = !_isOnline;
     try {
+      // Update via socket first (instant)
+      _socket.setOnlineStatus(
+        isOnline: newStatus,
+        lat: _center.latitude,
+        lng: _center.longitude,
+      );
+
+      // Also update via HTTP for persistence
+      final token = await AuthService.getToken();
       final res = await http.post(Uri.parse(ApiConfig.driverOnlineStatus),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'isOnline': !_isOnline, 'lat': _center.latitude, 'lng': _center.longitude}));
+        body: jsonEncode({'isOnline': newStatus, 'lat': _center.latitude, 'lng': _center.longitude}));
+
       if (res.statusCode == 200) {
-        setState(() => _isOnline = !_isOnline);
-        if (_isOnline) _startPolling(); else _pollTimer?.cancel();
+        setState(() => _isOnline = newStatus);
+        if (_isOnline) {
+          _startLocationStreaming();
+        } else {
+          _stopLocationStreaming();
+        }
       }
     } catch (_) {}
     setState(() => _toggling = false);
@@ -243,6 +310,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     color: _isOnline ? Colors.white : Colors.white.withOpacity(0.45),
                     fontSize: 13, fontWeight: FontWeight.w700),
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Socket connection indicator
+              Container(
+                width: 6, height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _socketConnected ? const Color(0xFF34D399) : Colors.orange,
                 ),
               ),
             ]),
@@ -443,17 +518,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Text('+91 $_userPhone',
                     style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _blue.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(6)),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.verified_rounded, color: Color(0xFF60A5FA), size: 12),
-                      SizedBox(width: 4),
-                      Text('JAGO PILOT', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 10, fontWeight: FontWeight.w800)),
-                    ]),
-                  ),
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _blue.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(6)),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.verified_rounded, color: Color(0xFF60A5FA), size: 12),
+                        SizedBox(width: 4),
+                        Text('JAGO PILOT', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 10, fontWeight: FontWeight.w800)),
+                      ]),
+                    ),
+                  ]),
                 ])),
               ]),
             ),
@@ -482,6 +559,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.all(16),
               child: GestureDetector(
                 onTap: () async {
+                  _socket.disconnect();
                   await AuthService.logout();
                   if (!mounted) return;
                   Navigator.pushAndRemoveUntil(context,

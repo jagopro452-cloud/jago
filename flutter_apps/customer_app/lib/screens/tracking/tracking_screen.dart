@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
+import '../../services/socket_service.dart';
 import '../home/home_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
@@ -16,30 +17,98 @@ class TrackingScreen extends StatefulWidget {
 }
 
 class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStateMixin {
+  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
+  LatLng? _driverLatLng;
   String _status = 'searching';
   Map<String, dynamic>? _trip;
   Timer? _pollTimer;
   int _rated = 0;
   List<String> _cancelReasons = [];
   late AnimationController _pulseCtrl;
+  final Set<Marker> _markers = {};
+  final List<StreamSubscription> _subs = [];
 
   static const Color _blue = Color(0xFF1E6DE5);
-  static const Color _dark = Color(0xFF111827);
   static const Color _green = Color(0xFF16A34A);
 
   @override
   void initState() {
     super.initState();
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _connectSocket();
     _pollStatus();
     _loadCancelReasons();
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
+    // HTTP polling as fallback (every 8s — socket handles real-time)
+    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) => _pollStatus());
+  }
+
+  void _connectSocket() {
+    _socket.connect(ApiConfig.socketUrl).then((_) {
+      // Join this trip's tracking room
+      _socket.trackTrip(widget.tripId);
+
+      // Real-time driver GPS location
+      _subs.add(_socket.onDriverLocation.listen((data) {
+        if (!mounted) return;
+        final lat = (data['lat'] as num?)?.toDouble();
+        final lng = (data['lng'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          setState(() {
+            _driverLatLng = LatLng(lat, lng);
+            _updateDriverMarker(_driverLatLng!);
+          });
+        }
+      }));
+
+      // Real-time trip status changes
+      _subs.add(_socket.onTripStatus.listen((data) {
+        if (!mounted) return;
+        final newStatus = data['status']?.toString() ?? _status;
+        final otp = data['otp']?.toString();
+        setState(() {
+          _status = newStatus;
+          if (otp != null && _trip != null) {
+            _trip!['pickupOtp'] = otp;
+          }
+        });
+        if (newStatus == 'completed' || newStatus == 'cancelled') {
+          _pollTimer?.cancel();
+          _pollStatus(); // fetch final state
+        }
+      }));
+
+      // Driver assigned (from searching state)
+      _subs.add(_socket.onDriverAssigned.listen((data) {
+        if (!mounted) return;
+        setState(() => _status = 'driver_assigned');
+        _pollStatus();
+      }));
+
+      // Trip cancelled by driver
+      _subs.add(_socket.onTripCancelled.listen((data) {
+        if (!mounted) return;
+        setState(() => _status = 'cancelled');
+        _pollTimer?.cancel();
+      }));
+    });
+  }
+
+  void _updateDriverMarker(LatLng pos) {
+    _markers.removeWhere((m) => m.markerId.value == 'driver');
+    _markers.add(Marker(
+      markerId: const MarkerId('driver'),
+      position: pos,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      infoWindow: const InfoWindow(title: 'Your Pilot'),
+    ));
+    _mapController?.animateCamera(CameraUpdate.newLatLng(pos));
   }
 
   @override
   void dispose() {
+    for (final s in _subs) s.cancel();
     _pollTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
@@ -69,14 +138,20 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         final data = jsonDecode(res.body);
         final trip = data['trip'];
         if (trip != null && mounted) {
-          final lat = (trip['pickupLat'] as num?)?.toDouble();
-          final lng = (trip['pickupLng'] as num?)?.toDouble();
+          final dLat = (trip['driverLat'] as num?)?.toDouble();
+          final dLng = (trip['driverLng'] as num?)?.toDouble();
           setState(() {
             _trip = trip;
             _status = trip['currentStatus'] ?? _status;
-            if (lat != null && lng != null && lat != 0) {
-              _center = LatLng(lat, lng);
-              _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+            if (dLat != null && dLng != null && dLat != 0) {
+              _driverLatLng = LatLng(dLat, dLng);
+              _updateDriverMarker(_driverLatLng!);
+            }
+            // Update map to pickup position
+            final pLat = (trip['pickupLat'] as num?)?.toDouble();
+            final pLng = (trip['pickupLng'] as num?)?.toDouble();
+            if (pLat != null && pLng != null && pLat != 0) {
+              _center = LatLng(pLat, pLng);
             }
           });
           if (_status == 'completed' || _status == 'cancelled') _pollTimer?.cancel();
@@ -86,15 +161,18 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Future<void> _cancelTrip(String reason) async {
+    // Cancel via socket first
+    _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
+    // Also HTTP for persistence
     final token = await AuthService.getToken();
     try {
       await http.post(Uri.parse(ApiConfig.cancelTrip),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
     } catch (_) {}
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
   }
 
   Future<void> _rateDriver(int stars) async {
@@ -153,7 +231,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   Widget build(BuildContext context) {
     final statusInfo = _getStatusInfo(_status);
     final trip = _trip;
-    final otp = trip?['pickupOtp']?.toString();
+    final otp = trip?['pickupOtp']?.toString() ?? trip?['pickup_otp']?.toString();
     final driverName = trip?['driverName']?.toString() ?? trip?['driver_name']?.toString();
     final driverPhone = trip?['driverPhone']?.toString() ?? trip?['driver_phone']?.toString();
     final driverRating = trip?['driverRating'] ?? trip?['driver_rating'];
@@ -169,7 +247,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
-            onMapCreated: (c) => _mapController = c,
+            onMapCreated: (c) {
+              _mapController = c;
+              if (_driverLatLng != null) _updateDriverMarker(_driverLatLng!);
+            },
+            markers: _markers,
             myLocationEnabled: true,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
@@ -263,8 +345,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           Text(info['label'] as String,
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
           if (_status == 'searching')
-            Text('Nearby pilots search avutundi...',
+            Text('Real-time లో nearby pilots search avutundi...',
               style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+          if (_driverLatLng != null && _status != 'searching' && _status != 'completed' && _status != 'cancelled')
+            Text('Live tracking active 📍',
+              style: TextStyle(color: _green, fontSize: 11, fontWeight: FontWeight.w600)),
         ])),
         if (_status == 'searching')
           SizedBox(width: 20, height: 20,
@@ -492,7 +577,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       case 'driver_assigned': return {'label': 'Pilot Assign ayyadu! 🎉', 'icon': Icons.electric_bike, 'color': _blue};
       case 'accepted': return {'label': 'Pilot vachestunnadu 🏍️', 'icon': Icons.navigation_rounded, 'color': _blue};
       case 'arrived': return {'label': 'Pilot Arrived! 📍', 'icon': Icons.where_to_vote_rounded, 'color': _green};
-      case 'on_the_way': return {'label': 'Trip lo undi 🚀', 'icon': Icons.speed_rounded, 'color': _blue};
+      case 'in_progress': return {'label': 'Trip lo undi 🚀', 'icon': Icons.speed_rounded, 'color': _blue};
       case 'completed': return {'label': 'Trip Completed! ✅', 'icon': Icons.check_circle_rounded, 'color': _green};
       case 'cancelled': return {'label': 'Trip Cancelled', 'icon': Icons.cancel_rounded, 'color': Colors.red};
       default: return {'label': 'Loading...', 'icon': Icons.hourglass_empty_rounded, 'color': Colors.grey};
