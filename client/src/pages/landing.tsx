@@ -174,10 +174,10 @@ export default function LandingPage() {
             ))}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <a href="/admin/login" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600 }}>
-              Admin Login
+            <a href="#driver" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+              Become a Pilot
             </a>
-            <a href="#download" style={{ padding: "9px 22px", borderRadius: 10, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)" }}>
+            <a href="#download" style={{ padding: "9px 22px", borderRadius: 10, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)", textDecoration: "none" }}>
               Download App
             </a>
           </div>
