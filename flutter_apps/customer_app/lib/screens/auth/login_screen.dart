@@ -47,11 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 48),
-                const Text('JAGO',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
-                    color: Color(0xFF1E6DE5), letterSpacing: 3)),
-                const SizedBox(height: 40),
+                const SizedBox(height: 60),
                 const Text('Welcome!',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
                 const SizedBox(height: 8),

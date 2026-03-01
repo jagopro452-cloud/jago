@@ -32,12 +32,19 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedRide = 0;
   Map<String, dynamic>? _homeData;
   bool _loading = true;
+  List<Map<String, dynamic>> _vehicleCategories = [];
 
-  final List<Map<String, dynamic>> _rideTypes = [
-    {'icon': Icons.electric_bike, 'label': 'Bike', 'price': '₹EA'},
-    {'icon': Icons.directions_car, 'label': 'Car', 'price': '₹ER'},
-    {'icon': Icons.delivery_dining, 'label': 'Delivery', 'price': '₹55'},
-  ];
+  static IconData _iconForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bike')) return Icons.electric_bike;
+    if (n.contains('auto')) return Icons.electric_rickshaw;
+    if (n.contains('suv')) return Icons.directions_car;
+    if (n.contains('temo') || n.contains('tempo')) return Icons.airport_shuttle;
+    if (n.contains('car')) return Icons.directions_car_filled;
+    if (n.contains('cargo')) return Icons.local_shipping;
+    if (n.contains('parcel')) return Icons.delivery_dining;
+    return Icons.directions_car;
+  }
 
   @override
   void initState() {
@@ -71,10 +78,25 @@ class _HomeScreenState extends State<HomeScreen> {
       final res = await http.get(Uri.parse(ApiConfig.customerHomeData),
         headers: {'Authorization': 'Bearer $token'});
       if (res.statusCode == 200) {
-        setState(() { _homeData = jsonDecode(res.body); _loading = false; });
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final cats = (data['vehicleCategories'] as List<dynamic>?)
+          ?.cast<Map<String, dynamic>>() ?? [];
+        setState(() {
+          _homeData = data;
+          _vehicleCategories = cats.isNotEmpty ? cats : _defaultVehicleCategories();
+          _loading = false;
+        });
+      } else {
+        setState(() { _vehicleCategories = _defaultVehicleCategories(); _loading = false; });
       }
-    } catch (_) { setState(() => _loading = false); }
+    } catch (_) { setState(() { _vehicleCategories = _defaultVehicleCategories(); _loading = false; }); }
   }
+
+  List<Map<String, dynamic>> _defaultVehicleCategories() => [
+    {'name': 'Bike', 'minimumFare': '20', 'baseFare': '20'},
+    {'name': 'Auto', 'minimumFare': '25', 'baseFare': '30'},
+    {'name': 'Car', 'minimumFare': '40', 'baseFare': '60'},
+  ];
 
   void _bookRide() {
     if (_destination.isEmpty) {
@@ -82,8 +104,14 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('Enter destination'), backgroundColor: Color(0xFF1E6DE5)));
       return;
     }
+    final cat = _vehicleCategories.isNotEmpty ? _vehicleCategories[_selectedRide] : null;
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => BookingScreen(pickup: _pickup, destination: _destination)));
+      builder: (_) => BookingScreen(
+        pickup: _pickup,
+        destination: _destination,
+        vehicleCategoryId: cat?['id']?.toString(),
+        vehicleCategoryName: cat?['name']?.toString(),
+      )));
   }
 
   @override
@@ -148,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomCard() {
+    final cats = _vehicleCategories;
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -160,12 +189,22 @@ class _HomeScreenState extends State<HomeScreen> {
         const Padding(padding: EdgeInsets.only(left: 11), child: Divider(height: 12)),
         _locationRow(Icons.location_searching, Colors.grey, _destination, 'Where to?', onTap: _showDestinationDialog),
         const SizedBox(height: 16),
-        Row(children: [
-          for (int i = 0; i < _rideTypes.length; i++) ...[
-            if (i > 0) const SizedBox(width: 10),
-            Expanded(child: _rideTypeCard(i)),
-          ],
-        ]),
+        if (_loading)
+          const Center(child: SizedBox(width: 24, height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5))))
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(cats.length, (i) {
+                if (i >= cats.length) return const SizedBox.shrink();
+                return Padding(
+                  padding: EdgeInsets.only(right: i < cats.length - 1 ? 10 : 0),
+                  child: _rideTypeCard(i, cats[i]),
+                );
+              }),
+            ),
+          ),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity, height: 50,
@@ -202,14 +241,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _rideTypeCard(int i) {
-    final ride = _rideTypes[i];
+  Widget _rideTypeCard(int i, Map<String, dynamic> cat) {
     final selected = _selectedRide == i;
+    final name = cat['name']?.toString() ?? '';
+    final minFare = double.tryParse(cat['minimumFare']?.toString() ?? '0') ?? 0;
+    final fareLabel = minFare > 0 ? '₹${minFare.toInt()}+' : '—';
     return GestureDetector(
       onTap: () => setState(() => _selectedRide = i),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        width: 90,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFF1E6DE5) : const Color(0xFFF5F7FA),
           borderRadius: BorderRadius.circular(12),
@@ -217,13 +259,14 @@ class _HomeScreenState extends State<HomeScreen> {
             color: selected ? const Color(0xFF1E6DE5) : Colors.transparent, width: 1.5),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(ride['icon'] as IconData,
+          Icon(_iconForVehicle(name),
             color: selected ? Colors.white : Colors.grey[600], size: 26),
           const SizedBox(height: 4),
-          Text(ride['label'] as String,
+          Text(name,
+            textAlign: TextAlign.center,
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
               color: selected ? Colors.white : Colors.grey[700])),
-          Text(ride['price'] as String,
+          Text(fareLabel,
             style: TextStyle(fontSize: 11,
               color: selected ? Colors.white.withOpacity(0.85) : Colors.grey[500])),
         ]),
@@ -326,12 +369,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
             _drawerItem(Icons.headset_mic_outlined, 'Support', () {}),
-            _drawerItem(Icons.card_giftcard_outlined, 'Refer & Earn', () {},
-              badge: const Text('₹', style: TextStyle(color: Colors.white, fontSize: 11))),
+            _drawerItem(Icons.card_giftcard_outlined, 'Refer & Earn', () {}),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('JAGO v1.0.2\nMindWhile IT Solutions',
+              child: Text('v1.0.2 • MindWhile IT Solutions',
                 style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11)),
             ),
           ]),
@@ -340,11 +382,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap, {Widget? badge}) {
+  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.white.withOpacity(0.75), size: 22),
       title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
-      trailing: badge,
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
     );

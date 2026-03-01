@@ -320,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF2563EB).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(6)),
-                    child: const Text('JAGO PILOT',
+                    child: const Text('Driver',
                       style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.w700)),
                   ),
                 ])),
@@ -361,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('JAGO Pilot v1.0.2\nMindWhile IT Solutions',
+              child: Text('v1.0.2 • MindWhile IT Solutions',
                 style: TextStyle(color: Colors.white.withOpacity(0.25), fontSize: 11)),
             ),
           ]),

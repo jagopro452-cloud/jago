@@ -3626,7 +3626,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/customer/home-data", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const [recentTrips, walletRow, savedPlaces, stats] = await Promise.all([
+      const [recentTrips, walletRow, savedPlaces, stats, vehicleCats] = await Promise.all([
         rawDb.execute(rawSql`
           SELECT id, ref_id, pickup_address, destination_address, actual_fare, estimated_fare, current_status, created_at, driver_id
           FROM trip_requests WHERE customer_id=${user.id}::uuid ORDER BY created_at DESC LIMIT 5
@@ -3637,12 +3637,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT COUNT(*) as total_trips, COALESCE(SUM(actual_fare),0) as total_spent
           FROM trip_requests WHERE customer_id=${user.id}::uuid AND current_status='completed'
         `),
+        rawDb.execute(rawSql`
+          SELECT vc.id, vc.name, vc.type, vc.icon,
+            MIN(tf.minimum_fare) as minimum_fare, MIN(tf.base_fare) as base_fare, MIN(tf.fare_per_km) as fare_per_km
+          FROM vehicle_categories vc
+          LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
+          WHERE vc.is_active = true AND (vc.type = 'ride' OR vc.type IS NULL)
+          GROUP BY vc.id, vc.name, vc.type, vc.icon
+          ORDER BY vc.name
+        `),
       ]);
       res.json({
         walletBalance: parseFloat((walletRow.rows[0] as any)?.wallet_balance || 0),
         recentTrips: recentTrips.rows.map(camelize),
         savedPlaces: savedPlaces.rows.map(camelize),
         stats: { totalTrips: parseInt((stats.rows[0] as any)?.total_trips || 0), totalSpent: parseFloat((stats.rows[0] as any)?.total_spent || 0) },
+        vehicleCategories: vehicleCats.rows.map(camelize),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -97,7 +97,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }),
             ]),
             const SizedBox(height: 32),
-            Text('JAGO v1.0.2 • MindWhile IT Solutions',
+            Text('v1.0.2 • MindWhile IT Solutions',
               style: TextStyle(color: Colors.grey[400], fontSize: 12)),
             const SizedBox(height: 24),
           ]),
