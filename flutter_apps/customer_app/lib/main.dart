@@ -1,45 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'config/api_config.dart';
 import 'screens/splash_screen.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/home/home_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
   ));
-  ApiConfig.useProduction();
-  runApp(const JagoCustomerApp());
+  runApp(const JagoApp());
 }
 
-class JagoCustomerApp extends StatelessWidget {
-  const JagoCustomerApp({super.key});
-
+class JagoApp extends StatelessWidget {
+  const JagoApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'JAGO',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
-        fontFamily: 'OpenSans',
-        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1E6DE5)),
+        primaryColor: const Color(0xFF1E6DE5),
+        scaffoldBackgroundColor: Colors.white,
+        fontFamily: 'Roboto',
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF0F172A),
           elevation: 0,
-          surfaceTintColor: Colors.white,
+          titleTextStyle: TextStyle(color: Color(0xFF1A1A2E), fontSize: 17, fontWeight: FontWeight.w600),
+          iconTheme: IconThemeData(color: Color(0xFF1A1A2E)),
         ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1E6DE5),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        useMaterial3: false,
       ),
       home: const SplashScreen(),
-      routes: {
-        '/login': (_) => const LoginScreen(),
-        '/home': (_) => const HomeScreen(),
-      },
     );
   }
 }

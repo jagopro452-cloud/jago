@@ -1,37 +1,31 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../../models/trip_model.dart';
-import '../../services/trip_service.dart';
+import 'package:http/http.dart' as http;
+import '../../config/api_config.dart';
+import '../../services/auth_service.dart';
 
 class TripsHistoryScreen extends StatefulWidget {
   const TripsHistoryScreen({super.key});
-
   @override
   State<TripsHistoryScreen> createState() => _TripsHistoryScreenState();
 }
 
 class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
-  List<TripModel> _trips = [];
+  List<dynamic> _trips = [];
   bool _loading = true;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  void initState() { super.initState(); _fetchTrips(); }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    _trips = await TripService.getTripHistory();
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'completed': return const Color(0xFF22C55E);
-      case 'cancelled': return const Color(0xFFEF4444);
-      default: return const Color(0xFF3B82F6);
-    }
+  Future<void> _fetchTrips() async {
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.get(Uri.parse(ApiConfig.driverTrips), headers: {'Authorization': 'Bearer $token'});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() { _trips = data['trips'] ?? []; _loading = false; });
+      }
+    } catch (_) { setState(() => _loading = false); }
   }
 
   @override
@@ -39,72 +33,55 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF060D1E),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF060D1E),
-        title: const Text('Trip History', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        backgroundColor: const Color(0xFF060D1E), elevation: 0,
+        leading: IconButton(icon: Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7)), onPressed: () => Navigator.pop(context)),
+        title: const Text('My Trips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
-          : _trips.isEmpty
-              ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.receipt_long, size: 60, color: Color(0xFF1E3A5F)),
-                  SizedBox(height: 16),
-                  Text('No trips yet', style: TextStyle(color: Color(0xFF64748B), fontSize: 16)),
-                ]))
-              : ListView.separated(
+      body: _loading ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+        : _trips.isEmpty
+          ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.route_outlined, size: 64, color: Color(0xFF2563EB)),
+              const SizedBox(height: 16),
+              Text('No trips yet', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 16)),
+            ]))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _trips.length,
+              itemBuilder: (_, i) {
+                final t = _trips[i];
+                final status = t['currentStatus'] ?? t['status'] ?? '';
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
-                  itemCount: _trips.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, i) => _tripCard(_trips[i]),
-                ),
-    );
-  }
-
-  Widget _tripCard(TripModel t) {
-    final color = _statusColor(t.currentStatus);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF091629),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E3A5F)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(t.currentStatus.toUpperCase(), style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-              const Spacer(),
-              Text(t.createdAt != null ? DateFormat('dd MMM yyyy').format(t.createdAt!) : '', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(children: [
-            const Icon(Icons.my_location, color: Color(0xFF3B82F6), size: 16),
-            const SizedBox(width: 8),
-            Expanded(child: Text(t.pickupAddress, style: const TextStyle(color: Colors.white, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-          ]),
-          const SizedBox(height: 6),
-          Row(children: [
-            const Icon(Icons.location_on, color: Color(0xFFEF4444), size: 16),
-            const SizedBox(width: 8),
-            Expanded(child: Text(t.destinationAddress, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-          ]),
-          const Divider(color: Color(0xFF1E3A5F), height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('${t.estimatedDistance.toStringAsFixed(1)} km', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-              Text(t.paymentMethod.toUpperCase(), style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-              Text('₹${(t.actualFare ?? t.estimatedFare).toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
-        ],
-      ),
+                  decoration: BoxDecoration(color: const Color(0xFF0D1B4B), borderRadius: BorderRadius.circular(16)),
+                  child: Row(children: [
+                    Container(width: 44, height: 44,
+                      decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.route, color: Color(0xFF2563EB), size: 24)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(t['destinationAddress'] ?? 'Destination', maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+                      const SizedBox(height: 4),
+                      Text(t['pickupAddress'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
+                    ])),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text('₹${t['actualFare'] ?? t['estimatedFare'] ?? '0'}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: status == 'completed' ? Colors.green.withOpacity(0.15) : Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6)),
+                        child: Text(status, style: TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w500,
+                          color: status == 'completed' ? Colors.green : Colors.orange))),
+                    ]),
+                  ]),
+                );
+              }),
     );
   }
 }

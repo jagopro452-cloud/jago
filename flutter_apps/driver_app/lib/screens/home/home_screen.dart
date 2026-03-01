@@ -1,381 +1,381 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
-import '../../models/trip_model.dart';
-import '../../models/user_model.dart';
-import '../../services/auth_service.dart';
-import '../../services/location_service.dart';
-import '../../services/trip_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
-import '../trip/trip_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/trip_service.dart';
+import '../../widgets/incoming_trip_sheet.dart';
+import '../auth/login_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
-import '../verification/face_verification_screen.dart';
-import '../../widgets/incoming_trip_sheet.dart';
+import '../break_mode/break_mode_screen.dart';
+import '../trip/trip_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
-  UserModel? _user;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  GoogleMapController? _mapController;
+  LatLng _center = const LatLng(12.9716, 77.5946);
   bool _isOnline = false;
-  bool _togglingOnline = false;
-  GoogleMapController? _mapCtrl;
-  LatLng _currentLatLng = const LatLng(17.385044, 78.486671);
-  final Set<Marker> _markers = {};
-  StreamSubscription? _locationSub;
+  bool _loading = false;
+  bool _toggling = false;
+  String _userName = 'Pilot';
+  String _userPhone = '';
+  double _walletBalance = 0;
+  int _tripsToday = 0;
+  double _earningsToday = 0;
+  Map<String, dynamic>? _incomingTrip;
   Timer? _pollTimer;
-  TripModel? _incomingTrip;
-  bool _showIncoming = false;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
-    _initLocation();
-    _startPolling();
-    _checkFaceVerificationOnStart();
+    _loadUser();
+    _getLocation();
+    _fetchDashboard();
   }
 
-  Future<void> _checkFaceVerificationOnStart() async {
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
+  Future<void> _loadUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('user_name') ?? 'Pilot';
+      _userPhone = prefs.getString('user_phone') ?? '';
+    });
+  }
+
+  Future<void> _getLocation() async {
     try {
-      final headers = await AuthService.getHeaders();
-      final res = await http.get(Uri.parse(ApiConfig.checkVerification), headers: headers);
+      await Geolocator.requestPermission();
+      final pos = await Geolocator.getCurrentPosition();
+      setState(() => _center = LatLng(pos.latitude, pos.longitude));
+      _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+    } catch (_) {}
+  }
+
+  Future<void> _fetchDashboard() async {
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.get(Uri.parse(ApiConfig.driverDashboard),
+        headers: {'Authorization': 'Bearer $token'});
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data['needsVerification'] == true && mounted) {
-          _showFaceVerification(data['reason'] ?? 'daily_check');
+        setState(() {
+          _isOnline = data['isOnline'] ?? false;
+          _walletBalance = (data['walletBalance'] ?? 0).toDouble();
+          _tripsToday = data['tripsToday'] ?? 0;
+          _earningsToday = (data['earningsToday'] ?? 0).toDouble();
+        });
+        if (_isOnline) _startPolling();
+      }
+    } catch (_) {}
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) => _checkIncomingTrip());
+  }
+
+  Future<void> _checkIncomingTrip() async {
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.get(Uri.parse(ApiConfig.driverIncomingTrip),
+        headers: {'Authorization': 'Bearer $token'});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['trip'] != null && _incomingTrip == null) {
+          setState(() => _incomingTrip = data['trip']);
+          _showIncomingTrip();
         }
       }
     } catch (_) {}
   }
 
-  void _showFaceVerification(String reason) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FaceVerificationScreen(
-          reason: reason,
-          onVerified: () => Navigator.pop(context),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadProfile() async {
-    final user = await AuthService.getProfile();
-    if (mounted && user != null) {
-      setState(() {
-        _user = user;
-        _isOnline = user.isOnline;
-      });
-    }
-  }
-
-  Future<void> _initLocation() async {
-    final granted = await LocationService.requestPermission();
-    if (!granted) return;
-    final pos = await LocationService.getCurrentPosition();
-    if (pos != null && mounted) {
-      setState(() {
-        _currentLatLng = LatLng(pos.latitude, pos.longitude);
-        _updateDriverMarker(_currentLatLng);
-      });
-      _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(_currentLatLng, 15));
-    }
-    _locationSub = LocationService.getLocationStream().listen((pos) {
-      if (!mounted) return;
-      final latlng = LatLng(pos.latitude, pos.longitude);
-      setState(() {
-        _currentLatLng = latlng;
-        _updateDriverMarker(latlng);
-      });
-      if (_isOnline) {
-        LocationService.updateLocation(
-          lat: pos.latitude, lng: pos.longitude,
-          heading: pos.heading, speed: pos.speed, isOnline: true,
-        );
-      }
-    });
-  }
-
-  void _updateDriverMarker(LatLng pos) {
-    _markers.removeWhere((m) => m.markerId.value == 'driver');
-    _markers.add(Marker(
-      markerId: const MarkerId('driver'),
-      position: pos,
-      infoWindow: const InfoWindow(title: 'You are here'),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-    ));
-  }
-
-  void _startPolling() {
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!_isOnline) return;
-      final data = await TripService.getIncomingTrip();
-      if (!mounted) return;
-      if (data['type'] == 'new_trip' || data['tripRequest'] != null) {
-        final trip = TripModel.fromJson(data);
-        if (!_showIncoming) {
-          setState(() { _incomingTrip = trip; _showIncoming = true; });
-          _showIncomingSheet(trip);
-        }
-      } else if (data['type'] == 'active_trip' && data['trip'] != null) {
-        final trip = TripModel.fromJson(data);
-        if (!mounted) return;
-        _pollTimer?.cancel();
-        Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
-      }
-    });
-  }
-
-  void _showIncomingSheet(TripModel trip) {
+  void _showIncomingTrip() {
+    if (_incomingTrip == null) return;
     showModalBottomSheet(
       context: context,
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (_) => IncomingTripSheet(
-        trip: trip,
-        onAccept: () async {
+        trip: _incomingTrip!,
+        onAccept: () {
           Navigator.pop(context);
-          setState(() => _showIncoming = false);
-          final res = await TripService.acceptTrip(trip.id);
-          if (res['success'] == true && mounted) {
-            _pollTimer?.cancel();
-            final accepted = TripModel.fromJson(res);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: accepted)));
-          }
+          setState(() => _incomingTrip = null);
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const TripScreen()));
         },
-        onReject: () async {
+        onReject: () {
           Navigator.pop(context);
-          setState(() => _showIncoming = false);
-          await TripService.rejectTrip(trip.id);
+          setState(() => _incomingTrip = null);
         },
       ),
-    ).then((_) => setState(() => _showIncoming = false));
+    );
   }
 
   Future<void> _toggleOnline() async {
-    if (_togglingOnline) return;
-    setState(() => _togglingOnline = true);
+    setState(() => _toggling = true);
+    final token = await AuthService.getToken();
     try {
-      final res = await LocationService.setOnlineStatus(!_isOnline);
-      if (res['isLocked'] == true) {
-        if (!mounted) return;
-        _showLockedDialog(res['message'] ?? 'Account locked');
-        return;
+      final res = await http.post(Uri.parse(ApiConfig.driverOnlineStatus),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'isOnline': !_isOnline, 'lat': _center.latitude, 'lng': _center.longitude}));
+      if (res.statusCode == 200) {
+        setState(() => _isOnline = !_isOnline);
+        if (_isOnline) _startPolling();
+        else _pollTimer?.cancel();
       }
-      if (mounted) setState(() => _isOnline = res['isOnline'] ?? !_isOnline);
-    } catch (_) {} finally {
-      if (mounted) setState(() => _togglingOnline = false);
-    }
-  }
-
-  void _showLockedDialog(String msg) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Account Locked', style: TextStyle(color: Colors.red)),
-        content: Text(msg),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+    } catch (_) {}
+    setState(() => _toggling = false);
   }
 
   @override
-  void dispose() {
-    _locationSub?.cancel();
-    _pollTimer?.cancel();
-    _mapCtrl?.dispose();
-    super.dispose();
-  }
-
-  Widget _buildBody() {
-    switch (_currentIndex) {
-      case 1: return const TripsHistoryScreen();
-      case 2: return const WalletScreen();
-      case 3: return const ProfileScreen();
-      default: return _buildHomeMap();
-    }
-  }
-
-  Widget _buildHomeMap() {
-    return Stack(
-      children: [
-        GoogleMap(
-          initialCameraPosition: CameraPosition(target: _currentLatLng, zoom: 15),
-          myLocationEnabled: true,
-          myLocationButtonEnabled: false,
-          markers: _markers,
-          mapType: MapType.normal,
-          zoomControlsEnabled: false,
-          onMapCreated: (ctrl) => _mapCtrl = ctrl,
-        ),
-        Positioned(
-          top: 0, left: 0, right: 0,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF060D1E), Colors.transparent],
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, ${_user?.fullName.split(' ').first ?? 'Driver'} 👋',
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        _isOnline ? '🟢 You are Online' : '🔴 You are Offline',
-                        style: TextStyle(
-                          color: _isOnline ? const Color(0xFF22C55E) : const Color(0xFF64748B),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: _toggleOnline,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    width: 72,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: _isOnline ? const Color(0xFF22C55E) : const Color(0xFF334155),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: _togglingOnline
-                        ? const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
-                        : AnimatedAlign(
-                            duration: const Duration(milliseconds: 300),
-                            alignment: _isOnline ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.all(4),
-                              width: 28, height: 28,
-                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 100,
-          left: 20, right: 20,
-          child: Column(
-            children: [
-              _EarningsCard(user: _user),
-              const SizedBox(height: 12),
-              if (!_isOnline)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF060D1E).withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF1E3A5F)),
-                  ),
-                  child: const Text(
-                    'Go Online to start receiving trips',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  void dispose() { _pollTimer?.cancel(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _buildBody(),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF060D1E),
-          border: Border(top: BorderSide(color: Color(0xFF1E3A5F))),
+      key: _scaffoldKey,
+      drawer: _buildDrawer(),
+      body: Stack(children: [
+        GoogleMap(
+          initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+          onMapCreated: (c) => _mapController = c,
+          myLocationEnabled: true,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
-          backgroundColor: Colors.transparent,
-          selectedItemColor: const Color(0xFF3B82F6),
-          unselectedItemColor: const Color(0xFF475569),
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.map_outlined), activeIcon: Icon(Icons.map), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.receipt_long_outlined), activeIcon: Icon(Icons.receipt_long), label: 'Trips'),
-            BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet_outlined), activeIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
-          ],
+        SafeArea(
+          child: Column(children: [
+            _buildTopBar(),
+            const Spacer(),
+            _buildBottomPanel(),
+          ]),
         ),
-      ),
+      ]),
     );
   }
-}
 
-class _EarningsCard extends StatelessWidget {
-  final UserModel? user;
-  const _EarningsCard({this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget _buildTopBar() {
+    return Padding(
       padding: const EdgeInsets.all(16),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => _scaffoldKey.currentState?.openDrawer(),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)],
+            ),
+            child: const Icon(Icons.menu, color: Colors.white, size: 22),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)],
+            ),
+            child: Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isOnline ? Colors.green : Colors.grey)),
+              const SizedBox(width: 8),
+              Text(_isOnline ? 'Online — Ready for trips' : 'Offline',
+                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13, fontWeight: FontWeight.w500)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildBottomPanel() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF060D1E).withOpacity(0.92),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E3A5F)),
+        color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)],
       ),
-      child: Row(
-        children: [
-          _stat('Wallet', '₹${user?.walletBalance.toStringAsFixed(2) ?? '0.00'}', Icons.account_balance_wallet),
-          _divider(),
-          _stat('Trips', '${user?.stats.completedTrips ?? 0}', Icons.directions_car),
-          _divider(),
-          _stat('Rating', '${user?.rating.toStringAsFixed(1) ?? '5.0'} ⭐', Icons.star),
-        ],
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          _statCard('Today', '₹${_earningsToday.toStringAsFixed(0)}', Icons.account_balance_wallet_outlined),
+          const SizedBox(width: 12),
+          _statCard('Trips', '$_tripsToday', Icons.route_outlined),
+          const SizedBox(width: 12),
+          _statCard('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.savings_outlined),
+        ]),
+        const SizedBox(height: 20),
+        GestureDetector(
+          onTap: _toggling ? null : _toggleOnline,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: double.infinity, height: 56,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _isOnline
+                  ? [const Color(0xFF16A34A), const Color(0xFF15803D)]
+                  : [const Color(0xFF2563EB), const Color(0xFF1D4ED8)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(
+                color: (_isOnline ? const Color(0xFF16A34A) : const Color(0xFF2563EB)).withOpacity(0.3),
+                blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: Center(
+              child: _toggling
+                ? const SizedBox(width: 22, height: 22,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(_isOnline ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                      color: Colors.white, size: 22),
+                    const SizedBox(width: 10),
+                    Text(_isOnline ? 'Go Offline' : 'Go Online',
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _actionBtn(Icons.coffee_outlined, 'Break', () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen()));
+          })),
+          const SizedBox(width: 12),
+          Expanded(child: _actionBtn(Icons.location_on_outlined, 'My Location', _getLocation)),
+        ]),
+      ]),
     );
   }
 
-  Widget _stat(String label, String value, IconData icon) {
+  Widget _statCard(String label, String value, IconData icon) {
     return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: const Color(0xFF3B82F6), size: 20),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+        child: Column(children: [
+          Icon(icon, color: const Color(0xFF2563EB), size: 20),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+        ]),
       ),
     );
   }
 
-  Widget _divider() => Container(width: 1, height: 40, color: const Color(0xFF1E3A5F));
+  Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, color: Colors.white.withOpacity(0.7), size: 18),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w500)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Container(
+        color: const Color(0xFF0D1B4B),
+        child: SafeArea(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 28, backgroundColor: const Color(0xFF2563EB),
+                  child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Hi, ${_userName.split(' ').first}!',
+                    style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  Text('+91-$_userPhone',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: const Text('JAGO PILOT',
+                      style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.w700)),
+                  ),
+                ])),
+              ]),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            const SizedBox(height: 8),
+            _drawerItem(Icons.route_outlined, 'My Trips', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
+            }),
+            _drawerItem(Icons.account_balance_wallet_outlined, 'Wallet', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
+            }),
+            _drawerItem(Icons.person_outline, 'Profile', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            }),
+            _drawerItem(Icons.headset_mic_outlined, 'Support', () {}),
+            _drawerItem(Icons.card_giftcard_outlined, 'Refer & Earn', () {}),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity, height: 46,
+                child: OutlinedButton.icon(
+                  onPressed: () async { await AuthService.logout(); if (!mounted) return;
+                    Navigator.pushAndRemoveUntil(context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); },
+                  icon: const Icon(Icons.logout, size: 18, color: Colors.redAccent),
+                  label: const Text('Logout', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent, width: 1),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('JAGO Pilot v1.0.2\nMindWhile IT Solutions',
+                style: TextStyle(color: Colors.white.withOpacity(0.25), fontSize: 11)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white.withOpacity(0.7), size: 22),
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+    );
+  }
 }

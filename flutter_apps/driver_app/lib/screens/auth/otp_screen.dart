@@ -2,168 +2,124 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../../services/auth_service.dart';
+import '../home/home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phone;
-  final String? devOtp;
-  const OtpScreen({super.key, required this.phone, this.devOtp});
-
+  final String otp;
+  const OtpScreen({super.key, required this.phone, required this.otp});
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  String _otp = '';
+  final _otpCtrl = TextEditingController();
   bool _loading = false;
-  String? _error;
-  int _countdown = 60;
+  int _seconds = 30;
   Timer? _timer;
 
   @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
+  void initState() { super.initState(); _startTimer(); }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_countdown == 0) {
-        t.cancel();
-      } else {
-        if (mounted) setState(() => _countdown--);
-      }
+      if (_seconds == 0) t.cancel();
+      else setState(() => _seconds--);
     });
   }
 
   Future<void> _verify() async {
-    if (_otp.length < 6) {
-      setState(() => _error = 'Enter 6-digit OTP');
-      return;
+    if (_otpCtrl.text.length != 6) return;
+    setState(() => _loading = true);
+    final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
+    setState(() => _loading = false);
+    if (res['success'] == true) {
+      Navigator.pushAndRemoveUntil(context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid OTP'), backgroundColor: Colors.red));
     }
-    setState(() { _loading = true; _error = null; });
-    try {
-      final res = await AuthService.verifyOtp(widget.phone, _otp);
-      if (!mounted) return;
-      if (res['success'] == true && res['token'] != null) {
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
-      } else {
-        setState(() => _error = res['message'] ?? 'Invalid OTP');
-      }
-    } catch (e) {
-      setState(() => _error = 'Network error. Try again.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _resend() async {
-    setState(() { _countdown = 60; _error = null; });
-    _startTimer();
-    await AuthService.sendOtp(widget.phone);
   }
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  void dispose() { _timer?.cancel(); _otpCtrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF060D1E), Color(0xFF0C1A2F)],
+      backgroundColor: const Color(0xFF060D1E),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF060D1E), elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7)),
+          onPressed: () => Navigator.pop(context)),
+        actions: [
+          IconButton(icon: const Icon(Icons.help_outline, color: Color(0xFF2563EB)),
+            onPressed: () {}),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 16),
+          const Text('Verify OTP',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 8),
+          Text('Sent to +91-${widget.phone}',
+            style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.4))),
+          if (widget.otp.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Dev OTP: ${widget.otp}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB))),
+          ],
+          const SizedBox(height: 40),
+          PinCodeTextField(
+            appContext: context,
+            length: 6,
+            controller: _otpCtrl,
+            keyboardType: TextInputType.number,
+            pinTheme: PinTheme(
+              shape: PinCodeFieldShape.box,
+              borderRadius: BorderRadius.circular(10),
+              fieldHeight: 52,
+              fieldWidth: 46,
+              activeFillColor: Colors.white.withOpacity(0.08),
+              inactiveFillColor: Colors.white.withOpacity(0.05),
+              selectedFillColor: Colors.white.withOpacity(0.1),
+              activeColor: const Color(0xFF2563EB),
+              inactiveColor: Colors.white.withOpacity(0.15),
+              selectedColor: const Color(0xFF2563EB),
+            ),
+            enableActiveFill: true,
+            textStyle: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            onCompleted: (_) => _verify(),
+            onChanged: (_) {},
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 24),
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const SizedBox(height: 32),
-                const Text('Verify OTP', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 8),
-                Text(
-                  'Enter the 6-digit code sent to +91 ${widget.phone}',
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-                ),
-                if (widget.devOtp != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A5F),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text('Dev OTP: ${widget.devOtp}', style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 13, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                const SizedBox(height: 48),
-                PinCodeTextField(
-                  appContext: context,
-                  length: 6,
-                  onChanged: (v) => setState(() => _otp = v),
-                  onCompleted: (_) => _verify(),
-                  keyboardType: TextInputType.number,
-                  pinTheme: PinTheme(
-                    shape: PinCodeFieldShape.box,
-                    borderRadius: BorderRadius.circular(12),
-                    fieldHeight: 56,
-                    fieldWidth: 48,
-                    activeFillColor: const Color(0xFF091629),
-                    inactiveFillColor: const Color(0xFF060D1E),
-                    selectedFillColor: const Color(0xFF0C2050),
-                    activeColor: const Color(0xFF3B82F6),
-                    inactiveColor: const Color(0xFF1E3A5F),
-                    selectedColor: const Color(0xFF2563EB),
-                  ),
-                  enableActiveFill: true,
-                  textStyle: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(_error!, style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13)),
-                ],
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _verify,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
-                    ),
-                    child: _loading
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                        : const Text('Verify & Login', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: _countdown > 0
-                      ? Text('Resend OTP in ${_countdown}s', style: const TextStyle(color: Color(0xFF64748B), fontSize: 14))
-                      : TextButton(
-                          onPressed: _resend,
-                          child: const Text('Resend OTP', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 14, fontWeight: FontWeight.bold)),
-                        ),
-                ),
-              ],
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity, height: 52,
+            child: ElevatedButton(
+              onPressed: _loading ? null : _verify,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+              child: _loading
+                ? const SizedBox(width: 22, height: 22,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Verify', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ),
-        ),
+          const SizedBox(height: 20),
+          Center(
+            child: _seconds > 0
+              ? Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.white.withOpacity(0.35)))
+              : TextButton(
+                  onPressed: () { setState(() => _seconds = 30); _startTimer(); },
+                  child: const Text('Resend OTP',
+                    style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600))),
+          ),
+        ]),
       ),
     );
   }

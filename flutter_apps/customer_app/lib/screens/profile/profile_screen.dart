@@ -2,223 +2,125 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../saved_places/saved_places_screen.dart';
-import '../scheduled/scheduled_rides_screen.dart';
-import '../safety/emergency_contacts_screen.dart';
-import '../coins/coins_screen.dart';
-import '../monthly_pass/monthly_pass_screen.dart';
 import '../preferences/ride_preferences_screen.dart';
+import '../monthly_pass/monthly_pass_screen.dart';
 import '../lost_found/lost_found_screen.dart';
+import '../safety/emergency_contacts_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
-
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Map<String, dynamic>? _user;
+  String _name = '';
+  String _phone = '';
+  String _email = '';
+  double _rating = 5.0;
   bool _loading = true;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _loadProfile(); }
 
-  Future<void> _load() async {
-    final d = await AuthService.getProfile();
-    if (mounted) setState(() { _user = d?['user'] ?? d; _loading = false; });
-  }
-
-  Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await AuthService.logout();
-      if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-    }
+  Future<void> _loadProfile() async {
+    final data = await AuthService.getProfile();
+    setState(() {
+      _name = data?['fullName'] ?? data?['name'] ?? 'User';
+      _phone = data?['phone'] ?? '';
+      _email = data?['email'] ?? '';
+      _rating = (data?['rating'] ?? 5.0).toDouble();
+      _loading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-        centerTitle: true,
-        elevation: 0,
-        surfaceTintColor: Colors.white,
-        actions: [IconButton(icon: const Icon(Icons.logout, color: Color(0xFFEF4444)), onPressed: _logout)],
+        backgroundColor: Colors.white, elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1A1A2E)),
+          onPressed: () => Navigator.pop(context)),
+        title: const Text('Profile', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold)),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
-          : SingleChildScrollView(
+      body: _loading ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E6DE5)))
+        : SingleChildScrollView(
+          child: Column(children: [
+            Container(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.all(24),
               child: Column(children: [
-                _buildHeader(),
+                CircleAvatar(
+                  radius: 40, backgroundColor: const Color(0xFF1E6DE5),
+                  child: Text(_name.isNotEmpty ? _name[0].toUpperCase() : 'U',
+                    style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                ),
                 const SizedBox(height: 12),
-                _buildStatsRow(),
-                const SizedBox(height: 12),
-                _buildMainMenu(),
-                const SizedBox(height: 12),
-                _buildSafetyMenu(),
-                const SizedBox(height: 12),
-                _buildInfoMenu(),
-                const SizedBox(height: 24),
+                Text(_name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                Text('+91-$_phone', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                const SizedBox(height: 8),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                  const SizedBox(width: 4),
+                  Text(_rating.toStringAsFixed(1),
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                ]),
               ]),
             ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-      decoration: const BoxDecoration(color: Colors.white),
-      child: Column(children: [
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              width: 88, height: 88,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)]),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(Icons.person, color: Colors.white, size: 44),
-            ),
-            Container(
-              width: 26, height: 26,
-              decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
-              child: const Icon(Icons.edit, color: Colors.white, size: 14),
-            ),
-          ],
+            const SizedBox(height: 12),
+            _section([
+              _tile(Icons.favorite_border, 'Saved Places', const Color(0xFF1E6DE5), () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()))),
+              _tile(Icons.tune, 'Ride Preferences', const Color(0xFF1E6DE5), () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const RidePreferencesScreen()))),
+              _tile(Icons.card_membership, 'Monthly Pass', const Color(0xFF1E6DE5), () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()))),
+            ]),
+            const SizedBox(height: 12),
+            _section([
+              _tile(Icons.search, 'Lost & Found', Colors.orange, () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LostFoundScreen()))),
+              _tile(Icons.shield_outlined, 'Emergency Contacts', Colors.red, () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyContactsScreen()))),
+              _tile(Icons.headset_mic_outlined, 'Help & Support', Colors.teal, () {}),
+            ]),
+            const SizedBox(height: 12),
+            _section([
+              _tile(Icons.logout, 'Logout', Colors.red, () async {
+                await AuthService.logout();
+                if (!mounted) return;
+                Navigator.pushAndRemoveUntil(context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+              }),
+            ]),
+            const SizedBox(height: 32),
+            Text('JAGO v1.0.2 • MindWhile IT Solutions',
+              style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            const SizedBox(height: 24),
+          ]),
         ),
-        const SizedBox(height: 14),
-        Text(_user?['fullName'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Color(0xFF0F172A))),
-        const SizedBox(height: 4),
-        Text('+91 ${_user?['phone'] ?? ''}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 14)),
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _pill(Icons.star, '${double.tryParse(_user?['rating']?.toString() ?? '5')?.toStringAsFixed(1)} Rating', const Color(0xFFFACC15), const Color(0xFF78350F)),
-          const SizedBox(width: 8),
-          _pill(Icons.verified_user, 'JAGO Member', const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
-        ]),
-      ]),
     );
   }
 
-  Widget _pill(IconData icon, String text, Color bg, Color fg) {
+  Widget _section(List<Widget> children) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Row(children: [Icon(icon, size: 13, color: fg), const SizedBox(width: 4), Text(text, style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold))]),
+      color: Colors.white,
+      child: Column(children: children),
     );
   }
 
-  Widget _buildStatsRow() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)]),
-      child: Row(children: [
-        _stat('${_user?['totalTrips'] ?? 0}', 'Trips', Icons.directions_car),
-        _statDivider(),
-        _stat('₹${double.tryParse(_user?['walletBalance']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', 'Wallet', Icons.account_balance_wallet),
-        _statDivider(),
-        _stat('₹${double.tryParse(_user?['totalSpent']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', 'Spent', Icons.payments),
-      ]),
-    );
-  }
-
-  Widget _stat(String value, String label, IconData icon) {
-    return Expanded(child: Column(children: [
-      Icon(icon, color: const Color(0xFF2563EB), size: 20),
-      const SizedBox(height: 4),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A))),
-      Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
-    ]));
-  }
-
-  Widget _statDivider() => Container(width: 1, height: 40, color: const Color(0xFFE2E8F0));
-
-  Widget _buildMainMenu() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
-      child: Column(children: [
-        _tile(Icons.bookmark, 'Saved Places', color: const Color(0xFF2563EB), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()))),
-        _div(),
-        _tile(Icons.schedule, 'Scheduled Rides', color: const Color(0xFF7C3AED), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduledRidesScreen()))),
-        _div(),
-        _tile(Icons.stars_rounded, 'JAGO Coins', color: const Color(0xFFF59E0B), badge: 'Earn & Redeem', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CoinsScreen()))),
-        _div(),
-        _tile(Icons.confirmation_number_outlined, 'Monthly Pass', color: const Color(0xFF059669), badge: 'Save 35%', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()))),
-        _div(),
-        _tile(Icons.tune, 'Ride Preferences', color: const Color(0xFF2563EB), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RidePreferencesScreen()))),
-        _div(),
-        _tile(Icons.search, 'Lost & Found', color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LostFoundScreen()))),
-        _div(),
-        _tile(Icons.local_offer, 'My Coupons', color: const Color(0xFF059669), badge: 'SAVE 20%'),
-        _div(),
-        _tile(Icons.share, 'Refer & Earn', color: const Color(0xFFF59E0B), badge: '₹50/Refer'),
-      ]),
-    );
-  }
-
-  Widget _buildSafetyMenu() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
-          child: const Row(children: [Icon(Icons.shield, color: Colors.red, size: 16), SizedBox(width: 6), Text('Safety', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5))]),
-        ),
-        _tile(Icons.emergency, 'Emergency Contacts', color: Colors.red, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyContactsScreen()))),
-        _div(),
-        _tile(Icons.sos, 'SOS Settings', color: Colors.red),
-        _div(),
-        _tile(Icons.share_location, 'Live Trip Sharing', color: Colors.red),
-      ]),
-    );
-  }
-
-  Widget _buildInfoMenu() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
-      child: Column(children: [
-        _tile(Icons.headset_mic, 'Help & Support', color: const Color(0xFF2563EB)),
-        _div(),
-        _tile(Icons.privacy_tip, 'Privacy Policy', color: const Color(0xFF2563EB)),
-        _div(),
-        _tile(Icons.description, 'Terms & Conditions', color: const Color(0xFF2563EB)),
-        _div(),
-        _tile(Icons.star_outline, 'Rate the App', color: const Color(0xFFF59E0B)),
-      ]),
-    );
-  }
-
-  Widget _tile(IconData icon, String label, {Color color = const Color(0xFF2563EB), VoidCallback? onTap, String? badge}) {
+  Widget _tile(IconData icon, String label, Color color, VoidCallback onTap) {
     return ListTile(
-      leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
-      title: Text(label, style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (badge != null) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(badge, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold))),
-        if (badge != null) const SizedBox(width: 6),
-        const Icon(Icons.arrow_forward_ios, size: 13, color: Color(0xFFCBD5E1)),
-      ]),
-      onTap: onTap ?? () {},
+      leading: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: color, size: 20)),
+      title: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xFF1A1A2E))),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+      onTap: onTap,
     );
   }
-
-  Widget _div() => const Divider(height: 1, indent: 16, color: Color(0xFFF1F5F9));
 }

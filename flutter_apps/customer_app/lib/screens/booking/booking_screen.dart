@@ -1,369 +1,230 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
-import '../../services/trip_service.dart';
-import '../../services/auth_service.dart';
 import '../../config/api_config.dart';
+import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
 class BookingScreen extends StatefulWidget {
-  final LatLng currentLatLng;
-  const BookingScreen({super.key, required this.currentLatLng});
-
+  final String pickup;
+  final String destination;
+  const BookingScreen({super.key, required this.pickup, required this.destination});
   @override
   State<BookingScreen> createState() => _BookingScreenState();
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  final _destCtrl = TextEditingController();
-  final _pickupCtrl = TextEditingController(text: 'Current Location');
-  LatLng? _destLatLng;
-  LatLng? _pickupLatLng;
-  GoogleMapController? _mapCtrl;
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
+  GoogleMapController? _mapController;
+  bool _loading = false;
+  bool _confirmed = false;
+  Map<String, dynamic>? _fare;
+  int _selectedRide = 0;
 
-  Map<String, dynamic>? _fareData;
-  String? _selectedCategoryId;
-  String _paymentMethod = 'cash';
-  bool _loadingFare = false;
-  bool _booking = false;
-  bool _showFares = false;
-  String? _couponCode;
-  double? _discount;
-  int _step = 0;
+  final LatLng _pickupLatLng = const LatLng(12.9716, 77.5946);
+  final LatLng _destLatLng = const LatLng(12.9800, 77.6100);
+
+  final List<String> _rideLabels = ['Bike', 'Car', 'Delivery'];
+  final List<IconData> _rideIcons = [Icons.electric_bike, Icons.directions_car, Icons.delivery_dining];
+  final List<int> _ridePrices = [50, 80, 55];
 
   @override
   void initState() {
     super.initState();
-    _pickupLatLng = widget.currentLatLng;
-    _markers.add(Marker(
-      markerId: const MarkerId('pickup'),
-      position: widget.currentLatLng,
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      infoWindow: const InfoWindow(title: 'Pickup'),
-    ));
+    _estimateFare();
   }
 
   Future<void> _estimateFare() async {
-    if (_destLatLng == null || _pickupLatLng == null) return;
-    setState(() { _loadingFare = true; _showFares = false; });
-    final res = await TripService.estimateFare(
-      pickupLat: _pickupLatLng!.latitude, pickupLng: _pickupLatLng!.longitude,
-      destLat: _destLatLng!.latitude, destLng: _destLatLng!.longitude,
-    );
-    if (mounted && res['success'] == true) {
-      setState(() { _fareData = res; _showFares = true; _step = 1; _loadingFare = false; });
-      final categories = (res['categories'] as List?) ?? [];
-      if (categories.isNotEmpty) setState(() => _selectedCategoryId = categories[0]['id']?.toString());
-      _fitBounds();
-    } else {
-      setState(() => _loadingFare = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Estimate failed')));
-    }
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.estimateFare),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'pickupLat': _pickupLatLng.latitude, 'pickupLng': _pickupLatLng.longitude,
+          'destinationLat': _destLatLng.latitude, 'destinationLng': _destLatLng.longitude,
+          'vehicleType': _rideLabels[_selectedRide].toLowerCase(),
+        }),
+      );
+      if (res.statusCode == 200) setState(() => _fare = jsonDecode(res.body));
+    } catch (_) {}
   }
 
-  void _fitBounds() {
-    if (_pickupLatLng == null || _destLatLng == null) return;
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        _pickupLatLng!.latitude < _destLatLng!.latitude ? _pickupLatLng!.latitude : _destLatLng!.latitude,
-        _pickupLatLng!.longitude < _destLatLng!.longitude ? _pickupLatLng!.longitude : _destLatLng!.longitude,
-      ),
-      northeast: LatLng(
-        _pickupLatLng!.latitude > _destLatLng!.latitude ? _pickupLatLng!.latitude : _destLatLng!.latitude,
-        _pickupLatLng!.longitude > _destLatLng!.longitude ? _pickupLatLng!.longitude : _destLatLng!.longitude,
-      ),
-    );
-    _mapCtrl?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
-  }
-
-  void _onMapTap(LatLng pos) {
-    if (_step == 0) {
-      setState(() {
-        _destLatLng = pos;
-        _destCtrl.text = '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
-        _markers.removeWhere((m) => m.markerId.value == 'dest');
-        _markers.add(Marker(markerId: const MarkerId('dest'), position: pos, infoWindow: const InfoWindow(title: 'Destination'), icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)));
-      });
-    }
-  }
-
-  Future<void> _bookRide() async {
-    if (_selectedCategoryId == null || _destLatLng == null) return;
-    setState(() => _booking = true);
-    final cats = (_fareData?['categories'] as List?) ?? [];
-    final cat = cats.firstWhere((c) => c['id']?.toString() == _selectedCategoryId, orElse: () => cats.isNotEmpty ? cats[0] : {});
-    final fare = double.tryParse(cat['estimatedFare']?.toString() ?? '0') ?? 0;
-    final dist = double.tryParse(_fareData?['distance']?.toString() ?? '0') ?? 0;
-    final effectiveFare = fare - (_discount ?? 0);
-
-    final res = await TripService.bookRide(
-      pickupAddress: _pickupCtrl.text,
-      pickupLat: _pickupLatLng!.latitude, pickupLng: _pickupLatLng!.longitude,
-      destAddress: _destCtrl.text,
-      destLat: _destLatLng!.latitude, destLng: _destLatLng!.longitude,
-      vehicleCategoryId: _selectedCategoryId!,
-      estimatedFare: effectiveFare, estimatedDistance: dist,
-      paymentMethod: _paymentMethod,
-    );
-    setState(() => _booking = false);
-
-    if (res['success'] == true && mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => TrackingScreen(tripData: res['trip'])));
-    } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Booking failed')));
-    }
-  }
-
-  void _showCouponDialog() {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Apply Coupon'),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'Enter coupon code', border: OutlineInputBorder())),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
-            onPressed: () async {
-              Navigator.pop(context);
-              final cats = (_fareData?['categories'] as List?) ?? [];
-              final cat = cats.firstWhere((c) => c['id']?.toString() == _selectedCategoryId, orElse: () => cats.isNotEmpty ? cats[0] : {});
-              final fare = double.tryParse(cat['estimatedFare']?.toString() ?? '0') ?? 0;
-              final res = await TripService.applyCoupon(code: ctrl.text.trim(), fareAmount: fare);
-              if (res['success'] == true && mounted) {
-                setState(() { _couponCode = ctrl.text.trim(); _discount = double.tryParse(res['discount']?.toString() ?? '0'); });
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Coupon applied! Save ₹${_discount?.toStringAsFixed(2)}')));
-              } else if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Invalid coupon')));
-              }
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _confirmBooking() async {
+    setState(() => _loading = true);
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.bookRide),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'pickupAddress': widget.pickup, 'destinationAddress': widget.destination,
+          'pickupLat': _pickupLatLng.latitude, 'pickupLng': _pickupLatLng.longitude,
+          'destinationLat': _destLatLng.latitude, 'destinationLng': _destLatLng.longitude,
+          'paymentMethod': 'cash', 'vehicleType': _rideLabels[_selectedRide].toLowerCase(),
+        }),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        Navigator.pushReplacement(context, MaterialPageRoute(
+          builder: (_) => TrackingScreen(tripId: data['tripId'] ?? '')));
+      }
+    } catch (_) {}
+    setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final price = _fare?['estimatedFare'] ?? _ridePrices[_selectedRide];
+    final distance = _fare?['distance'] ?? 7.4;
+
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
-        title: const Text('Book a Ride', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            flex: _showFares ? 4 : 7,
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(target: widget.currentLatLng, zoom: 14),
-              markers: _markers,
-              polylines: _polylines,
-              onMapCreated: (c) => _mapCtrl = c,
-              onTap: _onMapTap,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-            ),
-          ),
-          Expanded(
-            flex: _showFares ? 6 : 3,
-            child: Container(
-              color: Colors.white,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: _showFares ? _buildFareSelection() : _buildSearchPanel(),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchPanel() {
-    return Column(
-      children: [
-        _locationField(Icons.my_location, const Color(0xFF2563EB), 'Pickup', _pickupCtrl, readOnly: true),
-        const SizedBox(height: 10),
-        _locationField(Icons.location_on, const Color(0xFFEF4444), 'Destination', _destCtrl),
-        const SizedBox(height: 16),
-        const Text('Tap on map to select destination', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity, height: 50,
-          child: ElevatedButton(
-            onPressed: _destLatLng == null || _loadingFare ? null : _estimateFare,
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-            child: _loadingFare ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('See Available Rides', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _locationField(IconData icon, Color color, String hint, TextEditingController ctrl, {bool readOnly = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
-      child: Row(children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 10),
-        Expanded(child: TextField(
-          controller: ctrl,
-          readOnly: readOnly,
-          style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
-          decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Color(0xFF94A3B8)), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 12)),
-        )),
-      ]),
-    );
-  }
-
-  Widget _buildFareSelection() {
-    final cats = (_fareData?['categories'] as List?) ?? [];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.directions_car, color: Color(0xFF2563EB), size: 16),
-            const SizedBox(width: 6),
-            Text('${_fareData?['distance']?.toStringAsFixed(1) ?? '0'} km • ${_fareData?['duration'] ?? '—'} min', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-            const Spacer(),
-            TextButton(onPressed: () => setState(() { _showFares = false; _step = 0; }), child: const Text('Change', style: TextStyle(color: Color(0xFF2563EB)))),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ...cats.map((cat) => _categoryCard(cat)),
-        const SizedBox(height: 8),
-        _surgeAlertBanner(),
-        const SizedBox(height: 8),
-        _paymentRow(),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: _showCouponDialog,
-          icon: const Icon(Icons.local_offer, size: 16, color: Color(0xFF2563EB)),
-          label: Text(_couponCode != null ? 'Coupon: $_couponCode (−₹${_discount?.toStringAsFixed(0)})' : 'Apply Coupon', style: const TextStyle(color: Color(0xFF2563EB))),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 52,
-          child: ElevatedButton(
-            onPressed: _booking ? null : _bookRide,
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-            child: _booking ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('Confirm Booking', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _surgeAlertBanner() {
-    final surge = _fareData?['surgeMultiplier'] ?? 1.0;
-    final hasSurge = (surge is num) && surge > 1.1;
-    if (!hasSurge) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Row(children: [
-        const Icon(Icons.trending_up, color: Colors.orange),
-        const SizedBox(width: 8),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${(surge * 100 - 100).round()}% Surge Pricing active', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13)),
-            const Text('High demand area. Notify you when it drops?', style: TextStyle(color: Colors.grey, fontSize: 11)),
-          ],
-        )),
-        TextButton(
-          onPressed: () async {
-            try {
-              final headers = await AuthService.getHeaders();
-              headers['Content-Type'] = 'application/json';
-              await http.post(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/surge-alert'), headers: headers,
-                body: jsonEncode({'lat': _pickupLatLng?.latitude, 'lng': _pickupLatLng?.longitude, 'address': _pickupCtrl.text}));
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("We'll notify you when surge drops!"), backgroundColor: Colors.green));
-            } catch (_) {}
+      body: Stack(children: [
+        GoogleMap(
+          initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 13),
+          onMapCreated: (c) => _mapController = c,
+          markers: {
+            Marker(markerId: const MarkerId('pickup'), position: _pickupLatLng,
+              infoWindow: InfoWindow(title: widget.pickup)),
+            Marker(markerId: const MarkerId('dest'), position: _destLatLng,
+              infoWindow: InfoWindow(title: widget.destination),
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue)),
           },
-          style: TextButton.styleFrom(foregroundColor: Colors.orange, padding: const EdgeInsets.symmetric(horizontal: 8)),
-          child: const Text('Notify Me', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          polylines: {
+            Polyline(polylineId: const PolylineId('route'),
+              points: [_pickupLatLng, _destLatLng],
+              color: const Color(0xFF1E6DE5), width: 4),
+          },
+          zoomControlsEnabled: false, mapToolbarEnabled: false,
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+                ),
+                child: const Icon(Icons.arrow_back_ios, color: Color(0xFF1A1A2E), size: 20),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 0, left: 0, right: 0,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                const Spacer(),
+                Text('${_fare?['estimatedTime'] ?? 4} mins', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+              ]),
+              const SizedBox(height: 16),
+              _addressRow(Icons.location_on, const Color(0xFF1E6DE5), widget.pickup),
+              const Padding(padding: EdgeInsets.only(left: 11), child: Divider(height: 8)),
+              _addressRow(Icons.location_searching, Colors.orange, widget.destination),
+              const SizedBox(height: 16),
+              Row(children: [
+                for (int i = 0; i < _rideLabels.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: _miniRideCard(i)),
+                ],
+              ]),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(12)),
+                child: Column(children: [
+                  _fareRow('Distance', '${distance} km'),
+                  _fareRow('Flat Fare', '₹${_ridePrices[_selectedRide]}'),
+                  if (_selectedRide == 2) _fareRow('Delivery', '₹55'),
+                  const Divider(height: 16),
+                  _fareRow('Total Fare', '₹$price', bold: true),
+                ]),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity, height: 52,
+                child: _confirmed
+                  ? ElevatedButton(
+                      onPressed: _loading ? null : _confirmBooking,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white, foregroundColor: const Color(0xFF1E6DE5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Color(0xFF1E6DE5), width: 1.5)),
+                        elevation: 0,
+                      ),
+                      child: _loading
+                        ? const SizedBox(width: 22, height: 22,
+                            child: CircularProgressIndicator(color: Color(0xFF1E6DE5), strokeWidth: 2))
+                        : const Text('CONFIRM BOOKING',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                    )
+                  : ElevatedButton(
+                      onPressed: () => setState(() => _confirmed = true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E6DE5), foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                      child: const Text('Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    ),
+              ),
+            ]),
+          ),
         ),
       ]),
     );
   }
 
-  Widget _categoryCard(Map<String, dynamic> cat) {
-    final id = cat['id']?.toString() ?? '';
-    final fare = double.tryParse(cat['estimatedFare']?.toString() ?? '0') ?? 0;
-    final selected = _selectedCategoryId == id;
+  Widget _addressRow(IconData icon, Color color, String text) {
+    return Row(children: [
+      Icon(icon, color: color, size: 18),
+      const SizedBox(width: 10),
+      Expanded(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF1A1A2E)),
+        maxLines: 1, overflow: TextOverflow.ellipsis)),
+    ]);
+  }
+
+  Widget _miniRideCard(int i) {
+    final sel = _selectedRide == i;
     return GestureDetector(
-      onTap: () => setState(() => _selectedCategoryId = id),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
+      onTap: () { setState(() => _selectedRide = i); _estimateFare(); },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0), width: selected ? 2 : 1),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.directions_car, color: selected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8), size: 28),
-            const SizedBox(width: 12),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(cat['name'] ?? 'Ride', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: selected ? const Color(0xFF1D4ED8) : const Color(0xFF0F172A))),
-                Text('${cat['capacity'] ?? '4'} seats • ${cat['eta'] ?? '—'} min away', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-              ],
-            )),
-            Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: selected ? const Color(0xFF2563EB) : const Color(0xFF0F172A))),
-            if (selected) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check_circle, color: Color(0xFF2563EB), size: 20)),
-          ],
-        ),
+          color: sel ? const Color(0xFF1E6DE5) : const Color(0xFFF5F7FA),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: sel ? const Color(0xFF1E6DE5) : Colors.transparent)),
+        child: Column(children: [
+          Icon(_rideIcons[i], color: sel ? Colors.white : Colors.grey[600], size: 22),
+          const SizedBox(height: 2),
+          Text(_rideLabels[i], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+            color: sel ? Colors.white : Colors.grey[700])),
+        ]),
       ),
     );
   }
 
-  Widget _paymentRow() {
-    final methods = [('cash', Icons.money, 'Cash'), ('wallet', Icons.account_balance_wallet, 'Wallet'), ('upi', Icons.payment, 'UPI')];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF475569))),
-        const SizedBox(height: 8),
-        Row(
-          children: methods.map((m) => GestureDetector(
-            onTap: () => setState(() => _paymentMethod = m.$1),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: _paymentMethod == m.$1 ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _paymentMethod == m.$1 ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0)),
-              ),
-              child: Row(children: [
-                Icon(m.$2, size: 16, color: _paymentMethod == m.$1 ? const Color(0xFF2563EB) : const Color(0xFF94A3B8)),
-                const SizedBox(width: 4),
-                Text(m.$3, style: TextStyle(fontSize: 12, color: _paymentMethod == m.$1 ? const Color(0xFF2563EB) : const Color(0xFF64748B), fontWeight: FontWeight.w600)),
-              ]),
-            ),
-          )).toList(),
-        ),
-      ],
+  Widget _fareRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+        const Spacer(),
+        Text(value, style: TextStyle(fontSize: 13,
+          fontWeight: bold ? FontWeight.bold : FontWeight.w500,
+          color: bold ? const Color(0xFF1A1A2E) : Colors.grey[700])),
+      ]),
     );
   }
 }

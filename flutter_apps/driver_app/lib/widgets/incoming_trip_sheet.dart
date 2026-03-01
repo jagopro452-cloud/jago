@@ -1,163 +1,123 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import '../models/trip_model.dart';
 
 class IncomingTripSheet extends StatefulWidget {
-  final TripModel trip;
+  final Map<String, dynamic> trip;
   final VoidCallback onAccept;
   final VoidCallback onReject;
   const IncomingTripSheet({super.key, required this.trip, required this.onAccept, required this.onReject});
-
   @override
   State<IncomingTripSheet> createState() => _IncomingTripSheetState();
 }
 
-class _IncomingTripSheetState extends State<IncomingTripSheet> {
-  int _seconds = 30;
-  Timer? _timer;
+class _IncomingTripSheetState extends State<IncomingTripSheet> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  int _countdown = 30;
+  late final _timer = Stream.periodic(const Duration(seconds: 1)).listen((_) {
+    if (_countdown <= 0) { widget.onReject(); return; }
+    setState(() => _countdown--);
+  });
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_seconds <= 0) {
-        t.cancel();
-        widget.onReject();
-      } else {
-        if (mounted) setState(() => _seconds--);
-      }
-    });
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 30))..forward();
   }
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); _timer.cancel(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    final t = widget.trip;
+    final trip = widget.trip;
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF091629),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF1E3A5F)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 48, height: 48,
-                  decoration: BoxDecoration(color: const Color(0xFF1E3A5F), borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.person, color: Color(0xFF3B82F6)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(t.customerName ?? 'Customer', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                      Row(children: [
-                        const Icon(Icons.star, color: Colors.amber, size: 14),
-                        Text(' ${t.customerRating.toStringAsFixed(1)}', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-                      ]),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('₹${t.estimatedFare.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 22, fontWeight: FontWeight.bold)),
-                    Text('${t.estimatedDistance.toStringAsFixed(1)} km', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                  ],
-                ),
-              ],
+        color: const Color(0xFF0D1B4B), borderRadius: BorderRadius.circular(24)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 20),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF2563EB), width: 3),
             ),
-            const SizedBox(height: 16),
-            _locationRow(Icons.my_location, const Color(0xFF3B82F6), 'Pickup', t.pickupAddress),
-            const SizedBox(height: 8),
-            _locationRow(Icons.location_on, const Color(0xFFEF4444), 'Drop', t.destinationAddress),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _pill(Icons.payment, t.paymentMethod.toUpperCase()),
-                const SizedBox(width: 8),
-                _pill(Icons.directions_car, t.vehicleName ?? 'Ride'),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: widget.onReject,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF4444),
-                      side: const BorderSide(color: Color(0xFFEF4444)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('✕  Decline', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: widget.onAccept,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    child: Text('Accept ($_seconds)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _locationRow(IconData icon, Color color, String label, String address) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-              Text(address, style: const TextStyle(color: Colors.white, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-            ],
+            child: Center(child: Text('$_countdown',
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
           ),
+        ]),
+        const SizedBox(height: 16),
+        const Text('New Trip Request!',
+          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(children: [
+            _row(Icons.location_on, const Color(0xFF2563EB), trip['pickupAddress'] ?? 'Pickup'),
+            const Padding(padding: EdgeInsets.only(left: 12), child: Divider(color: Colors.white12, height: 12)),
+            _row(Icons.flag, Colors.orange, trip['destinationAddress'] ?? 'Destination'),
+          ]),
         ),
-      ],
-    );
-  }
-
-  Widget _pill(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: const Color(0xFF060D1E), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF1E3A5F))),
-      child: Row(children: [
-        Icon(icon, size: 14, color: const Color(0xFF64748B)),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(children: [
+            _info(Icons.route, '${trip['estimatedDistance'] ?? '--'} km'),
+            const SizedBox(width: 16),
+            _info(Icons.payments_outlined, '₹${trip['estimatedFare'] ?? '--'}'),
+            const SizedBox(width: 16),
+            _info(Icons.access_time, '~${trip['eta'] ?? 5} min'),
+          ]),
+        ),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: widget.onReject,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: widget.onAccept,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
+                child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 24),
       ]),
     );
+  }
+
+  Widget _row(IconData icon, Color color, String text) {
+    return Row(children: [
+      Icon(icon, color: color, size: 18),
+      const SizedBox(width: 10),
+      Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+        maxLines: 1, overflow: TextOverflow.ellipsis)),
+    ]);
+  }
+
+  Widget _info(IconData icon, String label) {
+    return Row(children: [
+      Icon(icon, color: Colors.white.withOpacity(0.5), size: 16),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w500)),
+    ]);
   }
 }
