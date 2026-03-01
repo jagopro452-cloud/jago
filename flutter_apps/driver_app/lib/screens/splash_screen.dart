@@ -11,34 +11,42 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late AnimationController _logoCtrl;
-  late AnimationController _textCtrl;
-  late Animation<double> _bgFade;
-  late Animation<double> _logoScale;
-  late Animation<double> _logoFade;
-  late Animation<double> _textFade;
+  late AnimationController _bgCtrl, _logoCtrl, _textCtrl, _pulseCtrl, _ringCtrl;
+  late Animation<double> _bgFade, _logoScale, _logoFade, _textFade, _ringExpand;
   late Animation<Offset> _textSlide;
+
+  static const _bg     = Color(0xFF060D1E);
+  static const _surface= Color(0xFF0D1B3E);
+  static const _blue   = Color(0xFF2563EB);
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
-    _textCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _bgFade = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
-    _logoScale = Tween<double>(begin: 0.6, end: 1).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut));
-    _logoFade = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeIn));
-    _textFade = Tween<double>(begin: 0, end: 1).animate(_textCtrl);
-    _textSlide = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ));
+    _bgCtrl   = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _textCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))..repeat(reverse: true);
+    _ringCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500))..repeat();
+
+    _bgFade    = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _bgCtrl, curve: Curves.easeOut));
+    _logoScale = Tween<double>(begin: 0.5, end: 1).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut));
+    _logoFade  = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeIn));
+    _textFade  = Tween<double>(begin: 0, end: 1).animate(_textCtrl);
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
         .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut));
-    _runAnimations();
+    _ringExpand = Tween<double>(begin: 0.7, end: 1.4).animate(
+        CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOut));
+
+    _runAnims();
     _navigate();
   }
 
-  void _runAnimations() async {
-    await _ctrl.forward();
+  void _runAnims() async {
+    await _bgCtrl.forward();
     await _logoCtrl.forward();
     await Future.delayed(const Duration(milliseconds: 150));
     _textCtrl.forward();
@@ -52,15 +60,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     Navigator.pushReplacement(context, PageRouteBuilder(
       pageBuilder: (_, a, __) => token != null ? const HomeScreen() : const LoginScreen(),
       transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
-      transitionDuration: const Duration(milliseconds: 400),
+      transitionDuration: const Duration(milliseconds: 500),
     ));
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
-    _logoCtrl.dispose();
-    _textCtrl.dispose();
+    _bgCtrl.dispose(); _logoCtrl.dispose(); _textCtrl.dispose();
+    _pulseCtrl.dispose(); _ringCtrl.dispose();
     super.dispose();
   }
 
@@ -68,110 +75,109 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
+      backgroundColor: _bg,
       body: AnimatedBuilder(
-        animation: Listenable.merge([_ctrl, _logoCtrl, _textCtrl]),
-        builder: (_, __) => Container(
-          width: double.infinity, height: double.infinity,
-          color: const Color(0xFF060D1E),
-          child: Stack(children: [
-            Positioned(
-              top: -80, right: -80,
-              child: Opacity(
-                opacity: _bgFade.value * 0.25,
+        animation: Listenable.merge([_bgCtrl, _logoCtrl, _textCtrl, _pulseCtrl, _ringCtrl]),
+        builder: (_, __) => SizedBox.expand(
+          child: Stack(alignment: Alignment.center, children: [
+            // Radial glow top-right
+            Positioned(top: -80, right: -80,
+              child: Opacity(opacity: _bgFade.value * 0.28,
                 child: Container(
-                  width: size.width * 0.8, height: size.width * 0.8,
+                  width: size.width * 0.85, height: size.width * 0.85,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [const Color(0xFF2563EB), const Color(0xFF2563EB).withOpacity(0)],
-                    ),
+                    gradient: RadialGradient(colors: [_blue, _blue.withOpacity(0)]),
                   ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -100, left: -60,
-              child: Opacity(
-                opacity: _bgFade.value * 0.12,
-                child: Container(
-                  width: size.width * 0.7, height: size.width * 0.7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [const Color(0xFF1E6DE5), const Color(0xFF1E6DE5).withOpacity(0)],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+                ))),
+            // Grid pattern
             Positioned.fill(
-              child: CustomPaint(painter: _GridPainter(opacity: _bgFade.value * 0.03)),
+              child: Opacity(
+                opacity: _bgFade.value * 0.035,
+                child: CustomPaint(painter: _GridPainter()),
+              ),
+            ),
+            // Animated ring
+            Opacity(
+              opacity: (1 - _ringExpand.value / 1.4) * 0.25 * _bgFade.value,
+              child: Transform.scale(scale: _ringExpand.value,
+                child: Container(
+                  width: 200, height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _blue, width: 1.5),
+                  ),
+                )),
             ),
             SafeArea(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 const Spacer(flex: 2),
-                Opacity(
-                  opacity: _logoFade.value,
-                  child: Transform.scale(
-                    scale: _logoScale.value,
+                // Logo
+                Opacity(opacity: _logoFade.value,
+                  child: Transform.scale(scale: _logoScale.value,
+                    child: Container(
+                      width: 120, height: 120,
+                      decoration: BoxDecoration(
+                        color: _surface,
+                        borderRadius: BorderRadius.circular(34),
+                        border: Border.all(color: _blue.withOpacity(0.35), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 55, spreadRadius: 5),
+                          BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20),
+                        ],
+                      ),
+                      child: Center(
+                        child: Image.asset('assets/images/pilot_logo.png', width: 72, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text('JAGO', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900,
+                                color: Colors.white, letterSpacing: 3)),
+                              Text('PILOT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                                color: _blue, letterSpacing: 5)),
+                            ],
+                          )),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 36),
+                // Text
+                SlideTransition(position: _textSlide,
+                  child: FadeTransition(opacity: _textFade,
                     child: Column(children: [
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Text('JAGO ', style: TextStyle(color: Colors.white,
+                          fontSize: 40, fontWeight: FontWeight.w900, letterSpacing: 7)),
+                        Text('PILOT', style: TextStyle(color: _blue,
+                          fontSize: 40, fontWeight: FontWeight.w900, letterSpacing: 7)),
+                      ]),
+                      const SizedBox(height: 10),
                       Container(
-                        width: 110, height: 110,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0D1B3E),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.3), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.3),
-                              blurRadius: 50, spreadRadius: 5),
-                          ],
+                          color: _blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: _blue.withOpacity(0.2), width: 1),
                         ),
-                        child: Center(
-                          child: Image.asset('assets/images/pilot_logo.png',
-                            width: 68, fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text('JAGO', style: TextStyle(fontSize: 18,
-                                  fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2)),
-                                Text('PILOT', style: TextStyle(fontSize: 10,
-                                  fontWeight: FontWeight.w700, color: const Color(0xFF2563EB).withOpacity(0.8), letterSpacing: 4)),
-                              ],
-                            )),
-                        ),
+                        child: Text('Drive Smarter.',
+                          style: TextStyle(color: Colors.white.withOpacity(0.6),
+                            fontSize: 13, fontWeight: FontWeight.w400, letterSpacing: 2.5)),
                       ),
                     ]),
                   ),
                 ),
-                const SizedBox(height: 32),
-                SlideTransition(
-                  position: _textSlide,
-                  child: FadeTransition(
-                    opacity: _textFade,
-                    child: Column(children: [
-                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        const Text('JAGO ', style: TextStyle(color: Colors.white,
-                          fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: 6)),
-                        Text('PILOT', style: TextStyle(color: const Color(0xFF2563EB),
-                          fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: 6)),
-                      ]),
-                      const SizedBox(height: 8),
-                      Text('Drive Smarter.', style: TextStyle(color: Colors.white.withOpacity(0.5),
-                        fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 2)),
-                    ]),
-                  ),
-                ),
                 const Spacer(flex: 3),
-                FadeTransition(
-                  opacity: _textFade,
+                FadeTransition(opacity: _textFade,
                   child: Column(children: [
-                    SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 1.5,
-                        color: const Color(0xFF2563EB).withOpacity(0.5))),
+                    SizedBox(width: 22, height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 1.8,
+                        color: _blue.withOpacity(0.6), backgroundColor: _blue.withOpacity(0.1))),
                     const SizedBox(height: 18),
                     Text('MindWhile IT Solutions',
-                      style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 11, letterSpacing: 0.5)),
-                    const SizedBox(height: 40),
+                      style: TextStyle(color: Colors.white.withOpacity(0.25),
+                        fontSize: 11, letterSpacing: 0.5)),
+                    const SizedBox(height: 48),
                   ]),
                 ),
               ]),
@@ -184,21 +190,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 }
 
 class _GridPainter extends CustomPainter {
-  final double opacity;
-  _GridPainter({required this.opacity});
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(opacity)
-      ..strokeWidth = 0.5;
-    const spacing = 40.0;
-    for (double x = 0; x < size.width; x += spacing) {
+    final paint = Paint()..color = Colors.white..strokeWidth = 0.5;
+    const step = 28.0;
+    for (double x = 0; x < size.width; x += step) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
-    for (double y = 0; y < size.height; y += spacing) {
+    for (double y = 0; y < size.height; y += step) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
   @override
-  bool shouldRepaint(_GridPainter old) => old.opacity != opacity;
+  bool shouldRepaint(_) => false;
 }
