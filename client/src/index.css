@@ -2642,6 +2642,21 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   line-height: 1;
   text-shadow: 0 0 40px rgba(96,165,250,0.4);
 }
+.jl-logo-img-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 12px 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.jl-logo-img {
+  height: 52px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
 .jl-logo-tag {
   background: rgba(255,255,255,0.12);
   border: 1px solid rgba(255,255,255,0.2);

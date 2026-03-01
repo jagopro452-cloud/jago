@@ -112,7 +112,9 @@ export default function AdminLogin() {
         <div className="jl-brand-inner">
           {/* Logo */}
           <div className="jl-logo-wrap">
-            <div className="jl-logo-text" data-testid="brand-logo">JAGO</div>
+            <div className="jl-logo-img-card" data-testid="brand-logo">
+              <img src="/jago-logo-white.png" alt="JAGO" className="jl-logo-img" />
+            </div>
             <span className="jl-logo-tag">Admin Console</span>
           </div>
 
