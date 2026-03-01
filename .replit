@@ -43,3 +43,4 @@ waitForPort = 5000
 
 [userenv.shared]
 FIREBASE_WEB_API_KEY = "AIzaSyCckhJY3NMZTjOkXWMJhor_GIMmQflo1U8"
+GOOGLE_MAPS_SERVER_KEY = "AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw"

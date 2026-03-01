@@ -8,7 +8,7 @@ class ApiConfig {
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static const String googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+  static const String googleMapsApiKey = 'AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw';
 
   static String get sendOtp => '$baseUrl/api/app/send-otp';
   static String get verifyOtp => '$baseUrl/api/app/verify-otp';
