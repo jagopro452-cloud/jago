@@ -111,6 +111,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Seed trips after a short delay
   setTimeout(seedInitialTrips, 2000);
 
+  // Health check endpoint
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const { pool: dbPool } = await import("./db");
+      await dbPool.query("SELECT 1");
+      res.json({ status: "ok", db: "connected", ts: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(503).json({ status: "error", db: "disconnected", message: e.message });
+    }
+  });
+
   // Heat Map & Fleet View points
   app.get("/api/heatmap-points", async (_req, res) => {
     try {
@@ -384,6 +395,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/vehicle-categories/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.delete("/api/vehicle-categories/:id", async (req, res) => {
     try {
       await storage.deleteVehicleCategory(req.params.id);
@@ -513,6 +532,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  app.patch("/api/coupons/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE coupon_setups SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.delete("/api/coupons/:id", async (req, res) => {

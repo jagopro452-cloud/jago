@@ -91,7 +91,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="navbar-bottom-wrapper">
               <a href="/" className="logo" style={{ maxWidth: "320px", height: "auto" }}>
-                <img src="/jago-logo.png" alt="JAGO" style={{ width: "100%", height: "auto", maxHeight: "80px", objectFit: "contain" }} />
+                <img src="/jago-logo-white.png" alt="JAGO" style={{ width: "100%", height: "auto", maxHeight: "80px", objectFit: "contain" }} />
               </a>
               <ul className={`menu me-lg-4${menuOpen ? " show" : ""}`} style={{ display: menuOpen ? "flex" : undefined, flexDirection: menuOpen ? "column" : undefined }}>
                 {LINKS.map(l => (
@@ -407,7 +407,7 @@ export default function LandingPage() {
                     <div className="footer-contact-icon"><i className="bi bi-telephone-fill"></i></div>
                     <div>
                       <span className="footer-contact-label">Phone</span>
-                      <a href="tel:+911234567890" className="footer-contact-value">+91 12345 67890</a>
+                      <a href="tel:+918008101119" className="footer-contact-value">+91 80081 01119</a>
                     </div>
                   </div>
                   <div className="footer-contact-item">
