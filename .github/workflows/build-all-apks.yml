@@ -1,0 +1,67 @@
+name: Build All APKs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-driver:
+    name: JAGO Pilot (Driver App)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        working-directory: flutter_apps/driver_app
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: flutter_apps/driver_app
+        run: flutter build apk --debug --no-shrink
+
+      - name: Upload Driver APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JAGO-Pilot-Driver-APK
+          path: flutter_apps/driver_app/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+  build-customer:
+    name: JAGO Customer App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        working-directory: flutter_apps/customer_app
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: flutter_apps/customer_app
+        run: flutter build apk --debug --no-shrink
+
+      - name: Upload Customer APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JAGO-Customer-APK
+          path: flutter_apps/customer_app/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
