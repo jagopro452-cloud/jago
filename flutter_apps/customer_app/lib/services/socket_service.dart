@@ -1,0 +1,113 @@
+import 'dart:async';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class SocketService {
+  static final SocketService _instance = SocketService._internal();
+  factory SocketService() => _instance;
+  SocketService._internal();
+
+  IO.Socket? _socket;
+  bool _isConnected = false;
+
+  // Stream controllers for events
+  final _driverAssignedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _driverLocationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
+  final _connectedController = StreamController<bool>.broadcast();
+
+  Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
+  Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
+  Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
+  Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
+  Stream<bool> get onConnectionChanged => _connectedController.stream;
+  bool get isConnected => _isConnected;
+
+  Future<void> connect(String baseUrl) async {
+    if (_isConnected) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? '';
+    final token = prefs.getString('auth_token') ?? '';
+
+    if (userId.isEmpty) return;
+
+    _socket = IO.io(
+      baseUrl,
+      IO.OptionBuilder()
+          .setTransports(['websocket', 'polling'])
+          .setQuery({'userId': userId, 'userType': 'customer', 'token': token})
+          .enableAutoConnect()
+          .enableReconnection()
+          .setReconnectionAttempts(999)
+          .setReconnectionDelay(3000)
+          .build(),
+    );
+
+    _socket!.on('connect', (_) {
+      _isConnected = true;
+      _connectedController.add(true);
+      print('[SOCKET-CUSTOMER] Connected as $userId');
+    });
+
+    _socket!.on('disconnect', (_) {
+      _isConnected = false;
+      _connectedController.add(false);
+      print('[SOCKET-CUSTOMER] Disconnected');
+    });
+
+    // Driver assigned to my trip
+    _socket!.on('trip:driver_assigned', (data) {
+      print('[SOCKET-CUSTOMER] Driver assigned: $data');
+      _driverAssignedController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Real-time driver GPS location
+    _socket!.on('driver:location_update', (data) {
+      _driverLocationController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Trip status changed (arrived, in_progress, completed, cancelled)
+    _socket!.on('trip:status_update', (data) {
+      print('[SOCKET-CUSTOMER] Trip status: $data');
+      _tripStatusController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Trip cancelled by driver
+    _socket!.on('trip:cancelled', (data) {
+      print('[SOCKET-CUSTOMER] Trip cancelled: $data');
+      _tripCancelledController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.connect();
+  }
+
+  // Start tracking a specific trip
+  void trackTrip(String tripId) {
+    if (!_isConnected) return;
+    _socket!.emit('customer:track_trip', {'tripId': tripId});
+    print('[SOCKET-CUSTOMER] Tracking trip $tripId');
+  }
+
+  // Cancel a trip
+  void cancelTrip(String tripId) {
+    if (!_isConnected) return;
+    _socket!.emit('customer:cancel_trip', {'tripId': tripId});
+  }
+
+  void disconnect() {
+    _socket?.disconnect();
+    _socket = null;
+    _isConnected = false;
+  }
+
+  void dispose() {
+    disconnect();
+    _driverAssignedController.close();
+    _driverLocationController.close();
+    _tripStatusController.close();
+    _tripCancelledController.close();
+    _connectedController.close();
+  }
+}

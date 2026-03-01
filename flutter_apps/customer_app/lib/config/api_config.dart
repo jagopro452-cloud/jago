@@ -10,6 +10,9 @@ class ApiConfig {
 
   static const String googleMapsApiKey = 'AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw';
 
+  // Socket.IO base URL (same server, no path)
+  static String get socketUrl => baseUrl;
+
   static String get sendOtp => '$baseUrl/api/app/send-otp';
   static String get verifyOtp => '$baseUrl/api/app/verify-otp';
   static String get logout => '$baseUrl/api/app/logout';

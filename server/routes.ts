@@ -2,6 +2,7 @@ import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled } from "./fcm";
 import { sendOtpSms } from "./sms";
+import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -3091,7 +3092,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (nearestDriver) {
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=${(trip.rows[0] as any).id}::uuid WHERE id=${nearestDriver.id}::uuid`);
 
-        // 🔔 Send sound alert push notification to driver
+        // 🔔 Send FCM push notification to driver
         const driverDeviceRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nearestDriver.id}::uuid`);
         const driverFcmToken = (driverDeviceRes.rows[0] as any)?.fcm_token || null;
         const tripRow = camelize(trip.rows[0]) as any;
@@ -3103,6 +3104,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           estimatedFare: tripRow.estimatedFare || estimatedFare || 0,
           tripId: tripRow.id,
         }).catch(() => {});
+
+        // 🔌 Real-time socket: notify driver immediately
+        if (io) {
+          io.to(`user:${nearestDriver.id}`).emit("trip:new_request", {
+            tripId: tripRow.id,
+            refId: tripRow.refId,
+            customerName: customer.fullName || "Customer",
+            pickupAddress: pickupAddress,
+            destinationAddress: finalDestAddress,
+            pickupLat: Number(pickupLat),
+            pickupLng: Number(pickupLng),
+            estimatedFare: tripRow.estimatedFare || estimatedFare || 0,
+            estimatedDistance: tripRow.estimatedDistance || finalDistance || 0,
+            paymentMethod: finalPayment,
+            tripType,
+          });
+        }
+      } else {
+        // No driver found — broadcast to all nearby online drivers via socket
+        const tripRow = camelize(trip.rows[0]) as any;
+        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(() => {});
       }
 
       res.json({

@@ -1,0 +1,138 @@
+import 'dart:async';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class SocketService {
+  static final SocketService _instance = SocketService._internal();
+  factory SocketService() => _instance;
+  SocketService._internal();
+
+  IO.Socket? _socket;
+  bool _isConnected = false;
+
+  // Stream controllers for events
+  final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _connectedController = StreamController<bool>.broadcast();
+
+  Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
+  Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
+  Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
+  Stream<bool> get onConnectionChanged => _connectedController.stream;
+  bool get isConnected => _isConnected;
+
+  Future<void> connect(String baseUrl) async {
+    if (_isConnected) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? '';
+    final token = prefs.getString('auth_token') ?? '';
+
+    if (userId.isEmpty) return;
+
+    _socket = IO.io(
+      baseUrl,
+      IO.OptionBuilder()
+          .setTransports(['websocket', 'polling'])
+          .setQuery({'userId': userId, 'userType': 'driver', 'token': token})
+          .enableAutoConnect()
+          .enableReconnection()
+          .setReconnectionAttempts(999)
+          .setReconnectionDelay(3000)
+          .build(),
+    );
+
+    _socket!.on('connect', (_) {
+      _isConnected = true;
+      _connectedController.add(true);
+      print('[SOCKET-DRIVER] Connected as $userId');
+    });
+
+    _socket!.on('disconnect', (_) {
+      _isConnected = false;
+      _connectedController.add(false);
+      print('[SOCKET-DRIVER] Disconnected');
+    });
+
+    // New trip request from customer
+    _socket!.on('trip:new_request', (data) {
+      print('[SOCKET-DRIVER] New trip: $data');
+      _newTripController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Trip cancelled by customer
+    _socket!.on('trip:cancelled', (data) {
+      print('[SOCKET-DRIVER] Trip cancelled: $data');
+      _tripCancelledController.add(Map<String, dynamic>.from(data));
+    });
+
+    // General trip status
+    _socket!.on('trip:status_update', (data) {
+      _tripStatusController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.connect();
+  }
+
+  // Send driver location to server
+  void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
+    if (!_isConnected) return;
+    _socket!.emit('driver:location', {
+      'lat': lat,
+      'lng': lng,
+      'heading': heading,
+      'speed': speed,
+    });
+  }
+
+  // Go online / offline
+  void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {
+    if (!_isConnected) return;
+    _socket!.emit('driver:online', {
+      'isOnline': isOnline,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+    });
+  }
+
+  // Accept a trip
+  Future<bool> acceptTrip(String tripId) async {
+    if (!_isConnected) return false;
+    final completer = Completer<bool>();
+    _socket!.emitWithAck('driver:accept_trip', {'tripId': tripId}, ack: (data) {
+      completer.complete(true);
+    });
+    _socket!.once('driver:accept_trip_ok', (_) {
+      if (!completer.isCompleted) completer.complete(true);
+    });
+    _socket!.once('driver:accept_trip_error', (_) {
+      if (!completer.isCompleted) completer.complete(false);
+    });
+    return completer.future.timeout(const Duration(seconds: 10), onTimeout: () => false);
+  }
+
+  // Update trip status
+  void updateTripStatus(String tripId, String status, {String? otp}) {
+    if (!_isConnected) return;
+    _socket!.emit('driver:trip_status', {
+      'tripId': tripId,
+      'status': status,
+      if (otp != null) 'otp': otp,
+    });
+  }
+
+  void disconnect() {
+    _socket?.disconnect();
+    _socket = null;
+    _isConnected = false;
+  }
+
+  void dispose() {
+    disconnect();
+    _newTripController.close();
+    _tripCancelledController.close();
+    _tripStatusController.close();
+    _connectedController.close();
+  }
+}
