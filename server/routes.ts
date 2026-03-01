@@ -4127,7 +4127,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const today = await rawDb.execute(rawSql`
         SELECT COUNT(*) as cnt, COALESCE(SUM(EXTRACT(EPOCH FROM (updated_at - created_at))/3600), 0) as hrs
         FROM trip_requests WHERE driver_id=${user.id}::uuid
-        AND created_at >= CURRENT_DATE AND (status='completed' OR status='on_the_way')
+        AND created_at >= CURRENT_DATE AND (current_status='completed' OR current_status='on_the_way')
       `);
       const trips = parseInt((today.rows[0] as any)?.cnt || 0);
       const hrs = parseFloat((today.rows[0] as any)?.hrs || 0);
