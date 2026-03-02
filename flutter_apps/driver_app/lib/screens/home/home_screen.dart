@@ -17,6 +17,7 @@ import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../break_mode/break_mode_screen.dart';
 import '../trip/trip_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -342,7 +343,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ]),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
+        _iconBtn(Icons.notifications_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
+        const SizedBox(width: 8),
         _iconBtn(Icons.my_location_rounded, _getLocation),
       ]),
     );

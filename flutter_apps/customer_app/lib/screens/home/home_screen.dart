@@ -17,6 +17,7 @@ import '../monthly_pass/monthly_pass_screen.dart';
 import '../profile/profile_screen.dart';
 import '../booking/booking_screen.dart';
 import '../tracking/tracking_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -268,16 +269,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Text('Hi, ${_userName.split(' ').first} 👋',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
               ),
-              Stack(children: [
-                Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.notifications_rounded, color: Color(0xFF1E6DE5), size: 20),
-                ),
-                Positioned(top: 7, right: 7,
-                  child: Container(width: 7, height: 7,
-                    decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle))),
-              ]),
+              GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                child: Stack(children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.notifications_rounded, color: Color(0xFF1E6DE5), size: 20),
+                  ),
+                  Positioned(top: 7, right: 7,
+                    child: Container(width: 7, height: 7,
+                      decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle))),
+                ]),
+              ),
             ]),
           ),
         ),

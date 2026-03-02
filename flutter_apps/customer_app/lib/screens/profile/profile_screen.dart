@@ -7,6 +7,7 @@ import '../preferences/ride_preferences_screen.dart';
 import '../monthly_pass/monthly_pass_screen.dart';
 import '../lost_found/lost_found_screen.dart';
 import '../safety/emergency_contacts_screen.dart';
+import '../referral/referral_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -253,6 +254,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const Color(0xFF1E6DE5), cardBg, textColor, divColor,
                       () => Navigator.push(context, MaterialPageRoute(
                           builder: (_) => const MonthlyPassScreen()))),
+                  _tile(Icons.card_giftcard_rounded, 'Refer & Earn',
+                      Colors.amber.shade700, cardBg, textColor, divColor,
+                      () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const ReferralScreen()))),
                 ], cardBg),
                 const SizedBox(height: 12),
                 _section([

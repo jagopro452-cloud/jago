@@ -46,11 +46,31 @@ function camelize(obj: any): any {
 }
 
 
-// Login rate limiter — max 10 attempts per 15 minutes per IP
+// Login rate limiter — max 20 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+// OTP rate limiter — max 10 requests per hour per IP (extra protection beyond per-phone DB check)
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { message: "Too many OTP requests. Please try again after an hour." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+// App API general rate limiter — max 300 requests per minute per IP
+const appLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: { message: "Too many requests. Please slow down." },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -2430,7 +2450,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════════════
 
   // ── OTP SEND (Twilio SMS gateway) ──────────────────────────────────────
-  app.post("/api/app/send-otp", async (req, res) => {
+  app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
