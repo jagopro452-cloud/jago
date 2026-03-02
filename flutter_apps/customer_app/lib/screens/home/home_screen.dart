@@ -55,10 +55,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _bannerPage = 0;
   List<dynamic> _savedPlaces = [];
   StreamSubscription? _driverAssignedSub;
+  late AnimationController _shimmerCtrl;
+  late Animation<double> _shimmerAnim;
 
   static const Color _blue = Color(0xFF1E6DE5);
   static const Color _dark = Color(0xFF111827);
   static const Color _gray = Color(0xFF6B7280);
+
+  String _getTimeGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good Morning ☀️';
+    if (h < 17) return 'Good Afternoon 🌤️';
+    if (h < 20) return 'Good Evening 🌆';
+    return 'Good Night 🌙';
+  }
 
   static IconData _iconForVehicle(String name, {String? type}) {
     final n = name.toLowerCase();
@@ -80,6 +90,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat(reverse: true);
+    _shimmerAnim = Tween<double>(begin: 0.3, end: 0.85).animate(
+      CurvedAnimation(parent: _shimmerCtrl, curve: Curves.easeInOut));
     _loadUser();
     _getLocation();
     _fetchHome();
@@ -145,6 +159,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _shimmerCtrl.dispose();
     _driverAssignedSub?.cancel();
     super.dispose();
   }
@@ -303,8 +318,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Container(width: 1, height: 20, color: const Color(0xFFE5E7EB)),
               const SizedBox(width: 12),
               Expanded(
-                child: Text('Hi, ${_userName.split(' ').first} 👋',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(_getTimeGreeting(), style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10, color: Colors.grey[500])),
+                  const SizedBox(height: 1),
+                  Text(_userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'there',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF111827))),
+                ]),
               ),
               GestureDetector(
                 onTap: () {
@@ -636,10 +655,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ]),
   );
 
+  Widget _shimmerBox({double width = double.infinity, double height = 14, double radius = 8}) {
+    return AnimatedBuilder(
+      animation: _shimmerAnim,
+      builder: (ctx, _) => Container(
+        width: width, height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: LinearGradient(
+            colors: [
+              Color.lerp(const Color(0xFFE2E8F0), const Color(0xFFF8FAFC), _shimmerAnim.value)!,
+              Color.lerp(const Color(0xFFF1F5F9), const Color(0xFFFFFFFF), _shimmerAnim.value)!,
+              Color.lerp(const Color(0xFFE2E8F0), const Color(0xFFF8FAFC), _shimmerAnim.value)!,
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleShimmer() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _shimmerBox(width: 110, height: 12, radius: 6),
+      const SizedBox(height: 10),
+      Row(children: List.generate(3, (i) => Padding(
+        padding: EdgeInsets.only(right: i < 2 ? 10 : 0),
+        child: Container(
+          width: 110, height: 130,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: const Color(0xFFF8FAFC),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            _shimmerBox(width: 50, height: 50, radius: 12),
+            const SizedBox(height: 10),
+            _shimmerBox(width: 70, height: 11, radius: 5),
+            const SizedBox(height: 6),
+            _shimmerBox(width: 50, height: 9, radius: 5),
+            const SizedBox(height: 8),
+            _shimmerBox(width: 60, height: 20, radius: 8),
+          ]),
+        ),
+      ))),
+    ]);
+  }
+
   Widget _buildVehicleSection() {
     if (_loading) {
-      return const Center(child: SizedBox(height: 80, child: Center(
-        child: CircularProgressIndicator(color: Color(0xFF1E6DE5), strokeWidth: 2))));
+      return _buildVehicleShimmer();
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Choose Vehicle', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,

@@ -133,7 +133,15 @@ function PhoneMockup({ type }: { type: "customer" | "driver" }) {
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   useReveal();
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -183,12 +191,70 @@ export default function LandingPage() {
         .ticker-wrap { overflow:hidden; width:100%; }
         .ticker-inner { display:flex; width:max-content; animation:marquee 28s linear infinite; }
         .ticker-inner:hover { animation-play-state:paused; }
+        /* CTA button micro-interactions */
+        .cta-primary { transition:all 0.2s ease !important; }
+        .cta-primary:hover { transform:translateY(-2px) !important; box-shadow:0 8px 28px rgba(30,109,229,0.55) !important; }
+        .cta-primary:active { transform:translateY(0) !important; }
+        .cta-ghost { transition:all 0.2s ease !important; }
+        .cta-ghost:hover { background:rgba(255,255,255,0.12) !important; border-color:rgba(255,255,255,0.4) !important; transform:translateY(-2px) !important; }
+        /* Animated particle dots */
+        @keyframes particle-float { 0%,100%{transform:translateY(0) scale(1);opacity:0.4} 50%{transform:translateY(-20px) scale(1.2);opacity:0.8} }
+        .particle { position:absolute; border-radius:50%; background:rgba(30,109,229,0.5); animation:particle-float linear infinite; pointer-events:none; }
+        /* Mobile nav */
+        .mobile-menu { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(5,11,31,0.98); backdrop-filter:blur(20px); z-index:999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:32px; }
+        .mobile-menu-link { color:rgba(255,255,255,0.85); font-size:22px; font-weight:700; text-decoration:none; letter-spacing:-0.3px; transition:color 0.2s; }
+        .mobile-menu-link:hover { color:white; }
+        /* Hamburger */
+        .hamburger { display:flex; flex-direction:column; gap:5px; cursor:pointer; padding:8px; border:none; background:transparent; }
+        .hamburger span { width:22px; height:2px; background:white; border-radius:2px; transition:all 0.3s ease; display:block; }
+        /* Hide desktop nav on mobile */
+        @media(max-width:900px){
+          .desktop-nav { display:none !important; }
+          .desktop-cta { display:none !important; }
+        }
+        @media(min-width:901px){ .hamburger { display:none !important; } }
+        /* App store buttons */
+        .store-btn { display:flex; align-items:center; gap:10px; border-radius:12px; padding:12px 20px; text-decoration:none; transition:all 0.2s ease; }
+        .store-btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.2); }
+        /* Rating badge */
+        @keyframes glow-pulse { 0%,100%{box-shadow:0 0 8px rgba(250,204,21,0.4)} 50%{box-shadow:0 0 20px rgba(250,204,21,0.7)} }
+        /* Responsive grids */
+        .footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:48px; margin-bottom:48px; }
+        @media(max-width:900px){ .footer-grid { grid-template-columns:1fr 1fr; gap:32px; } }
+        @media(max-width:600px){ .footer-grid { grid-template-columns:1fr; gap:24px; } }
+        .hero-phones { position:relative; display:flex; align-items:flex-end; gap:20px; justify-content:center; flex-shrink:0; }
+        @media(max-width:900px){ .hero-phones { display:none !important; } }
+        .solutions-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+        @media(max-width:900px){ .solutions-grid { grid-template-columns:repeat(2,1fr); } }
+        @media(max-width:600px){ .solutions-grid { grid-template-columns:1fr; } }
+        .driver-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:center; }
+        @media(max-width:900px){ .driver-grid { grid-template-columns:1fr; } }
+        .download-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+        @media(max-width:900px){ .download-grid { grid-template-columns:1fr; } }
       `}</style>
+
+      {/* ── MOBILE MENU OVERLAY ── */}
+      {menuOpen && (
+        <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+          <img src={jagoLogoWhite} style={{ height: 36, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />
+          {nav.map(n => (
+            <a key={n.label} href={n.href} className="mobile-menu-link" onClick={() => setMenuOpen(false)}>{n.label}</a>
+          ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8, width: "80%", maxWidth: 320 }}>
+            <a href="#driver" className="cta-ghost" style={{ padding: "13px 22px", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.2)", color: "white", fontSize: 15, fontWeight: 700, textDecoration: "none", textAlign: "center" }} onClick={() => setMenuOpen(false)}>
+              Become a Pilot
+            </a>
+            <a href="#download" className="cta-primary" style={{ padding: "13px 22px", borderRadius: 14, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 15, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)", textDecoration: "none", textAlign: "center" }} onClick={() => setMenuOpen(false)}>
+              Download App
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* ── NAVBAR ── */}
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000,
-        background: scrolled ? "rgba(8,12,30,0.95)" : "transparent",
+        background: scrolled ? "rgba(8,12,30,0.97)" : "transparent",
         backdropFilter: scrolled ? "blur(20px)" : "none",
         borderBottom: scrolled ? "1px solid rgba(255,255,255,0.06)" : "none",
         transition: "all 0.3s ease",
@@ -197,22 +263,28 @@ export default function LandingPage() {
           <a href="/">
             <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain" }} alt="JAGO" />
           </a>
-          <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
+          <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: 36 }}>
             {nav.map(n => (
-              <a key={n.label} href={n.href} style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, fontWeight: 500, transition: "color 0.2s", display: window.innerWidth < 768 ? "none" : "block" }}
+              <a key={n.label} href={n.href} style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, fontWeight: 500, transition: "color 0.2s" }}
                 onMouseEnter={e => (e.target as HTMLElement).style.color = "white"}
                 onMouseLeave={e => (e.target as HTMLElement).style.color = "rgba(255,255,255,0.75)"}
               >{n.label}</a>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <a href="#driver" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+          <div className="desktop-cta" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <a href="#driver" className="cta-ghost" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
               Become a Pilot
             </a>
-            <a href="#download" style={{ padding: "9px 22px", borderRadius: 10, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)", textDecoration: "none" }}>
+            <a href="#download" className="cta-primary" style={{ padding: "9px 22px", borderRadius: 10, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)", textDecoration: "none" }}>
               Download App
             </a>
           </div>
+          {/* Hamburger — mobile only */}
+          <button className="hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu">
+            <span style={{ transform: menuOpen ? "rotate(45deg) translate(5px, 5px)" : "none" }}></span>
+            <span style={{ opacity: menuOpen ? 0 : 1 }}></span>
+            <span style={{ transform: menuOpen ? "rotate(-45deg) translate(5px, -5px)" : "none" }}></span>
+          </button>
         </div>
       </nav>
 
@@ -229,6 +301,22 @@ export default function LandingPage() {
           {Array.from({length:30},(_,i)=><line key={`v${i}`} x1={`${i*5}%`} y1="0%" x2={`${i*5}%`} y2="100%" stroke="white" strokeWidth="0.5"/>)}
           {Array.from({length:20},(_,i)=><line key={`h${i}`} x1="0%" y1={`${i*5}%`} x2="100%" y2={`${i*5}%`} stroke="white" strokeWidth="0.5"/>)}
         </svg>
+        {/* Animated particles */}
+        {[
+          {w:6,h:6,top:"15%",left:"8%",dur:"6s",delay:"0s"},
+          {w:4,h:4,top:"35%",left:"15%",dur:"8s",delay:"1s"},
+          {w:8,h:8,top:"65%",left:"5%",dur:"7s",delay:"2s"},
+          {w:5,h:5,top:"80%",left:"20%",dur:"9s",delay:"0.5s"},
+          {w:4,h:4,top:"25%",left:"85%",dur:"6.5s",delay:"1.5s"},
+          {w:7,h:7,top:"55%",left:"90%",dur:"8s",delay:"3s"},
+          {w:5,h:5,top:"10%",left:"75%",dur:"7.5s",delay:"2.5s"},
+          {w:3,h:3,top:"45%",left:"45%",dur:"5.5s",delay:"4s"},
+        ].map((p,i) => (
+          <div key={i} className="particle" style={{
+            width: p.w, height: p.h, top: p.top, left: p.left,
+            animationDuration: p.dur, animationDelay: p.delay,
+          }} />
+        ))}
 
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 48, flexWrap: "wrap" }}>
           {/* Left */}
@@ -251,18 +339,18 @@ export default function LandingPage() {
 
             {/* CTA Buttons */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 48 }}>
-              <a href="#download" style={{ display: "flex", alignItems: "center", gap: 10, background: "white", borderRadius: 14, padding: "14px 24px", color: "#0F172A", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 24px rgba(0,0,0,0.2)", transition: "transform 0.2s", textDecoration: "none" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="#00C773"/><path d="M3.609 1.814L14.3 12 3.61 22.186" fill="none"/></svg>
+              <a href="#download" className="cta-primary" style={{ display: "flex", alignItems: "center", gap: 10, background: "white", borderRadius: 14, padding: "14px 24px", color: "#0F172A", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 24px rgba(0,0,0,0.2)", textDecoration: "none" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24"><path d="M3.609 1.814A.5.5 0 0 0 3 2.5v19a.5.5 0 0 0 .61.49l18-5.5a.5.5 0 0 0 0-.98l-18-13.7z" fill="#00C773"/></svg>
                 Get JAGO App
               </a>
-              <a href="#driver" style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: "14px 24px", color: "white", fontWeight: 700, fontSize: 15, backdropFilter: "blur(10px)", textDecoration: "none" }}>
+              <a href="#driver" className="cta-ghost" style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: "14px 24px", color: "white", fontWeight: 700, fontSize: 15, backdropFilter: "blur(10px)", textDecoration: "none" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"/><path d="M12 8l4 4-4 4M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
                 Drive &amp; Earn
               </a>
             </div>
 
-            {/* Stats */}
-            <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
+            {/* Stats + App Store Rating */}
+            <div style={{ display: "flex", gap: 36, flexWrap: "wrap", alignItems: "flex-end" }}>
               {[
                 { n: 10000, sfx: "+", label: "Trips Completed" },
                 { n: 500, sfx: "+", label: "Active Pilots" },
@@ -275,11 +363,20 @@ export default function LandingPage() {
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4, fontWeight: 500 }}>{s.label}</div>
                 </div>
               ))}
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.1)", paddingLeft: 28 }}>
+                <div style={{ display: "flex", gap: 2, marginBottom: 3 }}>
+                  {[...Array(5)].map((_,i) => (
+                    <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  ))}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>4.8 / 5.0</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 500, marginTop: 1 }}>10K+ reviews</div>
+              </div>
             </div>
           </div>
 
           {/* Right — Phone mockups */}
-          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 20, justifyContent: "center", flexShrink: 0 }}>
+          <div className="hero-phones">
             <div className="float-card" style={{ marginBottom: 30 }}>
               <PhoneMockup type="customer" />
             </div>
@@ -493,7 +590,7 @@ export default function LandingPage() {
       <section id="driver" style={{ background: "linear-gradient(140deg, #050b1f 0%, #081535 50%, #0a1a40 100%)", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "50%", right: "5%", transform: "translateY(-50%)", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)" }} />
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", position: "relative" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="driver-grid">
             {/* Left */}
             <div>
               <img src={pilotLogo} style={{ height: 40, objectFit: "contain", marginBottom: 24 }} alt="JAGO Pilot" />
@@ -610,7 +707,7 @@ export default function LandingPage() {
       <section id="download" style={{ background: "linear-gradient(140deg, #050b1f 0%, #071230 60%, #0a1640 100%)", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 800, height: 800, borderRadius: "50%", background: "radial-gradient(circle, rgba(30,109,229,0.1) 0%, transparent 65%)" }} />
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", position: "relative" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="download-grid">
             {/* Customer */}
             <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 28, padding: 36 }}>
               <img src={jagoLogoWhite} style={{ height: 34, objectFit: "contain", marginBottom: 20 }} alt="JAGO" />
@@ -660,7 +757,7 @@ export default function LandingPage() {
       {/* ── FOOTER ── */}
       <footer style={{ background: "#030810", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "60px 24px 30px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 48, marginBottom: 48, flexWrap: "wrap" }}>
+          <div className="footer-grid">
             {/* Brand */}
             <div>
               <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />

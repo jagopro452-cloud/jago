@@ -54,6 +54,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   static const Color _surface = Color(0xFF0D1B3E);
   static const Color _green = Color(0xFF16A34A);
 
+  String _getTimeGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good Morning ☀️';
+    if (h < 17) return 'Good Afternoon 🌤️';
+    if (h < 20) return 'Good Evening 🌆';
+    return 'Good Night 🌙';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -414,6 +422,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           child: Column(children: [
+            // Time-based greeting + status indicator
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_getTimeGreeting(), style: TextStyle(
+                  color: Colors.white.withOpacity(0.4),
+                  fontSize: 11, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(_userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'Pilot',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (_isOnline ? _green : Colors.grey[700]!).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: (_isOnline ? _green : Colors.grey[600]!).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  AnimatedBuilder(
+                    animation: _pulseCtrl,
+                    builder: (_, __) => Container(
+                      width: 6, height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _isOnline ? _green : Colors.grey[500],
+                        boxShadow: _isOnline ? [BoxShadow(
+                          color: _green.withOpacity(0.5 + _pulseCtrl.value * 0.3),
+                          blurRadius: 4 + _pulseCtrl.value * 4,
+                        )] : [],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(_isOnline ? 'Online' : 'Offline',
+                    style: TextStyle(
+                      color: _isOnline ? _green : Colors.grey[500]!,
+                      fontSize: 11, fontWeight: FontWeight.w800,
+                    )),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 14),
             _buildStatsRow(),
             const SizedBox(height: 16),
             _buildToggleBtn(),
@@ -468,36 +521,99 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isOn = _isOnline;
     return GestureDetector(
       onTap: _toggling ? null : _toggleOnline,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        width: double.infinity,
-        height: 60,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isOn
-              ? [const Color(0xFF16A34A), const Color(0xFF15803D)]
-              : [const Color(0xFF1E3A8A), _blue],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(
-            color: (isOn ? _green : _blue).withOpacity(0.35),
-            blurRadius: 16, offset: const Offset(0, 5))],
-        ),
-        child: Center(
-          child: _toggling
-            ? const SizedBox(width: 24, height: 24,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(isOn ? Icons.power_settings_new_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white, size: 24),
-                const SizedBox(width: 10),
-                Text(
-                  isOn ? 'Online — Trip కోసం Ready ✓' : 'Go Online — Earn చేయండి',
-                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Multi-ring pulse animation when online
+          if (isOn) ...[
+            AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (_, __) => Container(
+                width: double.infinity,
+                height: 60 + (_pulseCtrl.value * 16),
+                margin: EdgeInsets.symmetric(vertical: -(_pulseCtrl.value * 8)),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16 + _pulseCtrl.value * 4),
+                  border: Border.all(
+                    color: _green.withOpacity(0.5 - _pulseCtrl.value * 0.5),
+                    width: 1.5,
+                  ),
                 ),
-              ]),
-        ),
+              ),
+            ),
+            AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (_, __) {
+                final delay = (_pulseCtrl.value + 0.5) % 1.0;
+                return Container(
+                  width: double.infinity,
+                  height: 60 + (delay * 24),
+                  margin: EdgeInsets.symmetric(vertical: -(delay * 12)),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16 + delay * 6),
+                    border: Border.all(
+                      color: _green.withOpacity(0.3 - delay * 0.3),
+                      width: 1,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOutCubic,
+            width: double.infinity,
+            height: 60,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isOn
+                  ? [const Color(0xFF15803D), const Color(0xFF16A34A), const Color(0xFF22C55E)]
+                  : [const Color(0xFF1E3A8A), _blue],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(
+                color: (isOn ? _green : _blue).withOpacity(isOn ? 0.5 : 0.3),
+                blurRadius: isOn ? 22 : 14,
+                spreadRadius: isOn ? 2 : 0,
+                offset: const Offset(0, 5),
+              )],
+            ),
+            child: Center(
+              child: _toggling
+                ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const SizedBox(width: 22, height: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
+                    const SizedBox(width: 12),
+                    Text(
+                      isOn ? 'Going Offline...' : 'Going Online...',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                  ])
+                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(
+                        isOn ? Icons.power_settings_new_rounded : Icons.play_arrow_rounded,
+                        key: ValueKey(isOn),
+                        color: Colors.white, size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        isOn ? 'Online — Trip కోసం Ready ✓' : 'Go Online — Earn చేయండి',
+                        key: ValueKey(isOn),
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                      ),
+                    ),
+                  ]),
+            ),
+          ),
+        ],
       ),
     );
   }

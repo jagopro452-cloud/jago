@@ -209,29 +209,60 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="card-body pt-0 px-3 pb-3">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={chart} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
-                      <defs>
-                        <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.25} />
-                          <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="gradTrips" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
-                          <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={42} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12, padding: "10px 14px" }}
-                        formatter={(val: any, name: string) => [name === "revenue" ? `₹${val}` : val, name === "revenue" ? "Revenue" : "Trips"]}
-                      />
-                      <Area type="monotone" dataKey="revenue" stroke="#1a73e8" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#1a73e8" }} />
-                      <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#gradTrips)" dot={false} activeDot={{ r: 5, fill: "#16a34a" }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {chart.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={chart} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
+                        <defs>
+                          <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="gradTrips" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
+                            <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={42} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12, padding: "10px 14px" }}
+                          formatter={(val: any, name: string) => [name === "revenue" ? `₹${val}` : val, name === "revenue" ? "Revenue" : "Trips"]}
+                        />
+                        <Area type="monotone" dataKey="revenue" stroke="#1a73e8" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#1a73e8" }} />
+                        <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#gradTrips)" dot={false} activeDot={{ r: 5, fill: "#16a34a" }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div style={{ height: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                      {/* SVG empty state illustration */}
+                      <svg width="120" height="70" viewBox="0 0 120 70" fill="none" style={{ opacity: 0.18 }}>
+                        <path d="M8 60 Q20 20 35 35 Q50 50 65 20 Q80 -10 95 30 Q105 55 112 40" stroke="#1a73e8" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+                        <path d="M8 62 Q20 22 35 37 Q50 52 65 22 Q80 -8 95 32 Q105 57 112 42 L112 65 L8 65Z" fill="#1a73e8" fillOpacity="0.12"/>
+                        <path d="M8 60 Q25 50 40 55 Q55 60 70 45 Q85 30 112 55" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" fill="none"/>
+                        {[15,40,65,90].map((x,i) => (
+                          <line key={i} x1={x} y1="10" x2={x} y2="62" stroke="#e2e8f0" strokeWidth="1"/>
+                        ))}
+                        {[20,40,60].map((y,i) => (
+                          <line key={i} x1="8" y1={y} x2="112" y2={y} stroke="#e2e8f0" strokeWidth="1"/>
+                        ))}
+                      </svg>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>No analytics yet</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", maxWidth: 220, lineHeight: 1.5 }}>Data will appear here once trips are completed on the platform</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", borderRadius: 8, padding: "6px 12px" }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#1a73e8" }}></div>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: "#1a73e8" }}>Revenue</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0fdf4", borderRadius: 8, padding: "6px 12px" }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a" }}></div>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>Trips</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -349,9 +380,22 @@ export default function Dashboard() {
                       })
                     ) : (
                       <tr><td colSpan={8}>
-                        <div className="text-center py-5 text-muted">
-                          <i className="bi bi-car-front fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
-                          <p className="fw-semibold mb-0">No trips yet</p>
+                        <div className="d-flex flex-column align-items-center justify-content-center py-5">
+                          <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg,#eff6ff,#dbeafe)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                            <i className="bi bi-car-front" style={{ fontSize: 32, color: "#93c5fd" }}></i>
+                          </div>
+                          <h6 className="fw-bold mb-1" style={{ color: "#0f172a" }}>No Trips Yet</h6>
+                          <p className="text-muted mb-3" style={{ fontSize: 13, maxWidth: 260, textAlign: "center", lineHeight: 1.5 }}>
+                            Trips will appear here once customers book rides through the JAGO app
+                          </p>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <span style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
+                              ✓ Platform Ready
+                            </span>
+                            <span style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
+                              Waiting for First Trip
+                            </span>
+                          </div>
                         </div>
                       </td></tr>
                     )}
