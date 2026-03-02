@@ -9,6 +9,11 @@ class UserModel {
   final bool isLocked;
   final String? lockReason;
   final bool isOnline;
+  final String? vehicleNumber;
+  final String? vehicleModel;
+  final String? vehicleCategory;
+  final String? status;
+  final String? referralCode;
   final DriverStats stats;
 
   UserModel({
@@ -22,6 +27,11 @@ class UserModel {
     this.isLocked = false,
     this.lockReason,
     this.isOnline = false,
+    this.vehicleNumber,
+    this.vehicleModel,
+    this.vehicleCategory,
+    this.status,
+    this.referralCode,
     required this.stats,
   });
 
@@ -38,6 +48,11 @@ class UserModel {
       isLocked: user['isLocked'] ?? user['is_locked'] ?? false,
       lockReason: user['lockReason'] ?? user['lock_reason'],
       isOnline: user['isOnline'] ?? user['is_online'] ?? false,
+      vehicleNumber: user['vehicleNumber'] ?? user['vehicle_number'],
+      vehicleModel: user['vehicleModel'] ?? user['vehicle_model'],
+      vehicleCategory: user['vehicleCategory'] ?? user['vehicle_category'],
+      status: user['status'],
+      referralCode: user['referralCode'] ?? user['referral_code'],
       stats: DriverStats.fromJson(user['stats'] ?? {}),
     );
   }
@@ -47,11 +62,13 @@ class DriverStats {
   final int completedTrips;
   final double totalEarned;
   final int cancelledTrips;
+  final double weeklyEarnings;
 
   DriverStats({
     this.completedTrips = 0,
     this.totalEarned = 0,
     this.cancelledTrips = 0,
+    this.weeklyEarnings = 0,
   });
 
   factory DriverStats.fromJson(Map<String, dynamic> json) {
@@ -59,6 +76,7 @@ class DriverStats {
       completedTrips: int.tryParse(json['completedTrips']?.toString() ?? '0') ?? 0,
       totalEarned: double.tryParse(json['totalEarned']?.toString() ?? '0') ?? 0,
       cancelledTrips: int.tryParse(json['cancelledTrips']?.toString() ?? '0') ?? 0,
+      weeklyEarnings: double.tryParse(json['weeklyEarnings']?.toString() ?? '0') ?? 0,
     );
   }
 }
