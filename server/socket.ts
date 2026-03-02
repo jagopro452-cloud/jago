@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
+import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerTripCompleted, notifyTripCancelled } from "./fcm";
 
 export let io: SocketIOServer;
 
@@ -142,6 +143,21 @@ export function setupSocket(httpServer: HttpServer) {
             },
           });
 
+          // FCM fallback (customer may be in background)
+          try {
+            const custDevR = await rawDb.execute(rawSql`
+              SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid AND fcm_token IS NOT NULL LIMIT 1
+            `);
+            const custFcm = (custDevR.rows[0] as any)?.fcm_token;
+            if (custFcm) {
+              notifyCustomerDriverAccepted({
+                fcmToken: custFcm,
+                driverName: driver.fullName,
+                tripId,
+              }).catch(() => {});
+            }
+          } catch {}
+
           socket.emit("driver:accept_trip_ok", { tripId, trip });
           console.log(`[SOCKET] Driver ${userId} accepted trip ${tripId}`);
         } catch (e: any) {
@@ -160,27 +176,51 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
 
-          let updateQuery = rawSql`UPDATE trip_requests SET current_status=${status}, updated_at=NOW()`;
           if (status === "in_progress") {
-            updateQuery = rawSql`UPDATE trip_requests SET current_status=${status}, started_at=NOW(), updated_at=NOW()`;
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET current_status=${status}, started_at=NOW(), updated_at=NOW()
+              WHERE id=${tripId}::uuid
+            `);
           } else if (status === "completed") {
-            updateQuery = rawSql`UPDATE trip_requests SET current_status=${status}, completed_at=NOW(), updated_at=NOW()`;
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET current_status=${status}, completed_at=NOW(), updated_at=NOW()
+              WHERE id=${tripId}::uuid
+            `);
+          } else {
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET current_status=${status}, updated_at=NOW()
+              WHERE id=${tripId}::uuid
+            `);
           }
-
-          await rawDb.execute(rawSql`${updateQuery} WHERE id=${tripId}::uuid`);
 
           if (status === "completed" || status === "cancelled") {
             await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${userId}::uuid`);
           }
 
-          // Get customer id for this trip
-          const tripR = await rawDb.execute(rawSql`SELECT customer_id, estimated_fare FROM trip_requests WHERE id=${tripId}::uuid`);
+          // Get customer id + fare for FCM
+          const tripR = await rawDb.execute(rawSql`SELECT customer_id, estimated_fare, actual_fare FROM trip_requests WHERE id=${tripId}::uuid`);
           if (tripR.rows.length) {
             const customerId = (tripR.rows[0] as any).customer_id;
-            // Notify customer
+            const fare = (tripR.rows[0] as any).actual_fare || (tripR.rows[0] as any).estimated_fare || 0;
+            // Socket notify (foreground)
             io.to(`user:${customerId}`).emit("trip:status_update", { tripId, status, otp });
-            // Notify trip room
             io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status, otp });
+            // FCM fallback (background) for key status changes
+            if (status === "completed" || status === "cancelled") {
+              try {
+                const custDevR = await rawDb.execute(rawSql`
+                  SELECT fcm_token FROM user_devices WHERE user_id=${customerId}::uuid AND fcm_token IS NOT NULL LIMIT 1
+                `);
+                const custFcm = (custDevR.rows[0] as any)?.fcm_token;
+                if (custFcm) {
+                  if (status === "completed") {
+                    notifyCustomerTripCompleted({ fcmToken: custFcm, fare: Number(fare), tripId }).catch(() => {});
+                  } else {
+                    notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
+                  }
+                }
+              } catch {}
+            }
           }
 
           socket.emit("driver:trip_status_ok", { tripId, status });
@@ -263,9 +303,22 @@ export async function notifyNearbyDriversNewTrip(tripId: string, pickupLat: numb
     if (!tripR.rows.length) return;
     const trip = camelize(tripR.rows[0]) as any;
 
+    // Get driver FCM tokens for background push
+    const driverIds = drivers.rows.map((r: any) => r.id);
+    let fcmMap: Record<string, string> = {};
+    if (driverIds.length > 0) {
+      const devRes = await rawDb.execute(rawSql`
+        SELECT user_id, fcm_token FROM user_devices
+        WHERE user_id = ANY(${driverIds}::uuid[]) AND fcm_token IS NOT NULL
+      `);
+      for (const r of devRes.rows) {
+        fcmMap[(r as any).user_id] = (r as any).fcm_token;
+      }
+    }
+
     for (const row of drivers.rows) {
       const driverId = (row as any).id;
-      io.to(`user:${driverId}`).emit("trip:new_request", {
+      const payload = {
         tripId,
         refId: trip.refId,
         customerName: trip.customerName,
@@ -277,7 +330,20 @@ export async function notifyNearbyDriversNewTrip(tripId: string, pickupLat: numb
         estimatedDistance: trip.estimatedDistance,
         paymentMethod: trip.paymentMethod,
         tripType: trip.tripType,
-      });
+      };
+      // Socket (foreground) + FCM (background)
+      io.to(`user:${driverId}`).emit("trip:new_request", payload);
+      const fcmToken = fcmMap[driverId];
+      if (fcmToken) {
+        notifyDriverNewRide({
+          fcmToken,
+          driverName: '',
+          customerName: trip.customerName,
+          pickupAddress: trip.pickupAddress,
+          estimatedFare: trip.estimatedFare,
+          tripId,
+        }).catch(() => {});
+      }
     }
     console.log(`[SOCKET] New trip ${tripId} notified to ${drivers.rows.length} nearby drivers`);
   } catch (e: any) {

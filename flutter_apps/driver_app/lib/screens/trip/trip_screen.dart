@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
+import '../../services/socket_service.dart';
 import '../home/home_screen.dart';
 
 class TripScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class TripScreen extends StatefulWidget {
 }
 
 class _TripScreenState extends State<TripScreen> {
+  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
   String _status = 'accepted';
@@ -25,6 +27,7 @@ class _TripScreenState extends State<TripScreen> {
   final _otpCtrl = TextEditingController();
   Timer? _locationTimer;
   List<String> _cancelReasons = [];
+  StreamSubscription? _cancelSub;
 
   static const Color _blue = Color(0xFF2563EB);
   static const Color _bg = Color(0xFF060D1E);
@@ -43,30 +46,71 @@ class _TripScreenState extends State<TripScreen> {
     }
     _startLocationUpdates();
     _loadCancelReasons();
+    _listenForCancel();
+  }
+
+  void _listenForCancel() {
+    // If customer cancels mid-trip, navigate back home
+    _cancelSub = _socket.onTripCancelled.listen((data) {
+      if (!mounted) return;
+      _locationTimer?.cancel();
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: _surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Trip Cancelled', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          content: Text('Customer cancelled the trip.',
+            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14)),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushAndRemoveUntil(context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+              },
+              child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   @override
   void dispose() {
     _otpCtrl.dispose();
     _locationTimer?.cancel();
+    _cancelSub?.cancel();
     super.dispose();
   }
 
   void _startLocationUpdates() {
-    _locationTimer = Timer.periodic(const Duration(seconds: 10), (_) => _updateLocation());
+    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) => _updateLocation());
   }
 
   Future<void> _updateLocation() async {
     try {
       final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final token = await AuthService.getToken();
-      await http.post(Uri.parse(ApiConfig.driverLocation),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'lat': pos.latitude, 'lng': pos.longitude, 'isOnline': true}));
+      final lat = pos.latitude;
+      final lng = pos.longitude;
+
       if (mounted) {
-        setState(() => _center = LatLng(pos.latitude, pos.longitude));
+        setState(() => _center = LatLng(lat, lng));
         _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
       }
+
+      // Socket — real-time (fastest, broadcasts to customer's map)
+      _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+
+      // HTTP fallback — always update DB
+      final token = await AuthService.getToken();
+      http.post(Uri.parse(ApiConfig.driverLocation),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true})).catchError((_) {});
     } catch (_) {}
   }
 
@@ -92,27 +136,23 @@ class _TripScreenState extends State<TripScreen> {
     }
     setState(() => _loading = true);
     final token = await AuthService.getToken();
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+
     try {
-      String endpoint;
-      switch (_status) {
-        case 'accepted':
-          endpoint = ApiConfig.driverArrived;
-          break;
-        case 'on_the_way':
-          await _completeTrip(token ?? '');
-          return;
-        default:
-          endpoint = ApiConfig.driverArrived;
-      }
-      final res = await http.post(Uri.parse(endpoint),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'tripId': _trip?['id'] ?? ''}));
-      if (res.statusCode == 200) {
-        setState(() => _status = 'arrived');
-      } else {
-        final err = jsonDecode(res.body);
-        if (!mounted) return;
-        _showSnack(err['message'] ?? 'Error occurred', error: true);
+      if (_status == 'accepted') {
+        // Mark arrived — HTTP + Socket
+        final res = await http.post(Uri.parse(ApiConfig.driverArrived),
+          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+          body: jsonEncode({'tripId': tripId}));
+        if (res.statusCode == 200) {
+          _socket.updateTripStatus(tripId, 'arrived');
+          setState(() => _status = 'arrived');
+        } else {
+          _showSnack(jsonDecode(res.body)['message'] ?? 'Error', error: true);
+        }
+      } else if (_status == 'in_progress' || _status == 'on_the_way') {
+        await _completeTrip(token ?? '');
+        return;
       }
     } catch (_) {
       if (!mounted) return;
@@ -122,15 +162,19 @@ class _TripScreenState extends State<TripScreen> {
   }
 
   Future<void> _completeTrip(String token) async {
-    final estimatedFare = (_trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? 0.0);
-    final estimatedDistance = (_trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? 0.0);
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final estimatedFare = _trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? 0.0;
+    final estimatedDistance = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? 0.0;
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverCompleteTrip),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'tripId': _trip?['id'] ?? '', 'actualFare': estimatedFare, 'actualDistance': estimatedDistance}));
+        body: jsonEncode({'tripId': tripId, 'actualFare': estimatedFare, 'actualDistance': estimatedDistance}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final actualFare = data['trip']?['actualFare'] ?? data['trip']?['actual_fare'] ?? estimatedFare;
+        // Notify customer via socket
+        _socket.updateTripStatus(tripId, 'completed');
+        _locationTimer?.cancel();
         if (!mounted) return;
         _showCompletionDialog(actualFare.toString());
       } else {
@@ -199,8 +243,7 @@ class _TripScreenState extends State<TripScreen> {
               width: double.infinity, height: 52,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue,
-                  foregroundColor: Colors.white,
+                  backgroundColor: _blue, foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   elevation: 0),
                 onPressed: () {
@@ -292,12 +335,15 @@ class _TripScreenState extends State<TripScreen> {
   Future<void> _verifyOtpAndStart(String otp) async {
     setState(() => _loading = true);
     final token = await AuthService.getToken();
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'tripId': _trip?['id'] ?? '', 'otp': otp}));
+        body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
-        setState(() => _status = 'on_the_way');
+        // Notify customer trip started via socket
+        _socket.updateTripStatus(tripId, 'in_progress', otp: otp);
+        setState(() => _status = 'in_progress');
         final destLat = (_trip?['destinationLat'] as num?)?.toDouble();
         final destLng = (_trip?['destinationLng'] as num?)?.toDouble();
         if (destLat != null && destLng != null && destLat != 0) {
@@ -357,10 +403,13 @@ class _TripScreenState extends State<TripScreen> {
   Future<void> _cancelTrip(String reason) async {
     setState(() => _loading = true);
     final token = await AuthService.getToken();
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    // Notify customer via socket
+    _socket.updateTripStatus(tripId, 'cancelled');
     try {
       await http.post(Uri.parse(ApiConfig.driverCancelTrip),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'tripId': _trip?['id'] ?? '', 'reason': reason}));
+        body: jsonEncode({'tripId': tripId, 'reason': reason}));
     } catch (_) {}
     _locationTimer?.cancel();
     if (!mounted) return;
@@ -422,7 +471,7 @@ class _TripScreenState extends State<TripScreen> {
   }
 
   Widget _buildStatusHeader(Map<String, dynamic> step, String pickup, String dest) {
-    final isOnTheWay = _status == 'on_the_way';
+    final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
     final statusColor = isOnTheWay ? _green : _blue;
     return Container(
       padding: const EdgeInsets.all(14),
@@ -449,6 +498,20 @@ class _TripScreenState extends State<TripScreen> {
             style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11),
             maxLines: 1, overflow: TextOverflow.ellipsis),
         ])),
+        // Live location indicator
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 6, height: 6,
+              decoration: const BoxDecoration(color: Color(0xFF4ADE80), shape: BoxShape.circle)),
+            const SizedBox(width: 4),
+            const Text('LIVE', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 9, fontWeight: FontWeight.w800)),
+          ]),
+        ),
       ]),
     );
   }
@@ -497,16 +560,13 @@ class _TripScreenState extends State<TripScreen> {
   Widget _pill(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
       child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _buildActionBtn(Map<String, dynamic> step) {
-    final isComplete = _status == 'on_the_way';
+    final isComplete = _status == 'in_progress' || _status == 'on_the_way';
     return SizedBox(
       width: double.infinity, height: 56,
       child: ElevatedButton(
@@ -558,7 +618,7 @@ class _TripScreenState extends State<TripScreen> {
           decoration: BoxDecoration(
             color: Colors.red.withOpacity(0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.red.withOpacity(0.2)),
+            border: Border.all(color: Colors.red.withOpacity(0.15)),
           ),
           child: const Row(children: [
             Icon(Icons.cancel_rounded, color: Color(0xFFF87171), size: 16),
@@ -572,10 +632,16 @@ class _TripScreenState extends State<TripScreen> {
 
   Map<String, dynamic> _getStep(String status) {
     switch (status) {
-      case 'accepted': return {'label': 'Pickup ki Vellandi', 'action': 'Arrived at Pickup ✓', 'icon': Icons.navigation_rounded};
-      case 'arrived': return {'label': 'OTP Verify Cheyyandi', 'action': 'Enter Customer OTP →', 'icon': Icons.lock_open_rounded};
-      case 'on_the_way': return {'label': 'Trip Progress lo undi 🚀', 'action': 'Complete Trip ✓', 'icon': Icons.flag_rounded};
-      default: return {'label': 'Trip', 'action': 'Next →', 'icon': Icons.arrow_forward_rounded};
+      case 'driver_assigned':
+      case 'accepted':
+        return {'label': 'Pickup వైపు వెళ్తున్నారు 🏍️', 'icon': Icons.navigation_rounded, 'action': 'Arrived at Pickup'};
+      case 'arrived':
+        return {'label': 'Pickup Location కి చేరారు 📍', 'icon': Icons.location_on_rounded, 'action': 'Enter Customer OTP'};
+      case 'in_progress':
+      case 'on_the_way':
+        return {'label': 'Trip పూర్తి చేస్తున్నారు 🚀', 'icon': Icons.speed_rounded, 'action': 'Complete Trip ✓'};
+      default:
+        return {'label': 'Trip Active', 'icon': Icons.electric_bike, 'action': 'Next Step'};
     }
   }
 }

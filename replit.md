@@ -180,6 +180,22 @@ Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP
 - `GET/POST /api/app/customer/monthly-pass` — Monthly pass plans
 - `POST /api/app/customer/surge-alert` — Subscribe to surge notifications
 
+### Socket.IO Real-Time Integration (COMPLETE):
+- **Server** `server/socket.ts`: Handles all real-time events
+  - `driver:location` → broadcasts `driver:location_update` to customer's tracking room
+  - `driver:online` → marks driver online/offline in DB
+  - `driver:accept_trip` → assigns driver, notifies customer `trip:driver_assigned`
+  - `driver:trip_status` → updates DB + notifies customer `trip:status_update` (arrived/in_progress/completed/cancelled)
+  - `customer:track_trip` → joins trip room for GPS tracking
+  - `customer:cancel_trip` → cancels trip + notifies driver `trip:cancelled`
+- **Driver App** `socket_service.dart`: Singleton, emits location every 5s, listens for new trips + cancellations
+- **Customer App** `socket_service.dart`: Singleton, tracks trip room, live driver GPS marker on map, real-time status changes
+- **Screens with Socket**:
+  - Driver: `home_screen.dart` (GPS streaming, incoming trip via socket, online/offline)
+  - Driver: `trip_screen.dart` (5s GPS, status updates via socket, cancel notification to customer)
+  - Customer: `home_screen.dart` (connect, listen for driver assigned)
+  - Customer: `tracking_screen.dart` (live driver marker, real-time status, cancel via socket)
+
 ### Setup Required by Developer:
 1. Flutter SDK 3.0+ install
 2. Replace `YOUR_GOOGLE_MAPS_API_KEY` in both AndroidManifest.xml files

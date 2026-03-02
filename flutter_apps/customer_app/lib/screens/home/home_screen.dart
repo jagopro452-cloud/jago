@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
+import '../../services/socket_service.dart';
 import '../auth/login_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../wallet/wallet_screen.dart';
@@ -15,6 +16,7 @@ import '../coins/coins_screen.dart';
 import '../monthly_pass/monthly_pass_screen.dart';
 import '../profile/profile_screen.dart';
 import '../booking/booking_screen.dart';
+import '../tracking/tracking_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
   String _userName = 'there';
@@ -35,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _selectedRide = 0;
   bool _loading = true;
   List<Map<String, dynamic>> _vehicleCategories = [];
+  StreamSubscription? _driverAssignedSub;
 
   static const Color _blue = Color(0xFF1E6DE5);
   static const Color _dark = Color(0xFF111827);
@@ -63,6 +67,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadUser();
     _getLocation();
     _fetchHome();
+    _connectSocket();
+  }
+
+  void _connectSocket() {
+    _socket.connect(ApiConfig.socketUrl).then((_) {
+      // If driver assigned while on home screen (unlikely but possible)
+      _driverAssignedSub = _socket.onDriverAssigned.listen((data) {
+        if (!mounted) return;
+        final tripId = data['tripId']?.toString() ?? '';
+        if (tripId.isNotEmpty) {
+          Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _driverAssignedSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadUser() async {
