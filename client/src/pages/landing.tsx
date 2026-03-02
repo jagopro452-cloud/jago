@@ -349,12 +349,12 @@ export default function LandingPage() {
               </a>
             </div>
 
-            {/* Stats + App Store Rating */}
-            <div style={{ display: "flex", gap: 36, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {/* Stats */}
+            <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
               {[
-                { n: 10000, sfx: "+", label: "Trips Completed" },
-                { n: 500, sfx: "+", label: "Active Pilots" },
                 { n: 9, sfx: "", label: "Cities Covered" },
+                { n: 6, sfx: "+", label: "Ride Categories" },
+                { n: 100, sfx: "%", label: "OTP-Verified Trips" },
               ].map((s, i) => (
                 <div key={i}>
                   <div style={{ fontSize: 32, fontWeight: 900, color: "white", lineHeight: 1 }}>
@@ -363,15 +363,6 @@ export default function LandingPage() {
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4, fontWeight: 500 }}>{s.label}</div>
                 </div>
               ))}
-              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.1)", paddingLeft: 28 }}>
-                <div style={{ display: "flex", gap: 2, marginBottom: 3 }}>
-                  {[...Array(5)].map((_,i) => (
-                    <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                  ))}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "white" }}>4.8 / 5.0</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 500, marginTop: 1 }}>10K+ reviews</div>
-              </div>
             </div>
           </div>
 
@@ -436,11 +427,11 @@ export default function LandingPage() {
           <div className="ticker-inner">
             {[
               "✅ OTP Verified Rides", "🛡️ Insurance Covered Pilots", "📍 Real-time GPS Tracking",
-              "💳 Secure UPI Payments", "⭐ 4.8 Average Rating", "🎧 24/7 Support",
-              "🚀 2-Min Pilot Matching", "🔒 End-to-End Safety", "💰 Transparent Pricing",
+              "💳 Secure UPI & Cash Payments", "🎧 In-App Customer Support", "🚀 Fast Pilot Matching",
+              "🔒 End-to-End Safety", "💰 Transparent Pricing", "📦 OTP-Verified Parcel Delivery",
               "✅ OTP Verified Rides", "🛡️ Insurance Covered Pilots", "📍 Real-time GPS Tracking",
-              "💳 Secure UPI Payments", "⭐ 4.8 Average Rating", "🎧 24/7 Support",
-              "🚀 2-Min Pilot Matching", "🔒 End-to-End Safety", "💰 Transparent Pricing",
+              "💳 Secure UPI & Cash Payments", "🎧 In-App Customer Support", "🚀 Fast Pilot Matching",
+              "🔒 End-to-End Safety", "💰 Transparent Pricing", "📦 OTP-Verified Parcel Delivery",
             ].map((t, i) => (
               <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "0 32px", fontSize: 13, color: "rgba(255,255,255,0.55)", fontWeight: 600, whiteSpace: "nowrap" }}>
                 {t}
@@ -509,82 +500,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
-      <section style={{ background: "#F8FAFF" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
-          <div className="reveal" style={{ textAlign: "center", marginBottom: 56 }}>
-            <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>WHAT PEOPLE SAY</div>
-            <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Loved by <span style={{ color: "#1E6DE5" }}>10,000+ Riders</span></h2>
-            <p style={{ fontSize: 17, color: "#64748B", maxWidth: 480, margin: "0 auto" }}>Real experiences from customers and pilots across Hyderabad &amp; Andhra Pradesh.</p>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
-            {[
-              {
-                name: "Priya Reddy", role: "Daily Commuter · Hyderabad",
-                avatar: "P", avatarBg: "#1E6DE5",
-                rating: 5,
-                text: "JAGO has completely changed my daily commute. Pilots arrive in under 3 minutes and the fares are always transparent. Cancelled my cab subscription the same week I tried JAGO!",
-                tag: "Bike Rides", tagColor: "#EFF6FF", tagText: "#1E6DE5",
-              },
-              {
-                name: "Ravi Kumar", role: "JAGO Pilot · Vijayawada",
-                avatar: "R", avatarBg: "#16A34A",
-                rating: 5,
-                text: "I earn ₹1,200–₹1,500 daily as a JAGO Pilot. The app is smooth, payouts are weekly, and the support team actually responds. Best decision I made this year.",
-                tag: "Pilot Experience", tagColor: "#F0FDF4", tagText: "#16A34A",
-              },
-              {
-                name: "Suresh Babu", role: "Small Business Owner · Guntur",
-                avatar: "S", avatarBg: "#D97706",
-                rating: 5,
-                text: "We use JAGO for all our parcel deliveries. OTP-verified handoffs give us peace of mind, and parcels always reach within 45 minutes. Excellent B2B service.",
-                tag: "Parcel Delivery", tagColor: "#FFFBEB", tagText: "#D97706",
-              },
-              {
-                name: "Lakshmi Devi", role: "College Student · Amaravathi",
-                avatar: "L", avatarBg: "#7C3AED",
-                rating: 5,
-                text: "Auto rides with JAGO are so affordable! I use the monthly pass and save almost ₹800 every month compared to other apps. The driver ratings system makes it feel very safe.",
-                tag: "Auto Rides", tagColor: "#F5F3FF", tagText: "#7C3AED",
-              },
-              {
-                name: "Mohammed Farhan", role: "IT Professional · Hitec City",
-                avatar: "M", avatarBg: "#0891B2",
-                rating: 5,
-                text: "Scheduled rides are a game changer for early morning flights. I book the night before and the pilot is already waiting when I step out. Zero stress, 100% reliable.",
-                tag: "Scheduled Trips", tagColor: "#F0F9FF", tagText: "#0891B2",
-              },
-              {
-                name: "Ananya Singh", role: "Startup Founder · Secunderabad",
-                avatar: "A", avatarBg: "#DC2626",
-                rating: 5,
-                text: "Our company switched to JAGO for employee logistics. The corporate dashboard is clean, billing is easy, and pilots are always professional. Great product, great team!",
-                tag: "B2B Solutions", tagColor: "#FFF1F2", tagText: "#DC2626",
-              },
-            ].map((t, i) => (
-              <div key={i} className={`testi-card reveal reveal-delay-${(i % 3) + 1}`}>
-                <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-                  {[...Array(t.rating)].map((_, j) => (
-                    <svg key={j} width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                  ))}
-                </div>
-                <p style={{ fontSize: 15, color: "#374151", lineHeight: 1.7, margin: "0 0 20px", fontStyle: "italic" }}>"{t.text}"</p>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: t.avatarBg, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 800, fontSize: 16 }}>{t.avatar}</div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: "#94A3B8" }}>{t.role}</div>
-                    </div>
-                  </div>
-                  <div style={{ background: t.tagColor, color: t.tagText, fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 6 }}>{t.tag}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* ── DRIVER CTA ── */}
       <section id="driver" style={{ background: "linear-gradient(140deg, #050b1f 0%, #081535 50%, #0a1a40 100%)", position: "relative", overflow: "hidden" }}>
