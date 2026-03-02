@@ -4497,6 +4497,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CAR SHARING — Customer browse & book
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  app.get('/api/app/customer/car-sharing/rides', authApp, async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT cs.*,
+          u.full_name as driver_name,
+          vc.name as vehicle_name,
+          (cs.max_seats - COALESCE((SELECT COUNT(*) FROM car_sharing_bookings b WHERE b.ride_id = cs.id AND b.status != 'cancelled'),0)) as available_seats
+        FROM car_sharing_rides cs
+        LEFT JOIN users u ON u.id = cs.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = cs.vehicle_category_id
+        WHERE cs.status = 'active' AND cs.departure_time > NOW()
+        ORDER BY cs.departure_time ASC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post('/api/app/customer/car-sharing/book', authApp, async (req, res) => {
+    try {
+      const user = req.currentUser;
+      const { rideId, seatsBooked = 1 } = req.body;
+      if (!rideId) return res.status(400).json({ message: 'rideId required' });
+      const rideRes = await rawDb.execute(rawSql`
+        SELECT cs.*, COALESCE((SELECT COUNT(*) FROM car_sharing_bookings b WHERE b.ride_id = cs.id AND b.status != 'cancelled'),0) as booked_count
+        FROM car_sharing_rides cs WHERE cs.id = ${rideId}::uuid
+      `);
+      if (!rideRes.rows.length) return res.status(404).json({ message: 'Ride not found' });
+      const ride = camelize(rideRes.rows[0]);
+      const available = ride.maxSeats - parseInt(ride.bookedCount);
+      if (available < seatsBooked) return res.status(400).json({ message: 'Only ' + available + ' seat(s) available' });
+      const totalFare = parseFloat(ride.seatPrice) * seatsBooked;
+      const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
+      const bal = parseFloat(walRes.rows[0]?.wallet_balance || 0);
+      if (bal < totalFare) return res.status(400).json({ message: 'Insufficient wallet balance. Need ₹' + totalFare });
+      await rawDb.execute(rawSql`INSERT INTO car_sharing_bookings (ride_id, customer_id, seats_booked, total_fare, status) VALUES (${rideId}::uuid, ${user.id}::uuid, ${seatsBooked}, ${totalFare}, 'confirmed')`);
+      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${totalFare} WHERE id=${user.id}::uuid`);
+      res.json({ success: true, message: seatsBooked + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get('/api/app/customer/car-sharing/my-bookings', authApp, async (req, res) => {
+    try {
+      const user = req.currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT b.*, cs.from_location, cs.to_location, cs.departure_time, cs.seat_price,
+          u.full_name as driver_name, u.phone as driver_phone, vc.name as vehicle_name
+        FROM car_sharing_bookings b
+        LEFT JOIN car_sharing_rides cs ON cs.id = b.ride_id
+        LEFT JOIN users u ON u.id = cs.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = cs.vehicle_category_id
+        WHERE b.customer_id = ${user.id}::uuid
+        ORDER BY b.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+  });
+
   // 6. SURGE ALERT — "Notify me when surge drops"
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.post("/api/app/customer/surge-alert", async (req, res) => {

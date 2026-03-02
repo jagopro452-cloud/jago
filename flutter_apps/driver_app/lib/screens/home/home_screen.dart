@@ -19,6 +19,9 @@ import '../break_mode/break_mode_screen.dart';
 import '../fatigue/fatigue_screen.dart';
 import '../trip/trip_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../referral/referral_screen.dart';
+import '../profile/support_chat_screen.dart';
+import '../earnings/earnings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -589,6 +592,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 8),
             _drawerItem(Icons.dashboard_rounded, 'Dashboard', null, () {}),
+            _drawerItem(Icons.currency_rupee_rounded, 'Earnings', '₹${_earningsToday.toStringAsFixed(0)}', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()));
+            }),
             _drawerItem(Icons.route_rounded, 'My Trips', null, () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
@@ -605,8 +612,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const FatigueScreen()));
             }),
-            _drawerItem(Icons.headset_mic_rounded, 'Support', null, () {}),
-            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', null, () {}),
+            _drawerItem(Icons.headset_mic_rounded, 'Support', null, () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverSupportChatScreen()));
+            }),
+            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', null, () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen()));
+            }),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(16),

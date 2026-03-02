@@ -26,6 +26,8 @@ import '../offers/offers_screen.dart';
 import '../profile/support_chat_screen.dart';
 import '../referral/referral_screen.dart';
 import '../saved_places/saved_places_screen.dart';
+import '../booking/parcel_booking_screen.dart';
+import '../car_sharing/car_sharing_screen.dart';
 import '../../services/trip_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -397,6 +399,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final services = [
       {'label': 'Intercity', 'icon': Icons.directions_bus_rounded, 'color': const Color(0xFF1565C0)},
       {'label': 'Schedule', 'icon': Icons.calendar_today_rounded, 'color': const Color(0xFF7C3AED)},
+      {'label': 'Car Share', 'icon': Icons.people_rounded, 'color': const Color(0xFF0891B2)},
       {'label': 'Parcel', 'icon': Icons.inventory_2_rounded, 'color': const Color(0xFFD97706)},
       {'label': 'Daily Spin', 'icon': Icons.casino_rounded, 'color': const Color(0xFFDC2626)},
       {'label': 'Offers', 'icon': Icons.local_offer_rounded, 'color': const Color(0xFF059669)},
@@ -404,9 +407,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final routes = [
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen())),
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduledRidesScreen())),
-      () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Select a Parcel/Cargo vehicle from the booking section below!'),
-        backgroundColor: Color(0xFFD97706), duration: Duration(seconds: 2))),
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarSharingScreen())),
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+        pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))),
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SpinWheelScreen())),
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())),
     ];

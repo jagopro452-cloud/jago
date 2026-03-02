@@ -161,13 +161,13 @@ Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP
 
 ### Driver App (JAGO Pilot) — `flutter_apps/driver_app/`
 - **Theme**: Dark navy (#060D1E) + Blue (#2563EB)
-- **Screens**: Home (Map) → Incoming Trip → Active Trip → KYC Documents → Performance → Face Verification → Break Mode → Safety & Fatigue → Wallet → Trip History → Profile
-- **Key features**: Live GPS, Face verification (daily + 10-trip trigger), KYC doc upload, Performance score (Bronze/Silver/Gold), **Break Mode** (set 5-60 min break, auto go-online), **Safety & Fatigue Screen** (safety score, hours driven, weekly stats, safety tips, break button), **Weekly earnings bar chart** (Mon-Sun), **Notification badge** with unread count, Dynamic support phone from DB, **Night charge indicator** (🌙 1.25x, 10PM-6AM)
+- **Screens**: Home (Map) → Incoming Trip → Active Trip → KYC Documents → Performance → Face Verification → Break Mode → Safety & Fatigue → Earnings → Wallet → Trip History → Profile
+- **Key features**: Live GPS, Face verification (daily + 10-trip trigger), KYC doc upload, Performance score (Bronze/Silver/Gold), **Break Mode** (set 5-60 min break, auto go-online), **Safety & Fatigue Screen** (safety score, hours driven, weekly stats, safety tips, break button), **Earnings Screen** (Today/Week/Month/All tabs, stats cards, weekly bar chart Mon-Sun), **Parcel Info Card** in active trip (shows receiver name, category, weight, instructions when trip is a parcel delivery), **Notification badge** with unread count, Dynamic support phone from DB, **Night charge indicator** (🌙 1.25x, 10PM-6AM)
 
 ### Customer App (JAGO) — `flutter_apps/customer_app/`
 - **Theme**: Light white + Blue (#2563EB)
-- **Screens**: Home → Booking → Tracking → Tip Driver → JAGO Coins → Monthly Pass → Ride Preferences → Lost & Found → Scheduled Rides → Emergency Contacts → Saved Places → Wallet → Profile
-- **Key features**: **JAGO Coins** (earn per ride, redeem for discounts), **Monthly Pass** (20/40/80 rides, save 35%), **Ride Preferences** (AC, quiet, women driver), **Post-Ride Tip** (₹10-50 + bonus coins), **Lost & Found** (report forgotten items), **Surge Alert** (notify when surge drops), Fare estimate, Coupon, Scheduled rides, Emergency contacts, **Saved Places Shortcuts** (🏠 Home/💼 Work quick-book on home screen), **Book Again** button in trip history for completed trips, **Banner carousel** with API-backed banners + page dots, **Quick services row** (Intercity/Schedule/Parcel/Daily Spin/Offers), **Notification badge** with live unread count, **Offers & Promo system** (coupon copy + promo code in booking)
+- **Screens**: Home → Booking → Tracking → Tip Driver → JAGO Coins → Monthly Pass → Ride Preferences → Lost & Found → Scheduled Rides → Emergency Contacts → Saved Places → Car Sharing → Parcel Booking → Wallet → Profile
+- **Key features**: **JAGO Coins** (earn per ride, redeem for discounts), **Monthly Pass** (20/40/80 rides, save 35%), **Ride Preferences** (AC, quiet, women driver), **Post-Ride Tip** (₹10-50 + bonus coins), **Lost & Found** (report forgotten items), **Surge Alert** (notify when surge drops), Fare estimate, Coupon, Scheduled rides, Emergency contacts, **Saved Places Shortcuts** (🏠 Home/💼 Work quick-book on home screen), **Book Again** button in trip history for completed trips, **Banner carousel** with API-backed banners + page dots, **Quick services row** (Intercity/Schedule/Car Share/Parcel/Daily Spin/Offers), **Car Sharing Screen** (browse available shared rides, book seats from wallet, view my bookings), **Parcel Booking** (3-step flow: Locations → Parcel Info → Confirm), **Notification badge** with live unread count, **Offers & Promo system** (coupon copy + promo code in booking)
 
 ### Unique Feature APIs added:
 - `GET /api/app/customer/coins` — JAGO Coins balance + history
@@ -179,6 +179,11 @@ Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP
 - `GET /api/app/driver/fatigue-status` — Fatigue hours check
 - `GET/POST /api/app/customer/monthly-pass` — Monthly pass plans
 - `POST /api/app/customer/surge-alert` — Subscribe to surge notifications
+- `GET /api/app/driver/earnings?period=today|week|month|all` — Driver earnings by period
+- `GET /api/app/driver/weekly-earnings` — 7-day earnings chart data (Mon-Sun)
+- `GET /api/app/customer/car-sharing/rides` — Available shared rides (auth)
+- `POST /api/app/customer/car-sharing/book` — Book a seat (wallet deduction)
+- `GET /api/app/customer/car-sharing/my-bookings` — Customer's car sharing bookings
 
 ### Socket.IO Real-Time Integration (COMPLETE):
 - **Server** `server/socket.ts`: Handles all real-time events

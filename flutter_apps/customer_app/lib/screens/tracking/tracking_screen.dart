@@ -9,6 +9,7 @@ import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../home/home_screen.dart';
+import '../tip/tip_driver_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
   final String tripId;
@@ -621,6 +622,21 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         ]),
       ),
       const SizedBox(height: 12),
+      Builder(builder: (ctx) {
+        final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
+        final tId = _trip?['id']?.toString() ?? widget.tripId;
+        return OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => TipDriverScreen(tripId: tId, driverName: dName))),
+          icon: const Icon(Icons.volunteer_activism_rounded, color: Color(0xFF16A34A), size: 18),
+          label: const Text('Tip Pilot ఇవ్వండి 💚', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 13)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 46),
+            side: const BorderSide(color: Color(0xFF16A34A), width: 1.5),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        );
+      }),
+      const SizedBox(height: 8),
       SizedBox(
         width: double.infinity, height: 52,
         child: ElevatedButton(
