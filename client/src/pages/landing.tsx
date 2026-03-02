@@ -1,4 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ── Scroll Reveal Hook ────────────────────────────────────────────────────────
+function useReveal() {
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add("revealed"); obs.unobserve(e.target); }
+      }),
+      { threshold: 0.12 }
+    );
+    document.querySelectorAll(".reveal").forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+}
+
 import jagoLogoWhite from "@assets/JAGO_LOGO_WightPNG_1772377612337.png";
 import jagoLogoBlue  from "@assets/JAGO_LOGOPNG_(1)_1772377612339.png";
 import pilotLogo     from "@assets/PILOT_LOGOPNG_1772377649091.png";
@@ -118,6 +133,7 @@ function PhoneMockup({ type }: { type: "customer" | "driver" }) {
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  useReveal();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -145,12 +161,28 @@ export default function LandingPage() {
         @keyframes pulse-ring { 0%{transform:scale(1);opacity:0.6} 100%{transform:scale(1.6);opacity:0} }
         @keyframes slide-up { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        @keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
         .float-card { animation: float 4s ease-in-out infinite; }
         .float-card-r { animation: floatR 5s ease-in-out infinite; }
         .slide-up { animation: slide-up 0.7s ease-out forwards; }
         a { text-decoration: none; }
         section { padding: 80px 0; }
         @media(max-width:768px){ section { padding: 48px 0; } }
+        .reveal { opacity:0; transform:translateY(36px); transition: opacity 0.75s cubic-bezier(.22,1,.36,1), transform 0.75s cubic-bezier(.22,1,.36,1); }
+        .reveal.revealed { opacity:1; transform:translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+        .service-card { background:#FAFAFA; border:1.5px solid #F1F5F9; border-radius:22px; padding:28px; transition:all 0.25s ease; cursor:default; }
+        .service-card:hover { box-shadow:0 16px 40px rgba(30,109,229,0.12); border-color:#BFDBFE; transform:translateY(-4px); }
+        .step-card { background:white; border-radius:22px; padding:28px; border:1px solid #F1F5F9; box-shadow:0 2px 12px rgba(0,0,0,0.05); position:relative; overflow:hidden; transition:all 0.25s ease; }
+        .step-card:hover { box-shadow:0 12px 36px rgba(30,109,229,0.1); transform:translateY(-3px); }
+        .testi-card { background:white; border-radius:24px; padding:28px; border:1.5px solid #F1F5F9; box-shadow:0 2px 16px rgba(0,0,0,0.05); transition:all 0.25s ease; }
+        .testi-card:hover { box-shadow:0 16px 40px rgba(30,109,229,0.1); border-color:#BFDBFE; transform:translateY(-3px); }
+        .ticker-wrap { overflow:hidden; width:100%; }
+        .ticker-inner { display:flex; width:max-content; animation:marquee 28s linear infinite; }
+        .ticker-inner:hover { animation-play-state:paused; }
       `}</style>
 
       {/* ── NAVBAR ── */}
@@ -301,10 +333,31 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── TRUST TICKER ── */}
+      <div style={{ background: "#0A0F23", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)", padding: "14px 0", overflow: "hidden" }}>
+        <div className="ticker-wrap">
+          <div className="ticker-inner">
+            {[
+              "✅ OTP Verified Rides", "🛡️ Insurance Covered Pilots", "📍 Real-time GPS Tracking",
+              "💳 Secure UPI Payments", "⭐ 4.8 Average Rating", "🎧 24/7 Support",
+              "🚀 2-Min Pilot Matching", "🔒 End-to-End Safety", "💰 Transparent Pricing",
+              "✅ OTP Verified Rides", "🛡️ Insurance Covered Pilots", "📍 Real-time GPS Tracking",
+              "💳 Secure UPI Payments", "⭐ 4.8 Average Rating", "🎧 24/7 Support",
+              "🚀 2-Min Pilot Matching", "🔒 End-to-End Safety", "💰 Transparent Pricing",
+            ].map((t, i) => (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "0 32px", fontSize: 13, color: "rgba(255,255,255,0.55)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {t}
+                {i < 17 && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "rgba(30,109,229,0.6)", display: "inline-block" }}></span>}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── HOW IT WORKS ── */}
       <section style={{ background: "#F8FAFF" }} id="solutions">
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
-          <div style={{ textAlign: "center", marginBottom: 64 }}>
+          <div className="reveal" style={{ textAlign: "center", marginBottom: 64 }}>
             <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>HOW IT WORKS</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 16px", letterSpacing: -0.5 }}>Ride in <span style={{ color: "#1E6DE5" }}>4 Simple Steps</span></h2>
             <p style={{ fontSize: 17, color: "#64748B", maxWidth: 500, margin: "0 auto" }}>From booking to arrival — it's fast, transparent, and reliable every time.</p>
@@ -317,7 +370,7 @@ export default function LandingPage() {
               { n: "03", emoji: "🏍", title: "Pilot Assigned", desc: "Nearest verified pilot is assigned instantly to you", color: "#FFFBEB", border: "#FDE68A" },
               { n: "04", emoji: "✅", title: "Arrive Safely", desc: "Reach your destination safely with OTP-verified handoff", color: "#FFF1F2", border: "#FECDD3" },
             ].map((s, i) => (
-              <div key={i} style={{ background: "white", borderRadius: 22, padding: 28, border: `1px solid #F1F5F9`, boxShadow: "0 2px 12px rgba(0,0,0,0.05)", position: "relative", overflow: "hidden" }}>
+              <div key={i} className={`step-card reveal reveal-delay-${i + 1}`}>
                 <div style={{ position: "absolute", top: 16, right: 16, fontSize: 40, fontWeight: 900, color: "#F1F5F9", fontFamily: "monospace" }}>{s.n}</div>
                 <div style={{ width: 56, height: 56, background: s.color, border: `1.5px solid ${s.border}`, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, marginBottom: 20 }}>{s.emoji}</div>
                 <h4 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>{s.title}</h4>
@@ -331,7 +384,7 @@ export default function LandingPage() {
       {/* ── SERVICES ── */}
       <section style={{ background: "white" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
-          <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <div className="reveal" style={{ textAlign: "center", marginBottom: 56 }}>
             <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>OUR SERVICES</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Everything You Need</h2>
             <p style={{ fontSize: 17, color: "#64748B", maxWidth: 500, margin: "0 auto" }}>One platform for rides, parcels, and business logistics — all in one place.</p>
@@ -346,16 +399,90 @@ export default function LandingPage() {
               { emoji: "📅", title: "Scheduled Trips", desc: "Book in advance — set date, time, and destination. We'll be ready when you are.", tag: "Pre-book", tagColor: "#F5F3FF", tagText: "#7C3AED" },
               { emoji: "🏢", title: "B2B Solutions", desc: "Scalable fleet management and delivery solutions for businesses of all sizes.", tag: "Enterprise", tagColor: "#F0F9FF", tagText: "#0284C7" },
             ].map((s, i) => (
-              <div key={i} style={{ background: "#FAFAFA", border: "1.5px solid #F1F5F9", borderRadius: 22, padding: 28, transition: "all 0.2s", cursor: "default" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = "0 12px 30px rgba(30,109,229,0.1)"; (e.currentTarget as HTMLElement).style.borderColor = "#BFDBFE"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; (e.currentTarget as HTMLElement).style.borderColor = "#F1F5F9"; }}
-              >
+              <div key={i} className={`service-card reveal reveal-delay-${(i % 3) + 1}`}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
                   <div style={{ fontSize: 38 }}>{s.emoji}</div>
                   <div style={{ background: s.tagColor, color: s.tagText, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>{s.tag}</div>
                 </div>
                 <h4 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>{s.title}</h4>
                 <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.65 }}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── TESTIMONIALS ── */}
+      <section style={{ background: "#F8FAFF" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <div className="reveal" style={{ textAlign: "center", marginBottom: 56 }}>
+            <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>WHAT PEOPLE SAY</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Loved by <span style={{ color: "#1E6DE5" }}>10,000+ Riders</span></h2>
+            <p style={{ fontSize: 17, color: "#64748B", maxWidth: 480, margin: "0 auto" }}>Real experiences from customers and pilots across Hyderabad &amp; Andhra Pradesh.</p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
+            {[
+              {
+                name: "Priya Reddy", role: "Daily Commuter · Hyderabad",
+                avatar: "P", avatarBg: "#1E6DE5",
+                rating: 5,
+                text: "JAGO has completely changed my daily commute. Pilots arrive in under 3 minutes and the fares are always transparent. Cancelled my cab subscription the same week I tried JAGO!",
+                tag: "Bike Rides", tagColor: "#EFF6FF", tagText: "#1E6DE5",
+              },
+              {
+                name: "Ravi Kumar", role: "JAGO Pilot · Vijayawada",
+                avatar: "R", avatarBg: "#16A34A",
+                rating: 5,
+                text: "I earn ₹1,200–₹1,500 daily as a JAGO Pilot. The app is smooth, payouts are weekly, and the support team actually responds. Best decision I made this year.",
+                tag: "Pilot Experience", tagColor: "#F0FDF4", tagText: "#16A34A",
+              },
+              {
+                name: "Suresh Babu", role: "Small Business Owner · Guntur",
+                avatar: "S", avatarBg: "#D97706",
+                rating: 5,
+                text: "We use JAGO for all our parcel deliveries. OTP-verified handoffs give us peace of mind, and parcels always reach within 45 minutes. Excellent B2B service.",
+                tag: "Parcel Delivery", tagColor: "#FFFBEB", tagText: "#D97706",
+              },
+              {
+                name: "Lakshmi Devi", role: "College Student · Amaravathi",
+                avatar: "L", avatarBg: "#7C3AED",
+                rating: 5,
+                text: "Auto rides with JAGO are so affordable! I use the monthly pass and save almost ₹800 every month compared to other apps. The driver ratings system makes it feel very safe.",
+                tag: "Auto Rides", tagColor: "#F5F3FF", tagText: "#7C3AED",
+              },
+              {
+                name: "Mohammed Farhan", role: "IT Professional · Hitec City",
+                avatar: "M", avatarBg: "#0891B2",
+                rating: 5,
+                text: "Scheduled rides are a game changer for early morning flights. I book the night before and the pilot is already waiting when I step out. Zero stress, 100% reliable.",
+                tag: "Scheduled Trips", tagColor: "#F0F9FF", tagText: "#0891B2",
+              },
+              {
+                name: "Ananya Singh", role: "Startup Founder · Secunderabad",
+                avatar: "A", avatarBg: "#DC2626",
+                rating: 5,
+                text: "Our company switched to JAGO for employee logistics. The corporate dashboard is clean, billing is easy, and pilots are always professional. Great product, great team!",
+                tag: "B2B Solutions", tagColor: "#FFF1F2", tagText: "#DC2626",
+              },
+            ].map((t, i) => (
+              <div key={i} className={`testi-card reveal reveal-delay-${(i % 3) + 1}`}>
+                <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+                  {[...Array(t.rating)].map((_, j) => (
+                    <svg key={j} width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  ))}
+                </div>
+                <p style={{ fontSize: 15, color: "#374151", lineHeight: 1.7, margin: "0 0 20px", fontStyle: "italic" }}>"{t.text}"</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: t.avatarBg, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 800, fontSize: 16 }}>{t.avatar}</div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{t.name}</div>
+                      <div style={{ fontSize: 12, color: "#94A3B8" }}>{t.role}</div>
+                    </div>
+                  </div>
+                  <div style={{ background: t.tagColor, color: t.tagText, fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 6 }}>{t.tag}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -442,7 +569,7 @@ export default function LandingPage() {
       {/* ── CITIES ── */}
       <section id="cities" style={{ background: "#F8FAFF" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
+          <div className="reveal" style={{ textAlign: "center", marginBottom: 48 }}>
             <div style={{ display: "inline-block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "6px 18px", fontSize: 12, fontWeight: 700, color: "#1E6DE5", marginBottom: 16, letterSpacing: 1 }}>COVERAGE</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, color: "#0F172A", margin: "0 0 14px", letterSpacing: -0.5 }}>Cities We Serve</h2>
             <p style={{ fontSize: 17, color: "#64748B" }}>Expanding across Telangana &amp; Andhra Pradesh</p>

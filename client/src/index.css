@@ -3015,39 +3015,62 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
    ═══════════════════════════════════════════════════ */
 .jd-stat-card {
   background: #fff;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid rgba(226,232,240,0.8);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
-  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+  padding: 1.35rem 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.22s cubic-bezier(.22,1,.36,1), box-shadow 0.22s ease;
   text-decoration: none !important;
   position: relative;
   overflow: hidden;
+  animation: statFadeIn 0.5s ease-out both;
 }
+@keyframes statFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.jd-stat-card:nth-child(1) { animation-delay: 0.05s; }
+.jd-stat-card:nth-child(2) { animation-delay: 0.1s; }
+.jd-stat-card:nth-child(3) { animation-delay: 0.15s; }
+.jd-stat-card:nth-child(4) { animation-delay: 0.2s; }
 .jd-stat-card::before {
   content: "";
   position: absolute;
-  right: -30px; bottom: -30px;
-  width: 100px; height: 100px;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, currentColor, transparent);
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.jd-stat-card::after {
+  content: "";
+  position: absolute;
+  right: -20px; bottom: -20px;
+  width: 90px; height: 90px;
   border-radius: 50%;
   background: currentColor;
-  opacity: 0.03;
+  opacity: 0.035;
+  transition: transform 0.3s;
 }
 .jd-stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+  transform: translateY(-5px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.1);
   text-decoration: none !important;
 }
+.jd-stat-card:hover::after { transform: scale(1.2); }
+.jd-stat-card:hover::before { opacity: 1; }
 .jd-stat-icon-wrap {
-  width: 54px; height: 54px;
-  border-radius: 14px;
+  width: 56px; height: 56px;
+  border-radius: 16px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  transition: transform 0.2s;
 }
+.jd-stat-card:hover .jd-stat-icon-wrap { transform: scale(1.08); }
 .jd-stat-body { flex: 1; min-width: 0; }
 .jd-stat-label {
   font-size: 0.72rem;
@@ -3058,10 +3081,10 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   margin-bottom: 4px;
 }
 .jd-stat-value {
-  font-size: 1.65rem;
-  font-weight: 800;
+  font-size: 1.75rem;
+  font-weight: 900;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 .jd-stat-skeleton {
   display: inline-block;

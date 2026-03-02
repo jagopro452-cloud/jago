@@ -397,12 +397,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildQuickServices() {
     final services = [
-      {'label': 'Intercity', 'icon': Icons.directions_bus_rounded, 'color': const Color(0xFF1565C0)},
-      {'label': 'Schedule', 'icon': Icons.calendar_today_rounded, 'color': const Color(0xFF7C3AED)},
-      {'label': 'Car Share', 'icon': Icons.people_rounded, 'color': const Color(0xFF0891B2)},
-      {'label': 'Parcel', 'icon': Icons.inventory_2_rounded, 'color': const Color(0xFFD97706)},
-      {'label': 'Daily Spin', 'icon': Icons.casino_rounded, 'color': const Color(0xFFDC2626)},
-      {'label': 'Offers', 'icon': Icons.local_offer_rounded, 'color': const Color(0xFF059669)},
+      {'label': 'Intercity', 'icon': Icons.directions_bus_rounded, 'c1': const Color(0xFF1565C0), 'c2': const Color(0xFF1E88E5)},
+      {'label': 'Schedule', 'icon': Icons.calendar_today_rounded, 'c1': const Color(0xFF7C3AED), 'c2': const Color(0xFF9C27B0)},
+      {'label': 'Car Share', 'icon': Icons.people_rounded, 'c1': const Color(0xFF0891B2), 'c2': const Color(0xFF0097A7)},
+      {'label': 'Parcel', 'icon': Icons.inventory_2_rounded, 'c1': const Color(0xFFD97706), 'c2': const Color(0xFFEF6C00)},
+      {'label': 'Daily Spin', 'icon': Icons.casino_rounded, 'c1': const Color(0xFFDC2626), 'c2': const Color(0xFFE91E63)},
+      {'label': 'Offers', 'icon': Icons.local_offer_rounded, 'c1': const Color(0xFF059669), 'c2': const Color(0xFF2E7D32)},
     ];
     final routes = [
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen())),
@@ -414,31 +414,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())),
     ];
     return SizedBox(
-      height: 72,
+      height: 80,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: services.length,
         itemBuilder: (ctx, i) {
           final s = services[i];
-          final color = s['color'] as Color;
+          final c1 = s['c1'] as Color;
+          final c2 = s['c2'] as Color;
           return GestureDetector(
             onTap: routes[i],
             child: Container(
-              width: 62,
-              margin: EdgeInsets.only(right: i < services.length - 1 ? 10 : 0),
+              width: 68,
+              margin: EdgeInsets.only(right: i < services.length - 1 ? 12 : 0),
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Container(
-                  width: 44, height: 44,
+                  width: 50, height: 50,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: color.withOpacity(0.2), width: 1),
+                    gradient: LinearGradient(
+                      colors: [c1, c2],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: c1.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
-                  child: Icon(s['icon'] as IconData, color: color, size: 20),
+                  child: Icon(s['icon'] as IconData, color: Colors.white, size: 22),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 Text(s['label'] as String,
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
                   maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
               ]),
             ),
@@ -661,35 +665,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final type = cat['type']?.toString();
     final minFare = double.tryParse(cat['minimumFare']?.toString() ?? '0') ?? 0;
     final fareLabel = minFare > 0 ? '₹${minFare.toInt()}+' : '—';
+    final isPopular = i == 0;
     return GestureDetector(
       onTap: () => setState(() => _selectedRide = i),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-        width: 88,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        width: 100,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
-          color: selected ? _blue : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          gradient: selected
+            ? const LinearGradient(
+                colors: [Color(0xFF1E6DE5), Color(0xFF1244A2)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight)
+            : null,
+          color: selected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? _blue : const Color(0xFFE5E9F5),
-            width: selected ? 0 : 1.5,
+            color: selected ? Colors.transparent : const Color(0xFFE5E9F5),
+            width: 1.5,
           ),
-          boxShadow: selected ? [BoxShadow(
-            color: _blue.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))] : [],
+          boxShadow: selected
+            ? [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 6))]
+            : [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(_iconForVehicle(name, type: type),
-            color: selected ? Colors.white : Colors.grey[600], size: 28),
-          const SizedBox(height: 6),
+          if (isPopular && !selected)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B35).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('Popular', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Color(0xFFFF6B35))),
+            )
+          else
+            const SizedBox(height: selected ? 0 : 0),
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: selected ? Colors.white.withOpacity(0.15) : _blue.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(_iconForVehicle(name, type: type),
+              color: selected ? Colors.white : _blue, size: 24),
+          ),
+          const SizedBox(height: 8),
           Text(name,
             textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
               color: selected ? Colors.white : _dark, height: 1.3)),
-          const SizedBox(height: 3),
-          Text(fareLabel,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
-              color: selected ? Colors.white.withOpacity(0.9) : _blue)),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: selected ? Colors.white.withOpacity(0.2) : _blue.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(fareLabel,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                color: selected ? Colors.white : _blue)),
+          ),
         ]),
       ),
     );
