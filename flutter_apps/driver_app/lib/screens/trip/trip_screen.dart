@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
@@ -200,60 +201,108 @@ class _TripScreenState extends State<TripScreen> {
   }
 
   void _showCompletionDialog(String fare) {
+    int _selectedRating = 0;
+    bool _ratingSubmitted = false;
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 80, height: 80,
-              decoration: BoxDecoration(
-                color: _green.withOpacity(0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: _green.withOpacity(0.3), width: 2),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => Dialog(
+          backgroundColor: _surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                  color: _green.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _green.withOpacity(0.3), width: 2),
+                ),
+                child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 44)),
+              const SizedBox(height: 20),
+              const Text('Trip Complete! 🎉',
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _green.withOpacity(0.2)),
+                ),
+                child: Column(children: [
+                  Text('₹$fare',
+                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text('Trip Fare', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                ]),
               ),
-              child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 44)),
-            const SizedBox(height: 20),
-            const Text('Trip Complete! 🎉',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: _green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _green.withOpacity(0.2)),
+              const SizedBox(height: 8),
+              Text('Platform commission deduct avutundi',
+                style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
+              const SizedBox(height: 20),
+              // Rate customer section
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                ),
+                child: _ratingSubmitted
+                    ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                        const SizedBox(width: 6),
+                        Text('Rating submitted! Thanks', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
+                      ])
+                    : Column(children: [
+                        Text('Customer ki Rating ivvandi',
+                          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 10),
+                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          for (int i = 1; i <= 5; i++)
+                            GestureDetector(
+                              onTap: () async {
+                                setStateDialog(() => _selectedRating = i);
+                                final token = await AuthService.getToken();
+                                try {
+                                  await http.post(Uri.parse(ApiConfig.driverRateCustomer),
+                                    headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                                    body: jsonEncode({'tripId': tripId, 'rating': i}));
+                                } catch (_) {}
+                                setStateDialog(() => _ratingSubmitted = true);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  i <= _selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
+                                  color: Colors.amber, size: 36),
+                              ),
+                            ),
+                        ]),
+                      ]),
               ),
-              child: Column(children: [
-                Text('₹$fare',
-                  style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 2),
-                Text('Trip Fare', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-              ]),
-            ),
-            const SizedBox(height: 8),
-            Text('Platform commission deduct avutundi',
-              style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity, height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue, foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pushAndRemoveUntil(context,
-                    MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-                },
-                child: const Text('Home ki Vellandi →', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-            ),
-          ]),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity, height: 52,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _blue, foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pushAndRemoveUntil(context,
+                      MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+                  },
+                  child: const Text('Home ki Vellandi →', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+              ),
+            ]),
+          ),
         ),
       ),
     );
@@ -590,13 +639,52 @@ class _TripScreenState extends State<TripScreen> {
     );
   }
 
+  Future<void> _triggerSos() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _surface,
+        title: const Text('SOS Alert', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text('Emergency SOS send చేయాలా? Help team contact అవుతారు.',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final token = await AuthService.getToken();
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    try {
+      await http.post(Uri.parse(ApiConfig.sos),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'tripId': tripId, 'lat': _center.latitude, 'lng': _center.longitude, 'message': 'Driver SOS alert during trip'}));
+      if (!mounted) return;
+      _showSnack('🚨 SOS Alert sent! Help is on the way.');
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack('SOS send failed. Call 100 immediately!', error: true);
+    }
+  }
+
   Widget _buildSecondaryActions(String? phone) {
-    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      if (phone != null) ...[
+    return Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+      if (phone != null)
         GestureDetector(
-          onTap: () => _showSnack('Call: $phone'),
+          onTap: () async {
+            final uri = Uri(scheme: 'tel', path: phone);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri);
+            } else {
+              _showSnack('Call: $phone');
+            }
+          },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: _blue.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
@@ -605,25 +693,39 @@ class _TripScreenState extends State<TripScreen> {
             child: const Row(children: [
               Icon(Icons.phone_rounded, color: Color(0xFF2563EB), size: 16),
               SizedBox(width: 6),
-              Text('Call Customer', style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Call', style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
-        const SizedBox(width: 10),
-      ],
+      GestureDetector(
+        onTap: _triggerSos,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.red.withOpacity(0.3)),
+          ),
+          child: const Row(children: [
+            Icon(Icons.sos_rounded, color: Colors.red, size: 16),
+            SizedBox(width: 6),
+            Text('SOS', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      ),
       GestureDetector(
         onTap: _showCancelDialog,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.08),
+            color: Colors.orange.withOpacity(0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.red.withOpacity(0.15)),
+            border: Border.all(color: Colors.orange.withOpacity(0.2)),
           ),
           child: const Row(children: [
-            Icon(Icons.cancel_rounded, color: Color(0xFFF87171), size: 16),
+            Icon(Icons.cancel_rounded, color: Colors.orange, size: 16),
             SizedBox(width: 6),
-            Text('Cancel', style: TextStyle(color: Color(0xFFF87171), fontSize: 12, fontWeight: FontWeight.w700)),
+            Text('Cancel', style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),

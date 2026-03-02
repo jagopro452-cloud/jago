@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
@@ -383,26 +384,87 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               Text(rating.toString(), style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w600)),
             ]),
         ])),
-        if (phone != null)
+        Row(children: [
+          if (phone != null) ...[
+            GestureDetector(
+              onTap: () async {
+                final uri = Uri(scheme: 'tel', path: phone);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                } else {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Pilot: $phone', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    backgroundColor: _blue,
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                }
+              },
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: _blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.phone_rounded, color: Color(0xFF1E6DE5), size: 18)),
+            ),
+            const SizedBox(width: 8),
+          ],
           GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('Pilot Call: $phone', style: const TextStyle(fontWeight: FontWeight.w600)),
-                backgroundColor: _blue,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ));
-            },
+            onTap: _triggerSos,
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: _blue.withOpacity(0.1),
+                color: Colors.red.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.phone_rounded, color: Color(0xFF1E6DE5), size: 18)),
+              child: const Icon(Icons.sos_rounded, color: Colors.red, size: 20)),
           ),
+        ]),
       ]),
     );
+  }
+
+  Future<void> _triggerSos() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('🚨 SOS Alert', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Emergency SOS పంపాలా? Help team వెంటనే contact అవుతారు.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final token = await AuthService.getToken();
+    try {
+      await http.post(Uri.parse(ApiConfig.sos),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'tripId': widget.tripId,
+          'lat': _center.latitude,
+          'lng': _center.longitude,
+          'message': 'Customer SOS alert during trip',
+        }));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('🚨 SOS Alert sent! Help is on the way.', style: TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('SOS failed. Call 100 immediately!', style: TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   Widget _buildOtpBox(String otp) {

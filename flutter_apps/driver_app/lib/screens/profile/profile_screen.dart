@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../performance/performance_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
+import '../referral/referral_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -71,10 +73,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const PerformanceScreen()))),
               _tile(Icons.description_outlined, 'KYC Documents', const Color(0xFF2563EB), () =>
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const KycDocumentsScreen()))),
+              _tile(Icons.card_giftcard_rounded, 'Refer & Earn', Colors.amber.shade600, () =>
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen()))),
             ]),
             const SizedBox(height: 2),
             _section([
-              _tile(Icons.headset_mic_outlined, 'Support', Colors.teal, () {}),
+              _tile(Icons.headset_mic_outlined, 'Support', Colors.teal, () async {
+                final uri = Uri(scheme: 'tel', path: '+919876543210');
+                if (await canLaunchUrl(uri)) await launchUrl(uri);
+              }),
               _tile(Icons.logout, 'Logout', Colors.redAccent, () async {
                 await AuthService.logout();
                 if (!mounted) return;
