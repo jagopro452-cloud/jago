@@ -236,7 +236,7 @@ export default function LandingPage() {
       {/* ── MOBILE MENU OVERLAY ── */}
       {menuOpen && (
         <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-          <img src={jagoLogoWhite} style={{ height: 36, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />
+          <img src={jagoLogoWhite} style={{ height: 56, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />
           {nav.map(n => (
             <a key={n.label} href={n.href} className="mobile-menu-link" onClick={() => setMenuOpen(false)}>{n.label}</a>
           ))}
@@ -259,9 +259,9 @@ export default function LandingPage() {
         borderBottom: scrolled ? "1px solid rgba(255,255,255,0.06)" : "none",
         transition: "all 0.3s ease",
       }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", height: 72, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", height: 84, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <a href="/">
-            <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain" }} alt="JAGO" />
+            <img src={jagoLogoWhite} style={{ height: 52, objectFit: "contain" }} alt="JAGO" />
           </a>
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: 36 }}>
             {nav.map(n => (
@@ -675,7 +675,7 @@ export default function LandingPage() {
           <div className="footer-grid">
             {/* Brand */}
             <div>
-              <img src={jagoLogoWhite} style={{ height: 32, objectFit: "contain", marginBottom: 16 }} alt="JAGO" />
+              <img src={jagoLogoWhite} style={{ height: 60, objectFit: "contain", marginBottom: 20 }} alt="JAGO" />
               <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", lineHeight: 1.7, marginBottom: 20, maxWidth: 280 }}>
                 Your trusted ride-sharing and logistics platform. Connecting people and businesses across Telangana &amp; Andhra Pradesh.
               </p>
