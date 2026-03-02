@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import 'fcm_service.dart';
 
 class AuthService {
   static const _tokenKey = 'auth_token';
@@ -38,6 +39,8 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, data['token']);
       await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+      // Save FCM token to server after login
+      FcmService().onLoginSuccess().catchError((_) {});
     }
     return data;
   }

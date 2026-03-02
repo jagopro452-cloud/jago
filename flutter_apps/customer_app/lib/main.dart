@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
+import 'services/fcm_service.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
@@ -30,6 +32,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await loadThemePreference();
+  // Firebase init (requires google-services.json + GoogleService-Info.plist)
+  try {
+    await Firebase.initializeApp();
+    await FcmService().init();
+  } catch (_) {
+    // Firebase not configured yet — add google-services.json to enable push notifications
+  }
   runApp(const JagoApp());
 }
 

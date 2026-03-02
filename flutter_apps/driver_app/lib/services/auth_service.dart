@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../models/user_model.dart';
+import 'fcm_service.dart';
 
 class AuthService {
   static const _tokenKey = 'auth_token';
@@ -62,6 +63,8 @@ class AuthService {
     if (res.statusCode == 200 && data['token'] != null) {
       await saveToken(data['token']);
       await saveUser(data['user'] ?? data);
+      // Save FCM token to server after login
+      FcmService().onLoginSuccess().catchError((_) {});
     }
     return data;
   }

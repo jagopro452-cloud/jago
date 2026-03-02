@@ -68,6 +68,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _getLocation();
     _fetchHome();
     _connectSocket();
+    // Check for pending FCM notification (app opened from push while terminated)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
+  }
+
+  Future<void> _checkPendingFcmNotification() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingStr = prefs.getString('pending_notification');
+      if (pendingStr != null && pendingStr.isNotEmpty) {
+        await prefs.remove('pending_notification');
+        final data = jsonDecode(pendingStr) as Map<String, dynamic>;
+        final type = data['type']?.toString() ?? '';
+        final tripId = data['tripId']?.toString() ?? '';
+        if (!mounted || tripId.isEmpty) return;
+        if (type == 'trip_accepted' || type == 'driver_arrived') {
+          await Future.delayed(const Duration(milliseconds: 600));
+          if (!mounted) return;
+          Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+        }
+      }
+    } catch (_) {}
   }
 
   void _connectSocket() {
