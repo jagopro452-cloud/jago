@@ -161,13 +161,13 @@ Both apps located in `flutter_apps/` directory. Setup guide: `flutter_apps/SETUP
 
 ### Driver App (JAGO Pilot) — `flutter_apps/driver_app/`
 - **Theme**: Dark navy (#060D1E) + Blue (#2563EB)
-- **Screens**: Home (Map) → Incoming Trip → Active Trip → KYC Documents → Performance → Face Verification → Break Mode → Fatigue Alert → Wallet → Trip History → Profile
-- **Key features**: Live GPS, Face verification (daily + 10-trip trigger), KYC doc upload, Performance score (Bronze/Silver/Gold), **Break Mode** (set 5-60 min break, auto go-online), **Fatigue Alert** (8+ hrs driving warning), earnings by period
+- **Screens**: Home (Map) → Incoming Trip → Active Trip → KYC Documents → Performance → Face Verification → Break Mode → Safety & Fatigue → Wallet → Trip History → Profile
+- **Key features**: Live GPS, Face verification (daily + 10-trip trigger), KYC doc upload, Performance score (Bronze/Silver/Gold), **Break Mode** (set 5-60 min break, auto go-online), **Safety & Fatigue Screen** (safety score, hours driven, weekly stats, safety tips, break button), **Weekly earnings bar chart** (Mon-Sun), **Notification badge** with unread count, Dynamic support phone from DB, **Night charge indicator** (🌙 1.25x, 10PM-6AM)
 
 ### Customer App (JAGO) — `flutter_apps/customer_app/`
 - **Theme**: Light white + Blue (#2563EB)
 - **Screens**: Home → Booking → Tracking → Tip Driver → JAGO Coins → Monthly Pass → Ride Preferences → Lost & Found → Scheduled Rides → Emergency Contacts → Saved Places → Wallet → Profile
-- **Key features**: **JAGO Coins** (earn per ride, redeem for discounts), **Monthly Pass** (20/40/80 rides, save 35%), **Ride Preferences** (AC, quiet, women driver), **Post-Ride Tip** (₹10-50 + bonus coins), **Lost & Found** (report forgotten items), **Surge Alert** (notify when surge drops), Fare estimate, Coupon, Scheduled rides, Emergency contacts
+- **Key features**: **JAGO Coins** (earn per ride, redeem for discounts), **Monthly Pass** (20/40/80 rides, save 35%), **Ride Preferences** (AC, quiet, women driver), **Post-Ride Tip** (₹10-50 + bonus coins), **Lost & Found** (report forgotten items), **Surge Alert** (notify when surge drops), Fare estimate, Coupon, Scheduled rides, Emergency contacts, **Saved Places Shortcuts** (🏠 Home/💼 Work quick-book on home screen), **Book Again** button in trip history for completed trips, **Banner carousel** with API-backed banners + page dots, **Quick services row** (Intercity/Schedule/Parcel/Daily Spin/Offers), **Notification badge** with live unread count, **Offers & Promo system** (coupon copy + promo code in booking)
 
 ### Unique Feature APIs added:
 - `GET /api/app/customer/coins` — JAGO Coins balance + history

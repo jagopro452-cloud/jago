@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 
@@ -67,18 +68,26 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   void _shareCode() {
     if (_code.isEmpty) return;
-    final shareText = 'JAGO Pilot app download చేయండి!\n'
-        'నా referral code: $_code\n'
-        'Download: https://jagopro.org/download';
-    Clipboard.setData(ClipboardData(text: shareText));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Share text copied to clipboard!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    final shareText = 'JAGO Pilot app download చేయండి! 🚗
+'
+        'నా referral code: $_code
+'
+        'Download: https://jagopro.org/download/pilot
+'
+        'Sign up చేసి trips complete చేయండి — మీకు + నాకు both కి wallet bonus!';
+    _shareViaWhatsApp(shareText);
+  }
+
+  Future<void> _shareViaWhatsApp(String text) async {
+    final encoded = Uri.encodeComponent(text);
+    final uri = Uri.parse('whatsapp://send?text=$encoded');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      Clipboard.setData(ClipboardData(text: text));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Referral text copied! Paste in WhatsApp'), backgroundColor: Colors.green));
+    }
   }
 
   String _timeAgo(String? dateStr) {

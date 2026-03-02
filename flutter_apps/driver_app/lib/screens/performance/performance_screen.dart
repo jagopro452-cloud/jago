@@ -13,6 +13,7 @@ class PerformanceScreen extends StatefulWidget {
 
 class _PerformanceScreenState extends State<PerformanceScreen> {
   Map<String, dynamic>? _perf;
+  Map<String, dynamic>? _weeklyData;
   Map<String, dynamic>? _dashboard;
   bool _loading = true;
 
@@ -28,11 +29,13 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
     final results = await Future.wait([
       http.get(Uri.parse(ApiConfig.performance), headers: headers),
       http.get(Uri.parse(ApiConfig.driverDashboard), headers: headers),
+      http.get(Uri.parse(ApiConfig.weeklyEarnings), headers: headers),
     ]);
     if (mounted) {
       setState(() {
         if (results[0].statusCode == 200) _perf = jsonDecode(results[0].body);
         if (results[1].statusCode == 200) _dashboard = jsonDecode(results[1].body);
+        if (results[2].statusCode == 200) _weeklyData = jsonDecode(results[2].body);
         _loading = false;
       });
     }
@@ -62,6 +65,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
               child: Column(children: [
                 _buildScoreCard(),
                 const SizedBox(height: 16),
+                if (_weeklyData != null) ...[_buildWeeklyChart(), const SizedBox(height: 16)],
                 _buildGoalsCard(),
                 const SizedBox(height: 16),
                 _buildStatsGrid(),
@@ -126,6 +130,70 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWeeklyChart() {
+    final days = (_weeklyData?['days'] as List?) ?? [];
+    final total = (_weeklyData?['total'] ?? 0.0) as num;
+    if (days.isEmpty) return const SizedBox();
+    final maxGross = days.fold<double>(0, (m, d) {
+      final g = (d['gross'] as num?)?.toDouble() ?? 0;
+      return g > m ? g : m;
+    });
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF091629),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF1E3A5F)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('This Week Earnings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w900, fontSize: 16)),
+        ]),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 80,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: days.asMap().entries.map((entry) {
+              final d = entry.value;
+              final gross = (d['gross'] as num?)?.toDouble() ?? 0;
+              final trips = d['trips'] as int? ?? 0;
+              final pct = maxGross > 0 ? (gross / maxGross) : 0.0;
+              final isToday = entry.key == days.length - 1;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.center, mainAxisAlignment: MainAxisAlignment.end, children: [
+                    if (gross > 0) Text('₹${gross.toInt()}',
+                      style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white60, fontSize: 8, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Container(
+                      width: double.infinity,
+                      height: gross > 0 ? (60 * pct).clamp(4, 60) : 4,
+                      decoration: BoxDecoration(
+                        color: isToday
+                          ? const Color(0xFF3B82F6)
+                          : gross > 0 ? const Color(0xFF1E3A5F).withOpacity(0.9) : const Color(0xFF1E3A5F).withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(4),
+                        border: isToday ? Border.all(color: const Color(0xFF3B82F6), width: 1.5) : null,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(d['day']?.toString() ?? '', style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white38, fontSize: 9, fontWeight: FontWeight.w600)),
+                    if (trips > 0)
+                      Text('${trips}t', style: const TextStyle(color: Color(0xFF22C55E), fontSize: 8)),
+                  ]),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
     );
   }
 

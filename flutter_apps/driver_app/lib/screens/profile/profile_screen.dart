@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 import '../auth/login_screen.dart';
 import '../performance/performance_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
@@ -21,6 +24,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
 
   @override
+
+  Future<String> _getSupportPhone() async {
+    try {
+      final r = await http.get(Uri.parse(ApiConfig.configs));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        return data['configs']?['support_phone'] ?? '+916303000000';
+      }
+    } catch (_) {}
+    return '+916303000000';
+  }
+
   void initState() { super.initState(); _loadProfile(); }
 
   Future<void> _loadProfile() async {
@@ -108,10 +123,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         tileColor: Colors.white.withOpacity(0.06),
                         leading: const Icon(Icons.phone_rounded, color: Colors.teal),
                         title: const Text('Call Support', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('+91-98765-43210', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        subtitle: FutureBuilder<String>(
+                          future: _getSupportPhone(),
+                          builder: (_, snap) => Text(snap.data ?? 'JAGO Support', style: const TextStyle(color: Colors.grey, fontSize: 12))),
                         onTap: () async {
+                          final phone = await _getSupportPhone();
                           Navigator.pop(ctx);
-                          final uri = Uri(scheme: 'tel', path: '+919876543210');
+                          final uri = Uri(scheme: 'tel', path: phone);
                           if (await canLaunchUrl(uri)) await launchUrl(uri);
                         },
                       ),

@@ -354,7 +354,22 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         ])),
         if (_status == 'searching')
           SizedBox(width: 20, height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: color)),
+            child: CircularProgressIndicator(strokeWidth: 2, color: color))
+        else if (_status != 'completed' && _status != 'cancelled')
+          GestureDetector(
+            onTap: _shareRide,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E6DE5).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.share_rounded, color: Color(0xFF1E6DE5), size: 15),
+                const SizedBox(width: 4),
+                const Text('Share', style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 11, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
       ]),
     );
   }
@@ -423,6 +438,24 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         ]),
       ]),
     );
+  }
+
+  Future<void> _shareRide() async {
+    final tripId = widget.tripId;
+    final shareText = '🚗 JAGO ride track చేయండి!
+'
+        'Real-time location: https://jagopro.org/track/$tripId
+'
+        'JAGO app download: https://jagopro.org/download';
+    final encoded = Uri.encodeComponent(shareText);
+    final uri = Uri.parse('whatsapp://send?text=$encoded');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      await Clipboard.setData(ClipboardData(text: shareText));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Share text copied! Paste in WhatsApp'), backgroundColor: Color(0xFF1E6DE5)));
+    }
   }
 
   Future<void> _triggerSos() async {

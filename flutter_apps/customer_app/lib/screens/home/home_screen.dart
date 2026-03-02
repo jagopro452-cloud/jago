@@ -20,8 +20,13 @@ import '../tracking/tracking_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../booking/intercity_booking_screen.dart';
 import '../coins/spin_wheel_screen.dart';
+import '../scheduled/scheduled_rides_screen.dart';
+import '../lost_found/lost_found_screen.dart';
+import '../offers/offers_screen.dart';
 import '../profile/support_chat_screen.dart';
 import '../referral/referral_screen.dart';
+import '../saved_places/saved_places_screen.dart';
+import '../../services/trip_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,7 +47,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _destLat = 0, _destLng = 0;
   int _selectedRide = 0;
   bool _loading = true;
+  int _unreadNotifCount = 0;
   List<Map<String, dynamic>> _vehicleCategories = [];
+  List<dynamic> _banners = [];
+  int _bannerPage = 0;
+  List<dynamic> _savedPlaces = [];
   StreamSubscription? _driverAssignedSub;
 
   static const Color _blue = Color(0xFF1E6DE5);
@@ -72,9 +81,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadUser();
     _getLocation();
     _fetchHome();
+    _fetchUnreadCount();
+    _loadSavedPlaces();
     _connectSocket();
     // Check for pending FCM notification (app opened from push while terminated)
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final token = await AuthService.getToken();
+      final r = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/notifications?limit=1'),
+        headers: {'Authorization': 'Bearer $token'});
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body);
+        setState(() => _unreadNotifCount = (data['unreadCount'] as int?) ?? 0);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadSavedPlaces() async {
+    try {
+      final places = await TripService.getSavedPlaces();
+      if (mounted) setState(() => _savedPlaces = places.where((p) => p['label'] == 'Home' || p['label'] == 'Work').toList());
+    } catch (_) {}
   }
 
   Future<void> _checkPendingFcmNotification() async {
@@ -170,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final cats = (data['vehicleCategories'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
         setState(() {
           _vehicleCategories = cats.isNotEmpty ? cats : _defaultVehicleCategories();
+          _banners = (data['banners'] as List<dynamic>?) ?? [];
           _loading = false;
         });
       } else {
@@ -274,16 +305,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
               ),
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+                    .then((_) => _fetchUnreadCount());
+                },
                 child: Stack(children: [
                   Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(10)),
                     child: const Icon(Icons.notifications_rounded, color: Color(0xFF1E6DE5), size: 20),
                   ),
-                  Positioned(top: 7, right: 7,
-                    child: Container(width: 7, height: 7,
-                      decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle))),
+                  if (_unreadNotifCount > 0)
+                    Positioned(top: 3, right: 3,
+                      child: Container(
+                        width: 16, height: 16,
+                        decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                        child: Center(child: Text(
+                          _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
+                          style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900),
+                        )),
+                      )),
                 ]),
               ),
             ]),
@@ -336,14 +377,118 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ]),
             const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            _buildQuickServices(),
+            if (_savedPlaces.isNotEmpty) ...[const SizedBox(height: 12), _buildSavedPlacesRow()],
+            const SizedBox(height: 16),
             _buildLocationCard(),
             const SizedBox(height: 18),
+            if (_banners.isNotEmpty) ...[_buildBannerCarousel(), const SizedBox(height: 16)],
             _buildVehicleSection(),
             const SizedBox(height: 18),
             _buildBookBtn(),
           ]),
         ),
       ]),
+    );
+  }
+
+  Widget _buildQuickServices() {
+    final services = [
+      {'label': 'Intercity', 'icon': Icons.directions_bus_rounded, 'color': const Color(0xFF1565C0)},
+      {'label': 'Schedule', 'icon': Icons.calendar_today_rounded, 'color': const Color(0xFF7C3AED)},
+      {'label': 'Parcel', 'icon': Icons.inventory_2_rounded, 'color': const Color(0xFFD97706)},
+      {'label': 'Daily Spin', 'icon': Icons.casino_rounded, 'color': const Color(0xFFDC2626)},
+      {'label': 'Offers', 'icon': Icons.local_offer_rounded, 'color': const Color(0xFF059669)},
+    ];
+    final routes = [
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen())),
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScheduledRidesScreen())),
+      () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select a Parcel/Cargo vehicle from the booking section below!'),
+        backgroundColor: Color(0xFFD97706), duration: Duration(seconds: 2))),
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SpinWheelScreen())),
+      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())),
+    ];
+    return SizedBox(
+      height: 72,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: services.length,
+        itemBuilder: (ctx, i) {
+          final s = services[i];
+          final color = s['color'] as Color;
+          return GestureDetector(
+            onTap: routes[i],
+            child: Container(
+              width: 62,
+              margin: EdgeInsets.only(right: i < services.length - 1 ? 10 : 0),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: color.withOpacity(0.2), width: 1),
+                  ),
+                  child: Icon(s['icon'] as IconData, color: color, size: 20),
+                ),
+                const SizedBox(height: 5),
+                Text(s['label'] as String,
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSavedPlacesRow() {
+    return Row(
+      children: _savedPlaces.take(2).map((p) {
+        final label = p['label'] ?? '';
+        final address = p['address'] ?? '';
+        final isHome = label == 'Home';
+        final icon = isHome ? Icons.home_rounded : Icons.work_rounded;
+        final color = isHome ? const Color(0xFF1E6DE5) : const Color(0xFF7C3AED);
+        final bgColor = isHome ? const Color(0xFFEFF6FF) : const Color(0xFFF5F3FF);
+        return Expanded(
+          child: GestureDetector(
+            onTap: () {
+              final destLat = double.tryParse(p['lat']?.toString() ?? '0') ?? 0;
+              final destLng = double.tryParse(p['lng']?.toString() ?? '0') ?? 0;
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => BookingScreen(
+                  pickup: _pickup,
+                  destination: address,
+                  pickupLat: _pickupLat, pickupLng: _pickupLng,
+                  destLat: destLat != 0 ? destLat : 17.3850,
+                  destLng: destLng != 0 ? destLng : 78.4867,
+                ),
+              ));
+            },
+            child: Container(
+              margin: EdgeInsets.only(right: isHome && _savedPlaces.length > 1 ? 6 : 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.2)),
+              ),
+              child: Row(children: [
+                Icon(icon, color: color, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+                  Text(address, style: TextStyle(fontSize: 10, color: Colors.grey[500]), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ])),
+              ]),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -418,6 +563,71 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
+  Widget _buildBannerCarousel() {
+    final double w = double.infinity;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        height: 90,
+        child: PageView.builder(
+          itemCount: _banners.length,
+          onPageChanged: (p) => setState(() => _bannerPage = p),
+          itemBuilder: (ctx, i) {
+            final b = _banners[i];
+            final imageUrl = b['imageUrl']?.toString() ?? b['image_url']?.toString() ?? '';
+            final title = b['title']?.toString() ?? 'Offer';
+            return Container(
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: imageUrl.isNotEmpty
+                  ? Image.network(imageUrl, fit: BoxFit.cover, width: double.infinity,
+                      errorBuilder: (_, __, ___) => _bannerPlaceholder(title))
+                  : _bannerPlaceholder(title),
+              ),
+            );
+          },
+        ),
+      ),
+      if (_banners.length > 1) ...[
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(_banners.length, (i) =>
+          Container(
+            width: i == _bannerPage ? 16 : 6,
+            height: 6, margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: i == _bannerPage ? _blue : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        )),
+      ],
+    ]);
+  }
+
+  Widget _bannerPlaceholder(String title) => Container(
+    width: double.infinity,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF0D47A1)]),
+    ),
+    padding: const EdgeInsets.all(16),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+      Row(children: [
+        const Icon(Icons.local_offer_rounded, color: Colors.amber, size: 18),
+        const SizedBox(width: 6),
+        const Text('Special Offer!', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 4),
+      Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+    ]),
+  );
 
   Widget _buildVehicleSection() {
     if (_loading) {
@@ -623,6 +833,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen()));
+            }),
+            _drawerItem(Icons.local_offer_rounded, 'Offers & Coupons', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen()));
             }),
             _drawerItem(Icons.directions_bus_rounded, 'Intercity Rides', () {
               Navigator.pop(context);

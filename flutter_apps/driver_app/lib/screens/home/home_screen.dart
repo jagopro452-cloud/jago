@@ -16,6 +16,7 @@ import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../break_mode/break_mode_screen.dart';
+import '../fatigue/fatigue_screen.dart';
 import '../trip/trip_screen.dart';
 import '../notifications/notifications_screen.dart';
 
@@ -39,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _walletBalance = 0;
   int _tripsToday = 0;
   double _earningsToday = 0;
+  int _unreadNotifCount = 0;
   Map<String, dynamic>? _incomingTrip;
   Timer? _locationTimer;
   late AnimationController _pulseCtrl;
@@ -344,7 +346,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         const SizedBox(width: 8),
-        _iconBtn(Icons.notifications_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+              .then((_) => _fetchUnreadCount());
+          },
+          child: Stack(children: [
+            Container(
+              width: 46, height: 46,
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.07))),
+              child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+            ),
+            if (_unreadNotifCount > 0)
+              Positioned(
+                top: 6, right: 6,
+                child: Container(
+                  width: 16, height: 16,
+                  decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                  child: Center(child: Text(
+                    _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                  )),
+                ),
+              ),
+          ]),
+        ),
         const SizedBox(width: 8),
         _iconBtn(Icons.my_location_rounded, _getLocation),
       ]),
@@ -573,6 +600,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _drawerItem(Icons.person_rounded, 'Profile', null, () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            }),
+            _drawerItem(Icons.health_and_safety_rounded, 'Safety & Fatigue', null, () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const FatigueScreen()));
             }),
             _drawerItem(Icons.headset_mic_rounded, 'Support', null, () {}),
             _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', null, () {}),

@@ -48,6 +48,7 @@ class ApiConfig {
   static String get driverDocuments => '$baseUrl/api/app/driver/documents';
   static String get driverDashboard => '$baseUrl/api/app/driver/dashboard';
   static String get performance => '$baseUrl/api/app/driver/performance';
+  static String get weeklyEarnings => '$baseUrl/api/app/driver/weekly-earnings';
 
   // ── Support Chat ─────────────────────────────────────────────────────
   static String get supportChat => '$baseUrl/api/app/customer/support-chat';

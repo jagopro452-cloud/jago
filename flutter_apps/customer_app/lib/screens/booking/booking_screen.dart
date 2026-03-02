@@ -31,6 +31,11 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _estimating = true;
   Map<String, dynamic>? _fare;
   String _paymentMethod = 'cash';
+  final TextEditingController _promoCtrl = TextEditingController();
+  String? _appliedPromo;
+  double _promoDiscount = 0;
+  bool _promoLoading = false;
+  String? _promoError;
 
   LatLng get _pickupLatLng => LatLng(widget.pickupLat, widget.pickupLng);
   LatLng get _destLatLng => widget.destLat != 0 && widget.destLng != 0
@@ -65,6 +70,36 @@ class _BookingScreenState extends State<BookingScreen> {
   void initState() {
     super.initState();
     _estimateFare();
+  }
+
+  @override
+  void dispose() {
+    _promoCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _applyPromo() async {
+    final code = _promoCtrl.text.trim().toUpperCase();
+    if (code.isEmpty) return;
+    setState(() { _promoLoading = true; _promoError = null; });
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.applyCoupon),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code, 'fareAmount': (_fare?['estimatedFare'] ?? 0).toDouble()}));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        setState(() {
+          _appliedPromo = code;
+          _promoDiscount = double.tryParse(data['discount']?.toString() ?? '0') ?? 0;
+          _promoLoading = false;
+        });
+      } else {
+        setState(() { _promoError = data['message'] ?? 'Invalid code'; _promoLoading = false; });
+      }
+    } catch (_) {
+      setState(() { _promoError = 'Network error'; _promoLoading = false; });
+    }
   }
 
   Future<void> _estimateFare() async {
@@ -111,6 +146,8 @@ class _BookingScreenState extends State<BookingScreen> {
         'estimatedFare': _fare?['estimatedFare'] ?? 0,
         'estimatedDistance': _distanceKm,
         'paymentMethod': _paymentMethod,
+        if (_promoDiscount > 0) 'promoDiscount': _promoDiscount,
+        if (_appliedPromo != null) 'couponCode': _appliedPromo,
       };
       if (widget.vehicleCategoryId != null) body['vehicleCategoryId'] = widget.vehicleCategoryId;
       final res = await http.post(Uri.parse(ApiConfig.bookRide),
@@ -249,6 +286,7 @@ class _BookingScreenState extends State<BookingScreen> {
               const Padding(padding: EdgeInsets.only(left: 11), child: Divider(height: 8)),
               _addressRow(Icons.flag, Colors.orange, widget.destination),
               const SizedBox(height: 12),
+              _buildNightChargeIndicator(),
               if (fare != null)
                 Container(
                   padding: const EdgeInsets.all(14),
@@ -264,6 +302,8 @@ class _BookingScreenState extends State<BookingScreen> {
                     _fareRow('Total', '₹${fare['estimatedFare'] ?? 0}', bold: true),
                   ]),
                 ),
+              const SizedBox(height: 12),
+              _buildPromoRow(),
               const SizedBox(height: 12),
               Row(children: [
                 const Text('Payment:', style: TextStyle(fontSize: 13, color: Color(0xFF1A1A2E))),
@@ -326,6 +366,42 @@ class _BookingScreenState extends State<BookingScreen> {
     ]);
   }
 
+  bool _isNightTime() {
+    final hour = DateTime.now().hour;
+    return hour >= 22 || hour < 6;
+  }
+
+  Widget _buildNightChargeIndicator() {
+    if (!_isNightTime()) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1B2A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF1E3A5F)),
+        ),
+        child: Row(children: [
+          const Text('🌙', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Night charges apply (10PM - 6AM)',
+              style: TextStyle(color: Color(0xFF93C5FD), fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E3A5F),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text('1.25x', style: TextStyle(color: Color(0xFFFFD700), fontSize: 12, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _fareRow(String label, String value, {bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -335,6 +411,63 @@ class _BookingScreenState extends State<BookingScreen> {
         Text(value, style: TextStyle(fontSize: 12,
           fontWeight: bold ? FontWeight.bold : FontWeight.w500,
           color: bold ? const Color(0xFF1A1A2E) : Colors.grey[800])),
+      ]),
+    );
+  }
+
+  Widget _buildPromoRow() {
+    if (_appliedPromo != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF86EFAC))),
+        child: Row(children: [
+          const Icon(Icons.local_offer_rounded, color: Color(0xFF16A34A), size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$_appliedPromo applied!',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF16A34A), fontSize: 13)),
+            Text('You save ₹${_promoDiscount.toInt()}',
+              style: TextStyle(color: Colors.green[700], fontSize: 12)),
+          ])),
+          GestureDetector(
+            onTap: () => setState(() { _appliedPromo = null; _promoDiscount = 0; _promoCtrl.clear(); }),
+            child: const Icon(Icons.close_rounded, color: Color(0xFF16A34A), size: 18)),
+        ]),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF), borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0))),
+      child: Column(children: [
+        Row(children: [
+          const Icon(Icons.local_offer_outlined, color: Color(0xFF1E6DE5), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _promoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'Enter promo code',
+                border: InputBorder.none, isDense: true,
+                hintStyle: TextStyle(fontSize: 13, color: Color(0xFFADB5BD))),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1),
+            ),
+          ),
+          GestureDetector(
+            onTap: _promoLoading ? null : _applyPromo,
+            child: _promoLoading
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E6DE5)))
+              : const Text('APPLY', style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 13, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+        if (_promoError != null) ...[
+          const SizedBox(height: 4),
+          Text(_promoError!, style: const TextStyle(color: Colors.red, fontSize: 11)),
+        ],
       ]),
     );
   }

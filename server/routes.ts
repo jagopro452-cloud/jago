@@ -3670,6 +3670,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── CUSTOMER: Browse available offers/coupons ────────────────────────────
+  app.get("/api/app/customer/offers", authApp, async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT id, name, coupon_code, discount_type, discount_value, min_trip_amount, max_discount,
+               expiry_date, description
+        FROM coupon_setups
+        WHERE is_active=true AND (expiry_date IS NULL OR expiry_date >= now())
+          AND (usage_limit IS NULL OR used_count < usage_limit)
+        ORDER BY created_at DESC
+        LIMIT 20
+      `);
+      res.json(r.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── CUSTOMER: Apply coupon code ───────────────────────────────────────────
   app.post("/api/app/customer/apply-coupon", authApp, async (req, res) => {
     try {
@@ -3884,7 +3900,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/customer/home-data", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const [recentTrips, walletRow, savedPlaces, stats, vehicleCats] = await Promise.all([
+      const [recentTrips, walletRow, savedPlaces, stats, vehicleCats, banners] = await Promise.all([
         rawDb.execute(rawSql`
           SELECT id, ref_id, pickup_address, destination_address, actual_fare, estimated_fare, current_status, created_at, driver_id
           FROM trip_requests WHERE customer_id=${user.id}::uuid ORDER BY created_at DESC LIMIT 5
@@ -3905,6 +3921,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           GROUP BY vc.id, vc.name, vc.type, vc.icon
           ORDER BY CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, vc.name
         `),
+        rawDb.execute(rawSql`SELECT * FROM banners WHERE is_active=true ORDER BY created_at DESC LIMIT 6`).catch(() => ({ rows: [] })),
       ]);
       res.json({
         walletBalance: parseFloat((walletRow.rows[0] as any)?.wallet_balance || 0),
@@ -3912,6 +3929,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         savedPlaces: savedPlaces.rows.map(camelize),
         stats: { totalTrips: parseInt((stats.rows[0] as any)?.total_trips || 0), totalSpent: parseFloat((stats.rows[0] as any)?.total_spent || 0) },
         vehicleCategories: vehicleCats.rows.map(camelize),
+        banners: banners.rows.map(camelize),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4122,6 +4140,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Performance score ─────────────────────────────────────────────
+  // ── DRIVER: Weekly Earnings Chart (7 days breakdown) ────────────────────
+  app.get("/api/app/driver/weekly-earnings", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT
+          TO_CHAR(created_at::date, 'Dy') as day,
+          TO_CHAR(created_at::date, 'YYYY-MM-DD') as date,
+          COUNT(*) as trips,
+          COALESCE(SUM(actual_fare::numeric), 0) as gross
+        FROM trips
+        WHERE driver_id=${user.id}::uuid
+          AND current_status='completed'
+          AND created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY created_at::date
+        ORDER BY created_at::date ASC
+      `);
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const today = new Date();
+      const result = days.map((d, i) => {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (6 - i));
+        const dateStr = date.toISOString().split('T')[0];
+        const row = r.rows.find((row: any) => row.date === dateStr);
+        return {
+          day: d,
+          date: dateStr,
+          trips: parseInt(row?.trips?.toString() || '0'),
+          gross: parseFloat(row?.gross?.toString() || '0'),
+        };
+      });
+      res.json({ days: result, total: result.reduce((s, d) => s + d.gross, 0) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/app/driver/performance", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
