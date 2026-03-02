@@ -44,6 +44,14 @@ class ApiConfig {
   static String get scheduledRides => '$baseUrl/api/app/customer/scheduled-rides';
   static String get sos => '$baseUrl/api/app/sos';
 
+  // ── Intercity ────────────────────────────────────────────────────────
+  static String get intercityRoutes => '$baseUrl/api/intercity-routes';
+  static String get intercityBook => '$baseUrl/api/app/customer/intercity-book';
+
+  // ── Support Chat ─────────────────────────────────────────────────────
+  static String get supportChat => '$baseUrl/api/app/customer/support-chat';
+  static String get supportChatSend => '$baseUrl/api/app/customer/support-chat/send';
+
   // ── Unique Features ─────────────────────────────────────────────────
   static String get coins => '$baseUrl/api/app/customer/coins';
   static String get redeemCoins => '$baseUrl/api/app/customer/redeem-coins';

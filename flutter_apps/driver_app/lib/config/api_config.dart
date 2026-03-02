@@ -49,6 +49,10 @@ class ApiConfig {
   static String get driverDashboard => '$baseUrl/api/app/driver/dashboard';
   static String get performance => '$baseUrl/api/app/driver/performance';
 
+  // ── Support Chat ─────────────────────────────────────────────────────
+  static String get supportChat => '$baseUrl/api/app/customer/support-chat';
+  static String get supportChatSend => '$baseUrl/api/app/customer/support-chat/send';
+
   // ── Unique Features ─────────────────────────────────────────────────
   static String get breakMode => '$baseUrl/api/app/driver/break';
   static String get fatigueStatus => '$baseUrl/api/app/driver/fatigue-status';

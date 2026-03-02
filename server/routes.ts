@@ -1813,6 +1813,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Support Chat (Admin ↔ User) ────────────────────────────────────────────
+  app.get('/api/support-chat', async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) return res.status(400).json({ message: 'userId required' });
+      const r = await rawDb.execute(rawSql`
+        SELECT sm.*, u.full_name, u.user_type FROM support_messages sm
+        LEFT JOIN users u ON u.id = sm.user_id
+        WHERE sm.user_id=${userId}::uuid
+        ORDER BY sm.created_at ASC LIMIT 100
+      `);
+      // Mark as read
+      await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${userId}::uuid AND sender='user'`);
+      res.json({ messages: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post('/api/support-chat', async (req, res) => {
+    try {
+      const { userId, message, sender = 'admin' } = req.body;
+      if (!userId || !message) return res.status(400).json({ message: 'userId and message required' });
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO support_messages (user_id, sender, message)
+        VALUES (${userId}::uuid, ${sender}, ${message}) RETURNING *
+      `);
+      res.json({ success: true, data: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get('/api/support-chat/unread-count', async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT user_id, COUNT(*) as unread
+        FROM support_messages WHERE sender='user' AND is_read=false
+        GROUP BY user_id
+      `);
+      res.json({ unreadByUser: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Static uploads ──────────────────────────────────────────────────────────
   const express = (await import("express")).default;
   app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
@@ -3918,6 +3958,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── INTERCITY BOOKING ────────────────────────────────────────────────────
+  app.post('/api/app/customer/intercity-book', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { routeId, pickupAddress, destinationAddress, vehicleCategoryId, paymentMethod, scheduledAt, passengers = 1 } = req.body;
+      if (!routeId || !scheduledAt) return res.status(400).json({ message: 'routeId and scheduledAt required' });
+
+      const route = await rawDb.execute(rawSql`SELECT * FROM intercity_routes WHERE id=${routeId}::uuid AND is_active=true`);
+      if (!route.rows.length) return res.status(404).json({ message: 'Route not found or inactive' });
+      const r = route.rows[0] as any;
+
+      const totalFare = parseFloat(r.base_fare || 0) + (parseFloat(r.estimated_km || 0) * parseFloat(r.fare_per_km || 0)) + parseFloat(r.toll_charges || 0);
+      const refId = 'INT' + Date.now().toString().slice(-8).toUpperCase();
+
+      const trip = await rawDb.execute(rawSql`
+        INSERT INTO trip_requests (
+          ref_id, customer_id, vehicle_category_id,
+          pickup_address, pickup_lat, pickup_lng,
+          destination_address, destination_lat, destination_lng,
+          estimated_fare, estimated_distance, payment_method,
+          trip_type, current_status, is_scheduled, scheduled_at
+        ) VALUES (
+          ${refId}, ${user.id}::uuid, ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+          ${pickupAddress || r.from_city}, 0, 0,
+          ${destinationAddress || r.to_city}, 0, 0,
+          ${totalFare}, ${parseFloat(r.estimated_km || 0)}, ${paymentMethod || 'cash'},
+          'intercity', 'scheduled', true, ${scheduledAt}
+        ) RETURNING *
+      `);
+      res.json({ success: true, trip: camelize(trip.rows[0]), refId, estimatedFare: totalFare, route: camelize(r) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER SUPPORT CHAT ─────────────────────────────────────────────────
+  app.get('/api/app/customer/support-chat', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM support_messages WHERE user_id=${user.id}::uuid ORDER BY created_at ASC LIMIT 100
+      `);
+      await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${user.id}::uuid AND sender='admin'`);
+      res.json({ messages: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post('/api/app/customer/support-chat/send', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { message } = req.body;
+      if (!message) return res.status(400).json({ message: 'message required' });
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO support_messages (user_id, sender, message) VALUES (${user.id}::uuid, 'user', ${message}) RETURNING *
+      `);
+      res.json({ success: true, data: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── TRIP SHARING: Generate share link ────────────────────────────────────
   app.post("/api/app/trip-share", authApp, async (req, res) => {
     try {
@@ -4127,6 +4224,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           id SERIAL PRIMARY KEY, user_id UUID NOT NULL,
           pickup_lat NUMERIC(10,7), pickup_lng NUMERIC(10,7),
           pickup_address TEXT, created_at TIMESTAMP DEFAULT NOW(), notified_at TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS spin_wheel_plays (
+          id SERIAL PRIMARY KEY,
+          user_id UUID NOT NULL,
+          item_id UUID,
+          reward_type VARCHAR(30),
+          reward_amount NUMERIC(10,2) DEFAULT 0,
+          played_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS support_messages (
+          id SERIAL PRIMARY KEY,
+          user_id UUID NOT NULL,
+          sender VARCHAR(10) NOT NULL CHECK (sender IN ('admin','user')),
+          message TEXT NOT NULL,
+          is_read BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT NOW()
         );
       `);
       // Add break_until column to users if not exists

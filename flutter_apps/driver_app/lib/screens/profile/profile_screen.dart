@@ -5,6 +5,7 @@ import '../auth/login_screen.dart';
 import '../performance/performance_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
 import '../referral/referral_screen.dart';
+import './support_chat_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -78,9 +79,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SizedBox(height: 2),
             _section([
-              _tile(Icons.headset_mic_outlined, 'Support', Colors.teal, () async {
-                final uri = Uri(scheme: 'tel', path: '+919876543210');
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
+              _tile(Icons.headset_mic_outlined, 'Support', Colors.teal, () {
+                showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                  backgroundColor: const Color(0xFF112240),
+                  builder: (ctx) => Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Support', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      const Text('Meeru ela help cheyyagalamu?', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      const SizedBox(height: 20),
+                      ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        tileColor: Colors.white.withOpacity(0.06),
+                        leading: const Icon(Icons.chat_rounded, color: Color(0xFF2563EB)),
+                        title: const Text('Chat with Support', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Response in minutes', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverSupportChatScreen()));
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        tileColor: Colors.white.withOpacity(0.06),
+                        leading: const Icon(Icons.phone_rounded, color: Colors.teal),
+                        title: const Text('Call Support', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('+91-98765-43210', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          final uri = Uri(scheme: 'tel', path: '+919876543210');
+                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                    ]),
+                  ),
+                );
               }),
               _tile(Icons.logout, 'Logout', Colors.redAccent, () async {
                 await AuthService.logout();

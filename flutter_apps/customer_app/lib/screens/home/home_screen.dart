@@ -18,6 +18,10 @@ import '../profile/profile_screen.dart';
 import '../booking/booking_screen.dart';
 import '../tracking/tracking_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../booking/intercity_booking_screen.dart';
+import '../coins/spin_wheel_screen.dart';
+import '../profile/support_chat_screen.dart';
+import '../referral/referral_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -600,6 +604,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const CoinsScreen()));
             }),
+            _drawerItem(Icons.casino_rounded, 'Daily Spin', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SpinWheelScreen()));
+            }),
             _drawerItem(Icons.card_membership_rounded, 'Monthly Pass', () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()));
@@ -608,8 +616,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
-            _drawerItem(Icons.headset_mic_rounded, 'Support', () {}),
-            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', () {}),
+            _drawerItem(Icons.headset_mic_rounded, 'Support', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen()));
+            }),
+            _drawerItem(Icons.card_giftcard_rounded, 'Refer & Earn', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen()));
+            }),
+            _drawerItem(Icons.directions_bus_rounded, 'Intercity Rides', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
+            }),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(16),

@@ -8,6 +8,7 @@ import '../monthly_pass/monthly_pass_screen.dart';
 import '../lost_found/lost_found_screen.dart';
 import '../safety/emergency_contacts_screen.dart';
 import '../referral/referral_screen.dart';
+import './support_chat_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -270,7 +271,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       () => Navigator.push(context, MaterialPageRoute(
                           builder: (_) => const EmergencyContactsScreen()))),
                   _tile(Icons.headset_mic_outlined, 'Help & Support',
-                      Colors.teal, cardBg, textColor, divColor, () {}),
+                      Colors.teal, cardBg, textColor, divColor, () {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen()));
+                      }),
                 ], cardBg),
                 const SizedBox(height: 12),
                 _section([
