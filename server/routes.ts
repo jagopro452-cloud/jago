@@ -2873,7 +2873,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
       // Get trip details to use estimated_fare as fallback
-      const tripInfo = await rawDb.execute(rawSql`SELECT estimated_fare, estimated_distance, current_status FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
+      const tripInfo = await rawDb.execute(rawSql`SELECT estimated_fare, estimated_distance, current_status, payment_method, customer_id FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
       if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
       const tripRow = tripInfo.rows[0] as any;
       if (tripRow.current_status !== 'on_the_way') return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
@@ -2926,6 +2926,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
           VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${'Platform commission + GST for trip ' + tripId})
         `).catch(() => {});
+      }
+
+      // Deduct customer wallet if payment_method = 'wallet'
+      const tripPaymentMethod = tripRow.payment_method || 'cash';
+      const tripCustomerId = tripRow.customer_id;
+      if (tripPaymentMethod === 'wallet' && tripCustomerId) {
+        try {
+          const custWalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
+          const custBal = parseFloat((custWalRes.rows[0] as any)?.wallet_balance || '0');
+          if (custBal >= fare) {
+            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${fare} WHERE id=${tripCustomerId}::uuid`);
+            const newCustBal = parseFloat((custBal - fare).toFixed(2));
+            await rawDb.execute(rawSql`
+              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${fare}, ${newCustBal}, ${'ride_payment'}, ${tripId})
+            `).catch(() => {});
+          } else {
+            // Insufficient balance — mark as pending payment
+            await rawDb.execute(rawSql`UPDATE trip_requests SET payment_status='pending_payment' WHERE id=${tripId}::uuid`).catch(() => {});
+          }
+        } catch (_) {}
+      }
+
+      // Record transaction for online/razorpay payments
+      if ((tripPaymentMethod === 'online' || tripPaymentMethod === 'upi' || tripPaymentMethod === 'razorpay') && tripCustomerId) {
+        try {
+          const custWalRes2 = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
+          const custBal2 = parseFloat((custWalRes2.rows[0] as any)?.wallet_balance || '0');
+          await rawDb.execute(rawSql`
+            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+            VALUES (${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${fare}, ${custBal2}, ${'ride_payment'}, ${tripId})
+          `).catch(() => {});
+        } catch (_) {}
       }
 
       // Notify customer — trip completed, show fare
@@ -3550,6 +3583,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
       `).catch(() => {});
       res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Razorpay – Create order for ride payment ────────────────────
+  app.post("/api/app/customer/ride/create-order", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { amount } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid fare amount" });
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const Razorpay = require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({
+        amount: Math.round(amt * 100),
+        currency: "INR",
+        receipt: `ride_${customer.id}_${Date.now()}`,
+        notes: { customer_id: customer.id, purpose: "ride_payment" }
+      });
+      res.json({ order, keyId, amount: amt });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CUSTOMER: Razorpay – Verify ride payment ──────────────────────────────
+  app.post("/api/app/customer/ride/verify-payment", authApp, async (req, res) => {
+    try {
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret && razorpaySignature) {
+        const crypto = require("crypto");
+        const expectedSig = crypto.createHmac("sha256", keySecret)
+          .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      res.json({ success: true, paymentId: razorpayPaymentId, amount: parseFloat(amount) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

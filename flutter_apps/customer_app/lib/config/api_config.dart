@@ -39,6 +39,8 @@ class ApiConfig {
   static String get walletVerifyPayment => '$baseUrl/api/app/customer/wallet/verify-payment';
   static String get savedPlaces => '$baseUrl/api/app/customer/saved-places';
   static String get applyCoupon => '$baseUrl/api/app/customer/apply-coupon';
+  static String get rideCreateOrder => '$baseUrl/api/app/customer/ride/create-order';
+  static String get rideVerifyPayment => '$baseUrl/api/app/customer/ride/verify-payment';
   static String get customerOffers => '$baseUrl/api/app/customer/offers';
   static String get updateProfile => '$baseUrl/api/app/customer/profile';
   static String get scheduleRide => '$baseUrl/api/app/customer/schedule-ride';

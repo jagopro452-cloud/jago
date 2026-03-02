@@ -204,6 +204,8 @@ class _TripScreenState extends State<TripScreen> {
     int _selectedRating = 0;
     bool _ratingSubmitted = false;
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
+    final isCash = pm == 'cash';
 
     showDialog(
       context: context,
@@ -213,22 +215,22 @@ class _TripScreenState extends State<TripScreen> {
           backgroundColor: _surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Padding(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: 80, height: 80,
+                width: 72, height: 72,
                 decoration: BoxDecoration(
                   color: _green.withOpacity(0.15),
                   shape: BoxShape.circle,
                   border: Border.all(color: _green.withOpacity(0.3), width: 2),
                 ),
-                child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 44)),
-              const SizedBox(height: 20),
+                child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 40)),
+              const SizedBox(height: 16),
               const Text('Trip Complete! 🎉',
                 style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
                   color: _green.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(14),
@@ -237,10 +239,48 @@ class _TripScreenState extends State<TripScreen> {
                 child: Column(children: [
                   Text('₹$fare',
                     style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 2),
-                  Text('Trip Fare', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(
+                      isCash ? Icons.payments_rounded : pm == 'wallet' ? Icons.account_balance_wallet_rounded : Icons.qr_code_scanner_rounded,
+                      color: Colors.white.withOpacity(0.5),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isCash ? 'Cash' : pm == 'wallet' ? 'Wallet' : 'UPI/Online',
+                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                    ),
+                  ]),
                 ]),
               ),
+              if (isCash) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF16A34A), Color(0xFF15803D)],
+                      begin: Alignment.centerLeft, end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))],
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.payments_rounded, color: Colors.white, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('COLLECT ₹ CASH', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                      Text('Customer nundi ₹$fare cash collect cheyyandi',
+                        style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ])),
+                  ]),
+                ),
+              ] else ...[
+                const SizedBox(height: 8),
+                Text(pm == 'wallet' ? 'Customer wallet deducted automatically' : 'Customer already paid online',
+                  style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
+              ],
               const SizedBox(height: 8),
               Text('Platform commission deduct avutundi',
                 style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
@@ -509,7 +549,8 @@ class _TripScreenState extends State<TripScreen> {
                       const SizedBox(height: 10),
                       _buildParcelCard(_trip!['notes'].toString()),
                     ],
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    _buildPaymentBadge(),
                     _buildActionBtn(step),
                     const SizedBox(height: 10),
                     _buildSecondaryActions(customerPhone),
@@ -621,7 +662,96 @@ class _TripScreenState extends State<TripScreen> {
     );
   }
 
+  Widget _buildPaymentBadge() {
+    final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
+    final isCash = pm == 'cash';
+    final isWallet = pm == 'wallet';
+    final isOnline = pm == 'online' || pm == 'upi' || pm == 'razorpay';
+    final isCompleting = _status == 'in_progress' || _status == 'on_the_way';
+
+    if (isCash && isCompleting) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF16A34A), Color(0xFF15803D)],
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 4))],
+        ),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.payments_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('COLLECT CASH', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            SizedBox(height: 2),
+            Text('Trip complete avutundi. Customer nundi cash collect cheyyandi.', style: TextStyle(color: Colors.white70, fontSize: 11)),
+          ])),
+        ]),
+      );
+    }
+    if (isCash) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF16A34A).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF16A34A).withOpacity(0.25)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.payments_rounded, color: Color(0xFF4ADE80), size: 16),
+          SizedBox(width: 8),
+          Text('💵 Cash Payment — Trip end lo collect cheyyandi', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
+    }
+    if (isWallet) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _blue.withOpacity(0.25)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF60A5FA), size: 16),
+          SizedBox(width: 8),
+          Text('👛 Wallet Payment — Auto deducted from customer', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
+    }
+    if (isOnline) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF7C3AED).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.25)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.qr_code_scanner_rounded, color: Color(0xFFA78BFA), size: 16),
+          SizedBox(width: 8),
+          Text('📱 Online Payment — Already paid via UPI/Razorpay', style: TextStyle(color: Color(0xFFA78BFA), fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget _buildCustomerCard(String name, String? phone, dynamic fare, dynamic dist) {
+    final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
+    final pmLabel = pm == 'wallet' ? 'Wallet' : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? 'UPI/Online' : 'Cash';
+    final pmColor = pm == 'wallet' ? _blue : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? const Color(0xFF7C3AED) : _green;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -640,16 +770,29 @@ class _TripScreenState extends State<TripScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
             maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Row(children: [
             _pill('₹$fare', const Color(0xFF10B981)),
             const SizedBox(width: 6),
             _pill('$dist km', _blue),
+            const SizedBox(width: 6),
+            _pill(pmLabel, pmColor),
           ]),
         ])),
         if (phone != null)
           GestureDetector(
-            onTap: () => _showSnack('Call: $phone'),
+            onTap: () async {
+              final uri = Uri(scheme: 'tel', path: phone);
+              try {
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                } else {
+                  _showSnack('Call: $phone');
+                }
+              } catch (_) {
+                _showSnack('Call: $phone');
+              }
+            },
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
