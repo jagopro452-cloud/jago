@@ -1,5 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
+import { useTheme } from "@/components/theme-provider";
 
 function useLiveClock() {
   const [time, setTime] = useState(() => new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
@@ -184,6 +185,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useAdminBootstrap();
   const [location, setLocation] = useLocation();
   const clock = useLiveClock();
+  const { theme, setTheme } = useTheme();
 
   const currentPage = (() => {
     for (const section of navSections) {
@@ -372,6 +374,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <i className="bi bi-clock" style={{ fontSize: 11 }}></i>
                     {clock}
                   </div>
+                </li>
+                {/* Theme Toggle */}
+                <li>
+                  <button
+                    className="header-icon-btn"
+                    data-testid="btn-theme-toggle"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                    style={{ fontSize: "1rem" }}
+                  >
+                    {theme === "dark" ? (
+                      <i className="bi bi-sun-fill" style={{ color: "#fbbf24" }}></i>
+                    ) : (
+                      <i className="bi bi-moon-fill" style={{ color: "#6366f1" }}></i>
+                    )}
+                  </button>
                 </li>
                 <li>
                   <div className="position-relative">

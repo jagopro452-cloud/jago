@@ -97,6 +97,217 @@
 }
 
 /* ========================
+   DARK MODE VARIABLES
+   ======================== */
+.dark {
+  --bs-body-bg: #0f172a;
+  --bs-body-color: #94a3b8;
+  --bs-border-color: rgba(255,255,255,0.08);
+  --bs-white: #1e293b;
+  --bs-light: #1e293b;
+  --title-color: #f1f5f9;
+  --title-color-rgb: 241, 245, 249;
+  --secondary-body-color: #64748b;
+  --absolute-white: #1e293b;
+  --input-bg: #1e293b;
+  --input-border-color: rgba(255,255,255,0.1);
+  --shadow-color-rgb: 0, 0, 0;
+
+  /* Tailwind compat variables */
+  --background: 222 47% 7%;
+  --foreground: 210 40% 96%;
+  --border: 217 33% 17%;
+  --card: 222 47% 10%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 217 33% 17%;
+  --sidebar: 222 47% 8%;
+  --sidebar-foreground: 210 40% 96%;
+  --sidebar-border: 217 33% 17%;
+  --popover: 222 47% 10%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 217 33% 17%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 217 91% 70%;
+  --input: 217 33% 17%;
+  --elevate-1: rgba(255,255,255,.02);
+  --elevate-2: rgba(255,255,255,.04);
+  --button-outline: rgba(255,255,255,.10);
+  --badge-outline: rgba(255,255,255,.05);
+}
+
+/* Dark mode — admin layout overrides */
+.dark .header {
+  background-color: #0f172a;
+  border-bottom-color: rgba(255,255,255,0.06);
+  box-shadow: 0 1px 8px rgba(0,0,0,0.3);
+}
+
+.dark .jago-stat-card {
+  background-color: #1e293b;
+  border-color: rgba(255,255,255,0.07);
+}
+
+.dark .jago-stat-card .stat-value {
+  color: #f1f5f9;
+}
+
+.dark .jago-card {
+  background-color: #1e293b;
+  border-color: rgba(255,255,255,0.07);
+}
+
+.dark .jago-card-header {
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+
+.dark .jago-card-header h5,
+.dark .jago-card-title {
+  color: #f1f5f9;
+}
+
+.dark .jago-table thead th {
+  background-color: #162032;
+  color: #94a3b8;
+}
+
+.dark .jago-table thead tr {
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+
+.dark .jago-table tbody tr {
+  border-bottom-color: rgba(255,255,255,0.05);
+}
+
+.dark .jago-table tbody td {
+  color: #e2e8f0;
+}
+
+.dark .jago-table tbody tr:hover {
+  background-color: rgba(37,99,235,0.06);
+}
+
+.dark .jago-input {
+  background-color: #1e293b;
+  border-color: rgba(255,255,255,0.1);
+  color: #f1f5f9;
+}
+
+.dark .jago-input:focus {
+  background-color: #253347;
+  border-color: #3b82f6;
+}
+
+.dark .jago-label {
+  color: #cbd5e1;
+}
+
+.dark .dropdown-menu {
+  background-color: #1e293b;
+  border-color: rgba(255,255,255,0.1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.dark .dropdown-item {
+  color: #cbd5e1;
+}
+
+.dark .dropdown-item:hover {
+  background-color: rgba(255,255,255,0.05);
+  color: #f1f5f9;
+}
+
+.dark .dropdown-divider {
+  background-color: rgba(255,255,255,0.07);
+}
+
+.dark .dropdown-item-text h6 {
+  color: #f1f5f9;
+}
+
+.dark .user-dropdown-menu {
+  background-color: #1e293b;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.dark .jago-login-card {
+  background-color: #1e293b;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+
+.dark .jago-login-logo h2 {
+  color: #f1f5f9;
+}
+
+.dark .jago-login-input-group label {
+  color: #cbd5e1;
+}
+
+.dark .jago-login-input-group input {
+  background-color: #0f172a;
+  border-color: rgba(255,255,255,0.12);
+  color: #f1f5f9;
+}
+
+.dark .jago-login-input-group input:focus {
+  background-color: #0f172a;
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
+}
+
+.dark .theme-input-style {
+  background-color: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+  color: rgba(255,255,255,0.7) !important;
+}
+
+.dark .theme-input-style::placeholder {
+  color: rgba(255,255,255,0.3) !important;
+}
+
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  color: #f1f5f9;
+}
+
+.dark .main-area {
+  background-color: #0f172a;
+}
+
+.dark .main-area-inner {
+  background-color: #0f172a;
+}
+
+/* Dark mode — badge/status fixes */
+.dark .badge-completed  { background-color: rgba(48,184,119,0.15); color: #4ade80; }
+.dark .badge-ongoing    { background-color: rgba(37,99,235,0.2); color: #60a5fa; }
+.dark .badge-pending    { background-color: rgba(244,161,100,0.15); color: #fb923c; }
+.dark .badge-cancelled  { background-color: rgba(255,109,109,0.15); color: #f87171; }
+.dark .badge-accepted   { background-color: rgba(139,92,246,0.15); color: #a78bfa; }
+.dark .badge-paid       { background-color: rgba(48,184,119,0.15); color: #4ade80; }
+.dark .badge-unpaid     { background-color: rgba(255,109,109,0.15); color: #f87171; }
+.dark .badge-active     { background-color: rgba(48,184,119,0.15); color: #4ade80; }
+.dark .badge-inactive   { background-color: rgba(255,109,109,0.15); color: #f87171; }
+.dark .badge-primary    { background-color: rgba(37,99,235,0.2); color: #60a5fa; }
+
+/* Dark mode — shadcn card overrides */
+.dark [class*="bg-white"],
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+.dark [class*="bg-gray-50"],
+.dark .bg-gray-50 {
+  background-color: #162032 !important;
+}
+
+.dark select,
+.dark input,
+.dark textarea {
+  color-scheme: dark;
+}
+
+/* ========================
    BASE RESET
    ======================== */
 *, *::before, *::after { box-sizing: border-box; }

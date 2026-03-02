@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTheme } from "@/components/theme-provider";
 
 // ── Scroll Reveal Hook ────────────────────────────────────────────────────────
 function useReveal() {
@@ -134,6 +135,7 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { theme, setTheme } = useTheme();
   useReveal();
 
   useEffect(() => {
@@ -247,6 +249,12 @@ export default function LandingPage() {
             <a href="#download" className="cta-primary" style={{ padding: "13px 22px", borderRadius: 14, background: "linear-gradient(135deg,#1E6DE5,#1244A2)", color: "white", fontSize: 15, fontWeight: 700, boxShadow: "0 4px 14px rgba(30,109,229,0.4)", textDecoration: "none", textAlign: "center" }} onClick={() => setMenuOpen(false)}>
               Download App
             </a>
+            <button
+              onClick={(e) => { e.stopPropagation(); setTheme(theme === "dark" ? "light" : "dark"); }}
+              style={{ padding: "13px 22px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1.5px solid rgba(255,255,255,0.12)", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            >
+              {theme === "dark" ? "☀️ Switch to Light Mode" : "🌙 Switch to Dark Mode"}
+            </button>
           </div>
         </div>
       )}
@@ -272,6 +280,22 @@ export default function LandingPage() {
             ))}
           </div>
           <div className="desktop-cta" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              style={{
+                width: 36, height: 36, borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.06)", backdropFilter: "blur(8px)",
+                color: "white", cursor: "pointer", display: "flex", alignItems: "center",
+                justifyContent: "center", fontSize: 15, transition: "all 0.2s ease",
+                flexShrink: 0,
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.12)"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
             <a href="#driver" className="cta-ghost" style={{ padding: "9px 22px", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(255,255,255,0.25)", color: "white", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
               Become a Pilot
             </a>
