@@ -58,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   static const Color _gray = Color(0xFF6B7280);
   static const Color _lightBg = Color(0xFFF5F5F5);
   static const Color _cardBg = Color(0xFFF0F0F0);
+  static const Color _jagoBrand = Color(0xFF1B4DCC);
 
   @override
   void initState() {
@@ -340,48 +341,75 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Top Search Bar ──────────────────────────────────────────────────────────
+  // ── Top Search Bar (JAGO branded) ──────────────────────────────────────────
   Widget _buildTopSearchBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: GestureDetector(
-        onTap: _openSearch,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: _lightBg,
-            borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          GestureDetector(
+            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+            child: const Icon(Icons.menu_rounded, size: 26, color: _dark),
           ),
-          child: Row(children: [
-            const Icon(Icons.search, color: _dark, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text('Where are you going?',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[600],
+          const SizedBox(width: 10),
+          // JAGO Logo
+          RichText(text: const TextSpan(
+            children: [
+              TextSpan(text: 'JA', style: TextStyle(
+                fontSize: 22, fontWeight: FontWeight.w900, color: _jagoBrand, letterSpacing: -0.5)),
+              TextSpan(text: 'GO', style: TextStyle(
+                fontSize: 22, fontWeight: FontWeight.w900, color: _yellow, letterSpacing: -0.5)),
+            ],
+          )),
+          const Spacer(),
+          if (_pickup.isNotEmpty && _pickup != 'Getting location...')
+            Flexible(
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.location_on, size: 14, color: _jagoBrand),
+                const SizedBox(width: 3),
+                Flexible(child: Text(
+                  _pickup.split(',').first,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
                 )),
-            ),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
-                  .then((_) => _fetchUnreadCount());
-              },
-              child: Stack(children: [
-                Icon(Icons.notifications_outlined, color: _dark, size: 24),
-                if (_unreadNotifCount > 0)
-                  Positioned(top: 0, right: 0,
-                    child: Container(
-                      width: 8, height: 8,
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                    )),
               ]),
             ),
-          ]),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => const NotificationsScreen()))
+              .then((_) => _fetchUnreadCount()),
+            child: Stack(children: [
+              const Icon(Icons.notifications_outlined, color: _dark, size: 26),
+              if (_unreadNotifCount > 0)
+                Positioned(top: 0, right: 0,
+                  child: Container(
+                    width: 9, height: 9,
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  )),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _openSearch,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: _lightBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey[200]!, width: 1),
+            ),
+            child: Row(children: [
+              const Icon(Icons.search, color: _dark, size: 22),
+              const SizedBox(width: 12),
+              Text('Where are you going?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500])),
+            ]),
+          ),
         ),
-      ),
+      ]),
     );
   }
 
@@ -435,95 +463,88 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── All Business Services Section ──────────────────────────────────────────
+  // ── Everything In Minutes — Rapido-style 2×2 Grid ──────────────────────────
   Widget _buildEverythingSection() {
-    final svcs = _services.isNotEmpty ? _services : _defaultServices();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Our Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
-          Text('${svcs.where((s) => s['isActive'] == true).length} Active',
-            style: TextStyle(fontSize: 12, color: Colors.green[600], fontWeight: FontWeight.w700)),
-        ]),
+        const Text('Everything In Minutes',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
         const SizedBox(height: 14),
-        ...svcs.map((svc) => _buildServiceRow(svc)).toList(),
+        Row(children: [
+          Expanded(child: _buildGridCard(
+            topLabel: 'Send anything',
+            boldLabel: 'Parcel',
+            emoji: '📦',
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => ParcelBookingScreen(
+                pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+          )),
+          const SizedBox(width: 12),
+          Expanded(child: _buildGridCard(
+            topLabel: 'Beat the traffic',
+            boldLabel: 'Bike Taxi',
+            emoji: '🏍️',
+            bigEmoji: true,
+            onTap: () => _openSearch(presetVehicle: 'bike'),
+          )),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _buildGridCard(
+            topLabel: 'Your everyday rides',
+            boldLabel: 'Book now',
+            emoji: '🛺',
+            bigEmoji: true,
+            onTap: () => _openSearch(presetVehicle: 'auto'),
+          )),
+          const SizedBox(width: 12),
+          Expanded(child: _buildGridCard(
+            topLabel: '',
+            boldLabel: 'All\nServices',
+            emoji: '📋',
+            onTap: _showAllServicesSheet,
+          )),
+        ]),
       ]),
     );
   }
 
-  Widget _buildServiceRow(Map<String, dynamic> svc) {
-    final key = svc['key']?.toString() ?? '';
-    final isActive = svc['isActive'] == true;
-    final emoji = svc['emoji']?.toString() ?? '🚗';
-    final name = svc['name']?.toString() ?? '';
-    final desc = svc['description']?.toString() ?? '';
-
-    Color cardColor;
-    try {
-      final hex = (svc['color']?.toString() ?? '#1E6DE5').replaceAll('#', '');
-      cardColor = Color(int.parse('FF$hex', radix: 16));
-    } catch (_) { cardColor = const Color(0xFF1E6DE5); }
-
+  Widget _buildGridCard({
+    required String topLabel,
+    required String boldLabel,
+    required String emoji,
+    required VoidCallback onTap,
+    bool bigEmoji = false,
+  }) {
     return GestureDetector(
-      onTap: () {
-        if (!isActive) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('$name: Coming Soon! 🚀', style: const TextStyle(fontWeight: FontWeight.w700)),
-            backgroundColor: Colors.orange[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 2),
-          ));
-          return;
-        }
-        _handleServiceTap(key);
-      },
+      onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        height: 112,
+        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
         decoration: BoxDecoration(
-          color: isActive ? cardColor.withOpacity(0.06) : Colors.grey[50],
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isActive ? cardColor.withOpacity(0.2) : Colors.grey[200]!,
-            width: 1,
-          ),
+          color: _lightBg,
+          borderRadius: BorderRadius.circular(16),
         ),
-        child: Row(children: [
-          Container(
-            width: 52, height: 52,
-            decoration: BoxDecoration(
-              color: isActive ? cardColor.withOpacity(0.12) : Colors.grey[100],
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 26))),
-          ),
-          const SizedBox(width: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w800,
-                color: isActive ? _dark : Colors.grey[400],
-              )),
-              const SizedBox(height: 2),
-              Text(desc, style: TextStyle(
-                fontSize: 12, color: isActive ? Colors.grey[600] : Colors.grey[400],
-              )),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+              if (topLabel.isNotEmpty) ...[
+                Text(topLabel,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w400)),
+                const SizedBox(height: 5),
+              ],
+              Text(boldLabel,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _dark, height: 1.2)),
             ]),
           ),
-          if (!isActive)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange[200]!),
-              ),
-              child: Text('Soon', style: TextStyle(fontSize: 10, color: Colors.orange[700], fontWeight: FontWeight.w800)),
-            )
-          else
-            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[400]),
+          Align(
+            alignment: bigEmoji ? Alignment.bottomRight : Alignment.center,
+            child: Text(emoji,
+              style: TextStyle(fontSize: bigEmoji ? 44 : 36)),
+          ),
         ]),
       ),
     );
@@ -551,49 +572,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ── Quick Rides Section (vehicles for ride service) ────────────────────────
+  // ── Explore Section — horizontal vehicle icons (Rapido style) ────────────
   Widget _buildExploreSection() {
-    final rideVehicles = _vehicleCategories
-      .where((c) => c['type'] == 'ride')
-      .take(4)
-      .toList();
-
-    if (rideVehicles.isEmpty) return const SizedBox.shrink();
+    final allVehicles = _vehicleCategories.isNotEmpty
+      ? _vehicleCategories.take(4).toList()
+      : [
+          {'name': 'Shared Auto', 'type': 'ride', 'minimumFare': '20'},
+          {'name': 'Bike', 'type': 'ride', 'minimumFare': '18'},
+          {'name': 'Auto', 'type': 'ride', 'minimumFare': '25'},
+          {'name': 'Parcel', 'type': 'parcel', 'minimumFare': '30'},
+        ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Quick Ride', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
+          const Text('Explore', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
           GestureDetector(
-            onTap: _openSearch,
+            onTap: _showAllServicesSheet,
             child: Row(children: [
-              Text('See All', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-              Icon(Icons.chevron_right, size: 18, color: Colors.grey[700]),
+              Text('View All', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+              Icon(Icons.chevron_right, size: 18, color: Colors.grey[600]),
             ]),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         Row(
-          children: rideVehicles.map((cat) {
+          children: allVehicles.map((cat) {
             final name = cat['name']?.toString() ?? '';
-            final minFare = cat['minimumFare']?.toString() ?? cat['baseFare']?.toString() ?? '?';
+            final isParcel = cat['type'] == 'parcel' || name.toLowerCase().contains('parcel');
             return Expanded(
               child: GestureDetector(
-                onTap: () => _openSearchWithCategory(cat),
+                onTap: () {
+                  if (isParcel) {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => ParcelBookingScreen(
+                        pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
+                  } else {
+                    _openSearchWithCategory(cat);
+                  }
+                },
                 child: Column(children: [
                   Container(
-                    width: 64, height: 64,
+                    width: 68, height: 68,
                     decoration: BoxDecoration(
-                      color: _cardBg,
-                      borderRadius: BorderRadius.circular(16),
+                      color: _lightBg,
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    child: Center(child: Text(_emojiForVehicle(name), style: const TextStyle(fontSize: 30))),
+                    child: Center(
+                      child: Text(_emojiForVehicle(name),
+                        style: const TextStyle(fontSize: 32))),
                   ),
-                  const SizedBox(height: 6),
-                  Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _dark),
-                    textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('₹$minFare+', style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Text(name,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _dark),
+                    textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
                 ]),
               ),
             );
@@ -603,60 +636,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── In a Hurry? Card ───────────────────────────────────────────────────────
+  // ── In a Hurry? Card (Rapido style) ───────────────────────────────────────
   Widget _buildInAHurryCard() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
       child: GestureDetector(
         onTap: () => _openSearch(presetVehicle: 'auto'),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 16, 0, 16),
+          height: 100,
           decoration: BoxDecoration(
             color: _lightBg,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(children: [
+            const SizedBox(width: 18),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                 const Text('In a hurry?',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _dark)),
                 const SizedBox(height: 4),
                 Text('An auto will arrive in 5 mins.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _dark, width: 1.5),
-                  ),
-                  child: const Text('Book Now',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _dark)),
-                ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                const SizedBox(height: 10),
+                Text('Book Now',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: _jagoBrand, decoration: TextDecoration.underline,
+                    decorationColor: _jagoBrand)),
               ]),
             ),
-            Container(
-              width: 120, height: 90,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Stack(alignment: Alignment.center, children: [
-                const Text('🛺', style: TextStyle(fontSize: 48)),
-                Positioned(
-                  top: 6, right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _yellow,
-                      borderRadius: BorderRadius.circular(6),
+            // Right side: auto emoji + yellow badge
+            ClipRRect(
+              borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+              child: Container(
+                width: 130,
+                color: _yellow.withOpacity(0.12),
+                child: Stack(children: [
+                  const Center(child: Text('🛺', style: TextStyle(fontSize: 52))),
+                  Positioned(
+                    top: 10, right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _yellow,
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: [BoxShadow(color: _yellow.withOpacity(0.4), blurRadius: 6)],
+                      ),
+                      child: const Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text('5 MIN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black)),
+                        Text('AUTO', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.black54)),
+                      ]),
                     ),
-                    child: const Text('5 MIN',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.black)),
                   ),
-                ),
-              ]),
+                ]),
+              ),
             ),
           ]),
         ),
@@ -664,38 +698,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Go Places Banner ──────────────────────────────────────────────────────
+  // ── Go Places Banner (#goJAGO — Rapido style) ─────────────────────────────
   Widget _buildGoPlacesBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (_banners.isNotEmpty) _buildBannerCard(),
-        const SizedBox(height: 24),
-        Center(
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (_banners.isNotEmpty) Padding(
+        padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
+        child: _buildBannerCard(),
+      ),
+      const SizedBox(height: 28),
+      // #goJAGO watermark section
+      Stack(children: [
+        // Faded background illustration
+        Positioned.fill(
+          child: Opacity(
+            opacity: 0.04,
+            child: Icon(Icons.directions_car_filled, size: 200, color: _dark),
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
           child: Column(children: [
-            // Watermark illustration
-            Opacity(
-              opacity: 0.08,
-              child: Icon(Icons.directions_car_filled, size: 80, color: _dark),
-            ),
-            const SizedBox(height: 8),
-            const Text('#goJAGO',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                color: Color(0xFFCCCCCC), letterSpacing: 1)),
-            const SizedBox(height: 8),
+            Text('#goJAGO',
+              style: TextStyle(
+                fontSize: 32, fontWeight: FontWeight.w900,
+                color: Colors.grey[300], letterSpacing: 2,
+                fontStyle: FontStyle.italic,
+              )),
+            const SizedBox(height: 16),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('🇮🇳 ', style: TextStyle(fontSize: 14)),
-              Text('Made for India', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              const Text('🇮🇳', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 6),
+              Text('Made for India', style: TextStyle(fontSize: 13, color: Colors.grey[500], fontWeight: FontWeight.w500)),
             ]),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('❤️ ', style: TextStyle(fontSize: 14)),
-              Text('MindWhile IT Solutions', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              const Text('❤️', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 6),
+              Text('MindWhile IT Solutions', style: TextStyle(fontSize: 13, color: Colors.grey[500], fontWeight: FontWeight.w500)),
             ]),
           ]),
         ),
       ]),
-    );
+    ]);
   }
 
   Widget _buildBannerCard() {
@@ -737,12 +782,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Bottom Navigation ──────────────────────────────────────────────────────
+  // ── Bottom Navigation (Rapido style: Ride | All Services | Travel | Profile)
   Widget _buildBottomNav() {
     final items = [
-      {'icon': Icons.home_filled, 'label': 'Home'},
-      {'icon': Icons.directions_car_rounded, 'label': 'My Trips'},
-      {'icon': Icons.local_offer_rounded, 'label': 'Offers'},
+      {'icon': Icons.home_filled, 'label': 'Ride'},
+      {'icon': Icons.grid_view_rounded, 'label': 'All Services'},
+      {'icon': Icons.beach_access_rounded, 'label': 'Travel'},
       {'icon': Icons.person_outline_rounded, 'label': 'Profile'},
     ];
     return Container(
@@ -761,16 +806,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 onTap: () {
                   setState(() => _navIndex = i);
                   if (i == 0) {
-                    // Home - stay
+                    // Ride - stay on home
                   } else if (i == 1) {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const TripsHistoryScreen()))
-                      .then((_) => setState(() => _navIndex = 0));
+                    // All Services - show bottom sheet
+                    _showAllServicesSheet();
+                    Future.delayed(const Duration(milliseconds: 50), () {
+                      if (mounted) setState(() => _navIndex = 0);
+                    });
                   } else if (i == 2) {
+                    // Travel - intercity
                     Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const OffersScreen()))
+                      builder: (_) => const IntercityBookingScreen()))
                       .then((_) => setState(() => _navIndex = 0));
                   } else if (i == 3) {
+                    // Profile
                     Navigator.push(context, MaterialPageRoute(
                       builder: (_) => const ProfileScreen()))
                       .then((_) => setState(() => _navIndex = 0));
@@ -781,14 +830,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   color: Colors.transparent,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Icon(items[i]['icon'] as IconData,
-                      color: isSelected ? _dark : Colors.grey[400],
+                      color: isSelected ? _jagoBrand : Colors.grey[400],
                       size: 24),
                     const SizedBox(height: 3),
                     Text(items[i]['label'] as String,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                        color: isSelected ? _dark : Colors.grey[400],
+                        color: isSelected ? _jagoBrand : Colors.grey[400],
                       )),
                   ]),
                 ),
@@ -816,30 +865,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ── Drawer ──────────────────────────────────────────────────────────────────
   Widget _buildDrawer() {
     return Drawer(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0A0F1E),
       child: SafeArea(
         child: ListView(children: [
-          Padding(
+          // JAGO Header
+          Container(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_jagoBrand.withOpacity(0.9), const Color(0xFF0A0F1E)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight),
+            ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                width: 60, height: 60,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF1E6DE5), Color(0xFF7C3AED)]),
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: const Color(0xFF1E6DE5).withOpacity(0.4), blurRadius: 16)],
+              // JAGO logo
+              RichText(text: const TextSpan(children: [
+                TextSpan(text: 'JA', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                TextSpan(text: 'GO', style: TextStyle(color: Color(0xFFFBBC04), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+              ])),
+              const SizedBox(height: 20),
+              Row(children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+                  ),
+                  child: Center(
+                    child: Text((_userName.isNotEmpty ? _userName[0] : 'U').toUpperCase(),
+                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                  ),
                 ),
-                child: Center(
-                  child: Text((_userName.isNotEmpty ? _userName[0] : 'U').toUpperCase(),
-                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(_userName,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text(_userPhone,
-                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_userName,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 3),
+                  Text(_userPhone,
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                ])),
+              ]),
             ]),
           ),
           _drawerItem(Icons.person_outline_rounded, 'Profile', () {
