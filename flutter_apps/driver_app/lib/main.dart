@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
+import 'services/localization_service.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
@@ -32,13 +33,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await loadThemePreference();
-  // Firebase init (requires google-services.json from Firebase Console)
+  await L.init();
   try {
     await Firebase.initializeApp();
     await FcmService().init();
-  } catch (_) {
-    // Firebase not configured yet — notifications disabled until google-services.json added
-  }
+  } catch (_) {}
   runApp(const JagoPilotApp());
 }
 
@@ -47,20 +46,25 @@ class JagoPilotApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (_, mode, __) {
-        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-        ));
-        return MaterialApp(
-          title: 'JAGO Pilot',
-          debugShowCheckedModeBanner: false,
-          themeMode: mode,
-          theme: _lightTheme(),
-          darkTheme: _darkTheme(),
-          home: const SplashScreen(),
+    return ValueListenableBuilder<String>(
+      valueListenable: localeNotifier,
+      builder: (_, lang, __) {
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (_, mode, __) {
+            SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+            ));
+            return MaterialApp(
+              title: 'JAGO Pilot',
+              debugShowCheckedModeBanner: false,
+              themeMode: mode,
+              theme: _lightTheme(),
+              darkTheme: _darkTheme(),
+              home: const SplashScreen(),
+            );
+          },
         );
       },
     );
