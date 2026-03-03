@@ -60,7 +60,12 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const sanitized = { ...capturedJsonResponse };
+        if (sanitized.otp !== undefined) sanitized.otp = "[REDACTED]";
+        if (sanitized.password !== undefined) sanitized.password = "[REDACTED]";
+        if (sanitized.token !== undefined) sanitized.token = "[REDACTED]";
+        if (sanitized.sessionToken !== undefined) sanitized.sessionToken = "[REDACTED]";
+        logLine += ` :: ${JSON.stringify(sanitized)}`;
       }
 
       log(logLine);
