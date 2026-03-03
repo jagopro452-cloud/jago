@@ -46,7 +46,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markAllRead() async {
     final token = await AuthService.getToken();
-    await http.post(Uri.parse(ApiConfig.notificationsReadAll),
+    await http.patch(Uri.parse(ApiConfig.notificationsReadAll),
         headers: {'Authorization': 'Bearer $token'});
     _fetch();
   }
