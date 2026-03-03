@@ -1,5 +1,5 @@
 class ApiConfig {
-  static const String prodBaseUrl = 'https://jagopro.org';
+  static const String prodBaseUrl = 'https://78d2d7f4-5b0a-4649-b698-b5927a4f487e-00-13osjf2l6nw7f.janeway.replit.dev';
   static const String devBaseUrl = 'http://10.0.2.2:5000';
 
   static bool _isProd = true;
@@ -15,6 +15,10 @@ class ApiConfig {
 
   static String get sendOtp => '$baseUrl/api/app/send-otp';
   static String get verifyOtp => '$baseUrl/api/app/verify-otp';
+  static String get loginPassword => '$baseUrl/api/app/login-password';
+  static String get registerAccount => '$baseUrl/api/app/register';
+  static String get forgotPassword => '$baseUrl/api/app/forgot-password';
+  static String get resetPassword => '$baseUrl/api/app/reset-password';
   static String get logout => '$baseUrl/api/app/logout';
   static String get fcmToken => '$baseUrl/api/app/fcm-token';
   static String get configs => '$baseUrl/api/app/configs';
@@ -60,4 +64,6 @@ class ApiConfig {
   static String get tipDriver => '$baseUrl/api/app/tip-driver';
   static String get lostFound => '$baseUrl/api/app/lost-found';
   static String get driverWithdrawRequest => '$baseUrl/api/app/driver/withdraw-request';
+  static String get deleteAccount => '$baseUrl/api/app/driver/account';
+  static String get verifyDeliveryOtp => '$baseUrl/api/app/driver/verify-delivery-otp';
 }
