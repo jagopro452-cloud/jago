@@ -1344,7 +1344,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/parcel-refunds", async (req, res) => {
     try {
       const status = req.query.status as string || "all";
-      const { data } = await storage.getTrips({ type: "parcel", page: 1, limit: 100 });
+      const { data } = await storage.getTrips(undefined, undefined, 1, 500);
       const refunds = data.filter((item: any) => {
         const s = item.trip.currentStatus;
         if (status === "pending") return s === "cancelled" && !item.trip.paymentStatus?.includes("refund");
@@ -3223,7 +3223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Notify next driver
         const driverDeviceRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nextDriver.id}::uuid`);
         const driverFcmToken = (driverDeviceRes.rows[0] as any)?.fcm_token || null;
-        notifyDriverNewRide({ fcmToken: driverFcmToken, driverName: (nextDriver as any).fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress }).catch(() => {});
+        notifyDriverNewRide({ fcmToken: driverFcmToken, driverName: (nextDriver as any).fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: 0 }).catch(() => {});
         // Notify customer — new driver assigned
         const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
         const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
@@ -3232,7 +3232,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // No next driver available — notify customer searching
         const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
         const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver_reassigning", tripId }).catch(() => {});
+        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
       }
       res.json({ success: true, reassigned: !!nextDriver, nextDriver: nextDriver ? { id: (nextDriver as any).id, name: (nextDriver as any).fullName } : null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -4542,7 +4542,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/app/emergency-contacts/:id", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      await rawDb.execute(rawSql`DELETE FROM emergency_contacts WHERE id=${parseInt(req.params.id)} AND user_id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`DELETE FROM emergency_contacts WHERE id=${parseInt(req.params.id as string)} AND user_id=${user.id}::uuid`);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4946,12 +4946,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY cs.departure_time ASC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.post('/api/app/customer/car-sharing/book', authApp, async (req, res) => {
     try {
-      const user = req.currentUser;
+      const user = (req as any).currentUser;
       const { rideId, seatsBooked = 1 } = req.body;
       if (!rideId) return res.status(400).json({ message: 'rideId required' });
       const rideRes = await rawDb.execute(rawSql`
@@ -4964,17 +4964,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (available < seatsBooked) return res.status(400).json({ message: 'Only ' + available + ' seat(s) available' });
       const totalFare = parseFloat(ride.seatPrice) * seatsBooked;
       const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
-      const bal = parseFloat(walRes.rows[0]?.wallet_balance || 0);
+      const bal = parseFloat(String(walRes.rows[0]?.wallet_balance || '0'));
       if (bal < totalFare) return res.status(400).json({ message: 'Insufficient wallet balance. Need ₹' + totalFare });
       await rawDb.execute(rawSql`INSERT INTO car_sharing_bookings (ride_id, customer_id, seats_booked, total_fare, status) VALUES (${rideId}::uuid, ${user.id}::uuid, ${seatsBooked}, ${totalFare}, 'confirmed')`);
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${totalFare} WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: seatsBooked + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.get('/api/app/customer/car-sharing/my-bookings', authApp, async (req, res) => {
     try {
-      const user = req.currentUser;
+      const user = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
         SELECT b.*, cs.from_location, cs.to_location, cs.departure_time, cs.seat_price,
           u.full_name as driver_name, u.phone as driver_phone, vc.name as vehicle_name
@@ -4986,7 +4986,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY b.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // 6. SURGE ALERT — "Notify me when surge drops"
