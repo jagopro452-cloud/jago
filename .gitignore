@@ -4,3 +4,27 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Flutter & Android build SDKs (large, not needed in repo)
+.flutter-sdk/
+.android-sdk/
+.pub-cache/
+.gradle-cache/
+.build-tmp/
+
+# Build outputs
+*.apk
+flutter_apps/customer_app/build/
+flutter_apps/driver_app/build/
+flutter_apps/customer_app/.dart_tool/
+flutter_apps/driver_app/.dart_tool/
+flutter_apps/customer_app/.flutter-plugins
+flutter_apps/customer_app/.flutter-plugins-dependencies
+flutter_apps/driver_app/.flutter-plugins
+flutter_apps/driver_app/.flutter-plugins-dependencies
+
+# Logs
+build_output.log
+
+# Environment
+.env
