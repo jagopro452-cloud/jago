@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/auth_service.dart';
 import '../../config/api_config.dart';
+import '../../main.dart' show themeNotifier, saveThemePreference;
+import '../../services/localization_service.dart';
 import '../auth/login_screen.dart';
 import '../performance/performance_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
@@ -175,6 +177,153 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ]),
         ),
+      ),
+    );
+  }
+
+  Future<void> _deleteDriverAccount(bool permanent) async {
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.delete(
+        Uri.parse(ApiConfig.deleteAccount),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'permanent': permanent}),
+      );
+      if (res.statusCode == 200 && mounted) {
+        await AuthService.logout();
+        Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+      } else if (mounted) {
+        final data = jsonDecode(res.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(data['message'] ?? 'Delete failed'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Network error. Please try again.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  void _showDeleteAccountSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0D1B3E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 20),
+          const Row(children: [
+            Icon(Icons.warning_rounded, color: Colors.red, size: 22),
+            SizedBox(width: 10),
+            Text('Delete Account', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 6),
+          Text('Choose how you want to remove your account.',
+            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+          const SizedBox(height: 20),
+          GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: _surface,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: const Text('Deactivate Account?',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                  content: Text('Your account will be deactivated. Your data is kept. Contact support to reactivate.',
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () { Navigator.pop(context); _deleteDriverAccount(false); },
+                      child: const Text('Deactivate', style: TextStyle(color: Colors.white))),
+                  ],
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.pause_circle_outline, color: Colors.orange, size: 22),
+                SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Deactivate Account', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700, fontSize: 14)),
+                  SizedBox(height: 2),
+                  Text('Recoverable - contact support to reactivate', style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.w400)),
+                ])),
+              ]),
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: _surface,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: const Text('Delete Permanently?',
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
+                  content: Text('This will permanently delete all your data including earnings history, KYC documents, and personal information. This cannot be undone.',
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () { Navigator.pop(context); _deleteDriverAccount(true); },
+                      child: const Text('Delete Forever', style: TextStyle(color: Colors.white))),
+                  ],
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.delete_forever, color: Colors.red, size: 22),
+                SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Delete Account Permanently', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700, fontSize: 14)),
+                  SizedBox(height: 2),
+                  Text('All data deleted forever - cannot be undone', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.w400)),
+                ])),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -485,12 +634,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
 
                 _menuCard(children: [
+                  _buildDriverLanguageTile(),
+                  _divider(),
+                  ValueListenableBuilder<ThemeMode>(
+                    valueListenable: themeNotifier,
+                    builder: (_, mode, __) {
+                      final isDark = mode == ThemeMode.dark;
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        leading: Container(
+                          width: 38, height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                              color: Colors.deepPurple, size: 20),
+                        ),
+                        title: Text(isDark ? 'Dark Mode' : 'Light Mode',
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                        subtitle: Text(isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                        trailing: Switch(
+                          value: isDark,
+                          onChanged: (val) => saveThemePreference(val ? ThemeMode.dark : ThemeMode.light),
+                          activeColor: _blue,
+                          trackColor: WidgetStateProperty.all(Colors.white.withOpacity(0.12)),
+                        ),
+                      );
+                    },
+                  ),
+                  _divider(),
                   _menuTile(Icons.headset_mic_rounded, 'Help & Support', Colors.teal, _showSupportSheet),
                   _divider(),
                   _menuTile(Icons.privacy_tip_rounded, 'Privacy Policy', Colors.grey.shade400, () async {
                     const url = 'https://jagopro.org/privacy';
                     if (await canLaunchUrl(Uri.parse(url))) await launchUrl(Uri.parse(url));
                   }),
+                  _divider(),
+                  _menuTile(Icons.delete_forever_rounded, 'Delete Account', Colors.red, _showDeleteAccountSheet),
                   _divider(),
                   _menuTile(Icons.logout_rounded, 'Logout', Colors.redAccent, () async {
                     final confirm = await showDialog<bool>(
@@ -596,6 +778,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ]),
         if (trailing != null) ...[const Spacer(), trailing],
       ]),
+    );
+  }
+
+  Widget _buildDriverLanguageTile() {
+    final currentLang = L.supportedLanguages.firstWhere(
+      (l) => l['code'] == L.lang,
+      orElse: () => L.supportedLanguages.first,
+    );
+    return ListTile(
+      onTap: _showDriverLanguageSheet,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      leading: Container(
+        width: 38, height: 38,
+        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+        child: const Icon(Icons.translate_rounded, color: Colors.teal, size: 20),
+      ),
+      title: const Text('Language / భాష', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${currentLang['flag']} ${currentLang['nativeName']}',
+            style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.45))),
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.2), size: 20),
+        ],
+      ),
+    );
+  }
+
+  void _showDriverLanguageSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setS) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.65,
+          builder: (_, controller) => Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 16),
+                Row(children: [
+                  const Icon(Icons.translate_rounded, color: Colors.teal, size: 22),
+                  const SizedBox(width: 10),
+                  const Text('Language / భాష', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                ]),
+                const SizedBox(height: 6),
+                Text('Select your preferred language', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
+                const SizedBox(height: 16),
+                Expanded(child: ListView(
+                  controller: controller,
+                  children: L.supportedLanguages.map((lang) {
+                    final isSelected = L.lang == lang['code'];
+                    return GestureDetector(
+                      onTap: () async {
+                        await L.setLanguage(lang['code']!);
+                        setS(() {});
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          setState(() {});
+                        }
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: isSelected ? _blue.withOpacity(0.18) : Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isSelected ? _blue : Colors.white.withOpacity(0.08),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(children: [
+                          Text(lang['flag']!, style: const TextStyle(fontSize: 24)),
+                          const SizedBox(width: 14),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(lang['name']!,
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
+                                color: isSelected ? _blue : Colors.white)),
+                            Text(lang['nativeName']!,
+                              style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
+                          ])),
+                          if (isSelected)
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(20)),
+                              child: const Icon(Icons.check, color: Colors.white, size: 14),
+                            ),
+                        ]),
+                      ),
+                    );
+                  }).toList(),
+                )),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
