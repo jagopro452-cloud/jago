@@ -45,6 +45,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _earningsToday = 0;
   int _unreadNotifCount = 0;
   Map<String, dynamic>? _incomingTrip;
+  String _vehicleCategory = '';
+  String _vehicleNumber = '';
+  String _vehicleModel = '';
+  String _zone = '';
   Timer? _locationTimer;
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
@@ -160,11 +164,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _walletBalance = (data['walletBalance'] ?? 0).toDouble();
           _tripsToday = data['tripsToday'] ?? 0;
           _earningsToday = (data['earningsToday'] ?? 0).toDouble();
+          _vehicleCategory = data['vehicleCategory'] ?? '';
+          _vehicleNumber = data['vehicleNumber'] ?? '';
+          _vehicleModel = data['vehicleModel'] ?? '';
+          _zone = data['zone'] ?? '';
         });
         if (_isOnline) _startLocationStreaming();
       }
     } catch (_) {}
     setState(() => _loading = false);
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final token = await AuthService.getToken();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/driver/notifications/unread-count'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() => _unreadNotifCount = (data['count'] ?? 0).toInt());
+      }
+    } catch (_) {}
   }
 
   // Real-time GPS location streaming to server via socket
@@ -243,6 +265,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w700)),
+      backgroundColor: error ? Colors.red.shade700 : _green,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
   Future<void> _toggleOnline() async {
     setState(() => _toggling = true);
     final newStatus = !_isOnline;
@@ -254,21 +288,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         lng: _center.longitude,
       );
 
-      // Also update via HTTP for persistence
       final token = await AuthService.getToken();
-      final res = await http.post(Uri.parse(ApiConfig.driverOnlineStatus),
+      final res = await http.patch(Uri.parse(ApiConfig.driverOnlineStatus),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({'isOnline': newStatus, 'lat': _center.latitude, 'lng': _center.longitude}));
+        body: jsonEncode({'isOnline': newStatus, 'lat': _center.latitude, 'lng': _center.longitude}))
+        .timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
         setState(() => _isOnline = newStatus);
         if (_isOnline) {
           _startLocationStreaming();
+          _showSnack('Online అయ్యారు! Trips కోసం ready ✓');
         } else {
           _stopLocationStreaming();
+          _showSnack('Offline అయ్యారు');
         }
+      } else {
+        // Server returned error — show reason to driver
+        Map<String, dynamic> errBody = {};
+        try { errBody = jsonDecode(res.body); } catch (_) {}
+        final msg = errBody['message']?.toString() ?? 'Server error. Try again.';
+        _showSnack(msg, error: true);
+        // Revert socket status
+        _socket.setOnlineStatus(isOnline: _isOnline, lat: _center.latitude, lng: _center.longitude);
       }
-    } catch (_) {}
+    } on Exception catch (e) {
+      _showSnack('Connection error: Server reach కావడం లేదు. Internet check చేయండి.', error: true);
+      // Revert socket status
+      _socket.setOnlineStatus(isOnline: _isOnline, lat: _center.latitude, lng: _center.longitude);
+    }
     setState(() => _toggling = false);
   }
 
@@ -412,41 +460,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 24, offset: const Offset(0, -4))],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Drag handle with gradient
         Container(
-          width: 36, height: 4,
-          margin: const EdgeInsets.only(top: 10, bottom: 16),
+          width: 40, height: 4,
+          margin: const EdgeInsets.only(top: 10, bottom: 14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
+            gradient: LinearGradient(colors: [_blue.withOpacity(0.3), Colors.white.withOpacity(0.15)]),
             borderRadius: BorderRadius.circular(2)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           child: Column(children: [
-            // Time-based greeting + status indicator
+            // Premium header with avatar
             Row(children: [
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 10, offset: const Offset(0,4))],
+                ),
+                child: Center(child: Text(
+                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900))),
+              ),
+              const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(_getTimeGreeting(), style: TextStyle(
                   color: Colors.white.withOpacity(0.4),
-                  fontSize: 11, fontWeight: FontWeight.w600)),
+                  fontSize: 10, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(_userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'Pilot',
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+                  style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
               ])),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: (_isOnline ? _green : Colors.grey[700]!).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: (_isOnline ? _green : Colors.grey[600]!).withOpacity(0.3),
-                    width: 1,
-                  ),
+                    color: (_isOnline ? _green : Colors.grey[600]!).withOpacity(0.35), width: 1),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   AnimatedBuilder(
                     animation: _pulseCtrl,
                     builder: (_, __) => Container(
-                      width: 6, height: 6,
+                      width: 7, height: 7,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _isOnline ? _green : Colors.grey[500],
@@ -458,9 +520,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(_isOnline ? 'Online' : 'Offline',
+                  Text(_isOnline ? '● Online' : '● Offline',
                     style: TextStyle(
-                      color: _isOnline ? _green : Colors.grey[500]!,
+                      color: _isOnline ? _green : Colors.grey[400]!,
                       fontSize: 11, fontWeight: FontWeight.w800,
                     )),
                 ]),
@@ -468,6 +530,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ]),
             const SizedBox(height: 14),
             _buildStatsRow(),
+            if (_vehicleCategory.isNotEmpty || _vehicleNumber.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildVehicleCard(),
+            ],
             const SizedBox(height: 16),
             _buildToggleBtn(),
             const SizedBox(height: 12),
@@ -479,39 +545,108 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildStatsRow() {
-    return Row(children: [
-      _statTile('Today Earnings', '₹${_earningsToday.toStringAsFixed(0)}', Icons.currency_rupee_rounded, const Color(0xFF10B981)),
-      const SizedBox(width: 10),
-      _statTile('Trips Today', '$_tripsToday', Icons.route_rounded, _blue),
-      const SizedBox(width: 10),
-      _statTile('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded, const Color(0xFFF59E0B)),
-    ]);
+  Widget _buildVehicleCard() {
+    final IconData vIcon = _vehicleCategory.toLowerCase().contains('bike')
+      ? Icons.electric_bike_rounded
+      : _vehicleCategory.toLowerCase().contains('auto')
+        ? Icons.electric_rickshaw_rounded
+        : _vehicleCategory.toLowerCase().contains('suv') ? Icons.directions_car_filled_rounded
+        : Icons.directions_car_rounded;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_blue.withOpacity(0.12), _blue.withOpacity(0.04)],
+          begin: Alignment.centerLeft, end: Alignment.centerRight),
+        borderRadius: BorderRadius.circular(16),
+        border: Border(left: BorderSide(color: _blue, width: 3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_blue, const Color(0xFF1E40AF)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 8, offset: const Offset(0,3))],
+            ),
+            child: Icon(vIcon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              _vehicleCategory.isNotEmpty ? _vehicleCategory : 'My Vehicle',
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: -0.2),
+            ),
+            if (_vehicleNumber.isNotEmpty || _vehicleModel.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(
+                [if (_vehicleNumber.isNotEmpty) _vehicleNumber.toUpperCase(), if (_vehicleModel.isNotEmpty) _vehicleModel].join('  ·  '),
+                style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ])),
+          if (_zone.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [const Color(0xFF10B981).withOpacity(0.15), const Color(0xFF059669).withOpacity(0.1)]),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.location_on_rounded, color: Color(0xFF10B981), size: 10),
+                const SizedBox(width: 3),
+                Text(_zone, style: const TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+        ]),
+      ),
+    );
   }
+
+  Widget _buildStatsRow() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFF0F172A), const Color(0xFF1E293B)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0,4))],
+      ),
+      child: Row(children: [
+        _statTile('Earnings', '₹${_earningsToday.toStringAsFixed(0)}', Icons.trending_up_rounded, const Color(0xFF10B981)),
+        _vertDivider(),
+        _statTile('Trips', '$_tripsToday', Icons.route_rounded, _blue),
+        _vertDivider(),
+        _statTile('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded, const Color(0xFFF59E0B)),
+      ]),
+    );
+  }
+
+  Widget _vertDivider() => Container(
+    width: 1, height: 44,
+    color: Colors.white.withOpacity(0.07));
 
   Widget _statTile(String label, String value, IconData icon, Color color) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.15), width: 1),
-        ),
-        child: Column(children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 9, fontWeight: FontWeight.w500),
-            textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, color: color, size: 13),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4),
+              fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+          ]),
+          const SizedBox(height: 5),
+          Text(value, style: TextStyle(
+            color: color, fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -0.5,
+            shadows: [Shadow(color: color.withOpacity(0.5), blurRadius: 8)],
+          )),
         ]),
       ),
     );
@@ -638,16 +773,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.15), width: 1),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.18), color.withOpacity(0.08)],
+            begin: Alignment.topCenter, end: Alignment.bottomCenter),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.22), width: 1),
+          boxShadow: [BoxShadow(color: color.withOpacity(0.12), blurRadius: 8, offset: const Offset(0,3))],
         ),
         child: Column(children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 19),
+          ),
+          const SizedBox(height: 5),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
         ]),
       ),
     );
