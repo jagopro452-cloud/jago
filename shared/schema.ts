@@ -32,6 +32,9 @@ export const users = pgTable("users", {
   vehicleNumber: varchar("vehicle_number", { length: 50 }),
   vehicleModel: varchar("vehicle_model", { length: 100 }),
   rejectionNote: text("rejection_note"),
+  passwordHash: varchar("password_hash", { length: 255 }),
+  resetOtp: varchar("reset_otp", { length: 10 }),
+  resetOtpExpiry: timestamp("reset_otp_expiry"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -402,6 +405,21 @@ export type VehicleCategory = typeof vehicleCategories.$inferSelect;
 export type Zone = typeof zones.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type BusinessSetting = typeof businessSettings.$inferSelect;
+export const appLanguages = pgTable("app_languages", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 10 }).notNull().unique(),
+  name: varchar("name", { length: 100 }).notNull(),
+  nativeName: varchar("native_name", { length: 100 }).notNull(),
+  flag: varchar("flag", { length: 10 }).notNull().default("🌐"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAppLanguageSchema = createInsertSchema(appLanguages).omit({ id: true, createdAt: true });
+export type InsertAppLanguage = z.infer<typeof insertAppLanguageSchema>;
+export type AppLanguage = typeof appLanguages.$inferSelect;
+
 export type TripFare = typeof tripFares.$inferSelect;
 export type CouponSetup = typeof couponSetups.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
