@@ -295,16 +295,47 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                       _buildCancelledCard(),
                     ] else ...[
                       const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity, height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: _showCancelDialog,
-                          icon: const Icon(Icons.cancel_rounded, size: 18, color: Color(0xFFEF4444)),
-                          label: const Text('Cancel Ride', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.red.withOpacity(0.3)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                        )),
+                      Row(children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _showCancelDialog,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: [Colors.red.withOpacity(0.15), Colors.red.withOpacity(0.07)]),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              ),
+                              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                Icon(Icons.cancel_rounded, size: 16, color: Color(0xFFEF4444)),
+                                SizedBox(width: 6),
+                                Text('Cancel', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w800, fontSize: 13)),
+                              ]),
+                            ),
+                          )),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              final phone = await _getSupportPhone();
+                              final uri = Uri(scheme: 'tel', path: phone);
+                              if (await canLaunchUrl(uri)) await launchUrl(uri);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: [Colors.green.withOpacity(0.15), Colors.green.withOpacity(0.07)]),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.green.withOpacity(0.35)),
+                              ),
+                              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                Icon(Icons.phone_in_talk_rounded, size: 16, color: Colors.green),
+                                SizedBox(width: 6),
+                                Text('Support', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w800, fontSize: 13)),
+                              ]),
+                            ),
+                          )),
+                      ]),
                     ],
                   ]),
                 ),
@@ -314,6 +345,18 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         ]),
       ),
     );
+  }
+
+
+  Future<String> _getSupportPhone() async {
+    try {
+      final r = await http.get(Uri.parse(ApiConfig.configs));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        return data['configs']?['support_phone'] ?? '+916303000000';
+      }
+    } catch (_) {}
+    return '+916303000000';
   }
 
   Widget _buildStatusHeader(Map<String, dynamic> info) {
@@ -376,78 +419,113 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildDriverCard(String name, String? phone, dynamic rating) {
+    final driverModel = _trip?['driverVehicleModel'] ?? '';
+    final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
+    final vehicleName = _trip?['vehicleName'] ?? '';
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5EAFF), width: 1),
+        gradient: LinearGradient(
+          colors: [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _blue.withOpacity(0.15), width: 1.5),
+        boxShadow: [BoxShadow(color: _blue.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))],
       ),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: _blue,
-          child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF111827))),
-          if (rating != null)
-            Row(children: [
-              const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-              const SizedBox(width: 3),
-              Text(rating.toString(), style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w600)),
-            ]),
-        ])),
-        Row(children: [
-          if (phone != null) ...[
-            GestureDetector(
-              onTap: () async {
-                final uri = Uri(scheme: 'tel', path: phone);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri);
-                } else {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('Pilot: $phone', style: const TextStyle(fontWeight: FontWeight.w600)),
-                    backgroundColor: _blue,
-                    behavior: SnackBarBehavior.floating,
-                  ));
-                }
-              },
-              child: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: _blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.phone_rounded, color: Color(0xFF1E6DE5), size: 18)),
-            ),
-            const SizedBox(width: 8),
-          ],
-          GestureDetector(
-            onTap: _triggerSos,
-            child: Container(
-              width: 40, height: 40,
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              width: 48, height: 48,
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [_blue, const Color(0xFF1244A2)],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))],
               ),
-              child: const Icon(Icons.sos_rounded, color: Colors.red, size: 20)),
+              child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20))),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
+                color: Color(0xFF0F172A), letterSpacing: -0.3)),
+              const SizedBox(height: 3),
+              Row(children: [
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                const SizedBox(width: 3),
+                Text(rating?.toString() ?? '5.0',
+                  style: const TextStyle(color: Color(0xFF374151), fontSize: 12, fontWeight: FontWeight.w700)),
+                if (vehicleName.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _blue.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: Text(vehicleName, style: TextStyle(color: _blue, fontSize: 10, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ]),
+            ])),
+            Row(children: [
+              if (phone != null) ...[
+                GestureDetector(
+                  onTap: () async {
+                    final uri = Uri(scheme: 'tel', path: phone);
+                    if (await canLaunchUrl(uri)) await launchUrl(uri);
+                    else if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('Pilot: $phone'), backgroundColor: _blue, behavior: SnackBarBehavior.floating));
+                  },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [_blue, const Color(0xFF1244A2)]),
+                      borderRadius: BorderRadius.circular(13),
+                      boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                    ),
+                    child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
+                ),
+                const SizedBox(width: 8),
+              ],
+              GestureDetector(
+                onTap: _triggerSos,
+                child: Container(
+                  width: 42, height: 42,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [const Color(0xFF7F1D1D), Colors.red]),
+                    borderRadius: BorderRadius.circular(13),
+                    boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                  ),
+                  child: const Icon(Icons.sos_rounded, color: Colors.white, size: 20)),
+              ),
+            ]),
+          ]),
+        ),
+        if (driverVehicle.isNotEmpty || driverModel.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _blue.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _blue.withOpacity(0.12))),
+            child: Row(children: [
+              Icon(Icons.directions_car_rounded, color: _blue, size: 14),
+              const SizedBox(width: 6),
+              Text(
+                [if (driverVehicle.isNotEmpty) driverVehicle.toUpperCase(), if (driverModel.isNotEmpty) driverModel].join(' · '),
+                style: TextStyle(color: _blue, fontSize: 11, fontWeight: FontWeight.w700)),
+            ]),
           ),
-        ]),
       ]),
     );
   }
 
   Future<void> _shareRide() async {
     final tripId = widget.tripId;
-    final shareText = '🚗 JAGO ride track చేయండి!
-'
-        'Real-time location: https://jagopro.org/track/$tripId
-'
-        'JAGO app download: https://jagopro.org/download';
+    final shareText = '🚗 JAGO ride track చేయండి!\nReal-time location: https://jagopro.org/track/$tripId\nJAGO app download: https://jagopro.org/download';
     final encoded = Uri.encodeComponent(shareText);
     final uri = Uri.parse('whatsapp://send?text=$encoded');
     if (await canLaunchUrl(uri)) {
