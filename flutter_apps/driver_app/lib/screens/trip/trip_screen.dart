@@ -506,6 +506,101 @@ class _TripScreenState extends State<TripScreen> {
       MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
   }
 
+  void _showDeliveryOtpDialog() {
+    final deliveryOtpCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xFFD97706).withOpacity(0.15), shape: BoxShape.circle),
+              child: const Icon(Icons.local_shipping_rounded, color: Color(0xFFD97706), size: 32)),
+            const SizedBox(height: 16),
+            const Text('Delivery OTP',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(height: 4),
+            Text('Receiver nundi delivery OTP chusi enter cheyyandi',
+              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13), textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFD97706).withOpacity(0.3)),
+              ),
+              child: TextField(
+                controller: deliveryOtpCtrl,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 10),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: '------',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.15), letterSpacing: 10, fontSize: 24),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(children: [
+              Expanded(child: TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.4), fontWeight: FontWeight.w600)))),
+              const SizedBox(width: 12),
+              Expanded(child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD97706), foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
+                onPressed: () async {
+                  final otp = deliveryOtpCtrl.text.trim();
+                  if (otp.isEmpty) return;
+                  Navigator.pop(ctx);
+                  await _verifyDeliveryOtp(otp);
+                },
+                child: const Text('Verify ✓', style: TextStyle(fontWeight: FontWeight.w800)))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _verifyDeliveryOtp(String otp) async {
+    setState(() => _loading = true);
+    final token = await AuthService.getToken();
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.verifyDeliveryOtp),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'tripId': tripId, 'otp': otp}));
+      if (res.statusCode == 200) {
+        _showSnack('✅ Delivery verified! You can now complete the trip.');
+      } else {
+        final err = jsonDecode(res.body);
+        if (!mounted) return;
+        _showSnack(err['message'] ?? 'Wrong delivery OTP', error: true);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack('Network error. Try again.', error: true);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final step = _getStep(_status);
@@ -515,6 +610,9 @@ class _TripScreenState extends State<TripScreen> {
     final estimatedDistance = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? '--';
     final pickupAddress = _trip?['pickupAddress'] ?? _trip?['pickup_address'] ?? 'Pickup';
     final destAddress = _trip?['destinationAddress'] ?? _trip?['destination_address'] ?? 'Destination';
+    final isForSomeoneElse = _trip?['isForSomeoneElse'] == true || _trip?['is_for_someone_else'] == true;
+    final passengerName = _trip?['passengerName'] ?? _trip?['passenger_name'] ?? '';
+    final passengerPhone = _trip?['passengerPhone'] ?? _trip?['passenger_phone'];
 
     return WillPopScope(
       onWillPop: () async => false,
@@ -536,21 +634,32 @@ class _TripScreenState extends State<TripScreen> {
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 24)],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 40, height: 4,
+                Container(width: 44, height: 4,
                   margin: const EdgeInsets.only(top: 10, bottom: 4),
-                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [_blue.withOpacity(0.4), Colors.white.withOpacity(0.1)]),
+                    borderRadius: BorderRadius.circular(2))),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     _buildStatusHeader(step, pickupAddress, destAddress),
                     const SizedBox(height: 14),
                     _buildCustomerCard(customerName, customerPhone, estimatedFare, estimatedDistance),
+                    if (isForSomeoneElse && passengerName.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _buildPassengerCard(passengerName, passengerPhone),
+                    ],
                     if (_trip?['notes']?.toString().startsWith('📦 Parcel') == true) ...[
                       const SizedBox(height: 10),
                       _buildParcelCard(_trip!['notes'].toString()),
                     ],
                     const SizedBox(height: 12),
                     _buildPaymentBadge(),
+                    if ((_status == 'in_progress' || _status == 'on_the_way') &&
+                        _trip?['notes']?.toString().startsWith('📦 Parcel') == true) ...[
+                      const SizedBox(height: 8),
+                      _buildDeliveryOtpButton(),
+                    ],
                     _buildActionBtn(step),
                     const SizedBox(height: 10),
                     _buildSecondaryActions(customerPhone),
@@ -567,29 +676,34 @@ class _TripScreenState extends State<TripScreen> {
   Widget _buildStatusHeader(Map<String, dynamic> step, String pickup, String dest) {
     final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
     final statusColor = isOnTheWay ? _green : _blue;
+    final gradColors = isOnTheWay
+      ? [const Color(0xFF064E3B), const Color(0xFF065F46)]
+      : [const Color(0xFF1E3A8A), const Color(0xFF1E40AF)];
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: statusColor.withOpacity(0.2), width: 1),
+        gradient: LinearGradient(colors: gradColors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
+        boxShadow: [BoxShadow(color: statusColor.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: statusColor.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
+            color: statusColor.withOpacity(0.25),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: statusColor.withOpacity(0.3)),
           ),
           child: Icon(step['icon'] as IconData, color: statusColor, size: 24)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(step['label'] as String,
-            style: TextStyle(color: statusColor, fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
+            style: TextStyle(color: statusColor, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+          const SizedBox(height: 3),
           Text(
             _status == 'accepted' ? pickup : dest,
-            style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11),
+            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
             maxLines: 1, overflow: TextOverflow.ellipsis),
         ])),
         // Live location indicator
@@ -659,6 +773,77 @@ class _TripScreenState extends State<TripScreen> {
           ]),
         ],
       ]),
+    );
+  }
+
+  Widget _buildPassengerCard(String passengerName, String? passengerPhone) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.purple.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.purple.withOpacity(0.25), width: 1),
+      ),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.person_pin_rounded, color: Colors.purple, size: 18)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('PASSENGER', style: TextStyle(color: Colors.purple, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          const SizedBox(height: 2),
+          Text(passengerName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          if (passengerPhone != null && passengerPhone.isNotEmpty) ...[
+            const SizedBox(height: 1),
+            Text(passengerPhone, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+          ],
+        ])),
+        if (passengerPhone != null && passengerPhone.isNotEmpty)
+          GestureDetector(
+            onTap: () async {
+              final uri = Uri(scheme: 'tel', path: passengerPhone);
+              try {
+                if (await canLaunchUrl(uri)) await launchUrl(uri);
+                else _showSnack('Call: $passengerPhone');
+              } catch (_) { _showSnack('Call: $passengerPhone'); }
+            },
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.phone_rounded, color: Colors.purple, size: 17)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildDeliveryOtpButton() {
+    return GestureDetector(
+      onTap: _showDeliveryOtpDialog,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFD97706), Color(0xFFB45309)],
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: const Color(0xFFD97706).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 3))],
+        ),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.lock_open_rounded, color: Colors.white, size: 18),
+          SizedBox(width: 8),
+          Text('Verify Delivery OTP',
+            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+        ]),
+      ),
     );
   }
 
@@ -749,58 +934,91 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildCustomerCard(String name, String? phone, dynamic fare, dynamic dist) {
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
-    final pmLabel = pm == 'wallet' ? 'Wallet' : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? 'UPI/Online' : 'Cash';
+    final pmLabel = pm == 'wallet' ? '💳 Wallet' : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? '📱 UPI' : '💵 Cash';
     final pmColor = pm == 'wallet' ? _blue : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? const Color(0xFF7C3AED) : _green;
+    final fareVal = double.tryParse(fare?.toString() ?? '0') ?? 0;
 
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1),
+        gradient: LinearGradient(
+          colors: [const Color(0xFF0D1B3E), const Color(0xFF0F172A)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
       ),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: _blue.withOpacity(0.2),
-          child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'C',
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 6),
-          Row(children: [
-            _pill('₹$fare', const Color(0xFF10B981)),
-            const SizedBox(width: 6),
-            _pill('$dist km', _blue),
-            const SizedBox(width: 6),
-            _pill(pmLabel, pmColor),
-          ]),
-        ])),
-        if (phone != null)
-          GestureDetector(
-            onTap: () async {
-              final uri = Uri(scheme: 'tel', path: phone);
-              try {
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri);
-                } else {
-                  _showSnack('Call: $phone');
-                }
-              } catch (_) {
-                _showSnack('Call: $phone');
-              }
-            },
-            child: Container(
-              width: 40, height: 40,
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              width: 46, height: 46,
               decoration: BoxDecoration(
-                color: _blue.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [_blue, const Color(0xFF1E40AF)],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 10, offset: const Offset(0,3))],
               ),
-              child: const Icon(Icons.phone_rounded, color: Color(0xFF2563EB), size: 18)),
-          ),
+              child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900))),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              Text(pmLabel, style: TextStyle(color: pmColor, fontSize: 12, fontWeight: FontWeight.w700)),
+            ])),
+            if (phone != null)
+              GestureDetector(
+                onTap: () async {
+                  final uri = Uri(scheme: 'tel', path: phone);
+                  try {
+                    if (await canLaunchUrl(uri)) await launchUrl(uri);
+                    else _showSnack('Call: $phone');
+                  } catch (_) { _showSnack('Call: $phone'); }
+                },
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [_blue, const Color(0xFF1E40AF)]),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                  ),
+                  child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
+              ),
+          ]),
+        ),
+        Container(
+          height: 1,
+          color: Colors.white.withOpacity(0.05),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(children: [
+            Expanded(child: _statPill('Fare', fareVal > 0 ? '₹${fareVal.toInt()}' : '₹$fare', const Color(0xFF10B981))),
+            const SizedBox(width: 8),
+            Expanded(child: _statPill('Distance', '$dist km', _blue)),
+            const SizedBox(width: 8),
+            Expanded(child: _statPill('Pay', pm == 'cash' ? 'Cash' : pm == 'wallet' ? 'Wallet' : 'Online', pmColor)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _statPill(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.15)),
+      ),
+      child: Column(children: [
+        Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 9, fontWeight: FontWeight.w600)),
       ]),
     );
   }
@@ -815,25 +1033,43 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildActionBtn(Map<String, dynamic> step) {
     final isComplete = _status == 'in_progress' || _status == 'on_the_way';
-    return SizedBox(
-      width: double.infinity, height: 56,
-      child: ElevatedButton(
-        onPressed: _loading ? null : _nextStep,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isComplete ? _green : _blue,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: (isComplete ? _green : _blue).withOpacity(0.4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 0),
-        child: _loading
-          ? const SizedBox(width: 22, height: 22,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-          : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(step['icon'] as IconData, size: 20),
-              const SizedBox(width: 8),
-              Text(step['action'] as String,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.2)),
-            ]),
+    final c1 = isComplete ? const Color(0xFF064E3B) : const Color(0xFF1E3A8A);
+    final c2 = isComplete ? _green : _blue;
+    final c3 = isComplete ? const Color(0xFF22C55E) : const Color(0xFF60A5FA);
+    return GestureDetector(
+      onTap: _loading ? null : _nextStep,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: double.infinity, height: 60,
+        margin: const EdgeInsets.only(top: 4),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [c1, c2, c3],
+            begin: Alignment.centerLeft, end: Alignment.centerRight),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(color: c2.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, 6)),
+            BoxShadow(color: c2.withOpacity(0.2), blurRadius: 40, offset: const Offset(0, 10)),
+          ],
+        ),
+        child: Center(
+          child: _loading
+            ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const SizedBox(width: 22, height: 22,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
+                const SizedBox(width: 12),
+                const Text('Please wait...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+              ])
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+                  child: Icon(step['icon'] as IconData, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Text(step['action'] as String,
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.2)),
+              ]),
+        ),
       ),
     );
   }
@@ -870,6 +1106,18 @@ class _TripScreenState extends State<TripScreen> {
     }
   }
 
+
+  Future<String> _getSupportPhone() async {
+    try {
+      final r = await http.get(Uri.parse(ApiConfig.configs));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        return data['configs']?['support_phone'] ?? '+916303000000';
+      }
+    } catch (_) {}
+    return '+916303000000';
+  }
+
   Widget _buildSecondaryActions(String? phone) {
     return Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
       if (phone != null)
@@ -883,27 +1131,27 @@ class _TripScreenState extends State<TripScreen> {
             }
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: _blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _blue.withOpacity(0.2)),
+              gradient: LinearGradient(colors: [_blue.withOpacity(0.15), _blue.withOpacity(0.08)]),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _blue.withOpacity(0.25)),
             ),
             child: const Row(children: [
               Icon(Icons.phone_rounded, color: Color(0xFF2563EB), size: 16),
               SizedBox(width: 6),
-              Text('Call', style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Call', style: TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w800)),
             ]),
           ),
         ),
       GestureDetector(
         onTap: _triggerSos,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.red.withOpacity(0.3)),
+            gradient: LinearGradient(colors: [Colors.red.withOpacity(0.18), Colors.red.withOpacity(0.08)]),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.red.withOpacity(0.35)),
           ),
           child: const Row(children: [
             Icon(Icons.sos_rounded, color: Colors.red, size: 16),
@@ -925,6 +1173,26 @@ class _TripScreenState extends State<TripScreen> {
             Icon(Icons.cancel_rounded, color: Colors.orange, size: 16),
             SizedBox(width: 6),
             Text('Cancel', style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      ),
+      GestureDetector(
+        onTap: () async {
+          final phone = await _getSupportPhone();
+          final uri = Uri(scheme: 'tel', path: phone);
+          if (await canLaunchUrl(uri)) await launchUrl(uri);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.green.withOpacity(0.25)),
+          ),
+          child: const Row(children: [
+            Icon(Icons.phone_in_talk_rounded, color: Colors.green, size: 16),
+            SizedBox(width: 6),
+            Text('Support', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
