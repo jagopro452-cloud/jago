@@ -219,7 +219,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
       ]),
       const SizedBox(height: 12),
       Row(children: [
-        Expanded(child: _statCard('Weekly Hours', '${_hoursWeek.toStringAsFixed(1)}h', Icons.calendar_week_outlined,
+        Expanded(child: _statCard('Weekly Hours', '${_hoursWeek.toStringAsFixed(1)}h', Icons.date_range_rounded,
             _hoursWeek >= 48 ? _red : _orange, 'Max 60h/week recommended')),
         const SizedBox(width: 12),
         Expanded(child: _statCard('Status', _onBreak ? 'On Break' : 'Active',
