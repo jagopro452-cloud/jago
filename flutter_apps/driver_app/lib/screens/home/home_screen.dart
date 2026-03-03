@@ -53,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
 
-  static const Color _blue = Color(0xFF2563EB);
+  static const Color _blue = Color(0xFF1B4DCC);
+  static const Color _yellow = Color(0xFFFBBC04);
   static const Color _bg = Color(0xFF060D1E);
   static const Color _surface = Color(0xFF0D1B3E);
   static const Color _green = Color(0xFF16A34A);
@@ -365,8 +366,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             child: Row(children: [
               Image.asset('assets/images/pilot_logo.png', height: 22, fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Text('PILOT',
-                  style: TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2))),
+                errorBuilder: (_, __, ___) => RichText(text: const TextSpan(children: [
+                  TextSpan(text: 'JA', style: TextStyle(color: Color(0xFF1B4DCC), fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                  TextSpan(text: 'GO ', style: TextStyle(color: Color(0xFFFBBC04), fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                  TextSpan(text: 'Pilot', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600)),
+                ]))),
               Container(width: 1, height: 20, color: Colors.white.withOpacity(0.08), margin: const EdgeInsets.symmetric(horizontal: 10)),
               AnimatedBuilder(
                 animation: _pulseCtrl,
