@@ -47,6 +47,14 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<{drivers: number; trips: number; zones: number} | null>(null);
+  // Forgot password state
+  const [forgotMode, setForgotMode] = useState<"login"|"forgot"|"reset">("login");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
   useEffect(() => {
     fetch("/api/dashboard/stats").then(r => r.json()).then(d => {
       setStats({ drivers: d.totalDrivers || 0, trips: d.totalTrips || 0, zones: d.totalZones || 0 });
@@ -57,6 +65,47 @@ export default function AdminLogin() {
     const saved = localStorage.getItem("jago-admin");
     if (saved) setLocation("/admin/dashboard");
   }, []);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(""); setForgotMsg(""); setForgotLoading(true);
+    try {
+      const res = await fetch("/api/admin/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotMsg(data.message);
+        if (data.otp) setForgotMsg(`${data.message} OTP: ${data.otp}`);
+        setForgotMode("reset");
+      } else {
+        setForgotError(data.message || "Failed to send OTP");
+      }
+    } catch { setForgotError("Connection error. Please try again."); }
+    finally { setForgotLoading(false); }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(""); setForgotMsg(""); setForgotLoading(true);
+    try {
+      const res = await fetch("/api/admin/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail, otp: forgotOtp, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotMsg(data.message);
+        setTimeout(() => { setForgotMode("login"); setPassword(""); }, 2000);
+      } else {
+        setForgotError(data.message || "Failed to reset password");
+      }
+    } catch { setForgotError("Connection error. Please try again."); }
+    finally { setForgotLoading(false); }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,16 +207,73 @@ export default function AdminLogin() {
             </div>
           </div>
 
-          <h1 className="jl-form-title">Welcome back</h1>
-          <p className="jl-form-subtitle">Sign in to manage your platform</p>
+          <h1 className="jl-form-title">
+            {forgotMode === "forgot" ? "Reset Password" : forgotMode === "reset" ? "Set New Password" : "Welcome back"}
+          </h1>
+          <p className="jl-form-subtitle">
+            {forgotMode === "forgot" ? "Enter your email to receive a reset OTP" : forgotMode === "reset" ? "Enter the OTP and your new password" : "Sign in to manage your platform"}
+          </p>
 
-          {error && (
+          {error && forgotMode === "login" && (
             <div className="jl-alert" data-testid="login-error">
               <i className="bi bi-exclamation-triangle-fill"></i> {error}
             </div>
           )}
+          {forgotError && (
+            <div className="jl-alert" data-testid="forgot-error">
+              <i className="bi bi-exclamation-triangle-fill"></i> {forgotError}
+            </div>
+          )}
+          {forgotMsg && (
+            <div className="jl-alert" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }} data-testid="forgot-success">
+              <i className="bi bi-check-circle-fill"></i> {forgotMsg}
+            </div>
+          )}
 
-          <form onSubmit={handleSubmit}>
+          {forgotMode === "forgot" && (
+            <form onSubmit={handleForgotPassword}>
+              <div className="jl-field">
+                <label className="jl-label">Admin Email Address</label>
+                <div className="jl-input-wrap">
+                  <span className="jl-input-icon"><i className="bi bi-envelope"></i></span>
+                  <input type="email" className="jl-input" placeholder="admin@company.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required data-testid="input-forgot-email" />
+                </div>
+              </div>
+              <button className={`jl-btn${forgotLoading ? " jl-btn-loading" : ""}`} type="submit" disabled={forgotLoading} data-testid="btn-send-otp">
+                {forgotLoading ? <><span className="jl-spinner"></span>Sending…</> : <><i className="bi bi-send me-2"></i>Send Reset OTP</>}
+              </button>
+              <div style={{ textAlign: "center", marginTop: 16 }}>
+                <button type="button" className="jl-forgot-link" onClick={() => setForgotMode("login")}>Back to login</button>
+              </div>
+            </form>
+          )}
+
+          {forgotMode === "reset" && (
+            <form onSubmit={handleResetPassword}>
+              <div className="jl-field">
+                <label className="jl-label">OTP (sent to email)</label>
+                <div className="jl-input-wrap">
+                  <span className="jl-input-icon"><i className="bi bi-shield-check"></i></span>
+                  <input type="text" className="jl-input" placeholder="6-digit OTP" value={forgotOtp} onChange={e => setForgotOtp(e.target.value)} maxLength={6} required data-testid="input-otp" />
+                </div>
+              </div>
+              <div className="jl-field">
+                <label className="jl-label">New Password</label>
+                <div className="jl-input-wrap">
+                  <span className="jl-input-icon"><i className="bi bi-lock"></i></span>
+                  <input type="password" className="jl-input" placeholder="Min 6 characters" value={newPassword} onChange={e => setNewPassword(e.target.value)} minLength={6} required data-testid="input-new-password" />
+                </div>
+              </div>
+              <button className={`jl-btn${forgotLoading ? " jl-btn-loading" : ""}`} type="submit" disabled={forgotLoading} data-testid="btn-reset-password">
+                {forgotLoading ? <><span className="jl-spinner"></span>Resetting…</> : <><i className="bi bi-check-circle me-2"></i>Reset Password</>}
+              </button>
+              <div style={{ textAlign: "center", marginTop: 16 }}>
+                <button type="button" className="jl-forgot-link" onClick={() => setForgotMode("forgot")}>Resend OTP</button>
+              </div>
+            </form>
+          )}
+
+          {forgotMode === "login" && <form onSubmit={handleSubmit}>
             <div className="jl-field">
               <label className="jl-label">Email Address</label>
               <div className="jl-input-wrap">
@@ -213,6 +319,9 @@ export default function AdminLogin() {
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} data-testid="input-remember" />
                 <span>Remember me</span>
               </label>
+              <button type="button" className="jl-forgot-link" onClick={() => { setForgotMode("forgot"); setForgotEmail(email); setForgotError(""); setForgotMsg(""); }} data-testid="btn-forgot-password">
+                Forgot password?
+              </button>
             </div>
 
             <button className={`jl-btn${loading ? " jl-btn-loading" : ""}`} type="submit" disabled={loading} data-testid="btn-login">
@@ -221,7 +330,7 @@ export default function AdminLogin() {
                 : <><i className="bi bi-box-arrow-in-right me-2"></i>Sign In to Dashboard</>
               }
             </button>
-          </form>
+          </form>}
 
         </div>
 
