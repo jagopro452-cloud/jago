@@ -68,13 +68,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   void _shareCode() {
     if (_code.isEmpty) return;
-    final shareText = 'JAGO Pilot app download చేయండి! 🚗
-'
-        'నా referral code: $_code
-'
-        'Download: https://jagopro.org/download/pilot
-'
-        'Sign up చేసి trips complete చేయండి — మీకు + నాకు both కి wallet bonus!';
+    final shareText = 'JAGO Pilot app download చేయండి! 🚗\nనా referral code: $_code\nDownload: https://jagopro.org/download/pilot\nSign up చేసి trips complete చేయండి — మీకు + నాకు both కి wallet bonus!';
     _shareViaWhatsApp(shareText);
   }
 
