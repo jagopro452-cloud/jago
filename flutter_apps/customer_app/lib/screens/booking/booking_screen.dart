@@ -44,6 +44,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
+  // Book for someone else
+  bool _bookForSomeone = false;
+  final _passengerNameCtrl = TextEditingController();
+  final _passengerPhoneCtrl = TextEditingController();
+  final _receiverNameCtrl = TextEditingController();
+  final _receiverPhoneCtrl = TextEditingController();
+
   static const Color _blue = Color(0xFF1E6DE5);
   static const Color _dark = Color(0xFF0F172A);
   static const Color _green = Color(0xFF16A34A);
@@ -100,6 +107,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _promoCtrl.dispose();
     _razorpay.clear();
     _fadeCtrl.dispose();
+    _passengerNameCtrl.dispose();
+    _passengerPhoneCtrl.dispose();
+    _receiverNameCtrl.dispose();
+    _receiverPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -181,6 +192,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (_promoDiscount > 0) 'promoDiscount': _promoDiscount,
         if (_appliedPromo != null) 'couponCode': _appliedPromo,
         if (razorpayPaymentId != null) 'razorpayPaymentId': razorpayPaymentId,
+        if (_bookForSomeone) 'isForSomeoneElse': true,
+        if (_bookForSomeone && _passengerNameCtrl.text.trim().isNotEmpty)
+          'passengerName': _passengerNameCtrl.text.trim(),
+        if (_bookForSomeone && _passengerPhoneCtrl.text.trim().isNotEmpty)
+          'passengerPhone': _passengerPhoneCtrl.text.trim(),
+        if (_bookForSomeone && _receiverNameCtrl.text.trim().isNotEmpty)
+          'receiverName': _receiverNameCtrl.text.trim(),
+        if (_bookForSomeone && _receiverPhoneCtrl.text.trim().isNotEmpty)
+          'receiverPhone': _receiverPhoneCtrl.text.trim(),
       };
       if (widget.vehicleCategoryId != null) body['vehicleCategoryId'] = widget.vehicleCategoryId;
       final res = await http.post(Uri.parse(ApiConfig.bookRide),
@@ -435,6 +455,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 _buildPromoRow(),
                 const SizedBox(height: 14),
 
+                // Book for someone else
+                _buildBookForSomeoneSection(),
+                const SizedBox(height: 14),
+
                 // Payment selection
                 _buildPaymentSection(),
                 const SizedBox(height: 16),
@@ -463,6 +487,156 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   ),
                 ),
               ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  bool get _isParcel {
+    final n = _vehicleName.toLowerCase();
+    return n.contains('parcel') || n.contains('cargo') || n.contains('delivery');
+  }
+
+  Widget _buildBookForSomeoneSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      GestureDetector(
+        onTap: () => setState(() { _bookForSomeone = !_bookForSomeone; }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: _bookForSomeone ? _blue.withOpacity(0.06) : const Color(0xFFF8FAFF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _bookForSomeone ? _blue.withOpacity(0.3) : const Color(0xFFE8EFFF)),
+          ),
+          child: Row(children: [
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: _bookForSomeone ? _blue.withOpacity(0.12) : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.person_add_rounded,
+                color: _bookForSomeone ? _blue : Colors.grey.shade500, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(_isParcel ? 'Book Parcel for Someone' : 'Book for Someone Else',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 14,
+                  color: _bookForSomeone ? _blue : const Color(0xFF0F172A))),
+              const SizedBox(height: 2),
+              Text(_isParcel ? 'Set sender & receiver details' : 'Enter passenger contact details',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ])),
+            Switch(
+              value: _bookForSomeone,
+              onChanged: (v) => setState(() => _bookForSomeone = v),
+              activeColor: _blue,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ]),
+        ),
+      ),
+      if (_bookForSomeone) ...[
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _blue.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _blue.withOpacity(0.12)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_isParcel ? 'Sender Details' : 'Passenger Details',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                color: Color(0xFF374151), letterSpacing: 0.5)),
+            const SizedBox(height: 10),
+            _bookingInputField(
+              controller: _passengerNameCtrl,
+              hint: _isParcel ? 'Sender name' : 'Passenger name',
+              icon: Icons.person_outline_rounded,
+              keyboardType: TextInputType.name,
+            ),
+            const SizedBox(height: 8),
+            _bookingInputField(
+              controller: _passengerPhoneCtrl,
+              hint: _isParcel ? 'Sender phone' : 'Passenger phone',
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+            ),
+            if (_isParcel) ...[
+              const SizedBox(height: 14),
+              const Text('Receiver Details',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                  color: Color(0xFF374151), letterSpacing: 0.5)),
+              const SizedBox(height: 10),
+              _bookingInputField(
+                controller: _receiverNameCtrl,
+                hint: 'Receiver name',
+                icon: Icons.person_pin_outlined,
+                keyboardType: TextInputType.name,
+              ),
+              const SizedBox(height: 8),
+              _bookingInputField(
+                controller: _receiverPhoneCtrl,
+                hint: 'Receiver phone (for delivery OTP)',
+                icon: Icons.phone_forwarded_outlined,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.info_outline_rounded, color: Colors.amber, size: 14),
+                  SizedBox(width: 6),
+                  Expanded(child: Text(
+                    'Delivery OTP will be sent to receiver\'s phone when package is picked up.',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                  )),
+                ]),
+              ),
+            ],
+          ]),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _bookingInputField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE8EFFF)),
+      ),
+      child: Row(children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 10),
+          child: Icon(icon, size: 18, color: Colors.grey.shade400),
+        ),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             ),
           ),
         ),
