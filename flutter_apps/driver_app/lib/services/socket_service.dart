@@ -46,24 +46,20 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
-      print('[SOCKET-DRIVER] Connected as $userId');
     });
 
     _socket!.on('disconnect', (_) {
       _isConnected = false;
       _connectedController.add(false);
-      print('[SOCKET-DRIVER] Disconnected');
     });
 
     // New trip request from customer
     _socket!.on('trip:new_request', (data) {
-      print('[SOCKET-DRIVER] New trip: $data');
       _newTripController.add(Map<String, dynamic>.from(data));
     });
 
     // Trip cancelled by customer
     _socket!.on('trip:cancelled', (data) {
-      print('[SOCKET-DRIVER] Trip cancelled: $data');
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
