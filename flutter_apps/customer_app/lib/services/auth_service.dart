@@ -83,4 +83,64 @@ class AuthService {
       return {'success': false, 'message': e.toString()};
     }
   }
+
+  static Future<Map<String, dynamic>> loginWithPassword(String phone, String password) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.loginPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'password': password, 'userType': 'customer'}));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email}) async {
+    try {
+      final body = {'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'customer'};
+      if (email != null && email.isNotEmpty) body['email'] = email;
+      final res = await http.post(Uri.parse(ApiConfig.registerAccount),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> forgotPassword(String phone) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.forgotPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'userType': 'customer'}));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPassword(String phone, String otp, String newPassword) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.resetPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'otp': otp, 'newPassword': newPassword, 'userType': 'customer'}));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
 }
