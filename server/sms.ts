@@ -91,3 +91,34 @@ export async function sendOtpSms(phone: string, otp: string): Promise<SmsResult>
   console.warn(`[SMS-NONE] No SMS provider configured. OTP for ${phone}: ${otp}`);
   return { success: false, provider: "none", error: "No SMS provider configured" };
 }
+
+export async function sendCustomSms(phone: string, message: string): Promise<SmsResult> {
+  const tenDigit = phone.replace(/\D/g, '').slice(-10);
+  if (!tenDigit || tenDigit.length < 10) return { success: false, provider: "none", error: "Invalid phone" };
+
+  // Try Fast2SMS Quick SMS route
+  if (process.env.FAST2SMS_API_KEY) {
+    try {
+      const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+        method: "POST",
+        headers: { authorization: process.env.FAST2SMS_API_KEY!, "Content-Type": "application/json" },
+        body: JSON.stringify({ route: "q", message, flash: 0, numbers: tenDigit }),
+      });
+      const data = (await res.json()) as any;
+      if (data.return === true) return { success: true, provider: "fast2sms" };
+      console.warn("[SMS-CUSTOM] Fast2SMS failed:", data.message);
+    } catch (e: any) { console.warn("[SMS-CUSTOM] Fast2SMS error:", e.message); }
+  }
+
+  // Fallback: Twilio
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+    try {
+      const twClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await twClient.messages.create({ body: message, from: process.env.TWILIO_PHONE_NUMBER!, to: `+91${tenDigit}` });
+      return { success: true, provider: "twilio" };
+    } catch (e: any) { console.warn("[SMS-CUSTOM] Twilio error:", e.message); }
+  }
+
+  console.warn(`[SMS-NONE] Custom SMS for ${tenDigit}: ${message}`);
+  return { success: false, provider: "none" };
+}
