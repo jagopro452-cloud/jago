@@ -56,6 +56,7 @@ const navSections: NavSection[] = [
     category: "Dashboard",
     items: [
       { label: "Dashboard", icon: "bi-grid-fill", href: "/admin/dashboard" },
+      { label: "Service Management", icon: "bi-toggles", href: "/admin/service-management" },
       { label: "Heat Map", icon: "bi-pin-map", href: "/admin/heat-map" },
       { label: "Fleet View", icon: "bi-map-fill", href: "/admin/fleet-view" },
     ],
@@ -175,6 +176,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Business Setup", icon: "bi-briefcase-fill", href: "/admin/business-setup" },
       { label: "Pages & Media", icon: "bi-file-earmark-break-fill", href: "/admin/pages-media" },
+      { label: "App Languages", icon: "bi-translate", href: "/admin/languages" },
       { label: "Configurations", icon: "bi-gear-wide-connected", href: "/admin/configurations" },
       { label: "System Settings", icon: "bi-sliders2-vertical", href: "/admin/settings" },
     ],
@@ -245,9 +247,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const isActive = (href: string) => location === href || location.startsWith(href + "/");
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } catch (_) {}
     localStorage.removeItem("jago-admin");
-    setLocation("/admin/login");
+    setUserMenuOpen(false);
+    window.location.href = "/admin/login";
   };
 
   return (
@@ -330,6 +336,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </li>
               ))}
             </ul>
+
+            {/* Sidebar Logout */}
+            <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.15)", marginTop: 8 }}>
+              <button
+                onClick={handleLogout}
+                data-testid="btn-logout"
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  background: "rgba(239,68,68,0.07)",
+                  color: "#ef4444",
+                  fontWeight: 600,
+                  fontSize: 13.5,
+                  cursor: "pointer",
+                  transition: "all .18s",
+                }}
+              >
+                <i className="bi bi-box-arrow-right" style={{ fontSize: 16 }}></i>
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
