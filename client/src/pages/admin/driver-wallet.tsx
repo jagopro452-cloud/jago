@@ -116,11 +116,11 @@ function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void })
                   </button>
                 </div>
               </div>
-              {parseFloat(driver.walletBalance || 0) < 0 && creditAmount && (
+              {parseFloat(String(driver.walletBalance || '0')) < 0 && creditAmount && (
                 <div className="mt-2" style={{ fontSize: 11.5, color: "#166534" }}>
                   <i className="bi bi-calculator me-1"></i>
-                  New balance: ₹{(parseFloat(driver.walletBalance || 0) + parseFloat(creditAmount || 0)).toFixed(2)}
-                  {(parseFloat(driver.walletBalance || 0) + parseFloat(creditAmount || 0)) >= 0 && " → Auto-unlock ✓"}
+                  New balance: ₹{(parseFloat(String(driver.walletBalance || '0')) + parseFloat(creditAmount || '0')).toFixed(2)}
+                  {(parseFloat(String(driver.walletBalance || '0')) + parseFloat(creditAmount || '0')) >= 0 && " → Auto-unlock ✓"}
                 </div>
               )}
             </div>
