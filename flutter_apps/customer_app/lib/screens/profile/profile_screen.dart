@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
+import '../../services/localization_service.dart';
+import '../../config/api_config.dart';
 import '../../main.dart' show saveThemePreference;
 import '../auth/login_screen.dart';
 import '../saved_places/saved_places_screen.dart';
@@ -9,6 +13,7 @@ import '../lost_found/lost_found_screen.dart';
 import '../safety/emergency_contacts_screen.dart';
 import '../referral/referral_screen.dart';
 import './support_chat_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -78,6 +83,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
           content: Text(res['message'] ?? 'Update failed'),
           backgroundColor: Colors.red));
     }
+  }
+
+  Future<void> _deleteAccount(bool permanent) async {
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.delete(
+        Uri.parse(ApiConfig.deleteAccount),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'permanent': permanent}),
+      );
+      if (res.statusCode == 200 && mounted) {
+        await AuthService.logout();
+        Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+      } else if (mounted) {
+        final data = jsonDecode(res.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(data['message'] ?? 'Delete failed'),
+          backgroundColor: Colors.red));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Network error. Please try again.'),
+          backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  void _showDeleteAccountDialog(Color cardBg, Color textColor, Color subColor) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(children: [
+          const Icon(Icons.warning_rounded, color: Colors.red, size: 22),
+          const SizedBox(width: 8),
+          Text('Delete Account', style: TextStyle(color: textColor, fontWeight: FontWeight.w800)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Choose how you want to delete your account:',
+            style: TextStyle(color: subColor, fontSize: 13)),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: cardBg,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  title: Text('Deactivate Account?', style: TextStyle(color: textColor, fontWeight: FontWeight.w700)),
+                  content: Text('Your account will be deactivated. You can reactivate it by contacting support.',
+                    style: TextStyle(color: subColor, fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: subColor))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                      onPressed: () { Navigator.pop(context); _deleteAccount(false); },
+                      child: const Text('Deactivate', style: TextStyle(color: Colors.white))),
+                  ],
+                ),
+              );
+            },
+            icon: const Icon(Icons.pause_circle_outline, color: Colors.orange),
+            label: const Text('Deactivate (Recoverable)', style: TextStyle(color: Colors.orange)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.orange)),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: cardBg,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  title: const Text('Permanently Delete?', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
+                  content: Text('This will permanently delete all your data including trip history, wallet balance, and personal information. This cannot be undone.',
+                    style: TextStyle(color: subColor, fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: subColor))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      onPressed: () { Navigator.pop(context); _deleteAccount(true); },
+                      child: const Text('Delete Forever', style: TextStyle(color: Colors.white))),
+                  ],
+                ),
+              );
+            },
+            icon: const Icon(Icons.delete_forever, color: Colors.red),
+            label: const Text('Permanently Delete', style: TextStyle(color: Colors.red)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: subColor))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -274,9 +382,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Colors.teal, cardBg, textColor, divColor, () {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen()));
                       }),
+                  _tile(Icons.phone_in_talk_rounded, 'Call Support',
+                      Colors.green, cardBg, textColor, divColor, () async {
+                        final phone = await _getSupportPhone();
+                        final uri = Uri(scheme: 'tel', path: phone);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri);
+                        } else {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('Support: $phone', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            backgroundColor: Colors.green,
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        }
+                      }),
                 ], cardBg),
                 const SizedBox(height: 12),
                 _section([
+                  _buildLanguageTile(cardBg, textColor, subColor),
+                  Divider(height: 1, color: divColor, indent: 56),
                   ListTile(
                     leading: Container(
                       width: 36,
@@ -306,6 +431,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           isDark ? ThemeMode.light : ThemeMode.dark);
                     },
                   ),
+                ], cardBg),
+                const SizedBox(height: 12),
+                _section([
+                  _tile(Icons.delete_forever_rounded, 'Delete Account', Colors.red, cardBg,
+                      textColor, divColor,
+                      () => _showDeleteAccountDialog(cardBg, textColor, subColor)),
                 ], cardBg),
                 const SizedBox(height: 12),
                 _section([
@@ -411,11 +542,142 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildLanguageTile(Color cardBg, Color textColor, Color subColor) {
+    final currentLang = L.supportedLanguages.firstWhere(
+      (l) => l['code'] == L.lang,
+      orElse: () => L.supportedLanguages.first,
+    );
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E6DE5).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 20),
+      ),
+      title: Text(L.tr('language_settings'),
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${currentLang['flag']} ${currentLang['nativeName']}',
+            style: TextStyle(fontSize: 12, color: subColor, fontWeight: FontWeight.w500)),
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right, color: subColor, size: 20),
+        ],
+      ),
+      onTap: () => _showProfileLanguageSheet(cardBg, textColor, subColor),
+    );
+  }
+
+  void _showProfileLanguageSheet(Color cardBg, Color textColor, Color subColor) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setS) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.65,
+          builder: (_, controller) => Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: subColor.withOpacity(0.3), borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 16),
+                Row(children: [
+                  const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 22),
+                  const SizedBox(width: 10),
+                  Text(L.tr('choose_language'),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+                ]),
+                const SizedBox(height: 6),
+                Text('App language will change immediately',
+                  style: TextStyle(fontSize: 12, color: subColor)),
+                const SizedBox(height: 16),
+                Expanded(child: ListView(
+                  controller: controller,
+                  children: L.supportedLanguages.map((lang) {
+                    final isSelected = L.lang == lang['code'];
+                    return GestureDetector(
+                      onTap: () async {
+                        await L.setLanguage(lang['code']!);
+                        setS(() {});
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          setState(() {});
+                        }
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                            ? const Color(0xFF1E6DE5).withOpacity(0.08)
+                            : const Color(0xFF1E6DE5).withOpacity(0.02),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF1E6DE5) : subColor.withOpacity(0.15),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(children: [
+                          Text(lang['flag']!, style: const TextStyle(fontSize: 24)),
+                          const SizedBox(width: 14),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(lang['name']!,
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
+                                color: isSelected ? const Color(0xFF1E6DE5) : textColor)),
+                            Text(lang['nativeName']!,
+                              style: TextStyle(fontSize: 12, color: subColor)),
+                          ])),
+                          if (isSelected)
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E6DE5),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Icon(Icons.check, color: Colors.white, size: 14),
+                            ),
+                        ]),
+                      ),
+                    );
+                  }).toList(),
+                )),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _section(List<Widget> children, Color cardBg) {
     return Container(
       color: cardBg,
       child: Column(children: children),
     );
+  }
+
+
+  Future<String> _getSupportPhone() async {
+    try {
+      final r = await http.get(Uri.parse(ApiConfig.configs));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        return data['configs']?['support_phone'] ?? '+916303000000';
+      }
+    } catch (_) {}
+    return '+916303000000';
   }
 
   Widget _tile(IconData icon, String label, Color color, Color cardBg,
