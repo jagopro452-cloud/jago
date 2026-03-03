@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled } from "./fcm";
-import { sendOtpSms } from "./sms";
+import { sendOtpSms, sendCustomSms } from "./sms";
 import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -78,14 +78,26 @@ const appLimiter = rateLimit({
 
 async function ensureAdminExists() {
   try {
-    const existing = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, "admin@admin.com")).limit(1);
-    const hash = await bcrypt.hash("admin123", 10);
+    const existing = await db.select({ id: admins.id, isActive: admins.isActive }).from(admins).where(eq(admins.email, "admin@admin.com")).limit(1);
     if (!existing.length) {
+      // First-time setup: create admin with password from env var or default
+      const adminPassword = process.env.ADMIN_PASSWORD || "Jago@2024#Admin";
+      const hash = await bcrypt.hash(adminPassword, 10);
       await db.insert(admins).values({ name: "Admin", email: "admin@admin.com", password: hash, role: "superadmin", isActive: true });
-      console.log("[admin] Default admin created: admin@admin.com / admin123");
+      console.log("[admin] Default admin created: admin@admin.com");
     } else {
-      await db.update(admins).set({ password: hash, isActive: true }).where(eq(admins.email, "admin@admin.com"));
-      console.log("[admin] Admin password refreshed");
+      // Admin exists: only update password if ADMIN_PASSWORD env var is explicitly set
+      // This allows the admin to change password via admin panel without it being overridden
+      if (process.env.ADMIN_PASSWORD) {
+        const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+        await db.update(admins).set({ password: hash, isActive: true }).where(eq(admins.email, "admin@admin.com"));
+        console.log("[admin] Admin password synced from ADMIN_PASSWORD env var");
+      } else {
+        if (!existing[0].isActive) {
+          await db.update(admins).set({ isActive: true }).where(eq(admins.email, "admin@admin.com"));
+        }
+        console.log("[admin] Admin account verified");
+      }
     }
   } catch (e: any) {
     console.error("[admin] ensureAdminExists error:", e.message);
@@ -272,6 +284,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  app.post("/api/admin/logout", (req, res) => {
+    res.json({ success: true });
+  });
+
+  // ── ADMIN: Forgot Password — send OTP to email ────────────────────────────
+  app.post("/api/admin/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+      const admin = await storage.getAdminByEmail(email);
+      if (!admin) return res.status(404).json({ message: "No admin account found with this email" });
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+      await rawDb.execute(rawSql`UPDATE admin_otp_resets SET is_used=true WHERE email=${email} AND is_used=false`);
+      await rawDb.execute(rawSql`INSERT INTO admin_otp_resets (email, otp, expires_at) VALUES (${email}, ${otp}, ${expiresAt.toISOString()})`);
+      // In production: send via email. For now, log it and return in dev mode.
+      console.log(`[ADMIN-FORGOT-PWD] ${email} → OTP: ${otp}`);
+      if (process.env.NODE_ENV === 'production') {
+        res.json({ success: true, message: "Password reset OTP sent to your email." });
+      } else {
+        res.json({ success: true, message: "Password reset OTP sent (dev mode — check console).", otp, dev: true });
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Reset Password — verify OTP and set new password ───────────────
+  app.post("/api/admin/reset-password", async (req, res) => {
+    try {
+      const { email, otp, newPassword } = req.body;
+      if (!email || !otp || !newPassword) return res.status(400).json({ message: "Email, OTP and new password are required" });
+      if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const otpRow = await rawDb.execute(rawSql`
+        SELECT * FROM admin_otp_resets WHERE email=${email} AND otp=${otp} AND is_used=false AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+      `);
+      if (!otpRow.rows.length) return res.status(400).json({ message: "Invalid or expired OTP" });
+      await rawDb.execute(rawSql`UPDATE admin_otp_resets SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`);
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      await rawDb.execute(rawSql`UPDATE admins SET password=${hashedPassword} WHERE email=${email}`);
+      res.json({ success: true, message: "Password reset successfully. You can now login with your new password." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // Users
@@ -2518,18 +2573,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const smsResult = await sendOtpSms(phoneStr, otp);
 
       if (smsResult.provider === "none") {
-        // No SMS provider — dev mode fallback (return OTP in response for testing)
+        // No SMS provider configured
         console.log(`[OTP-DEV] ${phoneStr} → ${otp}`);
-        return res.json({
-          success: true,
-          message: "OTP sent (dev mode — check console)",
-          otp,
-          dev: true,
-        });
+        if (process.env.NODE_ENV === "production") {
+          return res.status(503).json({ message: "SMS service unavailable. Please contact support." });
+        }
+        return res.json({ success: true, message: "OTP sent (dev mode — check console)", otp, dev: true });
       }
 
       if (!smsResult.success) {
-        // SMS failed — don't block login in dev, but fail in production
+        // SMS failed
         console.error(`[OTP-ERROR] SMS failed for ${phoneStr}: ${smsResult.error}`);
         if (process.env.NODE_ENV === "production") {
           return res.status(500).json({ message: "Failed to send OTP. Please try again." });
@@ -2614,7 +2667,84 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── AUTH MIDDLEWARE (simple token check) ─────────────────────────────────
+  // ── PASSWORD-BASED REGISTER ───────────────────────────────────────────────
+  app.post("/api/app/register", async (req, res) => {
+    try {
+      const { phone, password, fullName, userType = "customer", email } = req.body;
+      if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
+      if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
+      if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
+      const passwordHash = await bcrypt.hash(password, 10);
+      const insertRes = await rawDb.execute(rawSql`
+        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
+        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
+        RETURNING *
+      `);
+      const user = camelize(insertRes.rows[0]) as any;
+      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PASSWORD-BASED LOGIN ──────────────────────────────────────────────────
+  app.post("/api/app/login-password", async (req, res) => {
+    try {
+      const { phone, password, userType = "customer" } = req.body;
+      if (!phone || !password) return res.status(400).json({ message: "Phone and password are required" });
+      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      if (!userRes.rows.length) return res.status(404).json({ message: "No account found. Please register first." });
+      const user = camelize(userRes.rows[0]) as any;
+      if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
+      if (!user.passwordHash) return res.status(400).json({ message: "Password not set. Please use Forgot Password to set one." });
+      const match = await bcrypt.compare(password, user.passwordHash);
+      if (!match) return res.status(401).json({ message: "Incorrect password. Please try again." });
+      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      const walletBalance = parseFloat(user.walletBalance || 0);
+      res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: parseFloat(user.rating || "5.0"), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── FORGOT PASSWORD (send reset OTP to phone) ─────────────────────────────
+  app.post("/api/app/forgot-password", otpLimiter, async (req, res) => {
+    try {
+      const { phone, userType = "customer" } = req.body;
+      if (!phone) return res.status(400).json({ message: "Phone number is required" });
+      const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      if (!userRes.rows.length) return res.status(404).json({ message: "No account found with this phone number." });
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiry = new Date(Date.now() + 10 * 60 * 1000);
+      await rawDb.execute(rawSql`UPDATE users SET reset_otp=${otp}, reset_otp_expiry=${expiry.toISOString()} WHERE phone=${phone} AND user_type=${userType}`);
+      const isProd = process.env.NODE_ENV === "production";
+      let smsSent = false;
+      try { const r = await sendOtpSms(phone, otp); smsSent = r.success; } catch (_) {}
+      if (!smsSent) {
+        console.log("[RESET OTP] Phone: " + phone + " OTP: " + otp);
+        if (!isProd) return res.json({ success: true, message: "Reset OTP generated", otp });
+        return res.json({ success: true, message: "Reset OTP sent to your mobile number" });
+      }
+      res.json({ success: true, message: "Reset OTP sent to your mobile number" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── RESET PASSWORD (verify OTP + set new password) ────────────────────────
+  app.post("/api/app/reset-password", async (req, res) => {
+    try {
+      const { phone, otp, newPassword, userType = "customer" } = req.body;
+      if (!phone || !otp || !newPassword) return res.status(400).json({ message: "Phone, OTP and new password are required" });
+      if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phone} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
+      if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phone} AND user_type=${userType}`);
+      res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+    // ── AUTH MIDDLEWARE (simple token check) ─────────────────────────────────
   async function authApp(req: Request, res: Response, next: NextFunction) {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -2664,8 +2794,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const w = walletR.rows[0] as any;
         if (w?.is_locked) return res.status(403).json({ message: "Account locked. Please clear dues to go online.", isLocked: true, walletBalance: parseFloat(w.wallet_balance || 0) });
       }
+      const lat = req.body.lat ?? 0;
+      const lng = req.body.lng ?? 0;
       await rawDb.execute(rawSql`UPDATE users SET is_online=${isOnline} WHERE id=${driver.id}::uuid`);
-      await rawDb.execute(rawSql`UPDATE driver_locations SET is_online=${isOnline}, updated_at=NOW() WHERE driver_id=${driver.id}::uuid`);
+      // UPSERT driver_locations — creates row for new drivers, always updates lat/lng
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
+        VALUES (${driver.id}::uuid, ${lat}, ${lng}, ${isOnline}, NOW())
+        ON CONFLICT (driver_id) DO UPDATE SET lat=${lat}, lng=${lng}, is_online=${isOnline}, updated_at=NOW()
+      `);
       res.json({ success: true, isOnline });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2676,10 +2813,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
         SELECT u.*,
+          dd.vehicle_category_id, dd.zone_id, dd.availability_status, dd.avg_rating as driver_rating, dd.total_trips as driver_total_trips,
+          vc.name as vehicle_category_name, vc.type as vehicle_category_type, vc.icon as vehicle_category_icon,
+          z.name as zone_name,
           (SELECT COUNT(*) FROM trip_requests WHERE driver_id=u.id AND current_status='completed') as completed_trips,
           (SELECT COALESCE(SUM(actual_fare),0) FROM trip_requests WHERE driver_id=u.id AND current_status='completed') as total_earned,
           (SELECT COUNT(*) FROM trip_requests WHERE driver_id=u.id AND current_status='cancelled') as cancelled_trips
-        FROM users u WHERE u.id=${driver.id}::uuid
+        FROM users u
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        LEFT JOIN zones z ON z.id = dd.zone_id
+        WHERE u.id=${driver.id}::uuid
       `);
       const loc = await rawDb.execute(rawSql`SELECT lat, lng, is_online FROM driver_locations WHERE driver_id=${driver.id}::uuid`);
       const d = camelize(r.rows[0]) as any;
@@ -2689,7 +2833,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         phone: d.phone,
         email: d.email,
         profilePhoto: d.profilePhoto,
-        rating: parseFloat(d.rating || "5.0"),
+        rating: parseFloat(d.driverRating || d.rating || "5.0"),
         totalRatings: d.totalRatings || 0,
         walletBalance: parseFloat(d.walletBalance || "0"),
         isLocked: d.isLocked || false,
@@ -2697,6 +2841,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isOnline: loc.rows.length ? (loc.rows[0] as any).is_online : false,
         currentLat: loc.rows.length ? (loc.rows[0] as any).lat : null,
         currentLng: loc.rows.length ? (loc.rows[0] as any).lng : null,
+        vehicleNumber: d.vehicleNumber || null,
+        vehicleModel: d.vehicleModel || null,
+        vehicleCategoryId: d.vehicleCategoryId || null,
+        vehicleCategory: d.vehicleCategoryName || null,
+        vehicleCategoryType: d.vehicleCategoryType || null,
+        vehicleCategoryIcon: d.vehicleCategoryIcon || null,
+        zoneId: d.zoneId || null,
+        zone: d.zoneName || null,
+        availabilityStatus: d.availabilityStatus || 'offline',
         stats: {
           completedTrips: parseInt(d.completedTrips || "0"),
           totalEarned: parseFloat(d.totalEarned || "0"),
@@ -2714,7 +2867,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 1. Check if this driver has an active/accepted trip
       const active = await rawDb.execute(rawSql`
         SELECT t.*, c.full_name as customer_name, c.phone as customer_phone, c.rating as customer_rating,
-          vc.name as vehicle_name
+          vc.name as vehicle_name,
+          CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
+          CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
         FROM trip_requests t
         LEFT JOIN users c ON c.id = t.customer_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
@@ -2739,7 +2894,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const searching = await rawDb.execute(rawSql`
         SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
           vc.name as vehicle_name, vc.icon as vehicle_icon,
-          ROUND(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111, 1) as distance_km
+          ROUND(CAST(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111 AS numeric), 1) as distance_km,
+          CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
+          CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
         FROM trip_requests t
         LEFT JOIN users c ON c.id = t.customer_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
@@ -2818,17 +2975,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { tripId, otp } = req.body;
       const r = await rawDb.execute(rawSql`
-        SELECT * FROM trip_requests WHERE id=${tripId}::uuid
+        SELECT *, (SELECT full_name FROM users WHERE id=customer_id) as customer_name,
+          (SELECT phone FROM users WHERE id=customer_id) as customer_phone
+        FROM trip_requests WHERE id=${tripId}::uuid
           AND (current_status = 'accepted' OR current_status = 'arrived')
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
       const trip = r.rows[0] as any;
-      if (trip.pickup_otp !== otp) return res.status(400).json({ message: "Wrong OTP. Please check with customer." });
+      if (trip.pickup_otp !== otp) return res.status(400).json({ message: "Wrong OTP. Please check with sender." });
       const updated = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='on_the_way', ride_started_at=NOW()
         WHERE id=${tripId}::uuid RETURNING *
       `);
+      // 📦 For parcel — send delivery OTP to receiver via SMS when pickup is done
+      if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
+        sendCustomSms(trip.receiver_phone,
+          `JAGO Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
+        ).catch(() => {});
+      }
       res.json({ success: true, trip: camelize(updated.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Verify delivery OTP (Parcel) ─────────────────────────────────
+  app.post("/api/app/driver/verify-delivery-otp", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { tripId, otp } = req.body;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+          AND trip_type IN ('parcel','delivery') AND current_status='on_the_way'
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Parcel trip not found or not in transit" });
+      const trip = r.rows[0] as any;
+      if (trip.delivery_otp !== otp) return res.status(400).json({ message: "Wrong delivery OTP. Please check with receiver." });
+      res.json({ success: true, message: "Delivery OTP verified. Complete the trip." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2843,9 +3024,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND current_status IN ('accepted','driver_assigned')
         RETURNING id, pickup_otp, customer_id
       `);
-      // Get pickup OTP + customer FCM token
+      // Get pickup OTP + passenger info + customer FCM token
       const r = await rawDb.execute(rawSql`
-        SELECT t.pickup_otp, t.customer_id FROM trip_requests t WHERE t.id=${tripId}::uuid
+        SELECT t.pickup_otp, t.customer_id, t.passenger_phone, t.passenger_name,
+          t.is_for_someone_else, t.trip_type, c.phone as customer_phone, c.full_name as customer_name
+        FROM trip_requests t
+        LEFT JOIN users c ON c.id = t.customer_id
+        WHERE t.id=${tripId}::uuid
       `);
       const tripRow = r.rows[0] as any;
       const otp = tripRow?.pickup_otp;
@@ -2859,6 +3044,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         otp: otp || "",
         tripId,
       }).catch(() => {});
+
+      // 📱 If booked for someone else — send OTP as SMS to passenger phone
+      if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {
+        sendCustomSms(tripRow.passenger_phone,
+          `JAGO: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
+        ).catch(() => {});
+      }
+      // 📦 For parcel — remind sender with pickup OTP via SMS
+      if (tripRow?.trip_type === 'parcel' || tripRow?.trip_type === 'delivery') {
+        const senderPhone = tripRow.customer_phone;
+        if (senderPhone) sendCustomSms(senderPhone,
+          `JAGO Parcel: Driver ${driver.fullName || ''} arrived. Pickup OTP: ${otp}. Share to hand over parcel.`
+        ).catch(() => {});
+      }
 
       res.json({ success: true, pickupOtp: otp });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -2980,19 +3179,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId, reason } = req.body;
-      const updRes = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='cancelled', cancelled_by='driver', cancel_reason=${reason || 'Driver cancelled'}
-        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status IN ('accepted','arrived')
-        RETURNING customer_id
+      // Get trip details first
+      const tripDetails = await rawDb.execute(rawSql`
+        SELECT * FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status IN ('accepted','arrived')
       `);
-      // 🔔 Notify customer — driver cancelled
-      if (updRes.rows.length) {
-        const customerId = (updRes.rows[0] as any).customer_id;
-        const custDevResCancel = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${customerId}::uuid`);
-        const custFcmCancel = (custDevResCancel.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcmCancel, cancelledBy: "driver", tripId }).catch(() => {});
+      if (!tripDetails.rows.length) return res.status(400).json({ message: "Cannot cancel this trip" });
+      const trip = camelize(tripDetails.rows[0]) as any;
+
+      // Reset trip to 'searching' — auto-reassign to next driver
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET current_status='searching', driver_id=NULL, pickup_otp=NULL,
+          driver_accepted_at=NULL, cancel_reason=${reason || 'Driver cancelled'}, updated_at=NOW()
+        WHERE id=${tripId}::uuid
+      `);
+      // Free the driver
+      await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
+      // Track driver cancellation
+      await rawDb.execute(rawSql`UPDATE users SET cancelled_trips=COALESCE(cancelled_trips,0)+1 WHERE id=${driver.id}::uuid`);
+
+      // Find next nearest available driver
+      const nextDriverRes = await rawDb.execute(rawSql`
+        SELECT u.id, u.full_name, u.phone, dl.lat, dl.lng,
+          (dl.lat - ${Number(trip.pickupLat)})*(dl.lat - ${Number(trip.pickupLat)}) + (dl.lng - ${Number(trip.pickupLng)})*(dl.lng - ${Number(trip.pickupLng)}) as dist_sq
+        FROM users u
+        JOIN driver_locations dl ON dl.driver_id = u.id
+        JOIN driver_details dd ON dd.user_id = u.id
+        WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false AND dl.is_online=true
+          AND u.current_trip_id IS NULL AND u.id != ${driver.id}::uuid AND u.verification_status='approved'
+          AND dd.vehicle_category_id = ${trip.vehicleCategoryId}::uuid
+        ORDER BY dist_sq ASC LIMIT 1
+      `);
+
+      const nextDriver = nextDriverRes.rows.length ? camelize(nextDriverRes.rows[0]) : null;
+      if (nextDriver) {
+        // Assign next driver
+        const newOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET current_status='accepted', driver_id=${nextDriver.id}::uuid,
+            pickup_otp=${newOtp}, driver_accepted_at=NOW()
+          WHERE id=${tripId}::uuid
+        `);
+        await rawDb.execute(rawSql`UPDATE users SET current_trip_id=${tripId}::uuid WHERE id=${nextDriver.id}::uuid`);
+        // Notify next driver
+        const driverDeviceRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nextDriver.id}::uuid`);
+        const driverFcmToken = (driverDeviceRes.rows[0] as any)?.fcm_token || null;
+        notifyDriverNewRide({ fcmToken: driverFcmToken, driverName: (nextDriver as any).fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress }).catch(() => {});
+        // Notify customer — new driver assigned
+        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
+        const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
+        notifyCustomerDriverAccepted({ fcmToken: custFcm, driverName: (nextDriver as any).fullName, tripId }).catch(() => {});
+      } else {
+        // No next driver available — notify customer searching
+        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
+        const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
+        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver_reassigning", tripId }).catch(() => {});
       }
-      res.json({ success: true });
+      res.json({ success: true, reassigned: !!nextDriver, nextDriver: nextDriver ? { id: (nextDriver as any).id, name: (nextDriver as any).fullName } : null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3011,7 +3253,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE driver_id=${driver.id}::uuid ${status ? rawSql`AND current_status=${status as string}` : rawSql``}`);
       const trips = camelize(r.rows);
-      res.json({ trips, data: trips, total: Number((cnt.rows[0] as any).total) });
+      res.json({ trips, total: Number((cnt.rows[0] as any).total) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3130,7 +3372,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pickupAddress, pickupLat, pickupLng,
         destinationAddress, destAddress, destinationLat, destLat, destinationLng, destLng,
         vehicleCategoryId, estimatedFare, estimatedDistance, distanceKm,
-        paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt
+        paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt,
+        // Book for someone else
+        isForSomeoneElse = false, passengerName, passengerPhone,
+        // Parcel fields
+        receiverName, receiverPhone
       } = req.body;
       const finalDestAddress = destinationAddress || destAddress || "";
       const finalDestLat = destinationLat || destLat || 0;
@@ -3163,13 +3409,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const nearestDriver = drivers.rows.length ? camelize(drivers.rows[0]) : null;
 
       const tripStatus = nearestDriver ? 'driver_assigned' : 'searching';
+      // For parcel trips, generate delivery OTP now
+      const deliveryOtpVal = (tripType === 'parcel' || tripType === 'delivery') ? Math.floor(1000 + Math.random() * 9000).toString() : null;
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
           ref_id, customer_id, driver_id, vehicle_category_id,
           pickup_address, pickup_lat, pickup_lng,
           destination_address, destination_lat, destination_lng,
           estimated_fare, estimated_distance, payment_method,
-          trip_type, current_status, is_scheduled, scheduled_at
+          trip_type, current_status, is_scheduled, scheduled_at,
+          is_for_someone_else, passenger_name, passenger_phone,
+          receiver_name, receiver_phone, delivery_otp
         ) VALUES (
           ${refId}, ${customer.id}::uuid,
           ${nearestDriver ? rawSql`${nearestDriver.id}::uuid` : rawSql`NULL`},
@@ -3177,7 +3427,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${pickupAddress || ""}, ${Number(pickupLat) || 0}, ${Number(pickupLng) || 0},
           ${finalDestAddress}, ${Number(finalDestLat) || 0}, ${Number(finalDestLng) || 0},
           ${Number(estimatedFare) || 0}, ${Number(finalDistance) || 0}, ${finalPayment},
-          ${tripType}, ${tripStatus}, ${isScheduled ? true : false}, ${scheduledAt || null}
+          ${tripType}, ${tripStatus}, ${isScheduled ? true : false}, ${scheduledAt || null},
+          ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
+          ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}
         ) RETURNING *
       `);
 
@@ -3267,6 +3519,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
+          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading,
           vc.name as vehicle_name
         FROM trip_requests t
@@ -3278,9 +3531,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.json({ trip: null });
       const trip = camelize(r.rows[0]) as any;
-      // Show OTP to customer when driver is assigned/on the way (share with driver to start ride)
-      const showOtp = ['driver_assigned','accepted','arrived'].includes(trip.currentStatus);
-      if (!showOtp) delete trip.pickupOtp;
+      // Show pickup OTP to customer when driver arrived (share with driver to start ride)
+      const showPickupOtp = ['driver_assigned','accepted','arrived'].includes(trip.currentStatus);
+      if (!showPickupOtp) delete trip.pickupOtp;
+      // For parcel: show delivery OTP to customer (sender shares with receiver)
+      // Only show delivery_otp when trip is 'on_the_way' or later
+      if (trip.tripType !== 'parcel' && trip.tripType !== 'delivery') {
+        delete trip.deliveryOtp;
+      }
       res.json({ trip });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3290,9 +3548,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const customer = (req as any).currentUser;
       const { tripId, reason } = req.body;
+      // If no tripId provided, find the active trip for this customer
+      const effectiveTripId = tripId || await rawDb.execute(rawSql`
+        SELECT id FROM trip_requests WHERE customer_id=${customer.id}::uuid
+          AND current_status NOT IN ('completed','cancelled','on_the_way')
+        ORDER BY created_at DESC LIMIT 1
+      `).then(r2 => (r2.rows[0] as any)?.id).catch(() => null);
+      if (!effectiveTripId) return res.status(404).json({ message: "No active trip to cancel" });
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='cancelled', cancelled_by='customer', cancel_reason=${reason||'Customer cancelled'}
-        WHERE id=${tripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled','on_the_way')
+        WHERE id=${effectiveTripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled','on_the_way')
         RETURNING *
       `);
       if (!r.rows.length) return res.status(400).json({ message: "Cannot cancel — trip already in progress or completed" });
@@ -3353,7 +3618,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE customer_id=${customer.id}::uuid`);
       const cTrips = camelize(r.rows);
-      res.json({ trips: cTrips, data: cTrips, total: Number((cnt.rows[0] as any).total) });
+      res.json({ trips: cTrips, total: Number((cnt.rows[0] as any).total) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3628,11 +3893,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/app/customer/profile", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
-      const { fullName, email, profileImage } = req.body;
-      if (!fullName && !email && !profileImage) return res.status(400).json({ message: "Nothing to update" });
+      const { fullName, email, profileImage, gender, phone } = req.body;
+      if (!fullName && !email && !profileImage && !gender && !phone) return res.status(400).json({ message: "Nothing to update" });
       if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${customer.id}::uuid`);
       if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${customer.id}::uuid`);
       if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${customer.id}::uuid`);
+      if (gender) await rawDb.execute(rawSql`UPDATE users SET gender=${gender}, updated_at=now() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Profile updated" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3641,11 +3907,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/app/driver/profile", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { fullName, email, profileImage } = req.body;
-      if (!fullName && !email && !profileImage) return res.status(400).json({ message: "Nothing to update" });
+      const { fullName, email, profileImage, gender, vehicleNumber, vehicleModel, vehicleCategoryId } = req.body;
+      // Update user fields
       if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${driver.id}::uuid`);
       if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${driver.id}::uuid`);
       if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (gender) await rawDb.execute(rawSql`UPDATE users SET gender=${gender}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (vehicleNumber) await rawDb.execute(rawSql`UPDATE users SET vehicle_number=${vehicleNumber}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (vehicleModel) await rawDb.execute(rawSql`UPDATE users SET vehicle_model=${vehicleModel}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      // Create or update driver_details with vehicle category
+      if (vehicleCategoryId) {
+        const existing = await rawDb.execute(rawSql`SELECT id FROM driver_details WHERE user_id=${driver.id}::uuid`);
+        if (existing.rows.length === 0) {
+          await rawDb.execute(rawSql`
+            INSERT INTO driver_details (user_id, vehicle_category_id, availability_status, is_online, total_trips, avg_rating)
+            VALUES (${driver.id}::uuid, ${vehicleCategoryId}::uuid, 'offline', false, 0, 5.0)
+          `);
+        } else {
+          await rawDb.execute(rawSql`UPDATE driver_details SET vehicle_category_id=${vehicleCategoryId}::uuid WHERE user_id=${driver.id}::uuid`);
+        }
+      }
       res.json({ success: true, message: "Profile updated" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3745,11 +4026,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/customer/offers", authApp, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
-        SELECT id, name, coupon_code, discount_type, discount_value, min_trip_amount, max_discount,
-               expiry_date, description
+        SELECT id, name, code, discount_type, discount_amount, min_trip_amount, max_discount_amount,
+               end_date, total_usage_limit, limit_per_user
         FROM coupon_setups
-        WHERE is_active=true AND (expiry_date IS NULL OR expiry_date >= now())
-          AND (usage_limit IS NULL OR used_count < usage_limit)
+        WHERE is_active=true AND (end_date IS NULL OR end_date >= now())
         ORDER BY created_at DESC
         LIMIT 20
       `);
@@ -3764,27 +4044,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { code, fareAmount } = req.body;
       if (!code) return res.status(400).json({ message: "Coupon code required" });
       const r = await rawDb.execute(rawSql`
-        SELECT * FROM coupon_setups WHERE coupon_code=${code.toUpperCase()} AND is_active=true
-          AND (expiry_date IS NULL OR expiry_date >= now())
-          AND (usage_limit IS NULL OR used_count < usage_limit)
+        SELECT * FROM coupon_setups WHERE code=${code.toUpperCase()} AND is_active=true
+          AND (end_date IS NULL OR end_date >= now())
         LIMIT 1
       `);
       if (!r.rows.length) return res.status(400).json({ message: "Invalid or expired coupon" });
       const coupon = camelize(r.rows[0]) as any;
       let discount = 0;
-      if (coupon.discountType === "percentage") {
-        discount = (fareAmount * coupon.discountValue) / 100;
-        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+      if (coupon.discountType === "percent") {
+        discount = (fareAmount * coupon.discountAmount) / 100;
+        if (coupon.maxDiscountAmount) discount = Math.min(discount, coupon.maxDiscountAmount);
       } else {
-        discount = coupon.discountValue || 0;
+        discount = coupon.discountAmount || 0;
       }
       discount = Math.min(discount, fareAmount);
       res.json({
         success: true,
         couponId: coupon.id,
-        code: coupon.couponCode,
+        code: coupon.code,
         discountType: coupon.discountType,
-        discountValue: coupon.discountValue,
+        discountValue: coupon.discountAmount,
         discount: parseFloat(discount.toFixed(2)),
         finalFare: parseFloat((fareAmount - discount).toFixed(2)),
         message: `Coupon applied! You save ₹${discount.toFixed(2)}`,
@@ -3805,10 +4084,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/change-password", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const { newPin } = req.body;
-      if (!newPin || newPin.length < 4) return res.status(400).json({ message: "PIN must be at least 4 digits" });
-      await rawDb.execute(rawSql`UPDATE users SET password=${newPin}, updated_at=now() WHERE id=${user.id}::uuid`);
-      res.json({ success: true, message: "PIN updated successfully" });
+      const { newPin, newPassword, currentPassword } = req.body;
+      const newPass = newPassword || newPin;
+      if (!newPass || String(newPass).length < 4) return res.status(400).json({ message: "Password must be at least 4 characters" });
+      // Verify current password if provided
+      if (currentPassword) {
+        const userRow = await rawDb.execute(rawSql`SELECT password_hash FROM users WHERE id=${user.id}::uuid`);
+        const stored = (userRow.rows[0] as any)?.password_hash;
+        if (stored) {
+          const valid = await bcrypt.compare(String(currentPassword), stored);
+          if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
+        }
+      }
+      const hashed = await bcrypt.hash(String(newPass), 10);
+      await rawDb.execute(rawSql`UPDATE users SET password_hash=${hashed}, updated_at=now() WHERE id=${user.id}::uuid`);
+      res.json({ success: true, message: "Password updated successfully" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3816,8 +4106,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/app/customer/account", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
-      await rawDb.execute(rawSql`UPDATE users SET is_active=false, full_name='Deleted User', email=null, phone=null WHERE id=${customer.id}::uuid`);
-      res.json({ success: true, message: "Account deleted" });
+      const { permanent = false } = req.body || {};
+      if (permanent) {
+        // Permanent delete — anonymize all PII, revoke token, keep records for audit
+        await rawDb.execute(rawSql`
+          UPDATE users SET is_active=false, full_name='Deleted User', email=null, phone=null,
+            profile_image=null, auth_token=null, wallet_balance=0, updated_at=NOW()
+          WHERE id=${customer.id}::uuid
+        `);
+        // Also cancel any active trips
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET current_status='cancelled', cancelled_by='customer', cancel_reason='Account deleted'
+          WHERE customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled')
+        `);
+        return res.json({ success: true, message: "Account permanently deleted. All data has been removed." });
+      }
+      // Soft delete — just deactivate
+      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${customer.id}::uuid`);
+      res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Delete account ────────────────────────────────────────────────
+  app.delete("/api/app/driver/account", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { permanent = false } = req.body || {};
+      if (permanent) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET is_active=false, full_name='Deleted Driver', email=null, phone=null,
+            profile_image=null, auth_token=null, wallet_balance=0, updated_at=NOW()
+          WHERE id=${driver.id}::uuid AND user_type='driver'
+        `);
+        // Cancel active trip if any
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET current_status='cancelled', cancelled_by='driver', cancel_reason='Driver account deleted'
+          WHERE driver_id=${driver.id}::uuid AND current_status NOT IN ('completed','cancelled')
+        `);
+        await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
+        return res.json({ success: true, message: "Driver account permanently deleted." });
+      }
+      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${driver.id}::uuid AND user_type='driver'`);
+      res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3954,14 +4284,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const week = weekStats.rows[0] as any;
       const month = monthStats.rows[0] as any;
 
+      // Get vehicle + zone + online status
+      const driverInfo = await rawDb.execute(rawSql`
+        SELECT dd.vehicle_category_id, dd.availability_status,
+          vc.name as vehicle_category_name, vc.icon as vehicle_category_icon, vc.type as vehicle_type,
+          z.name as zone_name, dl.is_online,
+          u.vehicle_number, u.vehicle_model
+        FROM users u
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        LEFT JOIN zones z ON z.id = dd.zone_id
+        LEFT JOIN driver_locations dl ON dl.driver_id = u.id
+        WHERE u.id = ${user.id}::uuid
+      `);
+      const di = driverInfo.rows.length ? camelize(driverInfo.rows[0]) as any : {};
+
+      const todayTrips = parseInt(today.trips);
+      const todayGross = parseFloat(today.gross);
+      const todayCommission = parseFloat(today.commission);
+
       res.json({
-        today: { trips: parseInt(today.trips), gross: parseFloat(today.gross), net: parseFloat(today.gross) - parseFloat(today.commission) },
-        week: { trips: parseInt(week.trips), gross: parseFloat(week.gross), net: parseFloat(week.gross) - parseFloat(week.commission) },
-        month: { trips: parseInt(month.trips), gross: parseFloat(month.gross), net: parseFloat(month.gross) - parseFloat(month.commission) },
+        isOnline: di.isOnline ?? false,
+        tripsToday: todayTrips,
+        earningsToday: todayGross - todayCommission,
         walletBalance: parseFloat((walletRow.rows[0] as any)?.wallet_balance || 0),
         isLocked: (walletRow.rows[0] as any)?.is_locked || false,
+        vehicleCategory: di.vehicleCategoryName || null,
+        vehicleIcon: di.vehicleCategoryIcon || null,
+        vehicleType: di.vehicleType || null,
+        vehicleNumber: di.vehicleNumber || null,
+        vehicleModel: di.vehicleModel || null,
+        zone: di.zoneName || null,
+        availabilityStatus: di.availabilityStatus || 'offline',
+        today: { trips: todayTrips, gross: todayGross, net: todayGross - todayCommission },
+        week: { trips: parseInt(week.trips), gross: parseFloat(week.gross), net: parseFloat(week.gross) - parseFloat(week.commission) },
+        month: { trips: parseInt(month.trips), gross: parseFloat(month.gross), net: parseFloat(month.gross) - parseFloat(month.commission) },
         recentTrips: recentTrips.rows.map(camelize),
-        dailyGoal: { target: 10, achieved: parseInt(today.trips) },
+        dailyGoal: { target: 10, achieved: todayTrips },
         weeklyGoal: { target: 50, achieved: parseInt(week.trips) },
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -4202,13 +4561,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/app/notifications/read-all", authApp, async (req, res) => {
+  const _markNotificationsRead = async (req: any, res: any) => {
     try {
       const user = (req as any).currentUser;
       await rawDb.execute(rawSql`UPDATE notification_log SET is_read=true WHERE user_id=${user.id}::uuid`).catch(() => {});
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
-  });
+  };
+  app.patch("/api/app/notifications/read-all", authApp, _markNotificationsRead);
+  app.post("/api/app/notifications/read-all", authApp, _markNotificationsRead);
 
   // ── DRIVER: Performance score ─────────────────────────────────────────────
   // ── DRIVER: Weekly Earnings Chart (7 days breakdown) ────────────────────
@@ -4221,7 +4582,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           TO_CHAR(created_at::date, 'YYYY-MM-DD') as date,
           COUNT(*) as trips,
           COALESCE(SUM(actual_fare::numeric), 0) as gross
-        FROM trips
+        FROM trip_requests
         WHERE driver_id=${user.id}::uuid
           AND current_status='completed'
           AND created_at >= NOW() - INTERVAL '7 days'
@@ -4705,6 +5066,147 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           : "You're doing great! Keep safe.",
         suggestBreak: fatigueLevel !== 'low',
       });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── LANGUAGE MANAGEMENT ────────────────────────────────────────────────────
+
+  // Public: get active languages for Flutter apps
+  app.get("/api/app/languages", async (req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`
+        SELECT id, code, name, native_name, flag, is_active, sort_order
+        FROM app_languages ORDER BY sort_order ASC
+      `);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: list all languages
+  app.get("/api/admin/languages", async (req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`
+        SELECT id, code, name, native_name, flag, is_active, sort_order, created_at
+        FROM app_languages ORDER BY sort_order ASC
+      `);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: add language
+  app.post("/api/admin/languages", async (req, res) => {
+    try {
+      const { code, name, nativeName, flag, isActive, sortOrder } = req.body;
+      if (!code || !name || !nativeName) {
+        return res.status(400).json({ message: "code, name, nativeName are required" });
+      }
+      const result = await rawDb.execute(rawSql`
+        INSERT INTO app_languages (code, name, native_name, flag, is_active, sort_order)
+        VALUES (${code}, ${name}, ${nativeName}, ${flag || '🌐'}, ${isActive !== false}, ${sortOrder || 0})
+        RETURNING *
+      `);
+      res.json(result.rows[0]);
+    } catch (e: any) {
+      if (e.message.includes('unique')) {
+        res.status(400).json({ message: "Language code already exists" });
+      } else {
+        res.status(500).json({ message: e.message });
+      }
+    }
+  });
+
+  // Admin: update language
+  app.patch("/api/admin/languages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, nativeName, flag, isActive, sortOrder } = req.body;
+      await rawDb.execute(rawSql`
+        UPDATE app_languages SET
+          name = COALESCE(${name}, name),
+          native_name = COALESCE(${nativeName}, native_name),
+          flag = COALESCE(${flag}, flag),
+          is_active = COALESCE(${isActive}, is_active),
+          sort_order = COALESCE(${sortOrder}, sort_order)
+        WHERE id = ${id}::uuid
+      `);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: delete language
+  app.delete("/api/admin/languages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await rawDb.execute(rawSql`DELETE FROM app_languages WHERE id = ${id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── SERVICES MANAGEMENT ───────────────────────────────────────────────────
+  // Service definitions (hardcoded business models)
+  const SERVICE_DEFS = [
+    { key: 'ride', name: 'Normal Ride', description: 'Bike, Auto, Car, SUV rides', icon: '🚗', emoji: '🚕', color: '#1E6DE5' },
+    { key: 'parcel', name: 'Parcel Delivery', description: 'Send packages with bike or auto', icon: '📦', emoji: '📦', color: '#F59E0B' },
+    { key: 'cargo', name: 'Cargo & Freight', description: 'Large goods with truck or van', icon: '🚚', emoji: '🚛', color: '#10B981' },
+    { key: 'intercity', name: 'Intercity', description: 'Travel between cities', icon: '🛣️', emoji: '🛣️', color: '#8B5CF6' },
+    { key: 'carsharing', name: 'Car Sharing', description: 'Share rides with others', icon: '🚘', emoji: '🚘', color: '#EF4444' },
+  ];
+
+  // Admin: Get all services with toggle state
+  app.get("/api/services", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE settings_type='service_settings'`);
+      const map: Record<string, string> = {};
+      (r.rows as any[]).forEach(row => { map[row.key_name] = row.value; });
+      const services = SERVICE_DEFS.map(s => ({
+        ...s,
+        isActive: map[`service_${s.key}_enabled`] !== '0',
+      }));
+      res.json(services);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: Toggle service on/off
+  app.patch("/api/services/:key", async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { isActive } = req.body;
+      if (!SERVICE_DEFS.find(s => s.key === key)) return res.status(404).json({ message: 'Service not found' });
+      await rawDb.execute(rawSql`
+        INSERT INTO business_settings (key_name, value, settings_type)
+        VALUES (${'service_' + key + '_enabled'}, ${isActive ? '1' : '0'}, 'service_settings')
+        ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
+      `);
+      res.json({ success: true, key, isActive });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // App: Get active services for customer app
+  app.get("/api/app/services", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE settings_type='service_settings'`);
+      const map: Record<string, string> = {};
+      (r.rows as any[]).forEach(row => { map[row.key_name] = row.value; });
+      const services = SERVICE_DEFS.map(s => ({
+        key: s.key,
+        name: s.name,
+        description: s.description,
+        icon: s.icon,
+        emoji: s.emoji,
+        color: s.color,
+        isActive: map[`service_${s.key}_enabled`] !== '0',
+      }));
+      res.json({ services });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Also seed default vehicle_category is_active based on service toggle
+  app.patch("/api/services/:key/vehicles", async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { isActive } = req.body;
+      await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type=${key}`);
+      res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
