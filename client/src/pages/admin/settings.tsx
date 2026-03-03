@@ -37,6 +37,39 @@ const settingGroups = [
       { key: "customer_cancel_limit", label: "Customer Cancel Limit" },
     ],
   },
+  {
+    title: "Payment Gateway",
+    icon: "bi-credit-card-2-front-fill",
+    type: "payment",
+    fields: [
+      { key: "razorpay_key_id", label: "Razorpay Key ID" },
+      { key: "razorpay_key_secret", label: "Razorpay Key Secret" },
+      { key: "payment_gateway_mode", label: "Mode (test / live)" },
+      { key: "fast2sms_api_key", label: "Fast2SMS API Key (OTP)" },
+    ],
+  },
+  {
+    title: "App Configuration",
+    icon: "bi-phone-fill",
+    type: "app",
+    fields: [
+      { key: "customer_app_version", label: "Customer App Version" },
+      { key: "driver_app_version", label: "Driver App Version" },
+      { key: "force_update", label: "Force Update (true / false)" },
+      { key: "maintenance_mode", label: "Maintenance Mode (true / false)" },
+    ],
+  },
+  {
+    title: "Referral & Wallet",
+    icon: "bi-wallet2",
+    type: "referral",
+    fields: [
+      { key: "referral_bonus_driver", label: "Driver Referral Bonus (₹)" },
+      { key: "referral_bonus_customer", label: "Customer Referral Bonus (₹)" },
+      { key: "min_wallet_withdrawal", label: "Min Withdrawal Amount (₹)" },
+      { key: "max_wallet_recharge", label: "Max Recharge Amount (₹)" },
+    ],
+  },
 ];
 
 export default function Settings() {
