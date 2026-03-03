@@ -48,18 +48,15 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
-      print('[SOCKET-CUSTOMER] Connected as $userId');
     });
 
     _socket!.on('disconnect', (_) {
       _isConnected = false;
       _connectedController.add(false);
-      print('[SOCKET-CUSTOMER] Disconnected');
     });
 
     // Driver assigned to my trip
     _socket!.on('trip:driver_assigned', (data) {
-      print('[SOCKET-CUSTOMER] Driver assigned: $data');
       _driverAssignedController.add(Map<String, dynamic>.from(data));
     });
 
@@ -70,13 +67,11 @@ class SocketService {
 
     // Trip status changed (arrived, in_progress, completed, cancelled)
     _socket!.on('trip:status_update', (data) {
-      print('[SOCKET-CUSTOMER] Trip status: $data');
       _tripStatusController.add(Map<String, dynamic>.from(data));
     });
 
     // Trip cancelled by driver
     _socket!.on('trip:cancelled', (data) {
-      print('[SOCKET-CUSTOMER] Trip cancelled: $data');
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
@@ -87,7 +82,6 @@ class SocketService {
   void trackTrip(String tripId) {
     if (!_isConnected) return;
     _socket!.emit('customer:track_trip', {'tripId': tripId});
-    print('[SOCKET-CUSTOMER] Tracking trip $tripId');
   }
 
   // Cancel a trip
