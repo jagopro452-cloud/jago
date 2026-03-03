@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
+import 'services/localization_service.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
@@ -32,13 +33,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await loadThemePreference();
-  // Firebase init (requires google-services.json + GoogleService-Info.plist)
+  await L.init();
   try {
     await Firebase.initializeApp();
     await FcmService().init();
-  } catch (_) {
-    // Firebase not configured yet — add google-services.json to enable push notifications
-  }
+  } catch (_) {}
   runApp(const JagoApp());
 }
 
@@ -47,24 +46,29 @@ class JagoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (_, mode, __) {
-        final isDark = mode == ThemeMode.dark ||
-            (mode == ThemeMode.system &&
-                WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-                    Brightness.dark);
-        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-        ));
-        return MaterialApp(
-          title: 'JAGO',
-          debugShowCheckedModeBanner: false,
-          themeMode: mode,
-          theme: _lightTheme(),
-          darkTheme: _darkTheme(),
-          home: const SplashScreen(),
+    return ValueListenableBuilder<String>(
+      valueListenable: localeNotifier,
+      builder: (_, lang, __) {
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (_, mode, __) {
+            final isDark = mode == ThemeMode.dark ||
+                (mode == ThemeMode.system &&
+                    WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+                        Brightness.dark);
+            SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+            ));
+            return MaterialApp(
+              title: 'JAGO',
+              debugShowCheckedModeBanner: false,
+              themeMode: mode,
+              theme: _lightTheme(),
+              darkTheme: _darkTheme(),
+              home: const SplashScreen(),
+            );
+          },
         );
       },
     );
