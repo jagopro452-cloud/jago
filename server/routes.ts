@@ -1615,14 +1615,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `wallet_${id}_${Date.now()}` });
+      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `dw_${Date.now().toString(36)}` });
       // Record pending payment
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${id}::uuid, ${amount}, 'wallet_topup', ${order.id}, 'pending', 'Wallet top-up via Razorpay')
       `);
       res.json({ order, keyId });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
+      res.status(500).json({ message: msg });
+    }
   });
 
   // Razorpay: Verify payment + credit wallet
@@ -3064,6 +3067,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── DRIVER: Start trip (arrived → on_the_way) ────────────────────────────
+  app.post("/api/app/driver/start-trip", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { tripId, pickupOtp } = req.body;
+      const tripInfo = await rawDb.execute(rawSql`
+        SELECT current_status, pickup_otp, trip_type FROM trip_requests
+        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+      `);
+      if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
+      const tripRow = tripInfo.rows[0] as any;
+      if (!['arrived','accepted','driver_assigned'].includes(tripRow.current_status)) {
+        return res.status(400).json({ message: `Cannot start trip in status: ${tripRow.current_status}` });
+      }
+      if (pickupOtp && tripRow.pickup_otp && pickupOtp !== tripRow.pickup_otp) {
+        return res.status(400).json({ message: "Invalid OTP" });
+      }
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET current_status='on_the_way', ride_started_at=COALESCE(ride_started_at, NOW())
+        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+      `);
+      res.json({ success: true, message: "Trip started" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── DRIVER: Complete trip ─────────────────────────────────────────────────
   app.post("/api/app/driver/complete-trip", authApp, async (req, res) => {
     try {
@@ -3827,11 +3855,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
         currency: "INR",
-        receipt: `cust_${customer.id}_${Date.now()}`,
+        receipt: `w_${Date.now().toString(36)}`,
         notes: { customer_id: customer.id, purpose: "wallet_topup" }
       });
       res.json({ order, keyId, amount: amt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
+      res.status(500).json({ message: msg });
+    }
   });
 
   // ── CUSTOMER: Razorpay – Verify & credit wallet ───────────────────────────
@@ -3873,11 +3904,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
         currency: "INR",
-        receipt: `ride_${customer.id}_${Date.now()}`,
+        receipt: `r_${Date.now().toString(36)}`,
         notes: { customer_id: customer.id, purpose: "ride_payment" }
       });
       res.json({ order, keyId, amount: amt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
+      res.status(500).json({ message: msg });
+    }
   });
 
   // ── CUSTOMER: Razorpay – Verify ride payment ──────────────────────────────
