@@ -271,7 +271,7 @@ class _TripScreenState extends State<TripScreen> {
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const Text('COLLECT ₹ CASH', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                      Text('Customer nundi ₹$fare cash collect cheyyandi',
+                      Text('Collect ₹$fare cash from customer',
                         style: const TextStyle(color: Colors.white70, fontSize: 11)),
                     ])),
                   ]),
@@ -282,7 +282,7 @@ class _TripScreenState extends State<TripScreen> {
                   style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
               ],
               const SizedBox(height: 8),
-              Text('Platform commission deduct avutundi',
+              Text('Platform commission will be deducted',
                 style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11), textAlign: TextAlign.center),
               const SizedBox(height: 20),
               // Rate customer section
@@ -339,7 +339,7 @@ class _TripScreenState extends State<TripScreen> {
                     Navigator.pushAndRemoveUntil(context,
                       MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
                   },
-                  child: const Text('Home ki Vellandi →', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                  child: const Text('Go Home →', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
               ),
             ]),
           ),
@@ -367,7 +367,7 @@ class _TripScreenState extends State<TripScreen> {
             const Text('Customer OTP',
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
-            Text('Customer app lo OTP chusi enter cheyyandi',
+            Text('Ask customer for OTP from their JAGO app',
               style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(
@@ -525,7 +525,7 @@ class _TripScreenState extends State<TripScreen> {
             const Text('Delivery OTP',
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
-            Text('Receiver nundi delivery OTP chusi enter cheyyandi',
+            Text('Ask receiver for OTP to confirm delivery',
               style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(
@@ -876,7 +876,7 @@ class _TripScreenState extends State<TripScreen> {
           const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('COLLECT CASH', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
             SizedBox(height: 2),
-            Text('Trip complete avutundi. Customer nundi cash collect cheyyandi.', style: TextStyle(color: Colors.white70, fontSize: 11)),
+            Text('Trip ending. Please collect cash from customer.', style: TextStyle(color: Colors.white70, fontSize: 11)),
           ])),
         ]),
       );
@@ -893,7 +893,7 @@ class _TripScreenState extends State<TripScreen> {
         child: const Row(children: [
           Icon(Icons.payments_rounded, color: Color(0xFF4ADE80), size: 16),
           SizedBox(width: 8),
-          Text('💵 Cash Payment — Trip end lo collect cheyyandi', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text('💵 Cash Payment — Collect at trip end', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
       );
     }
