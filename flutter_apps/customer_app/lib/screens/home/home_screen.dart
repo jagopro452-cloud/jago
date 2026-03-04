@@ -27,6 +27,7 @@ import '../referral/referral_screen.dart';
 import '../saved_places/saved_places_screen.dart';
 import '../booking/parcel_booking_screen.dart';
 import '../car_sharing/car_sharing_screen.dart';
+import '../booking/voice_booking_screen.dart';
 import '../../services/trip_service.dart';
 import '../../services/localization_service.dart';
 
@@ -46,28 +47,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _pickupLat = 17.3850, _pickupLng = 78.4867;
   bool _loading = true;
   int _unreadNotifCount = 0;
+  double _walletBalance = 0;
   List<Map<String, dynamic>> _vehicleCategories = [];
   List<Map<String, dynamic>> _services = [];
   List<dynamic> _banners = [];
   List<dynamic> _savedPlaces = [];
+  List<Map<String, dynamic>> _recentTrips = [];
   StreamSubscription? _driverAssignedSub;
   int _navIndex = 0;
+  late AnimationController _fadeCtrl;
+  late Animation<double> _fadeAnim;
 
   static const Color _yellow = Color(0xFFFBBC04);
-  static const Color _dark = Color(0xFF1A1A1A);
+  static const Color _jagoOrange = Color(0xFFFF6B35);
+  static const Color _dark = Color(0xFF060D1E);
+  static const Color _surface = Color(0xFF0D1B3E);
   static const Color _gray = Color(0xFF6B7280);
   static const Color _lightBg = Color(0xFFF5F5F5);
-  static const Color _cardBg = Color(0xFFF0F0F0);
-  static const Color _jagoBrand = Color(0xFF1B4DCC);
 
   @override
   void initState() {
     super.initState();
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl.forward();
     _loadUser();
     _getLocation();
     _fetchHome();
     _fetchUnreadCount();
+    _fetchWalletBalance();
     _loadSavedPlaces();
+    _loadRecentTrips();
     _connectSocket();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
   }
@@ -84,10 +94,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (_) {}
   }
 
+  Future<void> _fetchWalletBalance() async {
+    try {
+      final token = await AuthService.getToken();
+      final r = await http.get(Uri.parse(ApiConfig.wallet), headers: {'Authorization': 'Bearer $token'});
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body);
+        setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadSavedPlaces() async {
     try {
       final places = await TripService.getSavedPlaces();
       if (mounted) setState(() => _savedPlaces = places.where((p) => p['label'] == 'Home' || p['label'] == 'Work').toList());
+    } catch (_) {}
+  }
+
+  Future<void> _loadRecentTrips() async {
+    try {
+      final token = await AuthService.getToken();
+      final r = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/customer/trips?limit=3&status=completed'),
+        headers: {'Authorization': 'Bearer $token'});
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body);
+        final trips = (data['trips'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        setState(() => _recentTrips = trips);
+      }
     } catch (_) {}
   }
 
@@ -127,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _driverAssignedSub?.cancel();
+    _fadeCtrl.dispose();
     super.dispose();
   }
 
@@ -223,7 +259,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -258,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -285,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -312,100 +348,232 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Colors.white,
-        drawer: _buildDrawer(),
-        body: SafeArea(
-          child: Column(children: [
-            _buildTopSearchBar(),
-            Expanded(
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scaffoldBg = isDark ? _dark : _lightBg;
+    final cardBg = isDark ? _surface : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF111827);
+
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: scaffoldBg,
+      drawer: _buildDrawer(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
+        backgroundColor: _jagoOrange,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.mic_rounded, size: 22),
+        label: const Text('Voice Book',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        tooltip: 'Book by voice',
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      body: SafeArea(
+        child: Column(children: [
+          _buildTopSearchBar(isDark, cardBg, textColor),
+          Expanded(
+            child: FadeTransition(
+              opacity: _fadeAnim,
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (_savedPlaces.isNotEmpty) _buildRecentPlaces(),
-                  _buildEverythingSection(),
-                  _buildExploreSection(),
+                  _buildGreeting(textColor),
+                  if (_recentTrips.isNotEmpty || _savedPlaces.isNotEmpty)
+                    _buildRecentSection(cardBg, textColor),
+                  _buildEverythingSection(isDark, cardBg, textColor),
+                  _buildExploreSection(isDark, cardBg, textColor),
                   _buildInAHurryCard(),
                   _buildGoPlacesBanner(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 80),
                 ]),
               ),
             ),
-            _buildBottomNav(),
-          ]),
-        ),
+          ),
+          _buildBottomNav(isDark, cardBg, textColor),
+        ]),
       ),
     );
   }
 
-  // ── Top Search Bar (JAGO branded) ──────────────────────────────────────────
-  Widget _buildTopSearchBar() {
+  Widget _buildGreeting(Color textColor) {
+    final hour = DateTime.now().hour;
+    final timeEmoji = hour < 12 ? '☀️' : hour < 17 ? '🌤️' : hour < 20 ? '🌆' : '🌙';
+    final greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : hour < 20 ? 'Good Evening' : 'Good Night';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _jagoOrange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _jagoOrange.withOpacity(0.25)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(timeEmoji, style: const TextStyle(fontSize: 13)),
+                const SizedBox(width: 5),
+                Text(greeting, style: const TextStyle(
+                  color: _jagoOrange, fontSize: 12, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Text(
+            'Hello, $_userName! 👋',
+            style: TextStyle(
+              fontSize: 24,
+              color: textColor,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Where to',
+                  style: TextStyle(
+                    fontSize: 34,
+                    color: textColor,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                  ),
+                ),
+                const TextSpan(
+                  text: '?',
+                  style: TextStyle(
+                    fontSize: 34,
+                    color: _jagoOrange,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopSearchBar(bool isDark, Color cardBg, Color textColor) {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      color: cardBg,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           GestureDetector(
             onTap: () => _scaffoldKey.currentState?.openDrawer(),
-            child: const Icon(Icons.menu_rounded, size: 26, color: _dark),
+            child: Icon(Icons.menu_rounded, size: 26, color: textColor),
           ),
           const SizedBox(width: 10),
-          // JAGO Logo
-          RichText(text: const TextSpan(
+          RichText(
+              text: const TextSpan(
             children: [
-              TextSpan(text: 'JA', style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w900, color: _jagoBrand, letterSpacing: -0.5)),
-              TextSpan(text: 'GO', style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w900, color: _yellow, letterSpacing: -0.5)),
+              TextSpan(
+                  text: 'JA',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: _jagoOrange,
+                      letterSpacing: -0.5)),
+              TextSpan(
+                  text: 'GO',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: _yellow,
+                      letterSpacing: -0.5)),
             ],
           )),
           const Spacer(),
           if (_pickup.isNotEmpty && _pickup != 'Getting location...')
             Flexible(
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.location_on, size: 14, color: _jagoBrand),
+                const Icon(Icons.location_on, size: 14, color: _jagoOrange),
                 const SizedBox(width: 3),
-                Flexible(child: Text(
+                Flexible(
+                    child: Text(
                   _pickup.split(',').first,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: textColor.withOpacity(0.7),
+                      fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 )),
               ]),
             ),
           const SizedBox(width: 10),
+          if (_walletBalance > 0)
+            GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [const Color(0xFF10B981).withOpacity(0.15), const Color(0xFF059669).withOpacity(0.1)]),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 13),
+                  const SizedBox(width: 4),
+                  Text('₹${_walletBalance.toStringAsFixed(0)}',
+                    style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          const SizedBox(width: 10),
           GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => const NotificationsScreen()))
-              .then((_) => _fetchUnreadCount()),
+            onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen()))
+                .then((_) => _fetchUnreadCount()),
             child: Stack(children: [
-              const Icon(Icons.notifications_outlined, color: _dark, size: 26),
+              Icon(Icons.notifications_outlined, color: textColor, size: 26),
               if (_unreadNotifCount > 0)
-                Positioned(top: 0, right: 0,
-                  child: Container(
-                    width: 9, height: 9,
-                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  )),
+                Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: const BoxDecoration(
+                          color: Colors.red, shape: BoxShape.circle),
+                    )),
             ]),
           ),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
         GestureDetector(
           onTap: _openSearch,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              color: _lightBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey[200]!, width: 1),
+              color: isDark ? _surface : Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(children: [
-              const Icon(Icons.search, color: _dark, size: 22),
+              const Icon(Icons.location_on, color: _jagoOrange, size: 24),
               const SizedBox(width: 12),
-              Text('Where are you going?',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500])),
+              Text('Search destination...',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor.withOpacity(0.4))),
             ]),
           ),
         ),
@@ -413,96 +581,328 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Recent Places ──────────────────────────────────────────────────────────
-  Widget _buildRecentPlaces() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Column(
-        children: _savedPlaces.take(3).map((p) {
-          final label = p['label'] ?? '';
-          final address = p['address'] ?? '';
-          final isHome = label == 'Home';
-          return GestureDetector(
-            onTap: () {
-              final destLat = double.tryParse(p['lat']?.toString() ?? '0') ?? 0;
-              final destLng = double.tryParse(p['lng']?.toString() ?? '0') ?? 0;
-              Navigator.push(context, MaterialPageRoute(
-                builder: (_) => BookingScreen(
-                  pickup: _pickup,
-                  destination: address,
-                  pickupLat: _pickupLat, pickupLng: _pickupLng,
-                  destLat: destLat != 0 ? destLat : 17.3850,
-                  destLng: destLng != 0 ? destLng : 78.4867,
-                ),
-              ));
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey[100]!, width: 1)),
-              ),
+  Widget _buildRecentSection(Color cardBg, Color textColor) {
+    if (_recentTrips.isNotEmpty) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 4, height: 20, decoration: BoxDecoration(color: _jagoOrange, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 10),
+            Text('Recent Trips', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
               child: Row(children: [
-                Icon(Icons.history, color: Colors.grey[500], size: 20),
-                const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(isHome ? label : address,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _dark),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                  if (isHome)
-                    Text(address,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                ])),
-                Icon(Icons.favorite_border, color: Colors.grey[400], size: 20),
+                Text('See all', style: TextStyle(fontSize: 13, color: _jagoOrange, fontWeight: FontWeight.w700)),
+                const Icon(Icons.chevron_right, size: 16, color: _jagoOrange),
               ]),
             ),
-          );
-        }).toList(),
+          ]),
+          const SizedBox(height: 12),
+          ..._recentTrips.take(3).map((trip) {
+            final pickup = trip['pickupAddress']?.toString() ?? trip['pickup_address']?.toString() ?? '';
+            final dest = trip['destinationAddress']?.toString() ?? trip['destination_address']?.toString() ?? '';
+            final fare = (trip['estimatedFare'] ?? trip['actual_fare'] ?? trip['estimated_fare'] ?? 0).toDouble();
+            final destLat = double.tryParse(trip['destinationLat']?.toString() ?? trip['destination_lat']?.toString() ?? '0') ?? 0;
+            final destLng = double.tryParse(trip['destinationLng']?.toString() ?? trip['destination_lng']?.toString() ?? '0') ?? 0;
+            final vehicle = trip['vehicleName']?.toString() ?? trip['vehicle_name']?.toString() ?? '';
+            final payMethod = trip['paymentMethod']?.toString() ?? trip['payment_method']?.toString() ?? 'cash';
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _jagoOrange.withOpacity(0.08)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Column(children: [
+                      Container(width: 10, height: 10,
+                        decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
+                      Container(width: 1, height: 20,
+                        color: Colors.grey.shade300),
+                      const Icon(Icons.location_on_rounded, color: Color(0xFFE53935), size: 14),
+                    ]),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(pickup.isNotEmpty ? pickup.split(',').first : 'Pickup',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: textColor),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 8),
+                      Text(dest.isNotEmpty ? dest.split(',').first : 'Destination',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: textColor),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ])),
+                    const SizedBox(width: 10),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      if (fare > 0)
+                        Text('₹${fare.toStringAsFixed(0)}',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _jagoOrange)),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => BookingScreen(
+                              pickup: _pickup,
+                              destination: dest,
+                              pickupLat: _pickupLat,
+                              pickupLng: _pickupLng,
+                              destLat: destLat != 0 ? destLat : 17.3850,
+                              destLng: destLng != 0 ? destLng : 78.4867,
+                            )));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFF6B35), Color(0xFFFF8C5A)],
+                              begin: Alignment.centerLeft, end: Alignment.centerRight),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [BoxShadow(color: _jagoOrange.withOpacity(0.3), blurRadius: 6, offset: const Offset(0,2))],
+                          ),
+                          child: const Text('Repeat →',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    ]),
+                  ]),
+                ),
+                if (vehicle.isNotEmpty || payMethod.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+                    child: Row(children: [
+                      if (vehicle.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _jagoOrange.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _jagoOrange.withOpacity(0.2))),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.electric_bike, size: 10, color: _jagoOrange),
+                            const SizedBox(width: 4),
+                            Text(vehicle, style: const TextStyle(color: _jagoOrange, fontSize: 10, fontWeight: FontWeight.w700)),
+                          ]),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8)),
+                        child: Text(
+                          payMethod == 'cash' ? '💵 Cash' : payMethod == 'wallet' ? '💳 Wallet' : '📱 UPI',
+                          style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w600)),
+                      ),
+                    ]),
+                  ),
+              ]),
+            );
+          }).toList(),
+        ]),
+      );
+    }
+    return _buildRecentPlaces(cardBg, textColor);
+  }
+
+  Widget _buildRecentPlaces(Color cardBg, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(width: 4, height: 20, decoration: BoxDecoration(color: _jagoOrange, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 10),
+            Text('Saved Places', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+          ]),
+          const SizedBox(height: 12),
+          ..._savedPlaces.take(3).map((p) {
+            final label = p['label'] ?? '';
+            final address = p['address'] ?? '';
+            final isHome = label == 'Home';
+            return GestureDetector(
+              onTap: () {
+                final destLat = double.tryParse(p['lat']?.toString() ?? '0') ?? 0;
+                final destLng = double.tryParse(p['lng']?.toString() ?? '0') ?? 0;
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingScreen(
+                        pickup: _pickup,
+                        destination: address,
+                        pickupLat: _pickupLat,
+                        pickupLng: _pickupLng,
+                        destLat: destLat != 0 ? destLat : 17.3850,
+                        destLng: destLng != 0 ? destLng : 78.4867,
+                      ),
+                    ));
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4))
+                  ],
+                ),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _jagoOrange.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.history, color: _jagoOrange, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(isHome ? label : address,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: textColor),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(Icons.arrow_forward, size: 12, color: textColor.withOpacity(0.3)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(address,
+                                  style: TextStyle(
+                                      fontSize: 12, color: textColor.withOpacity(0.5)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      ])),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      final destLat = double.tryParse(p['lat']?.toString() ?? '0') ?? 0;
+                      final destLng = double.tryParse(p['lng']?.toString() ?? '0') ?? 0;
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => BookingScreen(
+                              pickup: _pickup,
+                              destination: address,
+                              pickupLat: _pickupLat,
+                              pickupLng: _pickupLng,
+                              destLat: destLat != 0 ? destLat : 17.3850,
+                              destLng: destLng != 0 ? destLng : 78.4867,
+                            ),
+                          ));
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _jagoOrange),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      minimumSize: const Size(0, 32),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    child: const Text('Repeat', style: TextStyle(color: _jagoOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ),
+            );
+          }).toList(),
+        ],
       ),
     );
   }
 
-  // ── Everything In Minutes — Rapido-style 2×2 Grid ──────────────────────────
-  Widget _buildEverythingSection() {
+  Widget _buildEverythingSection(bool isDark, Color cardBg, Color textColor) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Everything In Minutes',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
+        Row(children: [
+          Container(width: 4, height: 20, decoration: BoxDecoration(color: _jagoOrange, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 10),
+          Text('Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+          const Spacer(),
+          GestureDetector(
+            onTap: _showAllServicesSheet,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: _jagoOrange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _jagoOrange.withOpacity(0.3)),
+              ),
+              child: const Text('All Services', style: TextStyle(color: _jagoOrange, fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: _buildGridCard(
+          Expanded(
+              child: _buildGridCard(
             topLabel: 'Send anything',
             boldLabel: 'Parcel',
             emoji: '📦',
-            onTap: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ParcelBookingScreen(
-                pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+            cardBg: cardBg,
+            textColor: textColor,
+            accentColor: const Color(0xFFF59E0B),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ParcelBookingScreen(
+                        pickupAddress: _pickup,
+                        pickupLat: _pickupLat,
+                        pickupLng: _pickupLng))),
           )),
           const SizedBox(width: 12),
-          Expanded(child: _buildGridCard(
-            topLabel: 'Beat the traffic',
+          Expanded(
+              child: _buildGridCard(
+            topLabel: 'Beat traffic',
             boldLabel: 'Bike Taxi',
             emoji: '🏍️',
             bigEmoji: true,
+            cardBg: cardBg,
+            textColor: textColor,
+            accentColor: const Color(0xFF3B82F6),
             onTap: () => _openSearch(presetVehicle: 'bike'),
           )),
         ]),
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: _buildGridCard(
-            topLabel: 'Your everyday rides',
-            boldLabel: 'Book now',
+          Expanded(
+              child: _buildGridCard(
+            topLabel: 'Everyday rides',
+            boldLabel: 'Book Auto',
             emoji: '🛺',
             bigEmoji: true,
+            cardBg: cardBg,
+            textColor: textColor,
+            accentColor: const Color(0xFF10B981),
             onTap: () => _openSearch(presetVehicle: 'auto'),
           )),
           const SizedBox(width: 12),
-          Expanded(child: _buildGridCard(
-            topLabel: '',
+          Expanded(
+              child: _buildGridCard(
+            topLabel: 'More options',
             boldLabel: 'All\nServices',
             emoji: '📋',
+            cardBg: cardBg,
+            textColor: textColor,
+            accentColor: _jagoOrange,
             onTap: _showAllServicesSheet,
           )),
         ]),
@@ -515,488 +915,310 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String boldLabel,
     required String emoji,
     required VoidCallback onTap,
+    required Color cardBg,
+    required Color textColor,
     bool bigEmoji = false,
+    Color accentColor = const Color(0xFFFF6B35),
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 112,
-        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
+        height: 116,
         decoration: BoxDecoration(
-          color: _lightBg,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+                color: accentColor.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4)),
+            BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2)),
+          ],
         ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-              if (topLabel.isNotEmpty) ...[
-                Text(topLabel,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w400)),
-                const SizedBox(height: 5),
-              ],
-              Text(boldLabel,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _dark, height: 1.2)),
-            ]),
-          ),
-          Align(
-            alignment: bigEmoji ? Alignment.bottomRight : Alignment.center,
-            child: Text(emoji,
-              style: TextStyle(fontSize: bigEmoji ? 44 : 36)),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  void _handleServiceTap(String key) {
-    switch (key) {
-      case 'ride':
-        _openSearch();
-        break;
-      case 'parcel':
-      case 'cargo':
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => ParcelBookingScreen(
-            pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
-        break;
-      case 'intercity':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
-        break;
-      case 'carsharing':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const CarSharingScreen()));
-        break;
-      default:
-        _openSearch();
-    }
-  }
-
-  // ── Explore Section — horizontal vehicle icons (Rapido style) ────────────
-  Widget _buildExploreSection() {
-    final allVehicles = _vehicleCategories.isNotEmpty
-      ? _vehicleCategories.take(4).toList()
-      : [
-          {'name': 'Shared Auto', 'type': 'ride', 'minimumFare': '20'},
-          {'name': 'Bike', 'type': 'ride', 'minimumFare': '18'},
-          {'name': 'Auto', 'type': 'ride', 'minimumFare': '25'},
-          {'name': 'Parcel', 'type': 'parcel', 'minimumFare': '30'},
-        ];
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Explore', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _dark)),
-          GestureDetector(
-            onTap: _showAllServicesSheet,
-            child: Row(children: [
-              Text('View All', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-              Icon(Icons.chevron_right, size: 18, color: Colors.grey[600]),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 16),
-        Row(
-          children: allVehicles.map((cat) {
-            final name = cat['name']?.toString() ?? '';
-            final isParcel = cat['type'] == 'parcel' || name.toLowerCase().contains('parcel');
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (isParcel) {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => ParcelBookingScreen(
-                        pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
-                  } else {
-                    _openSearchWithCategory(cat);
-                  }
-                },
-                child: Column(children: [
-                  Container(
-                    width: 68, height: 68,
-                    decoration: BoxDecoration(
-                      color: _lightBg,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Center(
-                      child: Text(_emojiForVehicle(name),
-                        style: const TextStyle(fontSize: 32))),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(name,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _dark),
-                    textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
-                ]),
-              ),
-            );
-          }).toList(),
-        ),
-      ]),
-    );
-  }
-
-  // ── In a Hurry? Card (Rapido style) ───────────────────────────────────────
-  Widget _buildInAHurryCard() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
-      child: GestureDetector(
-        onTap: () => _openSearch(presetVehicle: 'auto'),
-        child: Container(
-          height: 100,
-          decoration: BoxDecoration(
-            color: _lightBg,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(children: [
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                const Text('In a hurry?',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _dark)),
-                const SizedBox(height: 4),
-                Text('An auto will arrive in 5 mins.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                const SizedBox(height: 10),
-                Text('Book Now',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                    color: _jagoBrand, decoration: TextDecoration.underline,
-                    decorationColor: _jagoBrand)),
-              ]),
-            ),
-            // Right side: auto emoji + yellow badge
-            ClipRRect(
-              borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
-              child: Container(
-                width: 130,
-                color: _yellow.withOpacity(0.12),
-                child: Stack(children: [
-                  const Center(child: Text('🛺', style: TextStyle(fontSize: 52))),
-                  Positioned(
-                    top: 10, right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _yellow,
-                        borderRadius: BorderRadius.circular(6),
-                        boxShadow: [BoxShadow(color: _yellow.withOpacity(0.4), blurRadius: 6)],
-                      ),
-                      child: const Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text('5 MIN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black)),
-                        Text('AUTO', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.black54)),
-                      ]),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  // ── Go Places Banner (#goJAGO — Rapido style) ─────────────────────────────
-  Widget _buildGoPlacesBanner() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (_banners.isNotEmpty) Padding(
-        padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
-        child: _buildBannerCard(),
-      ),
-      const SizedBox(height: 28),
-      // #goJAGO watermark section
-      Stack(children: [
-        // Faded background illustration
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0.04,
-            child: Icon(Icons.directions_car_filled, size: 200, color: _dark),
-          ),
-        ),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-          child: Column(children: [
-            Text('#goJAGO',
-              style: TextStyle(
-                fontSize: 32, fontWeight: FontWeight.w900,
-                color: Colors.grey[300], letterSpacing: 2,
-                fontStyle: FontStyle.italic,
-              )),
-            const SizedBox(height: 16),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('🇮🇳', style: TextStyle(fontSize: 16)),
-              const SizedBox(width: 6),
-              Text('Made for India', style: TextStyle(fontSize: 13, color: Colors.grey[500], fontWeight: FontWeight.w500)),
-            ]),
-            const SizedBox(height: 6),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('❤️', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 6),
-              Text('MindWhile IT Solutions', style: TextStyle(fontSize: 13, color: Colors.grey[500], fontWeight: FontWeight.w500)),
-            ]),
-          ]),
-        ),
-      ]),
-    ]);
-  }
-
-  Widget _buildBannerCard() {
-    final banner = _banners[0] as Map<String, dynamic>;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(banner['title']?.toString() ?? 'Special Offer',
-              style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            if (banner['description'] != null)
-              Text(banner['description'].toString(),
-                style: const TextStyle(fontSize: 12, color: Color(0xFFFBBC04), fontWeight: FontWeight.w600)),
-            const SizedBox(height: 10),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Stack(children: [
+            // Gradient background
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text('Book Now ➤',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-            ),
-          ]),
-        ),
-        const SizedBox(width: 12),
-        const Text('🚗', style: TextStyle(fontSize: 50)),
-      ]),
-    );
-  }
-
-  // ── Bottom Navigation (Rapido style: Ride | All Services | Travel | Profile)
-  Widget _buildBottomNav() {
-    final items = [
-      {'icon': Icons.home_filled, 'label': 'Ride'},
-      {'icon': Icons.grid_view_rounded, 'label': 'All Services'},
-      {'icon': Icons.beach_access_rounded, 'label': 'Travel'},
-      {'icon': Icons.person_outline_rounded, 'label': 'Profile'},
-    ];
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey[200]!, width: 1)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, -2))],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: List.generate(items.length, (i) {
-            final isSelected = _navIndex == i;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _navIndex = i);
-                  if (i == 0) {
-                    // Ride - stay on home
-                  } else if (i == 1) {
-                    // All Services - show bottom sheet
-                    _showAllServicesSheet();
-                    Future.delayed(const Duration(milliseconds: 50), () {
-                      if (mounted) setState(() => _navIndex = 0);
-                    });
-                  } else if (i == 2) {
-                    // Travel - intercity
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const IntercityBookingScreen()))
-                      .then((_) => setState(() => _navIndex = 0));
-                  } else if (i == 3) {
-                    // Profile
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const ProfileScreen()))
-                      .then((_) => setState(() => _navIndex = 0));
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  color: Colors.transparent,
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(items[i]['icon'] as IconData,
-                      color: isSelected ? _jagoBrand : Colors.grey[400],
-                      size: 24),
-                    const SizedBox(height: 3),
-                    Text(items[i]['label'] as String,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                        color: isSelected ? _jagoBrand : Colors.grey[400],
-                      )),
-                  ]),
+                gradient: LinearGradient(
+                  colors: [cardBg, accentColor.withOpacity(0.06)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-            );
-          }),
+            ),
+            // Left accent bar
+            Positioned(
+              left: 0, top: 0, bottom: 0,
+              child: Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [accentColor, accentColor.withOpacity(0.3)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (topLabel.isNotEmpty) ...[
+                          Text(topLabel,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: accentColor.withOpacity(0.7),
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 5),
+                        ],
+                        Text(boldLabel,
+                            style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                                color: textColor,
+                                height: 1.15,
+                                letterSpacing: -0.3)),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: 24, height: 3,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [accentColor, accentColor.withOpacity(0.3)]),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ]),
+                ),
+                Align(
+                  alignment: bigEmoji ? Alignment.bottomRight : Alignment.center,
+                  child: Text(emoji, style: TextStyle(fontSize: bigEmoji ? 46 : 38)),
+                ),
+              ]),
+            ),
+          ]),
         ),
       ),
     );
   }
 
-  // ── Emoji helper ────────────────────────────────────────────────────────────
-  String _emojiForVehicle(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('parcel') || n.contains('delivery')) return '📦';
-    if (n.contains('bike')) return '🏍️';
-    if (n.contains('auto') || n.contains('rickshaw') || n.contains('temo')) return '🛺';
-    if (n.contains('suv') || n.contains('premium')) return '🚙';
-    if (n.contains('car') || n.contains('cab')) return '🚗';
-    if (n.contains('truck') || n.contains('cargo')) return '🚛';
-    if (n.contains('share') || n.contains('pool')) return '🚐';
-    return '🚗';
+  Widget _buildExploreSection(bool isDark, Color cardBg, Color textColor) {
+    final services = [
+      {'key': 'bike', 'name': 'Bike Ride', 'emoji': '🏍️', 'type': 'ride', 'fare': '₹20',
+        'g1': const Color(0xFF1E6DE5), 'g2': const Color(0xFF3B82F6)},
+      {'key': 'auto', 'name': 'Auto Ride', 'emoji': '🛺', 'type': 'ride', 'fare': '₹30',
+        'g1': const Color(0xFFF59E0B), 'g2': const Color(0xFFFBBF24)},
+      {'key': 'car', 'name': 'Car Ride', 'emoji': '🚗', 'type': 'ride', 'fare': '₹80',
+        'g1': const Color(0xFF10B981), 'g2': const Color(0xFF34D399)},
+      {'key': 'parcel', 'name': 'Parcel', 'emoji': '📦', 'type': 'parcel', 'fare': '₹25',
+        'g1': const Color(0xFFFF6B35), 'g2': const Color(0xFFFF8C55)},
+      {'key': 'cargo', 'name': 'Cargo', 'emoji': '🚛', 'type': 'cargo', 'fare': '₹100',
+        'g1': const Color(0xFF8B5CF6), 'g2': const Color(0xFFA78BFA)},
+      {'key': 'intercity', 'name': 'Intercity', 'emoji': '🛣️', 'type': 'intercity', 'fare': '₹299',
+        'g1': const Color(0xFF06B6D4), 'g2': const Color(0xFF22D3EE)},
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 26, 0, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: Row(children: [
+            Container(width: 4, height: 20, decoration: BoxDecoration(color: _jagoOrange, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 10),
+            Text('Daily rides', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+            const Spacer(),
+            GestureDetector(
+              onTap: _showAllServicesSheet,
+              child: Row(children: [
+                Text('View All', style: TextStyle(fontSize: 13, color: _jagoOrange, fontWeight: FontWeight.w700)),
+                const Icon(Icons.chevron_right, size: 18, color: _jagoOrange),
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(children: services.map((s) => _exploreItem(s, isDark, textColor)).toList()),
+        ),
+      ]),
+    );
   }
 
-  // ── Drawer ──────────────────────────────────────────────────────────────────
+  Widget _exploreItem(Map<String, dynamic> s, bool isDark, Color textColor) {
+    final g1 = s['g1'] as Color? ?? _jagoOrange;
+    final g2 = s['g2'] as Color? ?? _jagoOrange;
+    final fare = s['fare'] as String? ?? '';
+    final isPopular = s['key'] == 'auto';
+    return GestureDetector(
+      onTap: () {
+        if (s['type'] == 'parcel') {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => ParcelBookingScreen(
+              pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
+        } else if (s['key'] == 'intercity') {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
+        } else {
+          _openSearch(presetVehicle: s['key'] as String?);
+        }
+      },
+      child: Container(
+        width: 82,
+        margin: const EdgeInsets.only(right: 14),
+        child: Column(children: [
+          Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [g1, g2],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: g1.withOpacity(0.38),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Center(child: Text(s['emoji'] as String, style: const TextStyle(fontSize: 30))),
+              ),
+              if (isPopular)
+                Positioned(
+                  top: -6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _jagoOrange,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [BoxShadow(color: _jagoOrange.withOpacity(0.4), blurRadius: 6)],
+                    ),
+                    child: const Text('HOT', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(s['name'] as String,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textColor.withOpacity(0.85)),
+            textAlign: TextAlign.center, maxLines: 2),
+          if (fare.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text('from $fare',
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: g1),
+              textAlign: TextAlign.center),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav(bool isDark, Color cardBg, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: cardBg,
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2))
+        ],
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        _navItem(Icons.home_filled, 'Home', 0, textColor),
+        _navItem(Icons.history, 'Activity', 1, textColor),
+        _navItem(Icons.account_balance_wallet, 'Wallet', 2, textColor),
+        _navItem(Icons.person, 'Profile', 3, textColor),
+      ]),
+    );
+  }
+
+  Widget _navItem(IconData icon, String label, int index, Color textColor) {
+    final active = _navIndex == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _navIndex = index);
+        if (index == 1)
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
+        if (index == 2)
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const WalletScreen()));
+        if (index == 3)
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      },
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: active ? 24 : 0,
+          height: 3,
+          margin: const EdgeInsets.only(bottom: 4),
+          decoration: BoxDecoration(
+            color: _jagoOrange,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        Icon(icon,
+          color: active ? _jagoOrange : textColor.withOpacity(0.4),
+          size: active ? 24 : 22),
+        const SizedBox(height: 3),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? _jagoOrange : textColor.withOpacity(0.4))),
+      ]),
+    );
+  }
+
   Widget _buildDrawer() {
     return Drawer(
-      backgroundColor: const Color(0xFF0A0F1E),
+      backgroundColor: _dark,
       child: SafeArea(
-        child: ListView(children: [
-          // JAGO Header
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [_jagoBrand.withOpacity(0.9), const Color(0xFF0A0F1E)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
-            ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // JAGO logo
-              RichText(text: const TextSpan(children: [
-                TextSpan(text: 'JA', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                TextSpan(text: 'GO', style: TextStyle(color: Color(0xFFFBBC04), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-              ])),
-              const SizedBox(height: 20),
-              Row(children: [
-                Container(
-                  width: 56, height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-                  ),
-                  child: Center(
-                    child: Text((_userName.isNotEmpty ? _userName[0] : 'U').toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_userName,
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 3),
-                  Text(_userPhone,
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
-                ])),
-              ]),
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: _jagoOrange.withOpacity(0.2),
+                child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                    style: const TextStyle(color: _jagoOrange, fontSize: 24, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(height: 12),
+              Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+              Text(_userPhone, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
             ]),
           ),
-          _drawerItem(Icons.person_outline_rounded, 'Profile', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
-          }),
-          _drawerItem(Icons.account_balance_wallet_rounded, 'Wallet', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
-          }),
-          _drawerItem(Icons.history_rounded, 'My Trips', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
-          }),
-          _drawerItem(Icons.stars_rounded, 'JAGO Coins', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const CoinsScreen()));
-          }),
-          _drawerItem(Icons.calendar_month_rounded, 'Monthly Pass', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyPassScreen()));
-          }),
-          _drawerItem(Icons.local_offer_rounded, 'Offers & Coupons', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen()));
-          }),
-          _drawerItem(Icons.casino_rounded, 'Daily Spin', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const SpinWheelScreen()));
-          }),
-          _drawerItem(Icons.share_rounded, 'Refer & Earn', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen()));
-          }),
-          _drawerItem(Icons.place_rounded, 'Saved Places', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen()));
-          }),
-          _drawerItem(Icons.headset_mic_rounded, 'Support Chat', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen()));
-          }),
-          _drawerItem(Icons.find_in_page_rounded, 'Lost & Found', () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const LostFoundScreen()));
-          }),
+          const Divider(color: Colors.white12),
+          _drawerItem(Icons.history_rounded, 'My Trips', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())); }),
+          _drawerItem(Icons.account_balance_wallet_rounded, 'Wallet', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())); }),
+          _drawerItem(Icons.local_offer_rounded, 'Offers', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())); }),
+          _drawerItem(Icons.bookmark_rounded, 'Saved Places', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen())); }),
+          _drawerItem(Icons.people_alt_rounded, 'Refer & Earn', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen())); }),
+          _drawerItem(Icons.support_agent_rounded, 'Support', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen())); }),
+          const Spacer(),
+          _drawerItem(Icons.person_rounded, 'Profile', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())); }),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: GestureDetector(
-              onTap: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    backgroundColor: const Color(0xFF1E293B),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    title: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                    content: const Text('Are you sure you want to logout?',
-                      style: TextStyle(color: Colors.white70)),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false),
-                        child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
-                      TextButton(onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Logout', style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.w700))),
-                    ],
-                  ),
-                );
-                if (confirmed == true && mounted) {
-                  await AuthService.logout();
-                  if (mounted) Navigator.pushAndRemoveUntil(context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 18),
-                  SizedBox(width: 8),
-                  Text('Logout', style: TextStyle(color: Color(0xFFF87171), fontWeight: FontWeight.w700, fontSize: 14)),
-                ]),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16, top: 8),
-            child: Center(child: Text('v1.0.0 • MindWhile IT Solutions',
-              style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10))),
-          ),
         ]),
       ),
     );
@@ -1004,28 +1226,248 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
-      leading: Container(
-        width: 36, height: 36,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: Colors.white.withOpacity(0.7), size: 18),
-      ),
-      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
-      trailing: Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.15), size: 18),
+      leading: Icon(icon, color: Colors.white70, size: 22),
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      dense: true,
+    );
+  }
+
+  Widget _buildInAHurryCard() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: GestureDetector(
+        onTap: () => _openSearch(presetVehicle: 'bike'),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B35), Color(0xFFFF8C55)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('In a hurry?', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 4),
+                const Text('Bike ride in 2 min', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                  child: const Text('Book Now', style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ]),
+            ),
+            const Text('🏍️', style: TextStyle(fontSize: 64)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoPlacesBanner() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: GestureDetector(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen())),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF0D1B3E) : const Color(0xFF1A2A5E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3), width: 1),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))],
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFFFFD700).withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                  child: const Text('INTERCITY', style: TextStyle(color: Color(0xFFFFD700), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                ),
+                const SizedBox(height: 8),
+                const Text('Go anywhere,\nanytime', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, height: 1.2)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Text('Explore routes', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward, color: Color(0xFFFFD700), size: 16),
+                ]),
+              ]),
+            ),
+            const Text('🛣️', style: TextStyle(fontSize: 52)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+}
+
+class _PlaceSearchSheet extends StatefulWidget {
+  final double pickupLat;
+  final double pickupLng;
+  final void Function(String name, double lat, double lng) onPlaceSelected;
+
+  const _PlaceSearchSheet({
+    required this.pickupLat,
+    required this.pickupLng,
+    required this.onPlaceSelected,
+  });
+
+  @override
+  State<_PlaceSearchSheet> createState() => _PlaceSearchSheetState();
+}
+
+class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
+  final TextEditingController _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  Timer? _debounce;
+
+  static const _popular = [
+    {'name': 'Hitech City, Hyderabad', 'lat': 17.4435, 'lng': 78.3772},
+    {'name': 'Ameerpet, Hyderabad', 'lat': 17.4374, 'lng': 78.4487},
+    {'name': 'Banjara Hills, Hyderabad', 'lat': 17.4109, 'lng': 78.4484},
+    {'name': 'Gachibowli, Hyderabad', 'lat': 17.4401, 'lng': 78.3489},
+    {'name': 'Kukatpally, Hyderabad', 'lat': 17.4849, 'lng': 78.3951},
+    {'name': 'LB Nagar, Hyderabad', 'lat': 17.3470, 'lng': 78.5537},
+    {'name': 'Secunderabad, Hyderabad', 'lat': 17.4399, 'lng': 78.4983},
+    {'name': 'Charminar, Hyderabad', 'lat': 17.3616, 'lng': 78.4747},
+  ];
+
+  Future<void> _search(String query) async {
+    if (query.length < 3) {
+      setState(() { _results = []; _loading = false; });
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query + ' Hyderabad')}&format=json&limit=6&addressdetails=1'
+      );
+      final resp = await http.get(url, headers: {'User-Agent': 'JAGOApp/1.0'});
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as List;
+        setState(() {
+          _results = data.map((d) => {
+            'name': d['display_name']?.toString().split(', ').take(3).join(', ') ?? '',
+            'lat': double.tryParse(d['lat']?.toString() ?? '0') ?? 0.0,
+            'lng': double.tryParse(d['lon']?.toString() ?? '0') ?? 0.0,
+          }).where((r) => (r['name'] as String).isNotEmpty).toList().cast<Map<String, dynamic>>();
+        });
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _ctrl.text;
+    final items = query.length >= 3 ? _results : _popular.cast<Map<String, dynamic>>();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? const Color(0xFF060D1E) : Colors.white;
+    final inputBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF5F5F5);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        color: sheetBg,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 10, bottom: 14),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : Colors.grey[300],
+              borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _ctrl,
+              autofocus: true,
+              style: TextStyle(color: textColor, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: 'Search destination...',
+                hintStyle: TextStyle(color: subColor, fontSize: 15),
+                prefixIcon: const Icon(Icons.search, color: Color(0xFFFF6B35)),
+                suffixIcon: query.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: subColor),
+                      onPressed: () => setState(() { _ctrl.clear(); _results = []; }))
+                  : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                filled: true,
+                fillColor: inputBg,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onChanged: (v) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 400), () => _search(v));
+                setState(() {});
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_loading) const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: Color(0xFFFF6B35))),
+          if (!_loading)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: items.length + (query.length < 3 ? 1 : 0),
+                itemBuilder: (_, i) {
+                  if (query.length < 3 && i == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: Text('Popular destinations',
+                        style: TextStyle(fontSize: 12, color: subColor, fontWeight: FontWeight.w600)),
+                    );
+                  }
+                  final item = items[query.length < 3 ? i - 1 : i];
+                  return ListTile(
+                    leading: const Icon(Icons.location_on_outlined, color: Color(0xFFFF6B35)),
+                    title: Text(item['name'] as String,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor),
+                      maxLines: 2),
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onPlaceSelected(item['name'] as String, (item['lat'] as num).toDouble(), (item['lng'] as num).toDouble());
+                    },
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 16),
+        ]),
+      ),
     );
   }
 }
 
-// ── All Services Bottom Sheet ─────────────────────────────────────────────────
 class _AllServicesSheet extends StatelessWidget {
   final List<Map<String, dynamic>> vehicleCategories;
   final String pickup;
-  final double pickupLat, pickupLng;
-  final Function(Map<String, dynamic>) onServiceTap;
+  final double pickupLat;
+  final double pickupLng;
+  final void Function(Map<String, dynamic> cat) onServiceTap;
 
   const _AllServicesSheet({
     required this.vehicleCategories,
@@ -1035,256 +1477,107 @@ class _AllServicesSheet extends StatelessWidget {
     required this.onServiceTap,
   });
 
-  String _emoji(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('parcel') || n.contains('delivery')) return '📦';
-    if (n.contains('bike lite')) return '🛵';
-    if (n.contains('bike')) return '🏍️';
-    if (n.contains('shared') || n.contains('share')) return '🚐';
-    if (n.contains('temo') || n.contains('mini auto')) return '🛺';
-    if (n.contains('auto') || n.contains('rickshaw')) return '🛺';
-    if (n.contains('premium')) return '⭐';
-    if (n.contains('suv')) return '🚙';
-    if (n.contains('car') || n.contains('cab')) return '🚗';
-    if (n.contains('truck') || n.contains('cargo')) return '🚛';
-    if (n.contains('travel')) return '🌴';
-    return '🚗';
-  }
+  static const _jagoOrange = Color(0xFFFF6B35);
 
   @override
   Widget build(BuildContext context) {
-    final cats = vehicleCategories.isNotEmpty
-      ? vehicleCategories
-      : [
-          {'name': 'Auto', 'type': 'ride'},
-          {'name': 'Bike', 'type': 'ride'},
-          {'name': 'Car', 'type': 'ride'},
-          {'name': 'Parcel', 'type': 'parcel'},
-        ];
+    final allServices = [
+      {'id': null, 'name': 'Bike Ride', 'type': 'ride', 'emoji': '🏍️', 'key': 'bike'},
+      {'id': null, 'name': 'Auto Ride', 'type': 'ride', 'emoji': '🛺', 'key': 'auto'},
+      {'id': null, 'name': 'Car Ride', 'type': 'ride', 'emoji': '🚗', 'key': 'car'},
+      {'id': null, 'name': 'Parcel', 'type': 'parcel', 'emoji': '📦', 'key': 'parcel'},
+      {'id': null, 'name': 'Intercity', 'type': 'intercity', 'emoji': '🛣️', 'key': 'intercity'},
+      {'id': null, 'name': 'Car Sharing', 'type': 'carsharing', 'emoji': '🚘', 'key': 'carsharing'},
+    ];
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Drag handle
-        Container(
-          width: 40, height: 4,
-          margin: const EdgeInsets.only(top: 12, bottom: 4),
-          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2)),
-        ),
-        // Header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('All services',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.close, size: 18, color: Color(0xFF1A1A1A)),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 20,
-              crossAxisSpacing: 8,
-              childAspectRatio: 0.85,
-            ),
-            itemCount: cats.length,
-            itemBuilder: (_, i) {
-              final cat = cats[i];
-              final name = cat['name']?.toString() ?? '';
-              return GestureDetector(
-                onTap: () => onServiceTap(cat),
-                child: Column(children: [
-                  Container(
-                    width: 62, height: 62,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F0F0),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text(_emoji(name), style: const TextStyle(fontSize: 28)),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(name,
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A)),
-                    textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
-                ]),
-              );
-            },
-          ),
-        ),
-      ]),
-    );
-  }
-}
+    final services = vehicleCategories.isNotEmpty
+      ? vehicleCategories.map((v) => {
+          'id': v['id'],
+          'name': v['name'] ?? '',
+          'type': v['type'] ?? 'ride',
+          'emoji': _emojiForCategory(v['name']?.toString() ?? ''),
+          'key': v['name']?.toString().toLowerCase().replaceAll(' ', '_') ?? '',
+        }).toList()
+      : allServices;
 
-// ── Google Places Search Sheet ──────────────────────────────────────────────
-class _PlaceSearchSheet extends StatefulWidget {
-  final double pickupLat, pickupLng;
-  final Function(String name, double lat, double lng) onPlaceSelected;
-  const _PlaceSearchSheet({required this.pickupLat, required this.pickupLng, required this.onPlaceSelected});
-  @override
-  State<_PlaceSearchSheet> createState() => _PlaceSearchSheetState();
-}
-
-class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
-  final _ctrl = TextEditingController();
-  List<Map<String, dynamic>> _predictions = [];
-  bool _searching = false;
-  Timer? _debounce;
-
-  @override
-  void dispose() { _ctrl.dispose(); _debounce?.cancel(); super.dispose(); }
-
-  void _onChanged(String q) {
-    _debounce?.cancel();
-    if (q.length < 2) { setState(() => _predictions = []); return; }
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(q));
-  }
-
-  Future<void> _search(String q) async {
-    setState(() => _searching = true);
-    try {
-      final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-        '?input=${Uri.encodeComponent(q)}'
-        '&location=${widget.pickupLat},${widget.pickupLng}'
-        '&radius=50000&components=country:in'
-        '&key=${ApiConfig.googleMapsApiKey}';
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final preds = (data['predictions'] as List<dynamic>? ?? [])
-          .map((p) => {
-            'placeId': p['place_id'],
-            'description': p['description'],
-            'mainText': p['structured_formatting']?['main_text'] ?? p['description'],
-            'secondaryText': p['structured_formatting']?['secondary_text'] ?? '',
-          }).toList();
-        if (mounted) setState(() => _predictions = preds.cast<Map<String, dynamic>>());
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _searching = false);
-  }
-
-  Future<void> _selectPlace(Map<String, dynamic> place) async {
-    try {
-      final placeId = place['placeId'];
-      final url = 'https://maps.googleapis.com/maps/api/geocode/json?place_id=$placeId&key=${ApiConfig.googleMapsApiKey}';
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final results = data['results'] as List<dynamic>?;
-        if (results != null && results.isNotEmpty) {
-          final loc = results[0]['geometry']['location'];
-          if (mounted) Navigator.pop(context);
-          widget.onPlaceSelected(place['description'],
-            (loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
-          return;
-        }
-      }
-    } catch (_) {}
-    if (mounted) {
-      Navigator.pop(context);
-      widget.onPlaceSelected(place['description'], 0, 0);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? const Color(0xFF060D1E) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF5F5F5);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
+    return Container(
+      padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 24),
+      decoration: BoxDecoration(
+        color: sheetBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          width: 40, height: 4,
-          margin: const EdgeInsets.only(top: 10, bottom: 16),
-          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2))),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Where to?',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-            const SizedBox(height: 12),
-            Container(
+          width: 36, height: 4,
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white24 : Colors.grey[300],
+            borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(height: 16),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('All Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 32, height: 32,
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F5F5),
-                borderRadius: BorderRadius.circular(12),
+                color: isDark ? Colors.white10 : Colors.grey.shade100,
+                shape: BoxShape.circle,
               ),
-              child: TextField(
-                controller: _ctrl,
-                autofocus: true,
-                onChanged: _onChanged,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xFF1A1A1A)),
-                decoration: InputDecoration(
-                  hintText: 'Search destination...',
-                  hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w400),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF6B7280), size: 22),
-                  suffixIcon: _searching
-                    ? const Padding(padding: EdgeInsets.all(14),
-                        child: SizedBox(width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2)))
-                    : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-              ),
+              child: Icon(Icons.close, size: 18, color: subColor),
             ),
-          ]),
-        ),
-        const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
-          child: _predictions.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.all(40),
-                child: Column(children: [
-                  Icon(Icons.location_on_outlined, color: Colors.grey[300], size: 48),
-                  const SizedBox(height: 12),
-                  Text('Start typing to search',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[400], fontSize: 14, fontWeight: FontWeight.w500)),
-                ]))
-            : ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                itemCount: _predictions.length,
-                separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[100]),
-                itemBuilder: (_, i) {
-                  final p = _predictions[i];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                    leading: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.location_on_rounded, color: Color(0xFF6B7280), size: 18)),
-                    title: Text(p['mainText'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF1A1A1A))),
-                    subtitle: (p['secondaryText'] ?? '') != ''
-                      ? Text(p['secondaryText'],
-                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                          maxLines: 1, overflow: TextOverflow.ellipsis)
-                      : null,
-                    onTap: () => _selectPlace(p),
-                  );
-                }),
+          ),
+        ]),
+        const SizedBox(height: 20),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3, childAspectRatio: 0.88, crossAxisSpacing: 12, mainAxisSpacing: 12),
+          itemCount: services.length,
+          itemBuilder: (_, i) {
+            final s = services[i];
+            return GestureDetector(
+              onTap: () => onServiceTap(s),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.grey.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                      blurRadius: 8, offset: const Offset(0, 2)),
+                  ],
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(s['emoji'] as String, style: const TextStyle(fontSize: 36)),
+                  const SizedBox(height: 8),
+                  Text(s['name'] as String,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                    textAlign: TextAlign.center, maxLines: 2),
+                ]),
+              ),
+            );
+          },
         ),
       ]),
     );
+  }
+
+  String _emojiForCategory(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('bike') || lower.contains('moto')) return '🏍️';
+    if (lower.contains('auto')) return '🛺';
+    if (lower.contains('car') || lower.contains('cab')) return '🚗';
+    if (lower.contains('parcel') || lower.contains('cargo')) return '📦';
+    if (lower.contains('intercity')) return '🛣️';
+    if (lower.contains('shar')) return '🚘';
+    return '🚖';
   }
 }
