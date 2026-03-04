@@ -114,11 +114,18 @@ export function setupSocket(httpServer: HttpServer) {
           }
           const trip = camelize(tripR.rows[0]) as any;
 
-          // Assign driver
-          await rawDb.execute(rawSql`
-            UPDATE trip_requests SET driver_id=${userId}::uuid, current_status='driver_assigned', updated_at=NOW()
+          // Atomically claim the trip — only if still available (prevents race condition)
+          const claimed = await rawDb.execute(rawSql`
+            UPDATE trip_requests SET driver_id=${userId}::uuid, current_status='accepted', driver_accepted_at=NOW(), updated_at=NOW()
             WHERE id=${tripId}::uuid
+              AND current_status IN ('searching','driver_assigned')
+              AND (driver_id IS NULL OR driver_id=${userId}::uuid)
+            RETURNING id
           `);
+          if (!claimed.rows.length) {
+            socket.emit("driver:accept_trip_error", { message: "Trip was already accepted by another pilot" });
+            return;
+          }
           await rawDb.execute(rawSql`
             UPDATE users SET current_trip_id=${tripId}::uuid WHERE id=${userId}::uuid
           `);
@@ -142,6 +149,20 @@ export function setupSocket(httpServer: HttpServer) {
               lng: trip.driverLng,
             },
           });
+
+          // Notify all other nearby drivers that the trip has been taken
+          try {
+            const nearbyDrivers = await rawDb.execute(rawSql`
+              SELECT dl.driver_id FROM driver_locations dl
+              JOIN users u ON u.id = dl.driver_id
+              WHERE u.is_online = true AND u.id != ${userId}::uuid
+                AND ((dl.lat - ${trip.pickupLat || 0})*(dl.lat - ${trip.pickupLat || 0}) + (dl.lng - ${trip.pickupLng || 0})*(dl.lng - ${trip.pickupLng || 0})) < 0.1
+            `);
+            for (const row of nearbyDrivers.rows) {
+              const dId = (row as any).driver_id;
+              io.to(`user:${dId}`).emit("trip:request_taken", { tripId });
+            }
+          } catch {}
 
           // FCM fallback (customer may be in background)
           try {
@@ -170,15 +191,15 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("driver:trip_status", async (data: { tripId: string; status: string; otp?: string }) => {
         try {
           const { tripId, status, otp } = data;
-          const allowed = ["accepted", "arrived", "in_progress", "completed", "cancelled"];
+          const allowed = ["accepted", "arrived", "on_the_way", "completed", "cancelled"];
           if (!allowed.includes(status)) {
             socket.emit("error", { message: "Invalid status" });
             return;
           }
 
-          if (status === "in_progress") {
+          if (status === "on_the_way") {
             await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status=${status}, started_at=NOW(), updated_at=NOW()
+              UPDATE trip_requests SET current_status=${status}, ride_started_at=NOW(), updated_at=NOW()
               WHERE id=${tripId}::uuid
             `);
           } else if (status === "completed") {
@@ -266,6 +287,72 @@ export function setupSocket(httpServer: HttpServer) {
         }
       });
     }
+
+    // ── In-app trip chat relay ───────────────────────────────────────────────
+    socket.on("trip:send_message", (data: { tripId: string; message: string; senderName: string; senderType: string }) => {
+      try {
+        const { tripId, message, senderName, senderType } = data;
+        if (!tripId || !message) return;
+        io.to(`trip:${tripId}`).emit("trip:new_message", {
+          from: userId,
+          senderType,
+          senderName,
+          message,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        console.error("[SOCKET] trip:send_message error:", e.message);
+      }
+    });
+
+    // ── In-app call signaling (WebRTC relay) ──────────────────────────────────
+    // Validates that an active trip exists between caller and target before relaying
+
+    socket.on("call:initiate", async (data: { targetUserId: string; tripId: string; callerName: string }) => {
+      try {
+        const { targetUserId, tripId, callerName } = data;
+        // Verify active trip between the two users
+        const tripR = await rawDb.execute(rawSql`
+          SELECT id FROM trip_requests
+          WHERE id=${tripId}::uuid
+            AND current_status IN ('accepted','arrived','on_the_way')
+            AND (customer_id=${userId}::uuid OR driver_id=${userId}::uuid)
+            AND (customer_id=${targetUserId}::uuid OR driver_id=${targetUserId}::uuid)
+          LIMIT 1
+        `);
+        if (!tripR.rows.length) {
+          socket.emit("call:error", { message: "No active trip. Calling not allowed." });
+          return;
+        }
+        io.to(`user:${targetUserId}`).emit("call:incoming", {
+          callerId: userId, callerName, tripId,
+        });
+        console.log(`[CALL] ${userId} calling ${targetUserId} for trip ${tripId}`);
+      } catch (e: any) {
+        socket.emit("call:error", { message: "Call initiation failed" });
+      }
+    });
+
+    socket.on("call:offer", (data: { targetUserId: string; sdp: any }) => {
+      io.to(`user:${data.targetUserId}`).emit("call:offer", { callerId: userId, sdp: data.sdp });
+    });
+
+    socket.on("call:answer", (data: { targetUserId: string; sdp: any }) => {
+      io.to(`user:${data.targetUserId}`).emit("call:answer", { callerId: userId, sdp: data.sdp });
+    });
+
+    socket.on("call:ice", (data: { targetUserId: string; candidate: any }) => {
+      io.to(`user:${data.targetUserId}`).emit("call:ice", { from: userId, candidate: data.candidate });
+    });
+
+    socket.on("call:end", (data: { targetUserId: string }) => {
+      io.to(`user:${data.targetUserId}`).emit("call:ended", { by: userId });
+      console.log(`[CALL] Call ended by ${userId}`);
+    });
+
+    socket.on("call:reject", (data: { targetUserId: string }) => {
+      io.to(`user:${data.targetUserId}`).emit("call:rejected", { by: userId });
+    });
 
     socket.on("disconnect", () => {
       driverSockets.delete(userId);
