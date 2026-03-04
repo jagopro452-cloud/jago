@@ -10,16 +10,21 @@ class SocketService {
   IO.Socket? _socket;
   bool _isConnected = false;
 
-  // Stream controllers for events
   final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectedController = StreamController<bool>.broadcast();
+  final _tripTakenController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripTimeoutController = StreamController<Map<String, dynamic>>.broadcast();
+  final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
   Stream<bool> get onConnectionChanged => _connectedController.stream;
+  Stream<Map<String, dynamic>> get onTripTaken => _tripTakenController.stream;
+  Stream<Map<String, dynamic>> get onTripTimeout => _tripTimeoutController.stream;
+  Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -53,25 +58,34 @@ class SocketService {
       _connectedController.add(false);
     });
 
-    // New trip request from customer
     _socket!.on('trip:new_request', (data) {
       _newTripController.add(Map<String, dynamic>.from(data));
     });
 
-    // Trip cancelled by customer
     _socket!.on('trip:cancelled', (data) {
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
-    // General trip status
     _socket!.on('trip:status_update', (data) {
       _tripStatusController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('trip:request_taken', (data) {
+      _tripTakenController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('trip:timeout', (data) {
+      _tripTimeoutController.add(Map<String, dynamic>.from(data));
+    });
+
+    // In-app chat message received
+    _socket!.on('trip:new_message', (data) {
+      _chatMessageController.add(Map<String, dynamic>.from(data));
     });
 
     _socket!.connect();
   }
 
-  // Send driver location to server
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
     if (!_isConnected) return;
     _socket!.emit('driver:location', {
@@ -82,7 +96,6 @@ class SocketService {
     });
   }
 
-  // Go online / offline
   void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {
     if (!_isConnected) return;
     _socket!.emit('driver:online', {
@@ -92,7 +105,6 @@ class SocketService {
     });
   }
 
-  // Accept a trip
   Future<bool> acceptTrip(String tripId) async {
     if (!_isConnected) return false;
     final completer = Completer<bool>();
@@ -108,13 +120,23 @@ class SocketService {
     return completer.future.timeout(const Duration(seconds: 10), onTimeout: () => false);
   }
 
-  // Update trip status
   void updateTripStatus(String tripId, String status, {String? otp}) {
     if (!_isConnected) return;
     _socket!.emit('driver:trip_status', {
       'tripId': tripId,
       'status': status,
       if (otp != null) 'otp': otp,
+    });
+  }
+
+  // Send in-app chat message
+  void sendChatMessage({required String tripId, required String message, required String senderName}) {
+    if (!_isConnected) return;
+    _socket!.emit('trip:send_message', {
+      'tripId': tripId,
+      'message': message,
+      'senderName': senderName,
+      'senderType': 'driver',
     });
   }
 
@@ -130,5 +152,8 @@ class SocketService {
     _tripCancelledController.close();
     _tripStatusController.close();
     _connectedController.close();
+    _tripTakenController.close();
+    _tripTimeoutController.close();
+    _chatMessageController.close();
   }
 }
