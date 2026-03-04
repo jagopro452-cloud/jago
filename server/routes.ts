@@ -1527,6 +1527,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Admin Revenue Stats ─────────────────────────────────────────────────────
+  app.get("/api/admin-revenue", async (req, res) => {
+    try {
+      const { from, to, revenueType, page = 1, limit = 50 } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+      let whereClause = rawSql`1=1`;
+      if (from) whereClause = rawSql`ar.created_at >= ${from}::date`;
+      if (to) whereClause = rawSql`ar.created_at <= ${(to as string) + ' 23:59:59'}::timestamp`;
+      if (revenueType) whereClause = rawSql`ar.revenue_type = ${revenueType}`;
+
+      const rows = await rawDb.execute(rawSql`
+        SELECT ar.*, u.full_name as driver_name, u.phone as driver_phone
+        FROM admin_revenue ar
+        LEFT JOIN users u ON u.id = ar.driver_id
+        ORDER BY ar.created_at DESC
+        LIMIT ${Number(limit)} OFFSET ${offset}
+      `);
+      const totals = await rawDb.execute(rawSql`
+        SELECT
+          revenue_type,
+          COUNT(*) as count,
+          SUM(amount) as total
+        FROM admin_revenue
+        GROUP BY revenue_type
+      `);
+      const grandTotal = await rawDb.execute(rawSql`SELECT COALESCE(SUM(amount),0) as total FROM admin_revenue`);
+      res.json({
+        rows: rows.rows.map(camelize),
+        breakdown: totals.rows.map(camelize),
+        totalRevenue: parseFloat((grandTotal.rows[0] as any).total || 0),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── Driver Wallet & Auto-Lock ───────────────────────────────────────────────
 
   // Get all drivers with wallet info
@@ -2792,11 +2826,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { isOnline } = req.body;
-      // Check if locked
       if (isOnline) {
-        const walletR = await rawDb.execute(rawSql`SELECT is_locked, wallet_balance FROM users WHERE id=${driver.id}::uuid`);
+        // Check wallet lock (applies to both models — negative balance)
+        const walletR = await rawDb.execute(rawSql`SELECT is_locked, wallet_balance, lock_reason FROM users WHERE id=${driver.id}::uuid`);
         const w = walletR.rows[0] as any;
-        if (w?.is_locked) return res.status(403).json({ message: "Account locked. Please clear dues to go online.", isLocked: true, walletBalance: parseFloat(w.wallet_balance || 0) });
+        if (w?.is_locked) return res.status(403).json({
+          message: w.lock_reason || "Account locked. Please recharge wallet to go online.",
+          isLocked: true, walletBalance: parseFloat(w.wallet_balance || 0)
+        });
+        // In subscription mode — check if driver has a valid active subscription
+        const modelR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='active_model'`);
+        const activeModel = (modelR.rows[0] as any)?.value || "commission";
+        if (activeModel === "subscription") {
+          const subR = await rawDb.execute(rawSql`
+            SELECT id, end_date, is_active FROM driver_subscriptions
+            WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date >= CURRENT_DATE
+            ORDER BY end_date DESC LIMIT 1
+          `);
+          if (!subR.rows.length) {
+            return res.status(403).json({
+              message: "Subscription required. Please purchase or renew your subscription to go online.",
+              requiresSubscription: true, isLocked: false
+            });
+          }
+          const sub = subR.rows[0] as any;
+          const daysLeft = Math.ceil((new Date(sub.end_date).getTime() - Date.now()) / 86400000);
+          if (daysLeft <= 2) {
+            // Allow going online but warn about expiry soon
+            res.setHeader("X-Subscription-Warning", `Subscription expires in ${daysLeft} day(s)`);
+          }
+        }
       }
       const lat = req.body.lat ?? 0;
       const lng = req.body.lng ?? 0;
@@ -3123,18 +3182,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
       }
 
-      // Auto-deduct platform commission from driver wallet
-      const settingR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings WHERE key_name IN ('commission_pct','commission_gst_pct','commission_insurance_per_ride','auto_lock_threshold','active_model')`);
+      // Auto-deduct platform fees from driver wallet (commission OR subscription model)
+      const settingR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const s: any = {};
       settingR.rows.forEach((row: any) => { s[row.key_name] = row.value; });
+      const activeModel = s.active_model || "commission";
       let deductAmount = 0;
-      if ((s.active_model || "commission") === "commission") {
+      let breakdown: any = {};
+
+      if (activeModel === "commission") {
         const commPct = parseFloat(s.commission_pct || "15") / 100;
         const gstPct = parseFloat(s.commission_gst_pct || "18") / 100;
         const ins = parseFloat(s.commission_insurance_per_ride || "2");
-        const comm = fare * commPct;
-        deductAmount = parseFloat((comm + (comm * gstPct) + ins).toFixed(2));
+        const comm = parseFloat((fare * commPct).toFixed(2));
+        const gst = parseFloat((comm * gstPct).toFixed(2));
+        deductAmount = parseFloat((comm + gst + ins).toFixed(2));
+        breakdown = { model: "commission", commission: comm, gst, insurance: ins, total: deductAmount };
+      } else if (activeModel === "subscription") {
+        // Subscription model: per-ride platform fee + GST + insurance (subscription itself is paid upfront)
+        const platFee = parseFloat(s.sub_platform_fee_per_ride || "5");
+        const gstPct = parseFloat(s.sub_gst_pct || "18") / 100;
+        const ins = parseFloat(s.commission_insurance_per_ride || "2");
+        const gst = parseFloat((platFee * gstPct).toFixed(2));
+        deductAmount = parseFloat((platFee + gst + ins).toFixed(2));
+        breakdown = { model: "subscription", platformFee: platFee, gst, insurance: ins, total: deductAmount };
       }
+
       // Save commission_amount to trip record for reporting accuracy
       await rawDb.execute(rawSql`UPDATE trip_requests SET commission_amount=${deductAmount} WHERE id=${tripId}::uuid`);
 
@@ -3145,14 +3218,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
         `);
         const newBalance = parseFloat((wUpd.rows[0] as any)?.wallet_balance || 0);
-        // Auto-lock if balance falls below threshold AND not already locked
+        // Auto-lock if balance falls below threshold
         if (newBalance < threshold && !(wUpd.rows[0] as any)?.is_locked) {
-          const lockMsg = `Balance below ₹${Math.abs(threshold)} threshold. Current: ₹${newBalance.toFixed(2)}. Please pay dues to go online.`;
+          const lockMsg = `Wallet balance ₹${newBalance.toFixed(2)} is below minimum threshold ₹${threshold}. Recharge wallet to go online.`;
           await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW() WHERE id=${driver.id}::uuid`);
         }
+        // Auto-unlock if balance came back above 0 and was locked
+        if (newBalance >= 0 && (wUpd.rows[0] as any)?.is_locked) {
+          await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
+        }
+        // Record driver deduction
         await rawDb.execute(rawSql`
           INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${'Platform commission + GST for trip ' + tripId})
+          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${`Platform fee (${activeModel}) for trip ${tripId.slice(0,8)}...`})
+        `).catch(() => {});
+        // Credit admin revenue
+        await rawDb.execute(rawSql`
+          INSERT INTO admin_revenue (driver_id, trip_id, amount, revenue_type, breakdown)
+          VALUES (${driver.id}::uuid, ${tripId}::uuid, ${deductAmount}, ${activeModel === 'commission' ? 'commission' : 'subscription_fee'}, ${JSON.stringify(breakdown)}::jsonb)
         `).catch(() => {});
       }
 
@@ -3359,6 +3442,154 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json({ success: true, message: `Withdrawal request of ₹${amt} submitted. Will be processed in 2-3 business days.`, request: camelize(wr.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Subscription status & purchase ───────────────────────────────
+  app.get("/api/app/driver/subscription", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const modelR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const s: any = {};
+      modelR.rows.forEach((r: any) => { s[r.key_name] = r.value; });
+      const activeModel = s.active_model || "commission";
+      let activeSub = null;
+      let daysLeft = 0;
+      if (activeModel === "subscription") {
+        const subR = await rawDb.execute(rawSql`
+          SELECT ds.*, sp.name as plan_name, sp.price, sp.duration_days
+          FROM driver_subscriptions ds
+          LEFT JOIN subscription_plans sp ON sp.id = ds.plan_id
+          WHERE ds.driver_id=${driver.id}::uuid AND ds.is_active=true
+          ORDER BY ds.end_date DESC LIMIT 1
+        `);
+        if (subR.rows.length) {
+          activeSub = camelize(subR.rows[0]);
+          daysLeft = Math.max(0, Math.ceil((new Date((activeSub as any).endDate).getTime() - Date.now()) / 86400000));
+        }
+      }
+      const plans = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE is_active=true ORDER BY price ASC`);
+      res.json({
+        activeModel,
+        activeSub,
+        daysLeft,
+        isSubscriptionRequired: activeModel === "subscription",
+        hasActiveSubscription: !!activeSub && daysLeft > 0,
+        plans: plans.rows.map(camelize),
+        perRideFees: {
+          platformFee: parseFloat(s.sub_platform_fee_per_ride || "5"),
+          gstPct: parseFloat(s.sub_gst_pct || "18"),
+          insurance: parseFloat(s.commission_insurance_per_ride || "2"),
+        },
+        commissionRate: parseFloat(s.commission_pct || "15"),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/driver/subscription/create-order", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { planId } = req.body;
+      if (!planId) return res.status(400).json({ message: "planId required" });
+      const planR = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE id=${planId}::uuid AND is_active=true`);
+      if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
+      const plan = camelize(planR.rows[0]) as any;
+      const gstPct = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='sub_gst_pct'`);
+      const gst = parseFloat(plan.price) * (parseFloat((gstPct.rows[0] as any)?.value || "18") / 100);
+      const total = parseFloat((parseFloat(plan.price) + gst).toFixed(2));
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const Razorpay = _require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({
+        amount: Math.round(total * 100),
+        currency: "INR",
+        receipt: `sub_${Date.now().toString(36)}`,
+        notes: { driver_id: driver.id, plan_id: planId, plan_name: plan.name }
+      });
+      res.json({ order, keyId, amount: total, planFee: parseFloat(plan.price), gst, plan });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/driver/subscription/verify-payment", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId || !planId) return res.status(400).json({ message: "Missing required fields" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret && razorpaySignature) {
+        const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      const planR = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE id=${planId}::uuid`);
+      if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
+      const plan = camelize(planR.rows[0]) as any;
+      const startDate = new Date().toISOString().split("T")[0];
+      const endDate = new Date(Date.now() + plan.durationDays * 86400000).toISOString().split("T")[0];
+      await rawDb.execute(rawSql`UPDATE driver_subscriptions SET is_active=false WHERE driver_id=${driver.id}::uuid`);
+      const sub = await rawDb.execute(rawSql`
+        INSERT INTO driver_subscriptions (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active)
+        VALUES (${driver.id}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${plan.price}, 'paid', true)
+        RETURNING *
+      `);
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, razorpay_payment_id, status, description)
+        VALUES (${driver.id}::uuid, ${plan.price}, 'subscription', ${razorpayOrderId}, ${razorpayPaymentId}, 'completed', ${`Subscription: ${plan.name} (${plan.durationDays} days)`})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        INSERT INTO admin_revenue (driver_id, amount, revenue_type, breakdown)
+        VALUES (${driver.id}::uuid, ${plan.price}, 'subscription_purchase', ${JSON.stringify({ planName: plan.name, durationDays: plan.durationDays, paymentId: razorpayPaymentId })}::jsonb)
+      `).catch(() => {});
+      res.json({ success: true, subscription: camelize(sub.rows[0]), plan, validUntil: endDate, message: `Subscription activated until ${endDate}` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/driver/wallet/create-order", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { amount } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid amount" });
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const Razorpay = _require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({
+        amount: Math.round(amt * 100), currency: "INR",
+        receipt: `dw_${Date.now().toString(36)}`,
+        notes: { driver_id: driver.id, purpose: "wallet_recharge" }
+      });
+      res.json({ order, keyId, amount: amt });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/driver/wallet/verify-payment", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret && razorpaySignature) {
+        const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      const amt = parseFloat(amount);
+      const wUpd = await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance + ${amt}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amt})
+        WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
+      `);
+      const newBalance = parseFloat((wUpd.rows[0] as any)?.wallet_balance || 0);
+      // Auto-unlock if wallet now positive
+      if (newBalance >= 0 && (wUpd.rows[0] as any)?.is_locked) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
+      }
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, razorpay_payment_id, status, description)
+        VALUES (${driver.id}::uuid, ${amt}, 'wallet_topup', ${razorpayOrderId}, ${razorpayPaymentId}, 'completed', ${`Wallet recharge via Razorpay`})
+      `).catch(() => {});
+      res.json({ success: true, newBalance, autoUnlocked: newBalance >= 0 && !!(wUpd.rows[0] as any)?.is_locked, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
