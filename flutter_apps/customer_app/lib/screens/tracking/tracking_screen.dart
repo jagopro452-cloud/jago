@@ -261,6 +261,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.62),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -270,7 +271,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                 Container(width: 40, height: 4,
                   margin: const EdgeInsets.only(top: 10, bottom: 4),
                   decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2))),
-                Padding(
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     _buildStatusHeader(statusInfo),
@@ -339,6 +343,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                     ],
                   ]),
                 ),
+                )),
               ]),
             ),
           ),
@@ -389,9 +394,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(info['label'] as String,
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-          if (_status == 'searching')
-            Text('Real-time లో nearby pilots search avutundi...',
+          if (_status == 'searching') ...[
+            Text('Searching for available pilots near you...',
               style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+            const SizedBox(height: 2),
+            Text('Estimated wait: 3–5 min',
+              style: TextStyle(color: Colors.orange[700], fontSize: 11, fontWeight: FontWeight.w600)),
+          ],
           if (_driverLatLng != null && _status != 'searching' && _status != 'completed' && _status != 'cancelled')
             Text('Live tracking active 📍',
               style: TextStyle(color: _green, fontSize: 11, fontWeight: FontWeight.w600)),
@@ -481,11 +490,33 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   child: Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [_blue, const Color(0xFF1244A2)]),
+                      gradient: const LinearGradient(colors: [_blue, Color(0xFF1244A2)]),
                       borderRadius: BorderRadius.circular(13),
                       boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
                     ),
                     child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final msg = Uri.encodeComponent('Hi, I am your JAGO customer. Trip ID: ${widget.tripId}');
+                    final uri = Uri.parse('whatsapp://send?phone=$phone&text=$msg');
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri);
+                    } else if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('WhatsApp not available. Use call button.'),
+                        behavior: SnackBarBehavior.floating));
+                    }
+                  },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF25D366),
+                      borderRadius: BorderRadius.circular(13),
+                      boxShadow: [BoxShadow(color: const Color(0xFF25D366).withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                    ),
+                    child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20)),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -494,7 +525,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                 child: Container(
                   width: 42, height: 42,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [const Color(0xFF7F1D1D), Colors.red]),
+                    gradient: const LinearGradient(colors: [Color(0xFF7F1D1D), Colors.red]),
                     borderRadius: BorderRadius.circular(13),
                     boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
                   ),
@@ -503,7 +534,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             ]),
           ]),
         ),
-        if (driverVehicle.isNotEmpty || driverModel.isNotEmpty)
+        if (driverVehicle.isNotEmpty || driverModel.isNotEmpty || (_trip?['estimatedTime'] != null))
           Container(
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -514,9 +545,17 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             child: Row(children: [
               Icon(Icons.directions_car_rounded, color: _blue, size: 14),
               const SizedBox(width: 6),
-              Text(
+              Expanded(child: Text(
                 [if (driverVehicle.isNotEmpty) driverVehicle.toUpperCase(), if (driverModel.isNotEmpty) driverModel].join(' · '),
-                style: TextStyle(color: _blue, fontSize: 11, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: _blue, fontSize: 11, fontWeight: FontWeight.w700))),
+              if (_status != 'in_progress' && _status != 'completed') ...[
+                const SizedBox(width: 8),
+                Icon(Icons.access_time_rounded, color: _blue, size: 13),
+                const SizedBox(width: 4),
+                Text(
+                  _status == 'arrived' ? 'Pilot at pickup' : 'ETA: ${_trip?['estimatedTime'] ?? '~5 min'}',
+                  style: TextStyle(color: _blue, fontSize: 11, fontWeight: FontWeight.w700)),
+              ],
             ]),
           ),
       ]),
@@ -525,7 +564,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   Future<void> _shareRide() async {
     final tripId = widget.tripId;
-    final shareText = '🚗 JAGO ride track చేయండి!\nReal-time location: https://jagopro.org/track/$tripId\nJAGO app download: https://jagopro.org/download';
+    final shareText = '🚗 Track my JAGO ride!\nLive location: https://jagopro.org/track/$tripId\nDownload JAGO app: https://jagopro.org/download';
     final encoded = Uri.encodeComponent(shareText);
     final uri = Uri.parse('whatsapp://send?text=$encoded');
     if (await canLaunchUrl(uri)) {
@@ -542,13 +581,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('🚨 SOS Alert', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Emergency SOS పంపాలా? Help team వెంటనే contact అవుతారు.'),
+        content: const Text('Send an Emergency SOS? Our help team will contact you immediately.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            child: const Text('Send SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -676,7 +715,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           ],
           if (_rated == 0) ...[
             const SizedBox(height: 16),
-            const Text('Pilot rate cheyyandi',
+            const Text('Rate your Pilot',
               style: TextStyle(fontSize: 13, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -693,7 +732,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               const Icon(Icons.favorite_rounded, color: Color(0xFF1E6DE5), size: 16),
               const SizedBox(width: 6),
-              Text('Thanks for rating! JAGO use చేసినందుకు 🙏',
+              Text('Thanks for your rating! 🙏',
                 style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w500)),
             ]),
           ],
@@ -707,7 +746,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           onPressed: () => Navigator.push(context, MaterialPageRoute(
             builder: (_) => TipDriverScreen(tripId: tId, driverName: dName))),
           icon: const Icon(Icons.volunteer_activism_rounded, color: Color(0xFF16A34A), size: 18),
-          label: const Text('Tip Pilot ఇవ్వండి 💚', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 13)),
+          label: const Text('Tip your Pilot 💚', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 13)),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 46),
             side: const BorderSide(color: Color(0xFF16A34A), width: 1.5),
@@ -755,18 +794,18 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           style: ElevatedButton.styleFrom(
             backgroundColor: _blue, foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-          child: const Text('New Ride Book Cheyyandi →', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          child: const Text('Book New Ride →', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
         )),
     ]);
   }
 
   Map<String, dynamic> _getStatusInfo(String status) {
     switch (status) {
-      case 'searching': return {'label': 'Pilot Search avutundi...', 'icon': Icons.search_rounded, 'color': Colors.orange};
-      case 'driver_assigned': return {'label': 'Pilot Assign ayyadu! 🎉', 'icon': Icons.electric_bike, 'color': _blue};
-      case 'accepted': return {'label': 'Pilot vachestunnadu 🏍️', 'icon': Icons.navigation_rounded, 'color': _blue};
+      case 'searching': return {'label': 'Searching for nearby Pilots...', 'icon': Icons.search_rounded, 'color': Colors.orange};
+      case 'driver_assigned': return {'label': 'Pilot Assigned! 🎉', 'icon': Icons.electric_bike, 'color': _blue};
+      case 'accepted': return {'label': 'Pilot is on the way 🏍️', 'icon': Icons.navigation_rounded, 'color': _blue};
       case 'arrived': return {'label': 'Pilot Arrived! 📍', 'icon': Icons.where_to_vote_rounded, 'color': _green};
-      case 'in_progress': return {'label': 'Trip lo undi 🚀', 'icon': Icons.speed_rounded, 'color': _blue};
+      case 'in_progress': return {'label': 'Trip in Progress 🚀', 'icon': Icons.speed_rounded, 'color': _blue};
       case 'completed': return {'label': 'Trip Completed! ✅', 'icon': Icons.check_circle_rounded, 'color': _green};
       case 'cancelled': return {'label': 'Trip Cancelled', 'icon': Icons.cancel_rounded, 'color': Colors.red};
       default: return {'label': 'Loading...', 'icon': Icons.hourglass_empty_rounded, 'color': Colors.grey};
