@@ -7,7 +7,9 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
 import crypto from "crypto";
+import { createRequire } from "module";
 import multer from "multer";
+const _require = createRequire(import.meta.url);
 import path from "path";
 import fs from "fs";
 import { db } from "./db";
@@ -1611,7 +1613,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!keyId || !keySecret) {
         return res.status(503).json({ message: "Payment gateway not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET." });
       }
-      const Razorpay = require("razorpay");
+      const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
       const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `wallet_${id}_${Date.now()}` });
       // Record pending payment
@@ -1630,7 +1632,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (keySecret) {
-        const crypto = require("crypto");
         const body = razorpayOrderId + "|" + razorpayPaymentId;
         const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
         if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
@@ -3693,13 +3694,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/nearby-drivers", async (req, res) => {
     try {
       const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
+      const vcFilter = vehicleCategoryId
+        ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid`
+        : rawSql``;
       const r = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.rating, dl.lat, dl.lng, dl.heading, vc.name as vehicle_name
+        SELECT u.id, u.full_name, u.rating, dl.lat, dl.lng, dl.heading,
+          vc.name as vehicle_name, vc.id as vehicle_category_id
         FROM driver_locations dl
         JOIN users u ON u.id = dl.driver_id
-        LEFT JOIN vehicle_categories vc ON vc.id::text = ${vehicleCategoryId as string || ''}
+        JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
         WHERE dl.is_online=true AND u.is_active=true AND u.is_locked=false
           AND u.current_trip_id IS NULL
+          AND u.verification_status = 'approved'
+          ${vcFilter}
           AND (dl.lat - ${Number(lat)})*(dl.lat - ${Number(lat)}) + (dl.lng - ${Number(lng)})*(dl.lng - ${Number(lng)}) < ${Number(radius) * Number(radius) / 10000}
         LIMIT 20
       `);
@@ -3814,7 +3822,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      const Razorpay = require("razorpay");
+      const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
@@ -3834,7 +3842,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (keySecret) {
-        const crypto = require("crypto");
         const expectedSig = crypto.createHmac("sha256", keySecret)
           .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
         if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
@@ -3861,7 +3868,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      const Razorpay = require("razorpay");
+      const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
@@ -3880,7 +3887,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (keySecret && razorpaySignature) {
-        const crypto = require("crypto");
         const expectedSig = crypto.createHmac("sha256", keySecret)
           .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
         if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
