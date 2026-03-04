@@ -3223,8 +3223,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       // Free the driver
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
-      // Track driver cancellation
-      await rawDb.execute(rawSql`UPDATE users SET cancelled_trips=COALESCE(cancelled_trips,0)+1 WHERE id=${driver.id}::uuid`);
 
       // Find next nearest available driver
       const nextDriverRes = await rawDb.execute(rawSql`
