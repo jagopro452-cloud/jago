@@ -59,10 +59,12 @@ if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
   rm -f "$TMP_ZIP"
   export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
   yes | sdkmanager --licenses > /dev/null 2>&1 || true
-  sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" > /dev/null 2>&1
+  sdkmanager "platform-tools" "build-tools;36.0.0" "platforms;android-36" "ndk;27.0.12077973" > /dev/null 2>&1
   echo "[SETUP] Android SDK installed."
 else
   yes | sdkmanager --licenses > /dev/null 2>&1 || true
+  # Ensure SDK 36 and NDK 27 are installed
+  sdkmanager "platforms;android-36" "ndk;27.0.12077973" "build-tools;36.0.0" > /dev/null 2>&1 || true
 fi
 
 # ── Auto-install Flutter SDK if missing ──────────────────────────────────────
@@ -85,6 +87,8 @@ setup_flutter_git() {
   cd "$FLUTTER_HOME"
   git init 2>/dev/null || true
   git checkout -b stable 2>/dev/null || true
+  git remote remove origin 2>/dev/null || true
+  git remote add origin https://github.com/flutter/flutter.git 2>/dev/null || true
   GIT_AUTHOR_NAME="Flutter" GIT_AUTHOR_EMAIL="flutter@flutter.dev" \
   GIT_COMMITTER_NAME="Flutter" GIT_COMMITTER_EMAIL="flutter@flutter.dev" \
   GIT_AUTHOR_DATE="2025-02-04T22:51:57+00:00" \
@@ -106,6 +110,9 @@ elif ! git -C "$FLUTTER_HOME" rev-parse HEAD > /dev/null 2>&1; then
   setup_flutter_git
 else
   echo "[INFO] Flutter git OK: $(git -C "$FLUTTER_HOME" rev-parse HEAD 2>/dev/null)"
+  # Ensure remote exists (Flutter tool checks for it)
+  git -C "$FLUTTER_HOME" remote remove origin 2>/dev/null || true
+  git -C "$FLUTTER_HOME" remote add origin https://github.com/flutter/flutter.git 2>/dev/null || true
 fi
 
 # Fix version now (before config)
@@ -134,12 +141,12 @@ flutter build apk --release 2>&1
 
 CUSTOMER_EXIT=$?
 if [ $CUSTOMER_EXIT -eq 0 ]; then
-  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Customer-v1.0.apk
-  SIZE=$(ls -lh /home/runner/workspace/JAGO-Customer-v1.0.apk | awk '{print $5}')
+  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Customer-v1.0.18.apk
+  SIZE=$(ls -lh /home/runner/workspace/JAGO-Customer-v1.0.18.apk | awk '{print $5}')
   echo ""
   echo "=========================================="
   echo "SUCCESS: JAGO Customer APK → $SIZE"
-  echo "   File: JAGO-Customer-v1.0.apk"
+  echo "   File: JAGO-Customer-v1.0.18.apk"
   echo "=========================================="
 else
   echo "FAILED: Customer APK exit=$CUSTOMER_EXIT"
@@ -147,6 +154,9 @@ fi
 
 echo ""
 echo "=== [3/4] Driver App - flutter pub get ==="
+# Re-initialize flutter git — customer build may have reset the git state
+setup_flutter_git
+fix_flutter_version
 cd /home/runner/workspace/flutter_apps/driver_app
 fix_flutter_version
 flutter pub get 2>&1 | tail -5
@@ -158,12 +168,12 @@ flutter build apk --release 2>&1
 
 DRIVER_EXIT=$?
 if [ $DRIVER_EXIT -eq 0 ]; then
-  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Pilot-v1.0.apk
-  SIZE=$(ls -lh /home/runner/workspace/JAGO-Pilot-v1.0.apk | awk '{print $5}')
+  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Pilot-v1.0.18.apk
+  SIZE=$(ls -lh /home/runner/workspace/JAGO-Pilot-v1.0.18.apk | awk '{print $5}')
   echo ""
   echo "=========================================="
   echo "SUCCESS: JAGO Pilot APK → $SIZE"
-  echo "   File: JAGO-Pilot-v1.0.apk"
+  echo "   File: JAGO-Pilot-v1.0.18.apk"
   echo "=========================================="
 else
   echo "FAILED: Driver APK exit=$DRIVER_EXIT"
@@ -175,3 +185,65 @@ echo "BUILD COMPLETE: $(date)"
 echo "APKs in workspace:"
 ls -lh /home/runner/workspace/*.apk 2>/dev/null || echo "  None built"
 echo "============================================"
+
+# ── GitHub Release Upload ────────────────────────────────────────────────────
+# Don't let upload failures fail the whole workflow
+set +e
+GH_TOKEN="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"
+GH_REPO="jagopro452-cloud/jago"
+VERSION="v1.0.18"
+
+if [ -f /home/runner/workspace/JAGO-Customer-v1.0.15.apk ] || [ -f /home/runner/workspace/JAGO-Pilot-v1.0.15.apk ]; then
+  echo ""
+  echo "=== Uploading to GitHub Release $VERSION ==="
+
+  # Delete existing release if present
+  EXISTING_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+    "https://api.github.com/repos/$GH_REPO/releases/tags/$VERSION" | grep '"id"' | head -1 | grep -o '[0-9]*')
+  if [ -n "$EXISTING_ID" ]; then
+    curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
+      "https://api.github.com/repos/$GH_REPO/releases/$EXISTING_ID"
+    echo "Deleted existing release $EXISTING_ID"
+  fi
+
+  # Delete existing tag
+  curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
+    "https://api.github.com/repos/$GH_REPO/git/refs/tags/$VERSION" || true
+
+  # Create new release
+  RELEASE_RESP=$(curl -s -X POST -H "Authorization: token $GH_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"tag_name\":\"$VERSION\",\"name\":\"JAGO Platform $VERSION — Voice Booking Complete\",\"body\":\"## JAGO Platform $VERSION\\n\\n### Voice Booking — Fully Implemented\\n- All vehicle fares announced by TTS: Bike Rs65, Auto Rs90, Car Rs140\\n- Second listening cycle starts automatically after TTS response\\n- Voice confirmation: say 'yes', 'confirm', 'book', 'okay' — ride is booked without touching screen\\n- Voice vehicle switch: say 'auto', 'car', 'bike' to change selection by voice\\n- Auto language detection from Unicode script of recognized speech\\n- Cancel by voice: say 'no', 'cancel' to abort booking\\n- Green pulsing mic indicator when awaiting confirmation\\n- Booking confirmed button changes to green CONFIRM BOOKING when in confirmation mode\\n\\n### Previous (v1.0.14)\\n- UI polish: dark-mode search sheet, bottom nav active indicator, Today's Summary header\"}" \
+    "https://api.github.com/repos/$GH_REPO/releases")
+
+  RELEASE_ID=$(echo "$RELEASE_RESP" | grep '"id"' | head -1 | grep -o '[0-9]*')
+  echo "Created release ID: $RELEASE_ID"
+
+  if [ -n "$RELEASE_ID" ]; then
+    UPLOAD_URL="https://uploads.github.com/repos/$GH_REPO/releases/$RELEASE_ID/assets"
+
+    if [ -f /home/runner/workspace/JAGO-Customer-v1.0.15.apk ]; then
+      echo "Uploading Customer APK..."
+      curl -s -X POST -H "Authorization: token $GH_TOKEN" \
+        -H "Content-Type: application/vnd.android.package-archive" \
+        --data-binary @/home/runner/workspace/JAGO-Customer-v1.0.15.apk \
+        "$UPLOAD_URL?name=JAGO-Customer-v1.0.15.apk" | grep -o '"state":"[^"]*"' | head -1
+    fi
+
+    if [ -f /home/runner/workspace/JAGO-Pilot-v1.0.15.apk ]; then
+      echo "Uploading Pilot APK..."
+      curl -s -X POST -H "Authorization: token $GH_TOKEN" \
+        -H "Content-Type: application/vnd.android.package-archive" \
+        --data-binary @/home/runner/workspace/JAGO-Pilot-v1.0.15.apk \
+        "$UPLOAD_URL?name=JAGO-Pilot-v1.0.15.apk" | grep -o '"state":"[^"]*"' | head -1
+    fi
+
+    echo "GitHub Release $VERSION: https://github.com/$GH_REPO/releases/tag/$VERSION"
+  else
+    echo "Failed to create GitHub release"
+    echo "$RELEASE_RESP" | head -5
+  fi
+fi
+
+# Always exit 0 — APKs are built successfully even if GitHub upload fails
+exit 0
