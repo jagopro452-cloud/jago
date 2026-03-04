@@ -16,12 +16,14 @@ class SocketService {
   final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectedController = StreamController<bool>.broadcast();
+  final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
   Stream<bool> get onConnectionChanged => _connectedController.stream;
+  Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -75,6 +77,11 @@ class SocketService {
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
+    // In-app chat message received
+    _socket!.on('trip:new_message', (data) {
+      _chatMessageController.add(Map<String, dynamic>.from(data));
+    });
+
     _socket!.connect();
   }
 
@@ -90,6 +97,17 @@ class SocketService {
     _socket!.emit('customer:cancel_trip', {'tripId': tripId});
   }
 
+  // Send in-app chat message
+  void sendChatMessage({required String tripId, required String message, required String senderName}) {
+    if (!_isConnected) return;
+    _socket!.emit('trip:send_message', {
+      'tripId': tripId,
+      'message': message,
+      'senderName': senderName,
+      'senderType': 'customer',
+    });
+  }
+
   void disconnect() {
     _socket?.disconnect();
     _socket = null;
@@ -103,5 +121,6 @@ class SocketService {
     _tripStatusController.close();
     _tripCancelledController.close();
     _connectedController.close();
+    _chatMessageController.close();
   }
 }
