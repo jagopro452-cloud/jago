@@ -593,52 +593,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(children: [
         _iconBtn(Icons.menu_rounded, () => _scaffoldKey.currentState?.openDrawer()),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: _surface,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: Colors.white.withOpacity(0.07), width: 1),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 4))],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 18, offset: const Offset(0, 4))],
             ),
             child: Row(children: [
-              // JAGO orange logo pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _jagoOrange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _jagoOrange.withOpacity(0.3), width: 1),
+              // JAGO orange logo pill with socket indicator badge
+              Stack(clipBehavior: Clip.none, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [_jagoOrange.withOpacity(0.18), _jagoOrange.withOpacity(0.06)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _jagoOrange.withOpacity(0.35), width: 1),
+                  ),
+                  child: const Text(
+                    'JAGO Pilot',
+                    style: TextStyle(color: _jagoOrange, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                  ),
                 ),
-                child: const Text(
-                  'JAGO Pilot',
-                  style: TextStyle(color: _jagoOrange, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                // Socket status badge on the pill
+                Positioned(
+                  top: -3, right: -3,
+                  child: Container(
+                    width: 9, height: 9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _socketConnected ? const Color(0xFF34D399) : const Color(0xFFF59E0B),
+                      border: Border.all(color: _surface, width: 1.5),
+                      boxShadow: [BoxShadow(
+                        color: (_socketConnected ? const Color(0xFF34D399) : const Color(0xFFF59E0B)).withOpacity(0.55),
+                        blurRadius: 5,
+                      )],
+                    ),
+                  ),
                 ),
-              ),
+              ]),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  '${_getTimeGreeting()}, ${_userName.split(' ').first}!',
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Socket connection indicator
-              Container(
-                width: 7, height: 7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _socketConnected ? const Color(0xFF34D399) : Colors.orange,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_socketConnected ? const Color(0xFF34D399) : Colors.orange).withOpacity(0.4),
-                      blurRadius: 4,
-                    )
-                  ],
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(
+                    '${_getTimeGreeting()}, ${_userName.split(' ').first}!',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_isOnline)
+                    Row(children: [
+                      Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 4),
+                        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF34D399))),
+                      Text('Online — trips enabled',
+                        style: TextStyle(color: const Color(0xFF34D399).withOpacity(0.85), fontSize: 10, fontWeight: FontWeight.w600)),
+                    ])
+                  else
+                    Text('Offline', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w500)),
+                ]),
               ),
             ]),
           ),
@@ -652,16 +668,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Stack(children: [
             Container(
               width: 46, height: 46,
-              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withOpacity(0.07))),
-              child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+              decoration: BoxDecoration(
+                color: _bg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.07)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3))],
+              ),
+              child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 22),
             ),
             if (_unreadNotifCount > 0)
               Positioned(
-                top: 6, right: 6,
+                top: 5, right: 5,
                 child: Container(
-                  width: 16, height: 16,
-                  decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                  width: 17, height: 17,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withOpacity(0.4), blurRadius: 4)],
+                  ),
                   child: Center(child: Text(
                     _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
                     style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
@@ -702,10 +726,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // Drag handle
         Container(
           width: 40, height: 4,
-          margin: const EdgeInsets.only(top: 10, bottom: 14),
+          margin: const EdgeInsets.only(top: 10, bottom: 10),
           decoration: BoxDecoration(
             gradient: LinearGradient(colors: [_jagoOrange.withOpacity(0.4), Colors.white.withOpacity(0.12)]),
             borderRadius: BorderRadius.circular(2)),
+        ),
+        // Quick earnings summary chips (always visible at top of panel)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Row(children: [
+            Expanded(child: _quickStatChip('Today\'s Earnings', '₹${_earningsToday.toStringAsFixed(0)}', Icons.currency_rupee_rounded, _jagoOrange)),
+            const SizedBox(width: 10),
+            Expanded(child: _quickStatChip('Trips Done', '$_tripsToday', Icons.route_rounded, const Color(0xFF34D399))),
+            const SizedBox(width: 10),
+            Expanded(child: _quickStatChip('Wallet', '₹${_walletBalance.toStringAsFixed(0)}', Icons.account_balance_wallet_rounded, const Color(0xFFFFD700))),
+          ]),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -816,11 +851,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
             const SizedBox(height: 16),
             _buildToggleBtn(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            if (!_isOnline) _buildOfflineTip(),
+            if (!_isOnline) const SizedBox(height: 12),
             _buildActionRow(),
             const SizedBox(height: 20),
           ]),
         ),
+      ]),
+    );
+  }
+
+  Widget _quickStatChip(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.12), color.withOpacity(0.04)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.22), width: 1),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 11, color: color.withOpacity(0.75)),
+          const SizedBox(width: 4),
+          Expanded(child: Text(label,
+            style: TextStyle(color: color.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+            maxLines: 1, overflow: TextOverflow.ellipsis)),
+        ]),
+        const SizedBox(height: 4),
+        Text(value,
+          style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+          maxLines: 1, overflow: TextOverflow.ellipsis),
       ]),
     );
   }
@@ -1021,43 +1084,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
+        padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
         decoration: BoxDecoration(
-          color: _surface,
+          gradient: LinearGradient(
+            colors: [_surface, const Color(0xFF152342)],
+            begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.18), blurRadius: 8, offset: const Offset(0, 2))],
+          border: Border.all(color: iconColor.withOpacity(0.15)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 10, offset: const Offset(0, 3))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Colored accent bar at top
             Container(
-              height: 3,
-              width: 32,
-              margin: const EdgeInsets.only(bottom: 8),
+              height: 3, width: 36,
+              margin: const EdgeInsets.only(bottom: 9),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [iconColor, iconColor.withOpacity(0.4)]),
+                gradient: LinearGradient(colors: [iconColor, iconColor.withOpacity(0.3)]),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Container(
-              width: 30, height: 30,
+              width: 34, height: 34,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [iconColor.withOpacity(0.18), iconColor.withOpacity(0.08)],
+                  colors: [iconColor.withOpacity(0.22), iconColor.withOpacity(0.08)],
                   begin: Alignment.topLeft, end: Alignment.bottomRight),
                 shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: iconColor.withOpacity(0.25), blurRadius: 6, offset: const Offset(0, 2))],
               ),
-              child: Icon(icon, size: 15, color: iconColor),
+              child: Icon(icon, size: 17, color: iconColor),
             ),
-            const SizedBox(height: 7),
-            Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
+            const SizedBox(height: 8),
+            Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+            const SizedBox(height: 3),
+            Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildOfflineTip() {
+    final tips = [
+      '⚡ Go Online to start receiving ride requests',
+      '💰 Pilots who start early earn more today',
+      '🎯 Tap Go Online — trips are waiting near you',
+      '🏆 Stay consistent — daily earnings add up!',
+    ];
+    final tip = tips[DateTime.now().minute % tips.length];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_jagoOrange.withOpacity(0.14), const Color(0xFF060D1E)],
+          begin: Alignment.centerLeft, end: Alignment.centerRight),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _jagoOrange.withOpacity(0.22)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [_jagoOrange.withOpacity(0.2), _jagoOrange.withOpacity(0.08)]),
+            shape: BoxShape.circle),
+          child: const Icon(Icons.lightbulb_outline_rounded, color: _jagoOrange, size: 19),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(tip,
+          style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: 12, fontWeight: FontWeight.w500, height: 1.4))),
+      ]),
     );
   }
 
