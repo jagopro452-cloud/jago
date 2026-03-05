@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class IncomingTripSheet extends StatefulWidget {
   final Map<String, dynamic> trip;
@@ -13,11 +15,13 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
   late AnimationController _ringCtrl;
   late AnimationController _slideCtrl;
   int _countdown = 30;
+  Timer? _vibrationTimer;
   late final _timer = Stream.periodic(const Duration(seconds: 1)).listen((_) {
     if (_countdown <= 0) { widget.onReject(); return; }
     setState(() => _countdown--);
   });
 
+  static const Color _orange = Color(0xFFFF6B35);
   static const Color _blue = Color(0xFF2563EB);
   static const Color _bg = Color(0xFF060D1E);
   static const Color _surface = Color(0xFF0D1B3E);
@@ -27,10 +31,35 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     super.initState();
     _ringCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 30))..forward();
     _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 450))..forward();
+    // STRONG initial alert: 3 rapid sound + haptic bursts
+    _playAlertBurst();
+    // Repeat every 1.5 seconds (double frequency vs before) for full 30s duration
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 1500), (t) {
+      if (_countdown <= 3) t.cancel();
+      if (mounted) _playAlertBurst();
+    });
+  }
+
+  void _playAlertBurst() {
+    // 3 rapid beeps + haptics with 150ms gaps for maximum alert effect
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.mediumImpact();
+      }
+    });
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.heavyImpact();
+      }
+    });
   }
 
   @override
-  void dispose() { _ringCtrl.dispose(); _slideCtrl.dispose(); _timer.cancel(); super.dispose(); }
+  void dispose() { _ringCtrl.dispose(); _slideCtrl.dispose(); _timer.cancel(); _vibrationTimer?.cancel(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +69,6 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     final dist = trip['estimatedDistance'] ?? '--';
     final fare = trip['estimatedFare'] ?? '--';
     final eta = trip['eta'] ?? 5;
-
     return SlideTransition(
       position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
           .animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut)),
@@ -71,6 +99,13 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
 
   Widget _buildTopBanner() {
     final urgency = _countdown <= 10;
+    final rawType = (widget.trip['type'] ?? widget.trip['tripType'] ?? widget.trip['trip_type'] ?? 'ride').toString().toLowerCase();
+    final isParcel = rawType.contains('parcel');
+    final isCargo = rawType.contains('cargo');
+    final typeEmoji = isCargo ? '🚛' : isParcel ? '📦' : '🚗';
+    final typeLabel = isCargo ? 'Cargo' : isParcel ? 'Parcel' : 'Ride';
+    final typeColor = isCargo ? const Color(0xFFF59E0B) : isParcel ? const Color(0xFF10B981) : _blue;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       decoration: BoxDecoration(
@@ -98,13 +133,30 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
                 ),
               ),
               const SizedBox(width: 8),
-              Text(urgency ? 'Expire అవుతోంది!' : 'New Trip Request!',
+              Text(urgency ? 'Expiring Soon!' : 'New Trip Request!',
                 style: TextStyle(
                   color: urgency ? const Color(0xFFF59E0B) : Colors.white,
                   fontSize: 20, fontWeight: FontWeight.w900)),
             ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: typeColor.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: typeColor.withOpacity(0.4)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(typeEmoji, style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 5),
+                  Text(typeLabel, style: TextStyle(
+                    color: typeColor, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                ]),
+              ),
+            ]),
             const SizedBox(height: 4),
-            Text('Accept చేయండి — ₹ earn చేయండి',
+            Text('Accept to earn more — every trip counts!',
               style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12, fontWeight: FontWeight.w500)),
           ]),
         ),
