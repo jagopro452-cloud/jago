@@ -530,22 +530,23 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Widget _buildBookForSomeoneSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       GestureDetector(
         onTap: () => setState(() { _bookForSomeone = !_bookForSomeone; }),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: _bookForSomeone ? _blue.withOpacity(0.06) : const Color(0xFFF8FAFF),
+            color: _bookForSomeone ? _blue.withOpacity(0.06) : (isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF)),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: _bookForSomeone ? _blue.withOpacity(0.3) : const Color(0xFFE8EFFF)),
+              color: _bookForSomeone ? _blue.withOpacity(0.3) : (isDark ? Colors.white12 : const Color(0xFFE8EFFF))),
           ),
           child: Row(children: [
             Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: _bookForSomeone ? _blue.withOpacity(0.12) : Colors.grey.shade100,
+                color: _bookForSomeone ? _blue.withOpacity(0.12) : (isDark ? Colors.white10 : Colors.grey.shade100),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(Icons.person_add_rounded,
@@ -556,7 +557,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               Text(_isParcel ? 'Book Parcel for Someone' : 'Book for Someone Else',
                 style: TextStyle(
                   fontWeight: FontWeight.w700, fontSize: 14,
-                  color: _bookForSomeone ? _blue : const Color(0xFF0F172A))),
+                  color: _bookForSomeone ? _blue : (isDark ? Colors.white : const Color(0xFF0F172A)))),
               const SizedBox(height: 2),
               Text(_isParcel ? 'Set sender & receiver details' : 'Enter passenger contact details',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
@@ -579,10 +580,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _blue.withOpacity(0.12)),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Builder(builder: (ctx) {
+            final isDarkLocal = Theme.of(ctx).brightness == Brightness.dark;
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(_isParcel ? 'Sender Details' : 'Passenger Details',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                color: Color(0xFF374151), letterSpacing: 0.5)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                color: isDarkLocal ? Colors.white70 : const Color(0xFF374151), letterSpacing: 0.5)),
             const SizedBox(height: 10),
             _bookingInputField(
               controller: _passengerNameCtrl,
@@ -599,9 +602,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             ),
             if (_isParcel) ...[
               const SizedBox(height: 14),
-              const Text('Receiver Details',
+              Text('Receiver Details',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Color(0xFF374151), letterSpacing: 0.5)),
+                  color: isDarkLocal ? Colors.white70 : const Color(0xFF374151), letterSpacing: 0.5)),
               const SizedBox(height: 10),
               _bookingInputField(
                 controller: _receiverNameCtrl,
@@ -634,7 +637,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 ]),
               ),
             ],
-          ]),
+          ]);
+          }),
         ),
       ],
     ]);
@@ -646,25 +650,26 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF0D1B3E) : Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE8EFFF)),
+        border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE8EFFF)),
       ),
       child: Row(children: [
         Padding(
           padding: const EdgeInsets.only(left: 10),
-          child: Icon(icon, size: 18, color: Colors.grey.shade400),
+          child: Icon(icon, size: 18, color: isDark ? Colors.white38 : Colors.grey.shade400),
         ),
         Expanded(
           child: TextField(
             controller: controller,
             keyboardType: keyboardType,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+            style: TextStyle(fontSize: 14, color: isDark ? Colors.white : const Color(0xFF0F172A)),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+              hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey.shade400, fontSize: 13),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             ),
@@ -675,9 +680,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Widget _buildPaymentSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Payment Method',
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF374151), letterSpacing: 0.2)),
+      Text('Payment Method',
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? Colors.white70 : const Color(0xFF374151), letterSpacing: 0.2)),
       const SizedBox(height: 10),
       Row(children: [
         Expanded(child: _payBtn('cash', Icons.payments_rounded, 'Cash', null)),
