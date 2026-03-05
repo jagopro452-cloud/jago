@@ -168,13 +168,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _connectSocket() {
     _socket.connect(ApiConfig.socketUrl).then((_) {
-      _driverAssignedSub = _socket.onDriverAssigned.listen((data) {
+      // IMPORTANT: Delay subscription by 2.5 seconds to avoid stale socket
+      // events from previous sessions causing immediate navigation away from home
+      Future.delayed(const Duration(milliseconds: 2500), () {
         if (!mounted) return;
-        final tripId = data['tripId']?.toString() ?? '';
-        if (tripId.isNotEmpty) {
-          Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
-        }
+        _driverAssignedSub = _socket.onDriverAssigned.listen((data) {
+          if (!mounted) return;
+          final tripId = data['tripId']?.toString() ?? '';
+          // Only navigate if the tripId matches our current active trip context
+          // This prevents stale socket events from navigating incorrectly
+          if (tripId.isNotEmpty) {
+            final activeTripId = _activeTrip?['id']?.toString() ?? '';
+            // Only navigate automatically if we have a matching active trip,
+            // OR if the trip was just assigned (activeTrip will be set by _checkActiveTrip)
+            if (activeTripId.isEmpty || activeTripId == tripId) {
+              Navigator.pushReplacement(context,
+                MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+            }
+          }
+        });
       });
     });
   }
