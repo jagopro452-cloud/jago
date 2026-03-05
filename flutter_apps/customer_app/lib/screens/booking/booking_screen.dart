@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
@@ -83,6 +84,18 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('suv')) return Icons.directions_car;
     if (n.contains('car')) return Icons.directions_car_filled;
     return Icons.directions_car;
+  }
+
+  static String _capacityForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('suv')) return '6 seats';
+    if (n.contains('car')) return '4 seats';
+    if (n.contains('auto')) return '3 seats';
+    if (n.contains('bike')) return '1 rider';
+    if (n.contains('cargo truck')) return 'Up to 1000 kg';
+    if (n.contains('cargo') || n.contains('tata ace')) return 'Up to 500 kg';
+    if (n.contains('parcel')) return 'Package delivery';
+    return '';
   }
 
   double get _distanceKm {
@@ -235,6 +248,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final data = jsonDecode(res.body);
         final tripId = data['trip']?['id'] ?? '';
         if (!mounted) return;
+        // Offer navigation to pickup location before going to tracking
+        await _offerNavigateToPickup();
+        if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(
           builder: (_) => TrackingScreen(tripId: tripId)));
       } else {
@@ -247,6 +263,106 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       _showSnack('Network error. Try again.', error: true);
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Offers Google Maps navigation to pickup location after booking is confirmed.
+  /// Shows a premium bottom sheet with "Navigate" and "Skip" options.
+  Future<void> _offerNavigateToPickup() async {
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pickupLat = widget.pickupLat;
+    final pickupLng = widget.pickupLng;
+    final pickupAddr = widget.pickup;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0D1B3E) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 30)],
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF16A34A), Color(0xFF15803D)]),
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withOpacity(0.35), blurRadius: 16)],
+            ),
+            child: const Icon(Icons.check_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 16),
+          Text('Ride Booked! 🎉',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF111827))),
+          const SizedBox(height: 8),
+          Text('Navigate to pickup location?',
+            style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey[600])),
+          const SizedBox(height: 6),
+          Text(pickupAddr,
+            style: const TextStyle(fontSize: 13, color: Color(0xFFFF6B35), fontWeight: FontWeight.w600),
+            maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white10 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                  ),
+                  child: Center(child: Text('Skip',
+                    style: TextStyle(fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white70 : Colors.grey[700]))),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  // Try Google Maps first, fallback to geo: URI
+                  final gmUrl = 'google.navigation:q=$pickupLat,$pickupLng&mode=d';
+                  final geoUrl = 'geo:$pickupLat,$pickupLng?q=$pickupLat,$pickupLng($pickupAddr)';
+                  final mapsUrl = 'https://maps.google.com/?daddr=$pickupLat,$pickupLng&directionsmode=driving';
+                  if (await canLaunchUrl(Uri.parse(gmUrl))) {
+                    await launchUrl(Uri.parse(gmUrl));
+                  } else if (await canLaunchUrl(Uri.parse(geoUrl))) {
+                    await launchUrl(Uri.parse(geoUrl));
+                  } else {
+                    await launchUrl(Uri.parse(mapsUrl), mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF1E6DE5), Color(0xFF1244A2)]),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: const Color(0xFF1E6DE5).withOpacity(0.35), blurRadius: 12)],
+                  ),
+                  child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text('Navigate Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+                  ])),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
   }
 
   Future<void> _handleOnConfirm() async {
@@ -928,11 +1044,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final i = entry.key;
         final f = entry.value;
         final isSelected = i == _selectedFareIndex;
-        final name = f['vehicleCategoryName']?.toString() ?? f['name']?.toString() ?? 'Vehicle';
+        final name = f['vehicleCategoryName']?.toString() ?? f['vehicleName']?.toString() ?? f['name']?.toString() ?? 'Vehicle';
         final fareVal = (f['estimatedFare'] ?? 0).toDouble();
         final time = f['estimatedTime']?.toString() ?? '~5 min';
         final displayFare = isSelected ? (fareVal - _promoDiscount).clamp(0.0, double.infinity) : fareVal;
         final tag = _getVehicleTag(i);
+        final minFareVal = (f['minimumFare'] ?? 0).toDouble();
+        final farePerKmVal = (f['farePerKm'] ?? 0).toDouble();
         return GestureDetector(
           key: ValueKey(i),
           onTap: () => setState(() => _selectedFareIndex = i),
@@ -971,15 +1089,28 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                       ],
                     ]),
                     const SizedBox(height: 5),
-                    Row(children: [
-                      Icon(Icons.route_rounded, size: 11, color: Colors.grey[400]),
-                      const SizedBox(width: 3),
-                      Text('${_distanceKm.toStringAsFixed(1)} km',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-                      const SizedBox(width: 8),
-                      Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
-                      const SizedBox(width: 3),
-                      Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                    Wrap(spacing: 8, runSpacing: 4, children: [
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.route_rounded, size: 11, color: Colors.grey[400]),
+                        const SizedBox(width: 3),
+                        Text('${_distanceKm.toStringAsFixed(1)} km',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                      ]),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
+                        const SizedBox(width: 3),
+                        Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                      ]),
+                      if (_capacityForVehicle(name).isNotEmpty)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.people_alt_rounded, size: 11,
+                            color: isSelected ? _jagoOrange.withOpacity(0.7) : Colors.grey[400]),
+                          const SizedBox(width: 3),
+                          Text(_capacityForVehicle(name),
+                            style: TextStyle(fontSize: 11,
+                              color: isSelected ? _jagoOrange.withOpacity(0.85) : Colors.grey[500],
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400)),
+                        ]),
                     ]),
                   ])),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -991,6 +1122,19 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                         style: const TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(time, style: TextStyle(fontSize: 11, color: textSub)),
+                    if (minFareVal > 0) ...[
+                      const SizedBox(height: 2),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.info_outline_rounded, size: 9, color: Colors.grey[400]),
+                        const SizedBox(width: 2),
+                        Text('Min ₹${minFareVal.toStringAsFixed(0)}',
+                          style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+                      ]),
+                    ],
+                    if (farePerKmVal > 0) ...[
+                      Text('₹${farePerKmVal.toStringAsFixed(0)}/km',
+                        style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+                    ],
                   ]),
                   const SizedBox(width: 28),
                 ]),
@@ -1022,36 +1166,142 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white54 : Colors.grey.shade600;
+
+    final baseFare = (fare['baseFare'] ?? 0).toDouble();
+    final distanceFare = (fare['distanceFare'] ?? 0).toDouble();
+    final timeFare = (fare['timeFare'] ?? 0).toDouble();
+    final helperCharge = (fare['helperCharge'] ?? 0).toDouble();
+    final gst = (fare['gst'] ?? 0).toDouble();
+    final minFare = (fare['minimumFare'] ?? 0).toDouble();
+    final farePerKm = (fare['farePerKm'] ?? 0).toDouble();
+    final billableKm = (fare['billableKm'] ?? _distanceKm).toDouble();
+    final subtotal = (fare['subtotal'] ?? (baseFare + distanceFare + timeFare)).toDouble();
+    final isMinFareApplied = minFare > 0 && subtotal <= minFare + 0.01;
+    final isNight = fare['isNightCharge'] == true;
+
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderCol),
       ),
       child: Column(children: [
-        Row(children: [
-          Icon(Icons.receipt_long_rounded, size: 15, color: textSub),
-          const SizedBox(width: 6),
-          Text('Fare Breakdown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textSub)),
-          const Spacer(),
-          Text('Incl. GST', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
-        ]),
-        const SizedBox(height: 10),
-        _fareRow('Base Fare', '₹${fare['baseFare'] ?? 0}', textSub: textSub),
-        _fareRow('Distance (${_distanceKm.toStringAsFixed(1)} km)', '₹${fare['distanceFare'] ?? 0}', textSub: textSub),
-        if ((fare['helperCharge'] ?? 0) > 0)
-          _fareRow('Helper Charge', '₹${fare['helperCharge']}', textSub: textSub),
-        _fareRow('GST (5%)', '₹${fare['gst'] ?? 0}', textSub: textSub),
-        if (_promoDiscount > 0)
-          _fareRow('Promo Discount', '-₹${_promoDiscount.toInt()}', positive: true, textSub: textSub),
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
+        // Header
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          decoration: BoxDecoration(
+            color: _jagoOrange.withOpacity(0.06),
+            borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
+            border: Border(bottom: BorderSide(color: borderCol)),
+          ),
           child: Row(children: [
-            Text('Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textMain)),
+            const Icon(Icons.receipt_long_rounded, size: 16, color: _jagoOrange),
+            const SizedBox(width: 8),
+            Text(_isParcel ? 'Delivery Fare Details' : 'Fare Breakdown',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _jagoOrange)),
             const Spacer(),
-            Text('₹${_finalFare.toStringAsFixed(0)}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: _jagoOrange)),
+            if (isMinFareApplied)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E6DE5).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF1E6DE5).withOpacity(0.3)),
+                ),
+                child: const Text('Min fare', style: TextStyle(
+                  fontSize: 10, color: Color(0xFF1E6DE5), fontWeight: FontWeight.w800)),
+              )
+            else if (isNight)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+                ),
+                child: const Text('Night fare', style: TextStyle(
+                  fontSize: 10, color: Color(0xFF8B5CF6), fontWeight: FontWeight.w800)),
+              )
+            else
+              Text('Incl. GST', style: TextStyle(fontSize: 10, color: Colors.grey[400], fontWeight: FontWeight.w500)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(children: [
+            // Base fare row with rate info
+            _fareRow('Base Fare', '₹${baseFare.toStringAsFixed(0)}', textSub: textSub),
+            if (farePerKm > 0 && billableKm > 0) ...[
+              _fareRow(
+                '${billableKm.toStringAsFixed(1)} km × ₹${farePerKm.toStringAsFixed(0)}/km',
+                '₹${distanceFare.toStringAsFixed(0)}',
+                textSub: textSub,
+              ),
+            ] else if (distanceFare > 0)
+              _fareRow('Distance (${_distanceKm.toStringAsFixed(1)} km)',
+                '₹${distanceFare.toStringAsFixed(0)}', textSub: textSub),
+            if (timeFare > 0)
+              _fareRow('Time Charge', '₹${timeFare.toStringAsFixed(0)}', textSub: textSub),
+            // Parcel-specific: helper charge (Porter style)
+            if (_isParcel && helperCharge > 0)
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.person_2_rounded, size: 13, color: Color(0xFF10B981)),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text('Helper Charge (loading/unloading)',
+                    style: TextStyle(fontSize: 11, color: textSub))),
+                  Text('₹${helperCharge.toStringAsFixed(0)}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
+                ]),
+              )
+            else if (!_isParcel && helperCharge > 0)
+              _fareRow('Helper Charge', '₹${helperCharge.toStringAsFixed(0)}', textSub: textSub),
+            // Night multiplier
+            if (isNight) ...[
+              const SizedBox(height: 2),
+              Row(children: [
+                const Icon(Icons.nightlight_round, size: 12, color: Color(0xFF8B5CF6)),
+                const SizedBox(width: 5),
+                Text('Night fare applies (1.0x–1.25x)',
+                  style: TextStyle(fontSize: 11, color: textSub, fontStyle: FontStyle.italic)),
+              ]),
+            ],
+            // Minimum fare note
+            if (minFare > 0) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                Icon(Icons.info_outline_rounded, size: 12, color: Colors.grey[400]),
+                const SizedBox(width: 5),
+                Text('Minimum fare: ₹${minFare.toStringAsFixed(0)}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+              ]),
+            ],
+            Divider(height: 18, color: borderCol, thickness: 1),
+            _fareRow('GST (5%)', '₹${gst.toStringAsFixed(0)}', textSub: textSub),
+            if (_promoDiscount > 0)
+              _fareRow('Promo Discount', '-₹${_promoDiscount.toInt()}', positive: true, textSub: textSub),
+            const SizedBox(height: 8),
+            // Total row — bold, large, orange
+            Row(children: [
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Total Fare', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: textMain)),
+                if (minFare > 0 && isMinFareApplied)
+                  Text('Min fare applied', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+              ]),
+              const Spacer(),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('₹${_finalFare.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _jagoOrange)),
+                Text('incl. GST', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+              ]),
+            ]),
           ]),
         ),
       ]),
@@ -1063,8 +1313,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(children: [
-        Text(label, style: TextStyle(fontSize: 12, color: sub)),
-        const Spacer(),
+        Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: sub))),
         Text(value, style: TextStyle(fontSize: 12,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
           color: positive ? _green : sub)),
