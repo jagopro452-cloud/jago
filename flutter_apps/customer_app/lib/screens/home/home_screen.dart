@@ -378,17 +378,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       key: _scaffoldKey,
       backgroundColor: scaffoldBg,
       drawer: _buildDrawer(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
-        backgroundColor: _jagoOrange,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.mic_rounded, size: 22),
-        label: const Text('Voice Book',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        tooltip: 'Book by voice',
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: SafeArea(
         child: Column(children: [
           _buildTopSearchBar(isDark, cardBg, textColor),
@@ -1208,28 +1197,66 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBottomNav(bool isDark, Color cardBg, Color textColor) {
+    final iconColor = isDark ? Colors.white38 : const Color(0xFF9CA3AF);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: cardBg,
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2))
+            color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
         ],
       ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-        _navItem(Icons.home_filled, 'Home', 0, textColor),
-        _navItem(Icons.history, 'Activity', 1, textColor),
-        _navItem(Icons.account_balance_wallet, 'Wallet', 2, textColor),
-        _navItem(Icons.person, 'Profile', 3, textColor),
-      ]),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _navCircleItem(Icons.home_rounded, 'Home', 0, iconColor, isDark),
+              _navCircleItem(Icons.receipt_long_rounded, 'Trips', 1, iconColor, isDark),
+              // Center voice button — raised orange circle
+              GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [_jagoOrange, Color(0xFFFF8C5A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _jagoOrange.withOpacity(0.45),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
+                ),
+              ),
+              _navCircleItem(Icons.account_balance_wallet_rounded, 'Wallet', 2, iconColor, isDark),
+              _navCircleItem(Icons.person_rounded, 'Profile', 3, iconColor, isDark),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _navItem(IconData icon, String label, int index, Color textColor) {
+  Widget _navCircleItem(IconData icon, String label, int index, Color iconColor, bool isDark) {
     final active = _navIndex == index;
+    final activeBg = isDark ? _jagoOrange.withOpacity(0.15) : _jagoOrange.withOpacity(0.1);
     return GestureDetector(
       onTap: () {
         setState(() => _navIndex = index);
@@ -1246,23 +1273,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          width: active ? 24 : 0,
-          height: 3,
-          margin: const EdgeInsets.only(bottom: 4),
+          width: 40,
+          height: 32,
           decoration: BoxDecoration(
-            color: _jagoOrange,
-            borderRadius: BorderRadius.circular(2),
+            color: active ? activeBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: active ? _jagoOrange : iconColor,
           ),
         ),
-        Icon(icon,
-          color: active ? _jagoOrange : textColor.withOpacity(0.4),
-          size: active ? 24 : 22),
-        const SizedBox(height: 3),
-        Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                color: active ? _jagoOrange : textColor.withOpacity(0.4))),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? _jagoOrange : iconColor,
+          ),
+        ),
       ]),
     );
   }
