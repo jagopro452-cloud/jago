@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<dynamic> _banners = [];
   List<dynamic> _savedPlaces = [];
   List<Map<String, dynamic>> _recentTrips = [];
+  Map<String, dynamic>? _activeTrip;
   StreamSubscription? _driverAssignedSub;
   int _navIndex = 0;
   late AnimationController _fadeCtrl;
@@ -80,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadRecentTrips();
     _connectSocket();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
   }
 
   Future<void> _fetchUnreadCount() async {
@@ -141,6 +143,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (!mounted) return;
           Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkActiveTrip() async {
+    try {
+      final token = await AuthService.getToken();
+      final r = await http.get(Uri.parse(ApiConfig.activeTrip),
+        headers: {'Authorization': 'Bearer $token'});
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body);
+        final trip = data['trip'] as Map<String, dynamic>?;
+        if (trip != null) {
+          final status = trip['currentStatus']?.toString() ?? '';
+          if (status != 'completed' && status != 'cancelled') {
+            setState(() => _activeTrip = trip);
+          }
         }
       }
     } catch (_) {}
@@ -378,6 +398,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (_activeTrip != null)
+                    _buildActiveTripBanner(isDark),
                   _buildGreeting(textColor),
                   if (_recentTrips.isNotEmpty || _savedPlaces.isNotEmpty)
                     _buildRecentSection(cardBg, textColor),
@@ -391,6 +413,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           _buildBottomNav(isDark, cardBg, textColor),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildActiveTripBanner(bool isDark) {
+    final trip = _activeTrip!;
+    final status = trip['currentStatus']?.toString() ?? 'accepted';
+    final tripId = trip['id']?.toString() ?? '';
+    final driverName = trip['driverName']?.toString() ?? 'your Pilot';
+    final dest = trip['destinationAddress']?.toString() ?? 'destination';
+
+    final statusLabel = {
+      'accepted': 'Pilot is on the way',
+      'driver_assigned': 'Pilot assigned',
+      'arrived': 'Pilot has arrived!',
+      'in_progress': 'Ride in progress',
+    }[status] ?? 'Ride active';
+
+    final isArrived = status == 'arrived';
+    final isInProgress = status == 'in_progress';
+    final bannerColor = isArrived ? const Color(0xFF16A34A) : isInProgress ? const Color(0xFF1E6DE5) : const Color(0xFFFF6B35);
+
+    return GestureDetector(
+      onTap: () => Navigator.pushReplacement(context,
+        MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId))),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [bannerColor, bannerColor.withOpacity(0.75)],
+            begin: Alignment.centerLeft, end: Alignment.centerRight),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [BoxShadow(color: bannerColor.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 4))],
+        ),
+        child: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(statusLabel,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+            Text('$driverName → ${dest.length > 30 ? '${dest.substring(0, 28)}...' : dest}',
+              style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 11, fontWeight: FontWeight.w500)),
+          ])),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10)),
+            child: const Text('Track →', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+          ),
         ]),
       ),
     );
