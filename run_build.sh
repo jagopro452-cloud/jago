@@ -141,12 +141,12 @@ flutter build apk --release 2>&1
 
 CUSTOMER_EXIT=$?
 if [ $CUSTOMER_EXIT -eq 0 ]; then
-  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Customer-v1.0.19.apk
-  SIZE=$(ls -lh /home/runner/workspace/JAGO-Customer-v1.0.19.apk | awk '{print $5}')
+  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Customer-v1.0.20.apk
+  SIZE=$(ls -lh /home/runner/workspace/JAGO-Customer-v1.0.20.apk | awk '{print $5}')
   echo ""
   echo "=========================================="
   echo "SUCCESS: JAGO Customer APK → $SIZE"
-  echo "   File: JAGO-Customer-v1.0.19.apk"
+  echo "   File: JAGO-Customer-v1.0.20.apk"
   echo "=========================================="
 else
   echo "FAILED: Customer APK exit=$CUSTOMER_EXIT"
@@ -168,12 +168,12 @@ flutter build apk --release 2>&1
 
 DRIVER_EXIT=$?
 if [ $DRIVER_EXIT -eq 0 ]; then
-  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Pilot-v1.0.19.apk
-  SIZE=$(ls -lh /home/runner/workspace/JAGO-Pilot-v1.0.19.apk | awk '{print $5}')
+  cp build/app/outputs/flutter-apk/app-release.apk /home/runner/workspace/JAGO-Pilot-v1.0.20.apk
+  SIZE=$(ls -lh /home/runner/workspace/JAGO-Pilot-v1.0.20.apk | awk '{print $5}')
   echo ""
   echo "=========================================="
   echo "SUCCESS: JAGO Pilot APK → $SIZE"
-  echo "   File: JAGO-Pilot-v1.0.19.apk"
+  echo "   File: JAGO-Pilot-v1.0.20.apk"
   echo "=========================================="
 else
   echo "FAILED: Driver APK exit=$DRIVER_EXIT"
