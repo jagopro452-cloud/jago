@@ -1216,7 +1216,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: Center(child: Text('v1.0.15 • MindWhile IT Solutions',
+              child: Center(child: Text('v1.0.20 • MindWheel IT Solutions',
                 style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10))),
             ),
           ]),
