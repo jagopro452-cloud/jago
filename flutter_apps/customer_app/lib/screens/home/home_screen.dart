@@ -601,18 +601,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     MaterialPageRoute(
                         builder: (_) => const NotificationsScreen()))
                 .then((_) => _fetchUnreadCount()),
-            child: Stack(children: [
-              Icon(Icons.notifications_outlined, color: textColor, size: 26),
+            child: Stack(clipBehavior: Clip.none, children: [
+              Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                ),
+                child: Icon(Icons.notifications_rounded, color: textColor.withOpacity(0.8), size: 20),
+              ),
               if (_unreadNotifCount > 0)
                 Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: const BoxDecoration(
-                          color: Colors.red, shape: BoxShape.circle),
+                  top: -4, right: -4,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withOpacity(0.4), blurRadius: 4)],
+                    ),
+                    child: Center(child: Text(
+                      _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
                     )),
+                  ),
+                ),
             ]),
           ),
         ]),
