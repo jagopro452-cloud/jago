@@ -198,26 +198,27 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       'Changed travel plans',
       'Other reason',
     ];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? const Color(0xFF060D1E) : Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2))),
+            decoration: BoxDecoration(color: isDark ? Colors.white24 : Colors.grey[200], borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Row(children: [
             Container(padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 20)),
             const SizedBox(width: 12),
-            const Text('Cancel Reason', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+            Text('Cancel Reason', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDark ? Colors.white : const Color(0xFF111827))),
           ]),
           const SizedBox(height: 16),
           ...reasons.map((r) => ListTile(
-            title: Text(r, style: const TextStyle(fontSize: 14, color: Color(0xFF374151), fontWeight: FontWeight.w500)),
+            title: Text(r, style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : const Color(0xFF374151), fontWeight: FontWeight.w500)),
             leading: Icon(Icons.chevron_right_rounded, color: Colors.grey[400], size: 18),
             contentPadding: EdgeInsets.zero,
             dense: true,
@@ -240,12 +241,19 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final actualFare = trip?['actualFare'] ?? trip?['actual_fare'];
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelBg = isDark ? const Color(0xFF060D1E) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF0D1B3E) : Colors.white;
+    final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSub = isDark ? Colors.white54 : const Color(0xFF374151);
+
     return WillPopScope(
       onWillPop: () async {
         if (_status == 'completed' || _status == 'cancelled') return true;
         return false;
       },
       child: Scaffold(
+        backgroundColor: isDark ? const Color(0xFF060D1E) : Colors.white,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -262,15 +270,15 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             bottom: 0, left: 0, right: 0,
             child: Container(
               constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.62),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 24)],
+              decoration: BoxDecoration(
+                color: panelBg,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [BoxShadow(color: isDark ? Colors.black54 : const Color(0x22000000), blurRadius: 24)],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 40, height: 4,
                   margin: const EdgeInsets.only(top: 10, bottom: 4),
-                  decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(2))),
+                  decoration: BoxDecoration(color: isDark ? Colors.white24 : Colors.grey[200], borderRadius: BorderRadius.circular(2))),
                 Flexible(
                   child: SingleChildScrollView(
                     physics: const ClampingScrollPhysics(),
@@ -428,16 +436,19 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildDriverCard(String name, String? phone, dynamic rating) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final driverModel = _trip?['driverVehicleModel'] ?? '';
     final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
     final vehicleName = _trip?['vehicleName'] ?? '';
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
+          colors: isDark
+            ? [const Color(0xFF0D1B3E), const Color(0xFF111F4A)]
+            : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _blue.withOpacity(0.15), width: 1.5),
+        border: Border.all(color: _blue.withOpacity(isDark ? 0.3 : 0.15), width: 1.5),
         boxShadow: [BoxShadow(color: _blue.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))],
       ),
       child: Column(children: [
@@ -458,14 +469,14 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
-                color: Color(0xFF0F172A), letterSpacing: -0.3)),
+              Text(name, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
+                color: isDark ? Colors.white : const Color(0xFF0F172A), letterSpacing: -0.3)),
               const SizedBox(height: 3),
               Row(children: [
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
                 const SizedBox(width: 3),
                 Text(rating?.toString() ?? '5.0',
-                  style: const TextStyle(color: Color(0xFF374151), fontSize: 12, fontWeight: FontWeight.w700)),
+                  style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF374151), fontSize: 12, fontWeight: FontWeight.w700)),
                 if (vehicleName.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Container(
@@ -619,10 +630,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildOtpBox(String otp) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: isDark ? const Color(0xFF1A1200) : const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.orange.withOpacity(0.35), width: 1.5),
       ),
@@ -639,7 +651,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           const Text('Share this OTP with Pilot',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Colors.orange)),
           Text(otp,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Color(0xFF111827), letterSpacing: 10)),
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF111827), letterSpacing: 10)),
         ])),
         GestureDetector(
           onTap: () {
@@ -692,6 +704,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCompletedCard(dynamic actualFare) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(children: [
       Container(
         padding: const EdgeInsets.all(20),
@@ -706,8 +719,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             decoration: BoxDecoration(color: _green.withOpacity(0.1), shape: BoxShape.circle),
             child: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 32)),
           const SizedBox(height: 10),
-          const Text('Trip Completed! 🎉',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF111827))),
+          Text('Trip Completed! 🎉',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: isDark ? Colors.white : const Color(0xFF111827))),
           if (actualFare != null) ...[
             const SizedBox(height: 4),
             Text('₹$actualFare',
@@ -768,6 +781,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCancelledCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(children: [
       Container(
         padding: const EdgeInsets.all(16),
@@ -781,8 +795,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), shape: BoxShape.circle),
             child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 22)),
           const SizedBox(width: 12),
-          const Expanded(child: Text('Trip cancelled. Sorry for the inconvenience.',
-            style: TextStyle(color: Color(0xFF374151), fontSize: 13, fontWeight: FontWeight.w500))),
+          Expanded(child: Text('Trip cancelled. Sorry for the inconvenience.',
+            style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF374151), fontSize: 13, fontWeight: FontWeight.w500))),
         ]),
       ),
       const SizedBox(height: 12),
