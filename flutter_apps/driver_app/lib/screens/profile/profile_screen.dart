@@ -809,7 +809,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildDriverLanguageTile() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : const Color(0xFF111827);
-    final subtextColor = isDark ? Colors.white45 : Colors.grey.shade500;
+    final subtextColor = isDark ? Colors.white54 : Colors.grey.shade500;
     final currentLang = L.supportedLanguages.firstWhere(
       (l) => l['code'] == L.lang,
       orElse: () => L.supportedLanguages.first,
