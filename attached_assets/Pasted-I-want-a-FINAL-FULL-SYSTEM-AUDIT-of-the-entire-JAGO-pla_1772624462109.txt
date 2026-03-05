@@ -1,0 +1,283 @@
+I want a FINAL FULL SYSTEM AUDIT of the entire JAGO platform.
+
+This is NOT a small bug check. This is a COMPLETE PRODUCTION READINESS VERIFICATION.
+
+Understand clearly:
+
+This application will go LIVE. It is NOT a demo or test project.
+
+So I need you to audit EVERYTHING and confirm if the system is truly stable and production ready.
+
+-------------------------------------
+
+CHECK THE COMPLETE SYSTEM:
+
+Backend server
+Database
+Flutter Customer App
+Flutter Pilot (Driver) App
+Admin Panel
+Payments
+Wallet system
+Ride matching
+Parcel system
+Cargo system
+Voice booking system
+Revenue models
+Security
+
+Everything must be verified.
+
+-------------------------------------
+
+1. BACKEND ARCHITECTURE CHECK
+
+Audit the backend completely.
+
+Verify:
+
+• No runtime errors
+• No broken routes
+• No duplicate ports
+• No memory leaks
+• No infinite loops
+• No slow initialization
+• No blocking operations
+
+Server must start cleanly and respond quickly.
+
+Health endpoint must return 200 instantly.
+
+-------------------------------------
+
+2. DATABASE AUDIT
+
+Verify PostgreSQL database.
+
+Check:
+
+• Foreign key integrity
+• No duplicate records
+• Wallet transactions consistency
+• Trip lifecycle integrity
+• Driver wallet deductions correct
+• Commission calculations correct
+• Subscription model logic correct
+• Negative wallet lock logic correct
+
+Ensure all queries are optimized.
+
+-------------------------------------
+
+3. PAYMENT SYSTEM
+
+Audit Razorpay integration.
+
+Verify:
+
+• Order creation
+• Signature verification
+• Webhook handling
+• Idempotency protection (duplicate payment prevention)
+• Wallet crediting
+• Ride payment confirmation
+
+No payment duplication must be possible.
+
+-------------------------------------
+
+4. DRIVER MATCHING SYSTEM
+
+Verify ride matching system.
+
+Test:
+
+Customer books ride
+Driver receives request
+Driver accepts
+Trip starts
+Trip completes
+
+Verify:
+
+Socket events
+Auto reassignment
+Timeout logic
+Driver rejection handling
+
+Ensure no stuck trips.
+
+-------------------------------------
+
+5. PARCEL + CARGO SYSTEM
+
+Verify parcel booking.
+
+Check:
+
+Pickup OTP
+Delivery OTP
+Receiver validation
+Cargo type selection
+Helper toggle
+Fare calculation
+
+Ensure payload matches backend.
+
+-------------------------------------
+
+6. DRIVER WALLET SYSTEM
+
+Audit driver wallet system.
+
+Verify:
+
+Recharge flow
+Deduction logic
+Commission model
+Subscription model
+Platform fee
+GST calculation
+Insurance deduction
+
+Test negative wallet lock.
+
+-------------------------------------
+
+7. SECURITY AUDIT
+
+Perform full security scan.
+
+Check:
+
+SQL injection
+Duplicate payment attacks
+Unauthorized API access
+JWT/session security
+Input validation
+Document upload validation
+
+Confirm:
+
+No vulnerabilities.
+
+-------------------------------------
+
+8. FLUTTER APPS AUDIT
+
+Audit both apps.
+
+Customer App
+Pilot App
+
+Check:
+
+No crashes
+No UI overflow
+No stuck dialogs
+No navigation loops
+No broken API calls
+No missing fields
+
+Ensure UI flows match backend logic.
+
+-------------------------------------
+
+9. DRIVER REGISTRATION SYSTEM
+
+Verify onboarding flow.
+
+Driver details
+License upload
+Vehicle documents
+Admin approval
+
+Drivers must not go online without approval.
+
+-------------------------------------
+
+10. VOICE BOOKING SYSTEM
+
+Verify voice booking.
+
+Check:
+
+Speech recognition
+Language detection
+Geocoding
+Booking confirmation
+
+Voice flow must work correctly.
+
+-------------------------------------
+
+11. ADMIN PANEL
+
+Audit admin panel.
+
+Verify:
+
+Driver management
+Revenue model settings
+Trip monitoring
+Driver bans
+Fare configuration
+Zone management
+
+All CRUD operations must work.
+
+-------------------------------------
+
+12. REAL TIME EVENTS
+
+Verify Socket.IO events.
+
+trip:new_request
+trip:driver_assigned
+trip:status_update
+trip:timeout
+trip:cancelled
+wallet:recharged
+
+Ensure no stale sockets.
+
+-------------------------------------
+
+13. PERFORMANCE TEST
+
+Simulate multiple bookings.
+
+Ensure system handles concurrent users.
+
+No crashes or race conditions.
+
+-------------------------------------
+
+FINAL RESULT REQUIRED
+
+After completing the FULL audit, respond ONLY with one of the following:
+
+OPTION A:
+
+"The JAGO platform has been fully audited.  
+No bugs, crashes, security vulnerabilities, or blocking issues were found.  
+The system is stable and SAFE for production launch."
+
+OR
+
+OPTION B:
+
+"The JAGO platform still contains critical issues and is NOT ready for production.  
+The following issues must be fixed before launch:"
+
+List all issues clearly.
+
+-------------------------------------
+
+IMPORTANT:
+
+Do NOT give assumptions.
+
+Verify everything with real API calls and database checks.
+
+This is a production system and must be treated seriously.

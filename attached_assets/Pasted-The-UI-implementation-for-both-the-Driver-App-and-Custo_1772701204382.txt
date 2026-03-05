@@ -1,0 +1,85 @@
+The UI implementation for both the Driver App and Customer App is already fully complete and polished.
+
+Do NOT modify any UI layout, colors, spacing, styles, animations, or components.
+
+All visual elements described in T001 and T002 are already implemented and verified.
+
+Your task now is to implement the AI intelligence layer and backend improvements.
+
+FOCUS AREAS
+
+1. AI VOICE BOOKING
+   Enable the microphone button on the customer home screen to support voice booking.
+
+Voice flow:
+
+* User taps mic
+* Capture voice
+* Convert speech to text
+* Detect user intent
+* Extract pickup and destination
+* Trigger ride search
+
+Example commands:
+"Book a bike to railway station"
+"Send parcel to this address"
+"Find nearby drivers"
+
+2. AI DRIVER MATCHING SYSTEM
+   Improve the driver allocation algorithm using intelligent logic:
+
+* nearest distance
+* driver rating
+* driver acceptance speed
+* driver availability
+* traffic conditions
+
+Ensure the best driver is selected first.
+
+3. REAL-TIME DRIVER TRACKING
+   Improve real-time location updates:
+
+* driver location refresh every few seconds
+* smooth map movement
+* accurate ETA calculation
+
+4. AI SMART SUGGESTIONS
+   Implement smart suggestions on the customer home screen:
+
+* frequent destinations
+* recent rides
+* predicted daily trips
+
+Example suggestion:
+"You usually go to office at 9 AM. Book now?"
+
+5. AI SAFETY MONITORING
+   Add ride monitoring features:
+
+* route deviation detection
+* abnormal stop detection
+* inactivity alerts
+* SOS emergency triggers
+
+6. DEMAND HEATMAP FOR DRIVERS
+   Create a demand heatmap system to show high demand areas and notify nearby drivers.
+
+7. PERFORMANCE OPTIMIZATION
+   Improve:
+
+* driver search speed
+* ride request delivery
+* API response time
+* database query performance
+
+8. SYSTEM STABILITY
+   Ensure the system can handle many simultaneous ride requests without delays.
+
+FINAL OUTPUT
+
+After implementation provide:
+
+1. list of AI features implemented
+2. list of modified files
+3. explanation of the new AI architecture
+4. recommended future AI features

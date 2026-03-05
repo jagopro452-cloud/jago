@@ -1,0 +1,224 @@
+This is a REAL production mobility platform, not a demo project.
+
+You must stop assuming the system is working and perform a COMPLETE SYSTEM AUDIT of the JAGO platform.
+
+Current problems observed in the Flutter apps:
+
+1) DRIVER ONLINE ISSUE
+Driver app shows:
+"Session expired" when clicking ONLINE.
+
+This is unacceptable.
+
+You must verify:
+
+- Driver authentication token
+- Session expiry logic
+- Driver online API
+- Driver status update in database
+- Socket connection for driver availability
+
+When driver clicks ONLINE:
+
+Driver must:
+- become visible in nearby drivers query
+- be eligible for ride matching
+- receive trip requests
+
+Fix this immediately.
+
+-------------------------------------
+
+2) DRIVER VEHICLE MAPPING
+
+A driver must NOT appear for all services.
+
+Drivers must be linked to a specific vehicle type.
+
+Example:
+
+Bike driver → Bike rides only  
+Car driver → Car rides only  
+Parcel bike → Parcel only  
+Cargo auto → Cargo only
+
+Check:
+
+driver_vehicle table
+vehicle_category mapping
+matching query
+
+Driver must ONLY receive trips that match their vehicle type.
+
+-------------------------------------
+
+3) SERVICE TYPE SEPARATION (CRITICAL)
+
+The platform has multiple services:
+
+- Normal Ride
+- Parcel Delivery
+- Cargo & Freight
+- Ride Sharing
+- Intercity
+
+Each service must have its own:
+
+vehicle categories  
+fare logic  
+matching logic  
+revenue model
+
+Parcel drivers must NOT receive ride trips.
+Ride drivers must NOT receive parcel orders.
+
+-------------------------------------
+
+4) HYBRID REVENUE MODEL (VERY IMPORTANT)
+
+This platform must support TWO revenue models simultaneously.
+
+Model 1 — Subscription
+Driver pays subscription to go online.
+
+Model 2 — Commission
+Driver pays commission per ride.
+
+BUT the model must be configurable per service.
+
+Example:
+
+Ride → Subscription Model  
+Parcel → Commission Model  
+Ride Sharing → Subscription Model  
+Intercity → Commission Model
+
+Admin must be able to toggle:
+
+service_revenue_model = subscription | commission
+
+These toggles must work independently.
+
+Parcel must not affect Ride.
+
+-------------------------------------
+
+5) DRIVER WALLET + NEGATIVE BALANCE
+
+Verify logic:
+
+wallet_balance < threshold → driver cannot go online
+
+But system must still allow:
+
+wallet recharge via Razorpay
+
+After recharge:
+
+wallet_balance >= 0 → driver automatically unlocked
+
+-------------------------------------
+
+6) REAL MATCHING VERIFICATION
+
+You must simulate a full ride flow:
+
+Customer books ride  
+Driver receives request  
+Driver accepts  
+Driver arrives  
+Driver starts trip  
+Driver completes trip
+
+Verify database:
+
+trip_status transitions
+driver assignment
+fare calculation
+wallet deduction
+
+-------------------------------------
+
+7) PARCEL FLOW
+
+Test complete parcel flow:
+
+Customer → Parcel booking  
+Driver → Accept  
+Pickup OTP  
+Delivery OTP  
+Trip complete
+
+-------------------------------------
+
+8) VOICE ASSISTANT FEATURE
+
+We want to add an AI voice assistant.
+
+User can speak:
+
+"Book a bike from JNTU to Hitech City"
+
+App must:
+
+Detect pickup
+Detect destination
+Suggest vehicle
+Speak estimated fare
+Ask confirmation
+
+Example voice flow:
+
+"Bike ride from JNTU to Hitech City will cost ₹95. Book now?"
+
+User says YES → booking created.
+
+This must support:
+
+elderly users
+visually impaired users
+
+-------------------------------------
+
+9) APP-TO-APP CALLING
+
+Implement secure calling:
+
+Customer ↔ Driver call
+
+Rules:
+
+Call active only when ride is ACTIVE.
+Before ride → hidden
+After ride → disabled
+
+Support team call → always allowed.
+
+-------------------------------------
+
+10) FINAL REQUIREMENT
+
+You must perform:
+
+FULL SYSTEM AUDIT
+
+- Backend APIs
+- Database relationships
+- Flutter apps
+- Ride matching
+- Revenue models
+- Wallet system
+- Admin toggles
+
+Find:
+
+- hidden bugs
+- missing logic
+- wrong queries
+- broken APIs
+
+Do NOT give assumptions.
+
+Give proof for each module.
+
+This platform will go LIVE and cannot fail in production.

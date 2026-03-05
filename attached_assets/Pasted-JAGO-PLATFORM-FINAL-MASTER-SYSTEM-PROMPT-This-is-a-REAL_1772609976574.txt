@@ -1,0 +1,360 @@
+JAGO PLATFORM — FINAL MASTER SYSTEM PROMPT
+
+This is a REAL production mobility platform.
+
+It must NOT behave like a demo project.
+
+Every module must work correctly before production launch.
+
+The platform contains:
+
+Customer Flutter App
+Driver Flutter App
+Admin Web Panel
+Backend API Server
+Database
+Payment Gateway
+Wallet System
+Driver Matching Engine
+
+Services supported by the platform:
+
+Ride Service
+Ride Sharing
+Parcel Delivery
+Cargo / Freight
+Intercity Travel
+
+---
+
+CORE REQUIREMENT
+
+Every service must support BOTH revenue models:
+
+Subscription Model
+Commission Model
+
+Admin must be able to switch the model at any time using a toggle.
+
+Example configuration:
+
+Ride → Subscription or Commission
+Parcel → Subscription or Commission
+Ride Share → Subscription or Commission
+Intercity → Subscription or Commission
+
+These toggles must work independently.
+
+Changing the model must instantly affect system behavior.
+
+---
+
+DRIVER ONLINE STATUS SYSTEM
+
+Current issue observed:
+Driver app shows “Session expired” when clicking ONLINE.
+
+You must audit and fix:
+
+Driver authentication tokens
+Session expiry logic
+Driver online API endpoint
+Driver status update in database
+Socket connection for driver availability
+
+When driver clicks ONLINE:
+
+Driver must become visible in nearby drivers search
+Driver must receive ride requests
+Driver must be eligible for trip matching
+
+---
+
+DRIVER VEHICLE MAPPING
+
+Drivers must not receive requests for services they do not support.
+
+Each driver must be mapped to specific vehicle types.
+
+Examples:
+
+Bike driver → Bike rides only
+Car driver → Car rides only
+Parcel bike → Parcel delivery only
+Cargo auto → Cargo delivery only
+
+Matching queries must filter by vehicle type.
+
+---
+
+SERVICE TYPE SEPARATION
+
+The platform supports multiple services.
+
+Each service must have its own:
+
+Vehicle categories
+Fare rules
+Driver matching logic
+Revenue model
+
+Example:
+
+Ride drivers must not receive parcel trips.
+Parcel drivers must not receive ride bookings.
+
+---
+
+HYBRID REVENUE MODEL
+
+Every service must support two modes:
+
+Subscription Model
+Commission Model
+
+Admin must be able to toggle the mode.
+
+Subscription Model:
+
+Driver must purchase subscription before going online.
+
+Examples:
+
+Daily Plan ₹60
+Weekly Plan ₹300
+Monthly Plan ₹999
+
+Commission Model:
+
+Driver pays percentage commission per ride.
+
+Example:
+
+Ride Fare ₹100
+
+Commission 15% = ₹15
+GST 18% = ₹2.70
+Insurance = ₹2
+
+Total deduction = ₹19.70
+
+Driver earnings = Fare minus deduction.
+
+---
+
+DRIVER WALLET SYSTEM
+
+Driver wallet must support:
+
+Ride earnings
+Commission deductions
+Platform fee deductions
+Wallet recharge via Razorpay
+Withdrawal requests
+
+Wallet transaction types:
+
+ride_deduction
+commission_deduction
+subscription_purchase
+wallet_recharge
+
+All wallet transactions must be stored in database.
+
+---
+
+NEGATIVE WALLET BALANCE LOGIC
+
+Example:
+
+Wallet balance = -120
+Threshold = -100
+
+Driver must be automatically locked.
+
+Locked drivers cannot go online.
+
+Driver must recharge wallet using Razorpay.
+
+When wallet balance becomes positive again, driver must be unlocked automatically.
+
+---
+
+DRIVER MATCHING ENGINE
+
+Matching flow:
+
+Customer creates ride request
+Nearby drivers searched by location
+Drivers sorted by distance
+
+Driver request sent via real-time event.
+
+Driver responses:
+
+Accept
+Reject
+Timeout
+
+If driver rejects or times out, system must auto assign the next driver.
+
+Socket events required:
+
+new_trip_request
+trip_accepted
+driver_arrived
+trip_started
+trip_completed
+
+---
+
+PARCEL DELIVERY FLOW
+
+Parcel booking must follow full workflow:
+
+Customer creates parcel booking
+Driver accepts request
+Driver arrives at pickup
+Pickup OTP verification
+Driver delivers parcel
+Delivery OTP verification
+Trip completed
+
+Database records must store receiver name and delivery OTP.
+
+---
+
+RIDE SHARE SYSTEM
+
+Ride share must support seat-based booking.
+
+Example:
+
+Car with 4 seats.
+
+Each seat can be booked separately.
+
+Example:
+
+Seat price ₹120
+4 seats total = ₹480
+
+Driver receives total ride fare minus platform deductions.
+
+---
+
+VOICE AI BOOKING SYSTEM
+
+The application must support voice-based ride booking.
+
+Example user command:
+
+“Book a bike from JNTU to Hitech City.”
+
+System must detect:
+
+Pickup location
+Destination
+Vehicle type
+Estimated fare
+
+Example response:
+
+“Bike ride from JNTU to Hitech City costs ₹95. Do you want to book?”
+
+User says YES → booking created.
+
+This feature must support elderly users and visually impaired users.
+
+---
+
+APP TO APP CALLING
+
+Customer and driver calling must follow rules.
+
+Before ride booking → calling disabled
+During active ride → calling enabled
+After ride completion → calling disabled
+
+Support team calling must always be available.
+
+---
+
+ADMIN PANEL CONTROLS
+
+Admin must control:
+
+Services
+Vehicles
+Zones
+Fare rules
+Drivers
+Customers
+Wallet transactions
+Revenue reports
+Commission settings
+Subscription plans
+
+Admin changes must apply instantly.
+
+---
+
+PAYMENT SYSTEM
+
+Payments must use Razorpay.
+
+Verify:
+
+Order creation
+Signature verification
+Webhook processing
+Wallet recharge flow
+Ride payment flow
+
+Signature verification must use HMAC SHA256.
+
+---
+
+REAL TIME SYSTEM
+
+The platform must use real time communication.
+
+Technology example:
+
+Socket.IO
+
+Events:
+
+ride_requested
+driver_accept
+driver_arrived
+trip_started
+trip_completed
+
+---
+
+FINAL REQUIREMENT
+
+Perform a FULL SYSTEM AUDIT.
+
+Verify:
+
+Backend APIs
+Database schema
+Flutter apps
+Driver matching engine
+Revenue model
+Wallet system
+Admin panel
+
+Find and fix:
+
+Hidden bugs
+Broken APIs
+Authentication errors
+Session issues
+Incorrect queries
+
+Provide clear verification results.
+
+This platform will go live and must operate reliably in production.

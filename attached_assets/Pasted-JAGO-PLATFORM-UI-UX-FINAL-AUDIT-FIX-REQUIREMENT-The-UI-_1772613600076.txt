@@ -1,0 +1,119 @@
+JAGO PLATFORM — UI/UX FINAL AUDIT & FIX REQUIREMENT
+
+The UI design of the JAGO apps is already close to Rapido style and looks good visually.
+
+However, several functional UI/UX elements are missing or incomplete.
+
+Before production launch, both the Customer App and Pilot (Driver) App must be audited and corrected to ensure a smooth, production-grade user experience.
+
+This audit must focus on FUNCTIONAL UI behavior, not only visual design.
+
+---
+
+1. CUSTOMER APP — BOOKING FLOW
+
+The ride booking flow must be simple and clear.
+
+Expected flow:
+
+Open App
+Auto detect pickup location
+User enters destination
+Vehicle options appear
+Fare estimate visible
+User taps "Book Ride"
+
+Verify the following UI elements exist and function correctly:
+
+• Pickup location field
+• Destination input field
+• Vehicle selection cards
+• Fare estimate for each vehicle
+• ETA (driver arrival time)
+
+Vehicle cards must include:
+
+Vehicle icon
+Vehicle name
+Estimated fare
+Estimated arrival time
+
+---
+
+2. VEHICLE SERVICE VISIBILITY
+
+Customer app must clearly display all services supported by the platform.
+
+Services:
+
+Bike Ride
+Auto Ride
+Car Ride
+Ride Share
+Parcel Delivery
+Cargo / Freight
+
+Each service must have its own icon and selection card.
+
+Parcel services must open parcel booking UI instead of ride UI.
+
+---
+
+3. DRIVER SEARCHING SCREEN
+
+When a ride is booked, the UI must show a clear searching state.
+
+Example text:
+
+"Searching for nearby drivers..."
+
+Map must animate and show nearby drivers if available.
+
+Customer must see:
+
+Cancel ride button
+Estimated wait time
+
+The screen must never freeze without feedback.
+
+---
+
+4. DRIVER ASSIGNED SCREEN
+
+Once a driver accepts the ride, the UI must show full driver details.
+
+Required UI elements:
+
+Driver photo
+Driver name
+Vehicle number
+Vehicle type
+ETA to pickup
+Call button
+Chat button
+Cancel ride button
+
+Pickup OTP must be clearly visible to the user.
+
+Example:
+
+Pickup OTP: 6817
+
+---
+
+5. ACTIVE TRIP SCREEN
+
+During the ride, the UI must show:
+
+Live map with route
+Driver location
+Estimated arrival time
+Trip progress
+
+Available actions:
+
+Call driver
+Emergency support
+Share trip status
+
+---

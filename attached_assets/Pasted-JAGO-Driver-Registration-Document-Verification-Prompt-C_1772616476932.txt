@@ -1,0 +1,289 @@
+JAGO — Driver Registration & Document Verification Prompt
+
+Copy this and give to the agent.
+
+Implement a complete Driver Registration and Vehicle Verification system for the JAGO platform (Flutter apps + backend).
+
+This must include strict validation, document verification, and admin approval before a driver can go online.
+
+-----------------------------------
+1. DRIVER REGISTRATION FLOW (PILOT APP)
+-----------------------------------
+
+Create a multi-step registration process:
+
+Step 1 — Basic Details
+Fields required:
+- Full Name
+- Mobile Number (OTP verification required)
+- Email (optional but validated)
+- Date of Birth
+- City / Zone selection
+
+Validations:
+- Name must not be empty
+- Phone must be 10 digits
+- DOB must ensure driver is 18+
+
+
+-----------------------------------
+Step 2 — Driving License Verification
+-----------------------------------
+
+Required fields:
+
+- Driving License Number
+- License Expiry Date
+- Upload License Front Photo
+- Upload License Back Photo
+
+Validation:
+- License number format validation
+- Expiry date must be future date
+- Images must be uploaded (camera or gallery)
+
+Store in DB:
+driver_documents
+type = license
+
+
+-----------------------------------
+Step 3 — Vehicle Details
+-----------------------------------
+
+Driver selects vehicle type:
+
+Bike
+Auto
+Car
+Cargo
+Parcel Vehicle
+
+Fields required:
+
+Vehicle Number
+Vehicle Brand
+Vehicle Model
+Vehicle Color
+Vehicle Year
+
+Validation:
+Vehicle number format validation.
+
+
+-----------------------------------
+Step 4 — Vehicle Documents
+-----------------------------------
+
+Driver must upload:
+
+Vehicle RC
+Vehicle Insurance
+Vehicle Pollution Certificate (PUC)
+
+Each document must include:
+
+Upload image
+Expiry date
+Document type
+
+Validation:
+Expiry must be valid.
+
+Stored in DB:
+vehicle_documents
+
+
+-----------------------------------
+Step 5 — Driver Selfie Verification
+-----------------------------------
+
+Driver must upload:
+
+Selfie photo
+
+This is used for identity verification.
+
+-----------------------------------
+Step 6 — Submit for Approval
+-----------------------------------
+
+After submission:
+
+Driver status = pending_verification
+
+Driver CANNOT go online until approved.
+
+Message shown in driver app:
+
+"Your documents are under verification. You will be notified once approved."
+
+
+-----------------------------------
+2. ADMIN PANEL VERIFICATION SYSTEM
+-----------------------------------
+
+Add new admin section:
+
+Driver Verification
+
+Admin can:
+
+View driver profile
+View uploaded documents
+Zoom images
+Approve / Reject documents
+
+Approval states:
+
+pending
+approved
+rejected
+
+If rejected:
+
+Admin must give reason.
+
+Driver app must show rejection reason.
+
+
+-----------------------------------
+3. DRIVER STATUS LOGIC
+-----------------------------------
+
+Driver status types:
+
+pending_verification
+approved
+rejected
+suspended
+
+Only status = approved can go ONLINE.
+
+API check:
+
+PATCH /driver/online
+
+If driver.status != approved
+
+Return:
+
+403
+"Driver account not verified"
+
+
+-----------------------------------
+4. VEHICLE VERIFICATION
+-----------------------------------
+
+Admin must approve vehicle separately.
+
+Vehicle status:
+
+pending
+approved
+rejected
+
+Driver cannot receive rides until vehicle approved.
+
+
+-----------------------------------
+5. DRIVER PROFILE PAGE
+-----------------------------------
+
+Driver must see:
+
+Profile
+Documents
+Vehicle details
+Verification status
+
+Statuses must show visually:
+
+✔ Approved
+⏳ Pending
+❌ Rejected
+
+
+-----------------------------------
+6. DOCUMENT EXPIRY MONITOR
+-----------------------------------
+
+System must check:
+
+License expiry
+Insurance expiry
+PUC expiry
+
+If expired:
+
+Driver auto locked.
+
+Message:
+
+"Your document has expired. Please upload updated document."
+
+
+-----------------------------------
+7. SAFETY FEATURES
+-----------------------------------
+
+Add additional safety checks:
+
+Duplicate vehicle number detection
+Duplicate license detection
+Blacklist driver phone check
+
+
+-----------------------------------
+8. PUSH NOTIFICATIONS
+-----------------------------------
+
+Driver should receive notifications:
+
+Document approved
+Document rejected
+Vehicle approved
+
+
+-----------------------------------
+9. UI/UX REQUIREMENTS
+-----------------------------------
+
+Driver onboarding must be simple and modern:
+
+Step progress indicator
+Upload previews
+Clear validation errors
+Mobile friendly forms
+
+
+-----------------------------------
+10. TESTING REQUIREMENTS
+-----------------------------------
+
+Test the following flows:
+
+Driver registration
+Document upload
+Admin approval
+Driver login
+Driver online status
+
+Ensure drivers cannot go online until approved.
+
+
+-----------------------------------
+FINAL REQUIREMENT
+-----------------------------------
+
+This system must work for:
+
+Ride drivers
+Parcel drivers
+Cargo drivers
+Intercity drivers
+
+Each vehicle category must require its own vehicle verification.
+
+The platform must be production-ready with secure driver onboarding.

@@ -1,0 +1,119 @@
+FINAL INSTRUCTION – FULL FUNCTIONAL VERIFICATION REQUIRED
+
+Stop saying that the code is solid until the system is verified end-to-end.
+
+This application is not a demo. It is a real production platform that will go live with real users, drivers, and payments.
+
+Before declaring the system ready, you must perform a COMPLETE FUNCTIONAL AUDIT of the entire platform.
+
+Do not rely on code review alone. Verify real execution flows.
+
+You must check the following modules one by one.
+
+1. CUSTOMER BOOKING FLOW
+   Confirm that when a customer books a ride:
+   • Trip record is created in database
+   • Nearby drivers are detected
+   • Driver request is sent through socket
+   • Driver app receives the request with sound alert
+   • Driver can accept or reject
+   • Trip status changes correctly
+
+2. DRIVER REQUEST DELIVERY
+   Confirm that:
+   • Driver receives real-time ride request popup
+   • Notification sound plays
+   • Accept / Reject buttons work
+   • Timeout works correctly
+   • If driver rejects, next driver receives request
+
+3. TRIP STATE MANAGEMENT
+   Confirm the entire lifecycle works correctly:
+
+searching
+driver_assigned
+accepted
+arrived
+on_the_way
+completed
+
+After completion verify:
+customer.active_trip_id = NULL
+driver.current_trip_id = NULL
+
+This must allow the customer to book a new ride.
+
+4. MULTIPLE RIDE BUG
+   There must never be a situation where:
+   Customer tries to book a ride and receives:
+
+"You already have an active trip"
+
+when no trip exists.
+
+Verify database cleanup logic is correct.
+
+5. DRIVER ONLINE SYSTEM
+   Confirm that:
+   Driver can go online
+   Driver appears in nearby driver query
+   Driver receives requests
+
+6. SOCKET CONNECTION
+   Verify socket events:
+
+trip:new_request
+trip:request_taken
+trip:timeout
+trip:status_update
+
+All must function reliably.
+
+7. PAYMENT SYSTEM
+   Verify end-to-end:
+
+Create Razorpay order
+Payment success
+Webhook verification
+Wallet update
+Trip payment record
+
+8. DRIVER WALLET SYSTEM
+   Verify:
+   Wallet recharge works
+   Commission deduction works
+   Subscription plan deduction works
+
+9. PARCEL AND CARGO FLOW
+   Confirm:
+
+Parcel booking
+Pickup OTP
+Delivery OTP
+Driver completion
+
+10. MOBILE APPLICATION STABILITY
+
+Test both apps:
+
+Customer App
+Driver App
+
+Confirm:
+No crashes
+No missing screens
+All buttons functional
+
+FINAL RESPONSE REQUIRED
+
+Do not say "build is finished" or "code is correct".
+
+Only respond with one of these statements:
+
+OPTION A
+"The entire JAGO platform has been tested end-to-end and is fully functional for production."
+
+OR
+
+OPTION B
+"The platform is not yet production-ready. The following issues still exist:"

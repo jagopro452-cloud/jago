@@ -1,0 +1,167 @@
+FULL SYSTEM AUDIT REQUEST — JAGO / LIFTMATE PLATFORM
+
+This is a serious request for a complete technical audit of the entire application.
+
+Multiple builds and changes have been made, but some features appear missing or inconsistent in the live app. Before sending this platform to production, I need an honest and detailed verification.
+
+Do not assume things are working. Only confirm modules that have been actually verified through real execution.
+
+Please perform a FULL SYSTEM AUDIT and confirm the status of every module.
+
+---
+
+1. CUSTOMER APPLICATION
+
+Verify that the customer app works completely:
+
+• Home screen loads correctly
+• Location search works
+• Fare estimate returns correct values
+• Vehicle options appear correctly
+• Ride booking works
+• Parcel booking works
+• Cargo booking works
+• Voice booking works completely
+
+Confirm that no buttons or screens are hidden or non-functional.
+
+---
+
+2. DRIVER APPLICATION
+
+Verify that the driver app works correctly:
+
+• Driver can go online and offline
+• Driver appears in nearby driver search
+• Driver receives ride requests
+• Ride request notification works when phone is locked
+• Accept / reject buttons work
+• Navigation to pickup works
+
+---
+
+3. COMPLETE RIDE FLOW
+
+Verify the entire lifecycle:
+
+Searching driver
+Driver accepted
+Driver arriving
+Driver arrived
+OTP verification
+Ride started
+Ride completed
+Rating screen
+
+Ensure there are no broken states.
+
+---
+
+4. CHAT SYSTEM
+
+Verify that the chat system is fully functional:
+
+• Driver can send message
+• Customer receives message
+• Customer can reply
+• Messages appear instantly
+
+---
+
+5. PAYMENT SYSTEM
+
+Verify the full payment flow:
+
+• Razorpay order creation
+• Payment success verification
+• Wallet recharge
+• Wallet deduction after trip
+• Commission calculation
+
+---
+
+6. DRIVER WALLET AND SUBSCRIPTIONS
+
+Verify:
+
+• Wallet recharge works
+• Commission deduction works
+• Subscription plans activate correctly
+• Driver cannot go online with expired subscription
+
+---
+
+7. PARCEL AND CARGO DELIVERY
+
+Verify:
+
+• Parcel booking
+• Pickup OTP
+• Delivery OTP
+• Trip completion
+
+---
+
+8. VOICE BOOKING
+
+Confirm the entire voice booking flow works:
+
+User speaks pickup and destination
+System detects both locations
+System announces all vehicle fares
+User confirms booking by voice
+Ride is created automatically
+
+---
+
+9. SOCKET REAL-TIME SYSTEM
+
+Verify real-time events:
+
+trip:new_request
+trip:driver_assigned
+trip:status_update
+trip:completed
+trip:new_message
+
+Confirm that sockets are stable and reconnect properly.
+
+---
+
+10. DATABASE HEALTH
+
+Check database status:
+
+• No stuck active trips
+• No corrupted trip records
+• Driver locations updating correctly
+
+---
+
+11. SECURITY CHECK
+
+Verify there are no critical vulnerabilities:
+
+• Duplicate payments blocked
+• Wallet manipulation impossible
+• OTP validation secure
+
+---
+
+FINAL RESPONSE FORMAT
+
+After completing the audit, respond with one of the following:
+
+OPTION A
+"The entire platform has been fully audited and verified.
+All modules are functional and the system is ready for production deployment."
+
+OR
+
+OPTION B
+"The platform is NOT production-ready.
+The following critical issues still exist:"
+
+(List them clearly.)
+
+This audit must be honest and complete. If any module is incomplete, it must be clearly identified before production launch.

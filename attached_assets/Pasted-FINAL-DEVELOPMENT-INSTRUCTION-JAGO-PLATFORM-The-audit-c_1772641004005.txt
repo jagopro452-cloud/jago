@@ -1,0 +1,95 @@
+FINAL DEVELOPMENT INSTRUCTION – JAGO PLATFORM
+
+The audit confirmed that the backend logic is mostly stable, but the platform cannot go live until the remaining critical issues are fully completed and verified.
+
+From this point forward, no feature should be marked as completed unless it is fully working in a real execution scenario.
+
+The following items must be implemented and verified immediately.
+
+1. DRIVER BACKGROUND NOTIFICATION SYSTEM
+
+This is a critical requirement.
+
+When a new ride request is created:
+
+• The driver must receive a push notification through FCM
+• The driver must receive a loud ringtone notification
+• The notification must work even when the app is in background
+• The notification must work when the phone screen is locked
+• The notification must open the driver app directly to the ride request screen
+
+The driver must not miss ride requests under any condition.
+
+Implementation requirements:
+
+• Integrate flutter_local_notifications with Firebase Cloud Messaging
+• Handle background notifications using FirebaseMessaging.onBackgroundMessage
+• Trigger a local notification with sound and vibration
+• Play alert sound repeatedly for 20 seconds until driver accepts or rejects
+
+This must work reliably on Android.
+
+2. APK BUILD STABILITY
+
+The APK build must complete successfully.
+
+Verify:
+
+• Customer APK builds without errors
+• Driver APK builds without errors
+• Both APKs install correctly on real Android devices
+• No crash occurs when opening the app
+
+Do not declare completion until both APKs install and launch successfully.
+
+3. CUSTOMER HOME SCREEN PREMIUM REDESIGN
+
+The home screen must be redesigned to match modern ride-hailing apps.
+
+The UI must look similar in quality to:
+
+Uber
+Rapido
+Ola
+
+Requirements:
+
+• Clear service categories (Bike, Auto, Car, Parcel, Cargo, Intercity)
+• Clean modern layout
+• Attractive icons
+• Fare estimate preview
+• Smooth animations
+• Rich visual design
+
+The UI must feel premium and production-grade.
+
+4. FINAL SYSTEM VERIFICATION
+
+After implementing the above items, perform a complete end-to-end test:
+
+Customer books ride
+Driver receives notification
+Driver accepts ride
+Pickup OTP verification
+Trip start
+Trip completion
+Payment processing
+Customer books another ride successfully
+
+All flows must work without errors.
+
+FINAL RESPONSE REQUIRED
+
+Only respond after all work is completed and verified.
+
+Provide one of the following confirmations:
+
+OPTION A
+“The JAGO platform has been fully tested end-to-end. All modules are working and the system is ready for production deployment.”
+
+OR
+
+OPTION B
+“The platform still has the following unresolved issues:”
+
+(List them clearly.)

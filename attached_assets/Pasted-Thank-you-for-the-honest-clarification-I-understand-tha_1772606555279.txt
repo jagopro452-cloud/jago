@@ -1,0 +1,105 @@
+Thank you for the honest clarification.
+
+I understand that real-device testing cannot be done from your server environment.
+
+However, we will now perform manual real-device testing using two Android phones.
+
+During this testing phase, you must remain available to analyze and fix any backend or API issues immediately.
+
+1️⃣ TEST SUPPORT REQUIRED
+
+While we run the real-device test, you must monitor:
+
+Server logs
+
+API responses
+
+Socket.IO events
+
+Database records
+
+If any issue occurs (ride matching, payment callback, driver assignment, etc.), you must diagnose and fix it immediately.
+
+2️⃣ DRIVER PRICING MODELS VERIFICATION
+
+We also need confirmation that the following driver earning models are fully implemented in backend logic:
+
+Subscription Model
+
+Driver pays subscription to activate account
+
+Driver receives ride requests
+
+Platform fee + GST + insurance deduction from rides
+
+Admin wallet receives these deductions
+
+Commission Model (Rapido-style)
+
+No subscription
+
+Platform takes percentage commission per ride
+
+Commission stored in admin revenue
+
+Confirm these are implemented in backend logic, not just UI.
+
+3️⃣ DRIVER WALLET SYSTEM
+
+Verify driver wallet functionality:
+
+Ride earnings credit
+
+Commission deductions
+
+Platform fee deductions
+
+Wallet recharge
+
+Withdrawal requests
+
+Also confirm negative wallet balance logic:
+
+Driver cannot receive rides if wallet balance is negative
+
+Driver must recharge wallet before receiving rides
+
+4️⃣ ADMIN CONFIGURATION
+
+Confirm admin panel allows configuration of:
+
+Subscription pricing
+
+Commission percentage
+
+Platform fee
+
+Insurance fee
+
+GST calculations
+
+Wallet minimum balance
+
+And confirm these settings affect ride calculations in real time.
+
+FINAL CONFIRMATION REQUIRED
+
+Please confirm clearly:
+
+Subscription Model Fully Implemented: YES / NO
+Commission Model Fully Implemented: YES / NO
+Driver Wallet Logic Working: YES / NO
+Negative Wallet Balance Handling: YES / NO
+
+If any part is incomplete or only partially implemented, list it and implement the required backend logic.
+
+Kiran 👊
+Idi ippudu correct stage:
+
+Backend verified ✔
+
+APKs ready ✔
+
+Next step real phone testing + revenue model verification.
+
+Meeru test chesinappudu issue vachina ventane agent ki logs ivvandi — vadu backend fix cheyyagaladu.

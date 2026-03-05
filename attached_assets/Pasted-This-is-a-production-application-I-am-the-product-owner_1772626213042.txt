@@ -1,0 +1,244 @@
+This is a production application.
+
+I am the product owner, not a developer, so listen carefully.
+
+Several critical modules of the JAGO platform are still incomplete or partially implemented.
+
+These MUST be completed properly before the system goes live.
+
+Do NOT give partial implementations.  
+Everything must work fully end-to-end.
+
+------------------------------------
+
+1. DRIVER ONBOARDING SYSTEM (COMPLETE)
+
+Currently driver onboarding is incomplete.
+
+Implement a full driver onboarding flow in the Pilot app.
+
+Driver registration must include:
+
+Step 1
+Basic details
+• Name
+• Phone
+• Email
+• City / Zone
+
+Step 2
+Driving license verification
+• License number
+• Expiry date
+• Upload front image
+• Upload back image
+
+Step 3
+Vehicle registration
+• Vehicle number
+• Vehicle type
+• Brand
+• Model
+• Color
+
+Step 4
+Vehicle documents
+• RC upload
+• Insurance upload
+• PUC upload
+
+Step 5
+Face verification
+Driver must take a live selfie.
+
+Compare selfie with license photo.
+
+Step 6
+Submit for approval
+
+Driver status must be:
+
+pending_verification
+
+Driver cannot go online until admin approves.
+
+------------------------------------
+
+2. DRIVER SUBSCRIPTION SYSTEM
+
+Drivers must see subscription plans inside the Pilot app.
+
+Example plans:
+
+Daily plan
+Weekly plan
+Monthly plan
+
+Driver must be able to:
+
+• View plan price
+• Activate subscription
+• Pay using Razorpay
+• See active subscription expiry
+
+Driver cannot go online if subscription is required and inactive.
+
+------------------------------------
+
+3. FARE CALCULATION BUG (CRITICAL)
+
+Currently the booking screen sometimes shows only the minimum fare.
+
+This is a MAJOR bug.
+
+Fare calculation must include:
+
+• Base fare
+• Per km cost
+• Distance calculation
+• Zone pricing
+• Vehicle category pricing
+• Surge pricing (if enabled)
+
+Customer must see the correct fare estimate before booking.
+
+Example:
+
+Bike ride
+Distance: 6.5 km
+Fare: ₹95
+
+NOT just minimum fare.
+
+------------------------------------
+
+4. VOICE BOOKING SYSTEM (FULL IMPLEMENTATION)
+
+Voice booking must be fully implemented.
+
+User flow:
+
+Open app
+Tap microphone
+Speak pickup and destination
+
+Example:
+
+"Book a bike ride from Kukatpally to Hitech City"
+
+System must:
+
+• Detect language automatically
+• Convert speech to text
+• Extract pickup location
+• Extract destination
+• Ask for confirmation
+• Ask vehicle type
+• Calculate fare
+• Confirm booking
+
+System response must be spoken in the SAME language the user used.
+
+Supported languages:
+
+English
+Hindi
+Telugu
+Tamil
+Kannada
+Malayalam
+Marathi
+Bengali
+Urdu
+
+------------------------------------
+
+5. DRIVER DOCUMENT EXPIRY VALIDATION
+
+System must check document expiry.
+
+If expired:
+
+Driver cannot go online.
+
+Show message:
+
+"Your vehicle insurance has expired. Please upload updated document."
+
+------------------------------------
+
+6. SUPER ADMIN PANEL UI (IMPORTANT)
+
+The current Super Admin UI is very poor and unprofessional.
+
+Redesign the admin panel with a modern dashboard UI.
+
+Requirements:
+
+• Clean layout
+• Sidebar navigation
+• Dashboard analytics
+• Driver verification panel
+• Ride monitoring
+• Parcel tracking
+• Revenue analytics
+• Subscription management
+• Driver wallet monitoring
+
+Use a professional design similar to:
+
+Uber admin
+Rapido admin
+Modern SaaS dashboard UI
+
+------------------------------------
+
+7. DRIVER APP UX IMPROVEMENT
+
+Driver app must include:
+
+• Dashboard
+• Earnings screen
+• Wallet screen
+• Subscription page
+• Trip history
+• Profile
+• Document status
+
+All screens must be clear and professional.
+
+------------------------------------
+
+8. FULL SYSTEM TEST
+
+After implementing all features, perform a full system audit.
+
+Verify:
+
+• Customer booking
+• Driver matching
+• Ride lifecycle
+• Parcel booking
+• Cargo booking
+• Wallet recharge
+• Payment verification
+• Subscription activation
+• Driver onboarding approval
+
+------------------------------------
+
+FINAL RESPONSE REQUIRED
+
+After completing everything, respond with ONLY one of the following:
+
+OPTION A
+
+"The JAGO platform has been fully completed.
+Driver onboarding, voice booking, fare calculation, and admin panel UI have all been implemented.
+The system is stable and ready for production."
+
+OR
+
+OPTION B
+
+"The following issues still remain and must be fixed before production."

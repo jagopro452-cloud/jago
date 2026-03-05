@@ -1,0 +1,242 @@
+You must redesign the JAGO Customer App home screen to look premium and modern.
+
+The current layout works but looks basic and unfinished.
+
+Upgrade the UI to the same visual quality level as Rapido, Uber, or Ola.
+
+Focus on spacing, colors, shadows, icons, typography, and card design.
+
+The goal is to create a premium, polished, rich mobile UI.
+
+-------------------------------------
+
+1. HEADER DESIGN (PREMIUM)
+
+Redesign the header area.
+
+Current header is too simple.
+
+Create a modern header with:
+
+• Hamburger menu icon
+• JAGO logo with brand colors (Blue + Yellow)
+• Current location with location icon
+• Notification bell icon
+
+Use a soft gradient background.
+
+Example gradient:
+
+Blue → Light blue.
+
+Add subtle shadow below header.
+
+-------------------------------------
+
+2. SEARCH BAR (IMPORTANT)
+
+Upgrade the search bar to a premium style.
+
+Current search bar is plain.
+
+New design must include:
+
+• rounded edges
+• location icon on left
+• placeholder text: "Where are you going?"
+• subtle shadow
+• tap animation
+
+Search bar must float above map background.
+
+-------------------------------------
+
+3. HERO SERVICES GRID
+
+Replace the current grey cards with premium service cards.
+
+Create 4 large service cards:
+
+Parcel
+Bike Taxi
+Auto Ride
+All Services
+
+Each card must include:
+
+• colorful illustration
+• bold title
+• subtitle text
+• soft shadow
+• rounded corners (16px)
+
+Card style example:
+
+white background
+elevation shadow
+icon on right side
+
+-------------------------------------
+
+4. SERVICES HORIZONTAL SCROLL
+
+Upgrade the services section.
+
+Use horizontal scroll with modern service icons.
+
+Each service icon must include:
+
+Bike Ride
+Auto Ride
+Car Ride
+Parcel
+Cargo
+Intercity
+
+Design:
+
+rounded background
+pastel colors
+shadow
+icon centered
+
+Example colors:
+
+Bike → light blue
+Auto → light yellow
+Car → light green
+Parcel → light orange
+
+-------------------------------------
+
+5. "IN A HURRY?" CARD
+
+Make this a highlight card.
+
+Design:
+
+gradient background
+auto illustration
+bold text
+arrival time badge
+
+Example:
+
+"In a hurry?"
+
+"Auto will arrive in 5 minutes"
+
+Button:
+
+Book Now
+
+Add glow effect on button.
+
+-------------------------------------
+
+6. VOICE BOOK BUTTON
+
+Upgrade the voice booking button.
+
+Current button looks basic.
+
+Make it:
+
+large floating button
+blue gradient
+microphone icon
+pulse animation
+
+Text:
+
+Voice Book
+
+Add ripple animation when pressed.
+
+-------------------------------------
+
+7. CARD DESIGN SYSTEM
+
+All cards must follow consistent design.
+
+Use:
+
+16px border radius
+soft shadows
+padding spacing
+
+Shadow example:
+
+0px 8px 20px rgba(0,0,0,0.08)
+
+-------------------------------------
+
+8. ICON UPGRADE
+
+Replace current basic icons with modern vector icons.
+
+Icons must be colorful and consistent.
+
+Use high-quality SVG icons.
+
+-------------------------------------
+
+9. SPACING FIX
+
+Apply consistent spacing.
+
+Margins:
+
+16px screen padding
+12px between cards
+
+Use proper alignment.
+
+-------------------------------------
+
+10. ANIMATIONS
+
+Add subtle animations.
+
+Examples:
+
+card hover animation
+button ripple
+voice button pulse
+
+-------------------------------------
+
+11. PERFORMANCE
+
+Ensure the UI runs smoothly on mid-range Android devices.
+
+Avoid heavy animations.
+
+Use optimized widgets.
+
+-------------------------------------
+
+12. FINAL RESULT
+
+The home screen must look:
+
+clean
+premium
+modern
+professional
+
+The UI should feel like:
+
+Rapido
+Uber
+Ola
+
+Users must feel the app is high quality when they open it.
+
+-------------------------------------
+
+Deliverable:
+
+Updated Flutter UI code
+Production ready home screen
+Premium visual design

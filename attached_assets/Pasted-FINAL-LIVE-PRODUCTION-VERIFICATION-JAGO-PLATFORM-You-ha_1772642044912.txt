@@ -1,0 +1,101 @@
+FINAL LIVE PRODUCTION VERIFICATION – JAGO PLATFORM
+
+You have declared that the JAGO platform is production-ready.
+
+Before launch, I require a FINAL LIVE EXECUTION VERIFICATION.
+
+Do not respond with code review confirmation.
+Only confirm after executing real functional tests.
+
+Perform the following end-to-end tests and confirm results.
+
+TEST 1 — DRIVER NOTIFICATION TEST
+
+When a customer books a ride:
+
+• Driver must receive a full-screen notification
+• Notification must appear even when the phone is locked
+• Notification must include sound and vibration
+• Accept / Reject buttons must work
+
+TEST 2 — FULL RIDE FLOW
+
+Verify the complete lifecycle:
+
+Customer books ride
+Driver receives request
+Driver accepts
+Driver arrives
+Pickup OTP verification
+Trip starts
+Trip completes
+
+Confirm the database updates correctly and trip status transitions work.
+
+TEST 3 — REPEAT BOOKING
+
+After completing a ride:
+
+Customer must be able to immediately book another ride.
+
+There must be no “active trip” error.
+
+TEST 4 — PAYMENT FLOW
+
+Verify:
+
+Wallet recharge using Razorpay
+Ride payment success
+Wallet balance updates
+Transaction records are created correctly
+
+TEST 5 — DRIVER WALLET
+
+Confirm:
+
+Commission deduction after ride
+Subscription validation works
+Driver cannot go online with expired subscription
+
+TEST 6 — PARCEL DELIVERY
+
+Verify:
+
+Parcel booking works
+Pickup OTP works
+Delivery OTP works
+Trip completes successfully
+
+TEST 7 — SOCKET EVENTS
+
+Confirm that all real-time events function correctly:
+
+trip:new_request
+trip:driver_assigned
+trip:request_taken
+trip:status_update
+trip:completed
+
+TEST 8 — APP STABILITY
+
+Confirm that both apps:
+
+Customer App
+Pilot App
+
+Open without crashes and run smoothly.
+
+FINAL RESPONSE FORMAT
+
+Provide one of the following responses only.
+
+OPTION A
+“The JAGO platform has been fully verified in live execution tests.
+All ride flows, notifications, payments, and modules work correctly and the system is ready for production launch.”
+
+OR
+
+OPTION B
+“The platform still has the following issues that must be fixed before launch:”
+
+(List the issues clearly.)

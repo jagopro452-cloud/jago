@@ -1,0 +1,127 @@
+We implemented two driver earning models in the platform:
+
+1️⃣ Subscription Model
+2️⃣ Commission Model
+
+I need confirmation that these are fully implemented in backend logic, not only visible in UI or admin panel.
+
+1️⃣ SUBSCRIPTION MODEL
+
+In this model:
+
+Driver pays a subscription fee (daily/weekly/monthly).
+
+After paying the subscription, the driver receives ride requests.
+
+From every ride, the following must be deducted automatically:
+
+• Platform Fee
+• GST
+• Insurance Fee
+
+These deductions must go to Admin Wallet.
+
+Please confirm:
+
+Subscription payment activates driver account
+
+Subscription expiry blocks driver from receiving rides
+
+Platform fee + GST + Insurance deduction working
+
+Admin wallet receives these deductions
+
+2️⃣ COMMISSION MODEL (Rapido Style)
+
+In commission mode:
+
+Driver does not pay subscription
+
+Platform takes percentage commission per ride
+
+Example:
+
+Ride Fare = ₹100
+Commission = 15% → ₹15
+Driver receives = ₹85
+
+Confirm:
+
+Commission calculation works automatically
+
+Commission stored in admin revenue
+
+Driver earnings updated correctly
+
+3️⃣ DRIVER WALLET SYSTEM
+
+Driver wallet must support:
+
+Ride earnings credit
+
+Commission deductions
+
+Platform fee deductions
+
+Withdrawal requests
+
+Confirm that wallet entries are correctly stored in database.
+
+4️⃣ NEGATIVE WALLET BALANCE
+
+If driver wallet balance becomes negative (due to commissions or penalties):
+
+Driver must recharge wallet
+
+Driver should not receive rides until balance cleared
+
+Wallet recharge API must work
+
+Wallet balance should update instantly
+
+Please confirm this logic is fully implemented.
+
+5️⃣ ADMIN PANEL CONTROL
+
+Admin should be able to configure:
+
+Subscription pricing
+
+Commission percentage
+
+Platform fee
+
+Insurance fee
+
+GST calculation
+
+Wallet minimum balance
+
+Confirm these settings affect the ride calculation in real time.
+
+FINAL VERIFICATION REQUIRED
+
+Please confirm clearly:
+
+Subscription Model Fully Working: YES / NO
+Commission Model Fully Working: YES / NO
+Platform Fee + GST + Insurance Deduction: YES / NO
+Driver Wallet Logic Verified: YES / NO
+Negative Wallet Balance Handling: YES / NO
+
+If anything is only UI-level or partially implemented, list it and implement the backend logic properly.
+
+The system must support both models completely before production launch.
+
+Kiran 👊
+Idi important because Rapido / Uber type apps lo revenue model ikkade untundi.
+
+Next stage lo meeru adugali:
+
+Surge pricing
+
+Driver incentives
+
+Cancellation penalty
+
+Ivi kuda backend lo integrate ayya ledo check cheyyali.

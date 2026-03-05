@@ -1,0 +1,326 @@
+You must perform a FULL UX and functional upgrade for the JAGO platform
+(Customer App + Pilot App + Backend + Admin).
+
+The current UI and ride flow are working but still feel basic compared to Rapido/Uber.
+
+The goal is to upgrade the system to a premium production-grade experience.
+
+Study Rapido ride UI, order card UI, driver notification behavior, and receipt screens
+and upgrade JAGO accordingly.
+
+-------------------------------------
+
+1. DRIVER RIDE ALERT SYSTEM (CRITICAL)
+
+Currently drivers are missing rides because no loud notification is triggered.
+
+Implement a real ride alert system.
+
+When a new ride request is sent to a driver:
+
+• Play LOUD notification sound
+• Continuous ring for 20 seconds
+• Phone vibrates repeatedly
+• Show full-screen ride request popup
+
+Popup must show:
+
+Vehicle Type
+Pickup location
+Drop location
+Pickup distance
+Trip distance
+Estimated fare
+Timer countdown (20 sec)
+
+Buttons:
+
+ACCEPT
+DECLINE
+
+If driver does not respond → ride goes to next driver.
+
+Even if phone screen is locked the notification must appear.
+
+Use:
+
+Firebase Push Notification + Socket fallback.
+
+Sound must be loud like Rapido.
+
+-------------------------------------
+
+2. DRIVER ORDER CARD UI (LIKE RAPIDO)
+
+Upgrade driver incoming order cards.
+
+Each order must show:
+
+Vehicle type badge
+Pickup distance
+Trip distance
+Pickup location
+Drop location
+Estimated earnings
+Surge indicator
+Extra earnings indicator
+
+Example:
+
+Bike Boost
+Pickup: 0.8 km
+Trip: 7.2 km
+Ajith Nagar → Nehru Nagar
+Estimated Earn: ₹45
+
+Accept button large yellow like Rapido.
+
+Cards must be scrollable when multiple orders arrive.
+
+-------------------------------------
+
+3. CUSTOMER APP RICH VEHICLE SELECTION UI
+
+Upgrade the vehicle selection screen.
+
+Each vehicle card must show:
+
+Vehicle icon
+Vehicle name
+Estimated arrival time
+Estimated drop time
+Price
+Tag (FASTEST / SAVER / PREMIUM)
+
+Example:
+
+Bike — ₹45
+Auto — ₹127
+Cab Economy — ₹190
+
+Cards must have shadows, icons and modern layout.
+
+-------------------------------------
+
+4. FARE CALCULATION SYSTEM (CRITICAL FIX)
+
+Currently fare shows incorrect values sometimes.
+
+Fix fare calculation using:
+
+Base Fare
+Distance Fare
+Time Fare
+Platform Fee
+GST
+Surge pricing
+Night pricing
+
+Distance must come from Google Directions API route distance.
+
+Fare must update instantly when:
+
+pickup changes
+drop changes
+vehicle changes
+
+Display full breakdown:
+
+Base Fare
+Distance Charge
+GST
+Total Fare
+
+-------------------------------------
+
+5. RIDE RECEIPT SYSTEM (LIKE RAPIDO)
+
+After trip completion show receipt screen.
+
+Receipt must include:
+
+Trip ID
+Date & time
+Driver name
+Vehicle number
+Pickup location
+Drop location
+Distance travelled
+Trip duration
+
+Fare Breakdown:
+
+Base Fare
+Distance Fare
+Time Fare
+Platform Fee
+GST
+Total Paid
+
+Payment Method:
+
+Cash / UPI / Wallet
+
+Buttons:
+
+Download Receipt
+Share Receipt
+
+Receipt UI must look modern with icons and separators.
+
+-------------------------------------
+
+6. DRIVER WALLET SYSTEM (IMPROVE UI)
+
+Driver wallet screen must show:
+
+Current balance
+Negative balance warning
+Recharge button
+Transaction history
+
+Transactions:
+
+Ride earnings
+Commission deduction
+Subscription deduction
+Wallet recharge
+
+Add filters:
+
+Today
+This week
+This month
+
+-------------------------------------
+
+7. DRIVER SUBSCRIPTION SYSTEM
+
+Drivers must see subscription page.
+
+Plans:
+
+Daily
+Weekly
+Monthly
+
+Display:
+
+Price
+Benefits
+Active status
+Expiry date
+
+Allow payment via Razorpay.
+
+Driver cannot go online if subscription expired.
+
+-------------------------------------
+
+8. DRIVER ONBOARDING (FULL FLOW)
+
+Driver onboarding must include:
+
+Personal details
+Driving license upload
+RC upload
+Vehicle photo upload
+Selfie face verification
+Background check status
+
+Driver cannot go online until admin approval.
+
+-------------------------------------
+
+9. RIDE FLOW FIX (CRITICAL)
+
+Ride lifecycle must follow:
+
+Customer books ride
+Trip status = searching
+
+Nearby drivers receive request
+
+Driver accepts
+
+Trip status = accepted
+
+Driver arrives
+Customer enters OTP
+
+Trip status = started
+
+Trip completes
+
+Trip status = completed
+
+After completion:
+
+customer.active_trip_id = NULL
+driver.current_trip_id = NULL
+
+Allow customer to book new ride.
+
+-------------------------------------
+
+10. DISTANCE DISPLAY FIX
+
+Distance must be formatted properly.
+
+Wrong:
+
+30.707539020181148 km
+
+Correct:
+
+30.7 km
+
+Use rounding to 1 decimal.
+
+-------------------------------------
+
+11. UI DESIGN UPGRADE
+
+Upgrade UI with:
+
+modern shadows
+rounded cards
+iconography
+color consistency
+smooth animations
+
+UI must feel like:
+
+Rapido
+Uber
+Ola
+
+-------------------------------------
+
+12. FINAL QA TEST
+
+Run full QA tests:
+
+Customer booking
+Driver notification
+Driver accept
+OTP verification
+Trip start
+Trip complete
+Receipt generation
+Wallet deduction
+Subscription validation
+
+Fix any crashes, UI errors or backend inconsistencies.
+
+Only after all tests pass mark the system as production-ready.
+
+-------------------------------------
+
+Deliverables:
+
+Updated Customer APK
+Updated Pilot APK
+All bugs fixed
+Premium UI experience
+Reliable driver alert system

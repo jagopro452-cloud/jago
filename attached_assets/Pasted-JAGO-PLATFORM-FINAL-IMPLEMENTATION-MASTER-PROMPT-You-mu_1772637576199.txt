@@ -1,0 +1,379 @@
+JAGO PLATFORM — FINAL IMPLEMENTATION MASTER PROMPT
+
+You must upgrade the JAGO platform (Customer App, Pilot App, Backend, Admin Panel) into a production-grade ride platform similar in quality to Uber or Rapido.
+
+The system must be powerful, intelligent, accessible, visually premium, and optimized for low battery consumption.
+
+All features must be stable, secure, and production-ready.
+
+---
+
+1. JAGO AI VOICE ASSISTANT
+
+Implement a built-in AI voice assistant for ride booking.
+
+The assistant must allow users to control the app using voice.
+
+Supported wake phrases:
+
+• "Hey JAGO"
+• "Open JAGO"
+• "JAGO"
+
+When activated the assistant says:
+
+"Hello, welcome to JAGO. How can I help you?"
+
+Example voice booking flow:
+
+User: Book bike
+Assistant: Where should we pick you up?
+User: My current location
+Assistant: Where do you want to go?
+User: Benz Circle
+Assistant: Bike ride to Benz Circle costs ₹45. Confirm booking?
+User: Yes
+
+Ride must be booked automatically.
+
+Supported commands:
+
+• Book bike
+• Book auto
+• Book cab
+• Send parcel
+• Cancel ride
+• Call driver
+• Track ride
+• Share ride
+
+Languages supported:
+
+• English
+• Telugu
+• Hindi
+• Tamil
+• Kannada
+
+Language must be automatically detected.
+
+Use speech-to-text and text-to-speech.
+
+---
+
+2. ACCESSIBILITY MODE (FOR BLIND & ELDERLY USERS)
+
+Create accessibility support.
+
+Features required:
+
+• Voice navigation
+• Large buttons
+• Screen reader compatibility
+• Haptic vibration feedback
+• Spoken prompts
+
+Example:
+
+"Your pickup location is your current location. Where do you want to go?"
+
+This allows visually impaired users to book rides easily.
+
+---
+
+3. PREMIUM HOME SCREEN UI
+
+Upgrade the customer app UI to look premium like Uber or Rapido.
+
+Home screen must include:
+
+• Gradient header
+• Location display
+• Notification icon
+• Floating search bar
+• Premium service cards
+• Horizontal service icons
+• Highlight card (In a hurry?)
+• Voice booking floating button
+
+Design rules:
+
+• Rounded corners (16px)
+• Soft shadows
+• Consistent spacing
+• Modern icons
+• Smooth animations
+
+---
+
+4. VEHICLE SELECTION UI
+
+Vehicle cards must display:
+
+• Vehicle icon
+• Vehicle name
+• Estimated arrival time
+• Estimated drop time
+• Price
+• Tag (FASTEST / SAVER / PREMIUM)
+
+Example:
+
+Bike – ₹45
+Auto – ₹127
+Cab – ₹190
+
+---
+
+5. DRIVER RIDE ALERT SYSTEM
+
+Drivers must receive strong ride alerts.
+
+When a new ride request arrives:
+
+• Loud ringtone
+• Continuous sound for 20 seconds
+• Vibration
+• Full screen popup
+
+Popup must show:
+
+• Pickup location
+• Drop location
+• Pickup distance
+• Trip distance
+• Estimated earnings
+• Countdown timer
+
+Buttons:
+
+ACCEPT
+DECLINE
+
+Use push notifications with socket fallback.
+
+---
+
+6. DRIVER ORDER CARD UI
+
+Incoming ride cards must include:
+
+• Vehicle type badge
+• Pickup distance
+• Trip distance
+• Pickup location
+• Drop location
+• Estimated earnings
+• Surge indicator
+
+Cards must be scrollable when multiple requests arrive.
+
+---
+
+7. FARE CALCULATION SYSTEM
+
+Fare must be calculated correctly using:
+
+• Base fare
+• Distance fare
+• Time fare
+• Platform fee
+• GST
+• Surge pricing
+• Night pricing
+
+Distance must come from the route provided by the maps API.
+
+Fare must update instantly when pickup or drop changes.
+
+---
+
+8. RIDE RECEIPT SYSTEM
+
+After trip completion generate a detailed receipt.
+
+Receipt must include:
+
+• Trip ID
+• Date and time
+• Driver name
+• Vehicle number
+• Pickup location
+• Drop location
+• Distance travelled
+• Trip duration
+
+Fare breakdown:
+
+• Base fare
+• Distance fare
+• Time fare
+• Platform fee
+• GST
+• Total paid
+
+Options:
+
+Download receipt
+Share receipt
+
+---
+
+9. DRIVER WALLET SYSTEM
+
+Driver wallet must show:
+
+• Current balance
+• Negative balance warning
+• Recharge button
+• Transaction history
+
+Transaction types:
+
+• Ride earnings
+• Commission deduction
+• Subscription deduction
+• Wallet recharge
+
+---
+
+10. DRIVER SUBSCRIPTION SYSTEM
+
+Drivers must have subscription plans.
+
+Plans:
+
+• Daily
+• Weekly
+• Monthly
+
+Drivers cannot go online if the subscription is expired.
+
+Payments handled via Razorpay.
+
+---
+
+11. DRIVER ONBOARDING SYSTEM
+
+Driver registration must include:
+
+• Personal details
+• Driving license upload
+• Vehicle RC upload
+• Vehicle photo upload
+• Face verification
+• Admin approval
+
+Drivers cannot go online until documents are approved.
+
+---
+
+12. RIDE LIFECYCLE FLOW
+
+Correct ride flow:
+
+Customer books ride
+Trip status = searching
+
+Nearby drivers receive request
+
+Driver accepts
+
+Trip status = accepted
+
+Driver arrives
+Customer enters OTP
+
+Trip starts
+
+Trip status = started
+
+Trip completes
+
+Trip status = completed
+
+After completion:
+
+customer.active_trip_id = NULL
+driver.current_trip_id = NULL
+
+Customer can book another ride.
+
+---
+
+13. LOW BATTERY OPTIMIZATION
+
+Optimize app for low battery consumption.
+
+Rules:
+
+GPS only active during ride
+Low accuracy location when searching
+High accuracy only when trip active
+
+Driver location updates every 5–10 seconds.
+
+Maps load only when necessary.
+
+Voice listening must not run continuously.
+
+Sockets must disconnect when idle.
+
+---
+
+14. PERFORMANCE
+
+App must run smoothly on mid-range Android devices.
+
+Avoid heavy animations.
+
+Ensure fast loading screens.
+
+---
+
+15. SECURITY
+
+Ensure secure APIs:
+
+• Authorization tokens
+• Payment validation
+• No duplicate payment processing
+• Proper backend validation
+
+---
+
+16. FINAL QA TEST
+
+Test complete platform flow:
+
+Customer booking
+Driver alert
+Driver accept
+OTP verification
+Trip start
+Trip complete
+Receipt generation
+Wallet deduction
+
+Fix any crashes or UI errors.
+
+---
+
+FINAL GOAL
+
+The JAGO platform must feel:
+
+modern
+premium
+fast
+accessible
+reliable
+
+The experience must be comparable to Uber or Rapido.
+
+Deliver:
+
+Updated Customer App
+Updated Pilot App
+Stable backend
+Production ready system

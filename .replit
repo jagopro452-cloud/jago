@@ -1,0 +1,76 @@
+modules = ["nodejs-20", "web", "java-graalvm22.3", "python-3.11", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["bash", "curl", "freetype", "git", "jdk17", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "unzip", "wget", "which", "zlib"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[env]
+PORT = "5000"
+
+[deployment]
+deploymentTarget = "vm"
+run = ["node", "dist/index.cjs"]
+build = ["npm", "run", "build"]
+publicDir = "dist/public"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build APKs"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Build APKs"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash /home/runner/workspace/run_build.sh"
+
+[userenv]
+
+[userenv.shared]
+FIREBASE_WEB_API_KEY = "AIzaSyCckhJY3NMZTjOkXWMJhor_GIMmQflo1U8"
+GOOGLE_MAPS_SERVER_KEY = "AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw"
+FIREBASE_SERVICE_ACCOUNT_KEY = '''
+{
+  "type": "service_account",
+  "project_id": "jago-user",
+  "private_key_id": "5e1d5a20968da6b0dee0556e98d146b715d61045",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCrDSckyPoS+prx\nWSwQMNEwmXqySd1egIxX7rCWPmvpiNhGDDXxF3lPEBdQEs9twaHN208DQXfo3YmM\nIfEDcwRGtNckuhX7QRqUmB8sNrdKyVZ1fJRqGP7fliY1UDvBfOPXIIzMIycIcSv3\nnJGM4uosufi4xLQs523lK2WHR6czAlhBGydYsCp87AXbRbyu8xSk8S1cYPqCjBoQ\n6tjNQxOlxmZcMfRe6YwFyOm78HFAIsBKp0k440uepwlyHW8Xcnd9d2Jmbx6sBbEj\nLhqfBfiuYMEfUSmj2/+zMv06QTVzl/Fdun3/aX+attXBlRvuGaALdEej6L7Kl/Ey\nvPmHGOmvAgMBAAECggEAB0gY9ZegQ0srnTQC5heMUdAFNjsvWZs9HjssUkdxZMot\nQGIhsIc9MOPwkh/GEjHCURcE2JC8Nlh3LaHkqchtX9/8u3TRt1X3EZweOGdSsZpu\nyOaXEzzIKnCwyxrRlTP09EIC+TSGScI2ytfKWTlWgOi6N8D/IinVKekJU+zb2pYT\nn/+ZnUB6HUczi1TJyIWFlMJyPI5s05cz4QedqkcV3FM75Oii252PG1Gzfs2neFEX\nA3yBHhCIAbD7D00M5R9ErNEh6g1ilqNw0tt8UndivoPin2U9PPNyPMW30Vycthit\nNAzxgnRR2U4wRRkCCw48L28ljVUyoHfzjyJY23VJLQKBgQDcvLWDSSDsSQJOoWvF\nhq06uQdz+m7GTtewStc/V1JZWDIGNEx7UvPDX43CtimYCuzy+ty6ATlAtWeQUIx7\nWR4ZqzzYeMiCVDq/Yrh/Q5f6mbMmU6zFhgDsUWuLUKE1/lCyDv36uTEmhk0aA0qH\nJ0nBKVaort42FmtqLailSfWgtQKBgQDGYH09gWplO3RC7UsfPKuogr6uGujM1ViA\nGuPwpF21Ae76K5wfkTY3HuToAsfloCaDFu0bSDaTNW2KfApLmxQzBEhmmi+20DvS\nPeJ7QT/7uPPciwBEUEwklc06CsQLI2latrIXshJU6Vsi/hD2KhRY1/3fldhfbJzW\nrXnaRYLzUwKBgBwe2kzgWxZe8rFLtSwTzSvG+KEYzVXsI2QtFKDYIgCJ0M2jif7I\nAY/pM2kTxda9xZPqy4XStBV/RrNG366zGreQbg7xzDF2Q4mwLOrhlJHzVLRUQpVj\nTejNMpMr8W2seWFFsatoPk+3GklvE+aF5cp61rRkmqBvWL3NFUgBVQ5lAoGBAItM\nziUWb2POsAEfKBUzQUb/KG6Rrs/HMHIkb9NXWAX26Zz6apMwIOXr58mTylLQdrqu\nqqjxuID+j4EjQQd+SlzYsQ57Tu4MozUrB5KNayST54oCgZl22UEHgCk1zhwULbLp\nf31sKbs+ciTMS5TQT6Fjan5KdrnrRubowhwnm6DJAoGAWQy4vNWQEBK71nxNGMDO\nW1j2JnPBfXVcUmCrfJApqpn0Sw3KIfFJSTVxaU17p9M4XprPryA3ja/qDBhrEeWf\n88fgzuTQ1kcNSJnaVwt7cqyzZLL3O0EcguA4QkIAMRMRzPIoigpCGolDerY5yumj\n09/6YbTSdhZBOL5nd36zl94=\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@jago-user.iam.gserviceaccount.com",
+  "client_id": "101975968048395727655",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40jago-user.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}'''

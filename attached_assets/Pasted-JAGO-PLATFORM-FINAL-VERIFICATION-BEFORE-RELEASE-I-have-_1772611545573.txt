@@ -1,0 +1,195 @@
+JAGO PLATFORM — FINAL VERIFICATION BEFORE RELEASE
+
+I have reviewed your session summary for v1.0.6.
+
+Before this platform can be considered production-ready, I need a FULL SYSTEM VERIFICATION of every module — not assumptions.
+
+You must verify each item below with actual API calls, database checks, and real flows.
+
+---
+
+1. DRIVER MATCHING FLOW (REAL TEST)
+
+Simulate a complete ride scenario:
+
+Customer books ride
+Driver receives request
+Driver accepts
+Driver arrives
+Driver starts trip
+Driver completes trip
+
+Verify database fields:
+
+trip_status transitions
+driver_id assignment
+fare calculation
+wallet deductions
+
+Also confirm:
+
+When one driver accepts → all other drivers receive **trip:request_taken** event and their dialogs close.
+
+---
+
+2. AUTO REASSIGN SYSTEM
+
+Confirm the following works correctly:
+
+Driver ignores request → 90-second timeout fires
+trip:timeout socket event emitted
+System selects next nearest driver
+
+Verify:
+
+rejected_driver_ids column is respected
+Previous drivers are not reassigned
+
+---
+
+3. DRIVER APP SESSION
+
+Previously drivers saw **“Session expired” when going online**.
+
+Verify the following:
+
+Driver login session persists
+Driver can toggle ONLINE / OFFLINE
+Driver becomes visible in nearby driver queries
+
+Provide proof:
+
+API response
+DB driver status update
+
+---
+
+4. PARCEL FLOW VERIFICATION
+
+Simulate full parcel delivery:
+
+Customer books parcel
+Driver accepts
+Pickup OTP verification
+Delivery OTP verification
+Trip completes
+
+Confirm:
+
+parcel_trip records exist
+OTP stored in DB
+SMS sent correctly
+
+---
+
+5. REVENUE MODEL SYSTEM
+
+Confirm BOTH revenue models are working:
+
+Subscription Model
+Commission Model
+
+Admin must be able to toggle per service:
+
+rides
+parcel
+cargo
+intercity
+
+Verify deductions are correct in each case.
+
+---
+
+6. DRIVER WALLET SYSTEM
+
+Verify wallet flow:
+
+Wallet recharge via Razorpay
+Wallet credited after webhook
+Wallet deductions after trip completion
+
+Confirm:
+
+wallet_balance updated correctly
+wallet_transactions recorded
+
+---
+
+7. NEGATIVE BALANCE LOCK
+
+Test scenario:
+
+Driver wallet drops below threshold.
+
+Verify:
+
+Driver auto locked
+Driver cannot go online
+After recharge → driver auto unlocked
+
+---
+
+8. REAL TIME SOCKET EVENTS
+
+Confirm these events fire correctly:
+
+new_trip_request
+trip:request_taken
+trip:timeout
+trip_started
+trip_completed
+wallet:recharged
+
+Verify Flutter apps receive these events.
+
+---
+
+9. PAYMENT WEBHOOK
+
+Confirm Razorpay webhook:
+
+POST /api/webhooks/razorpay
+
+Verify:
+
+Signature validation using HMAC SHA256
+payment.captured handled
+wallet credited correctly
+
+---
+
+10. VOICE BOOKING SYSTEM
+
+Verify voice booking:
+
+User speaks pickup + destination
+Geocoding resolves locations
+Fare estimate returned
+User confirmation triggers booking
+
+---
+
+11. ADMIN PANEL
+
+Verify admin panel actions:
+
+Change revenue model
+Edit fares
+Disable driver
+View revenue stats
+
+Confirm all changes immediately affect system behavior.
+
+---
+
+FINAL REQUIREMENT
+
+Do NOT respond with assumptions.
+
+Provide verification results with:
+
+API responses
+Database proof
+Test ride / parcel flows
+
+Only after ALL modules pass verification can the system be considered ready for production.

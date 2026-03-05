@@ -1,0 +1,89 @@
+FINAL PRODUCTION DEPLOYMENT REQUEST — JAGO PLATFORM
+
+The JAGO platform development appears to be complete. Before launching to production, perform one final full technical verification and implement the remaining production configuration.
+
+I will provide all required production keys and credentials.
+
+Tasks to complete:
+
+1. FIREBASE PUSH NOTIFICATIONS
+   Configure Firebase Cloud Messaging completely.
+   Use the production Firebase service account JSON that I will provide and set:
+
+FIREBASE_SERVICE_ACCOUNT_KEY
+
+Verify that driver notifications work when:
+• the app is open
+• the app is in background
+• the phone screen is locked
+
+Notifications must include sound, vibration and visible alert.
+
+2. PAYMENT SYSTEM
+   Configure the final production Razorpay keys that I will provide.
+
+Verify:
+• order creation
+• payment confirmation
+• wallet recharge
+• wallet deduction after rides
+• commission calculation
+
+3. SMS OTP SYSTEM
+   Configure the Fast2SMS production API key that I will provide.
+
+Verify:
+• OTP sending
+• OTP verification for login
+• OTP delivery for parcel pickup and delivery.
+
+4. FINAL END-TO-END TEST
+   Perform a full real execution test:
+
+Customer books ride
+Driver receives request
+Driver accepts ride
+Driver navigates to pickup
+Driver presses ARRIVED
+OTP verification
+Ride started
+Ride completed
+
+After completion confirm that the customer can book another ride successfully.
+
+5. PARCEL FLOW
+   Verify full parcel flow:
+
+Parcel booking
+Pickup OTP verification
+Delivery OTP verification
+Trip completion
+
+6. CHAT SYSTEM
+   Verify driver–customer chat works and messages persist in the database after reconnect.
+
+7. DATABASE HEALTH
+   Confirm:
+
+• no stuck trips
+• driver locations update correctly
+• trip statuses update correctly.
+
+8. APK STABILITY
+   Verify latest APK builds install and run without crashes:
+
+JAGO Customer App
+JAGO Pilot App
+
+FINAL RESPONSE REQUIRED
+
+After completing all configuration and tests, respond clearly with one of the following:
+
+OPTION A
+"The JAGO platform has been fully verified with production configuration. All modules are working and the system is ready for live production deployment."
+
+OR
+
+OPTION B
+"The JAGO platform is NOT yet ready for production. The following critical issues still exist:"
+(List the issues clearly.)

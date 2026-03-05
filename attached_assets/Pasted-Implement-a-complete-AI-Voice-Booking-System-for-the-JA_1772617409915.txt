@@ -1,0 +1,295 @@
+Implement a complete AI Voice Booking System for the JAGO platform that allows users to book rides, parcels, or cargo using voice in ANY language.
+
+This system must work in the Customer App and support multiple languages automatically.
+
+----------------------------------------
+1. VOICE BOOKING TRIGGER
+----------------------------------------
+
+When the JAGO app opens:
+
+User logs in normally.
+
+On the home screen show a large microphone button:
+
+🎙️ "Book by Voice"
+
+When pressed:
+
+Start listening using speech-to-text.
+
+Use Google Speech API or device speech recognition.
+
+Language detection must be automatic.
+
+
+----------------------------------------
+2. LANGUAGE DETECTION
+----------------------------------------
+
+System must detect user's spoken language automatically.
+
+Supported languages:
+
+English
+Hindi
+Telugu
+Tamil
+Kannada
+Malayalam
+Marathi
+Bengali
+Urdu
+
+If user speaks in any language, system should:
+
+Convert speech → text
+Detect language
+Respond using the SAME language using Text-To-Speech.
+
+
+----------------------------------------
+3. VOICE BOOKING FLOW
+----------------------------------------
+
+User example:
+
+User speaks:
+
+"Book a ride from Kukatpally to Hitech City"
+
+System response (same language):
+
+"I found pickup Kukatpally and destination Hitech City. Is this correct?"
+
+User replies:
+
+"Yes"
+
+Then system asks:
+
+"Which vehicle do you want? Bike, Auto, Car, Ride Share?"
+
+User replies:
+
+"Bike"
+
+System calculates fare and ETA.
+
+System response:
+
+"Bike ride fare is approximately 95 rupees. Driver arrival time 3 minutes. Should I confirm the booking?"
+
+User replies:
+
+"Yes"
+
+System calls booking API and confirms:
+
+"Your ride has been booked. Searching for nearby drivers."
+
+
+----------------------------------------
+4. ADDRESS DETECTION
+----------------------------------------
+
+Use Google Maps Geocoding API.
+
+Voice input → convert to:
+
+pickup_lat
+pickup_lng
+destination_lat
+destination_lng
+
+Example:
+
+"Kukatpally"
+
+→ convert to coordinates.
+
+
+----------------------------------------
+5. SERVICE TYPE DETECTION
+----------------------------------------
+
+Voice booking must support:
+
+Ride
+Parcel
+Cargo
+Ride Share
+Intercity
+
+Examples:
+
+"Send a parcel from Ameerpet to Madhapur"
+→ Parcel booking.
+
+"Book cargo truck"
+→ Cargo booking.
+
+"Book ride share seat"
+→ Ride share booking.
+
+
+----------------------------------------
+6. VEHICLE OPTIONS
+----------------------------------------
+
+System must understand voice commands:
+
+Bike
+Auto
+Car
+Ride share
+Mini cargo
+Truck
+
+If user doesn't specify vehicle:
+
+System asks:
+
+"Which vehicle would you prefer?"
+
+
+----------------------------------------
+7. FARE ANNOUNCEMENT
+----------------------------------------
+
+Before confirming booking:
+
+System must announce:
+
+Fare estimate
+Driver arrival ETA
+
+Example:
+
+"Estimated fare is 120 rupees. Driver will arrive in 4 minutes."
+
+
+----------------------------------------
+8. CONFIRMATION STEP
+----------------------------------------
+
+System must always confirm before booking.
+
+Example:
+
+"Do you want to confirm the booking?"
+
+User replies:
+
+"Yes"
+
+Then booking API is called.
+
+
+----------------------------------------
+9. REAL TIME STATUS VOICE
+----------------------------------------
+
+System must speak ride status.
+
+Examples:
+
+"Driver assigned."
+"Driver arriving in 2 minutes."
+"Driver has arrived."
+"Trip started."
+"Trip completed."
+
+
+----------------------------------------
+10. DRIVER APP VOICE ALERT
+----------------------------------------
+
+Driver app must support voice alerts.
+
+Examples:
+
+"New ride request."
+"Pickup location Kukatpally."
+"Drop location Hitech City."
+
+Driver can accept via screen or voice.
+
+
+----------------------------------------
+11. ADMIN PANEL SETTINGS
+----------------------------------------
+
+Add Voice AI settings in admin panel.
+
+Options:
+
+Enable voice booking
+Enable languages
+Voice speed
+Voice volume
+
+Admin must be able to enable or disable.
+
+
+----------------------------------------
+12. FAILSAFE SYSTEM
+----------------------------------------
+
+If voice recognition fails:
+
+System shows manual booking UI.
+
+Example:
+
+"Sorry, I didn't understand. Please try again."
+
+
+----------------------------------------
+13. ACCESSIBILITY MODE
+----------------------------------------
+
+Add a special mode for blind users.
+
+Features:
+
+Full voice guidance
+Large buttons
+Auto reading of screen.
+
+
+----------------------------------------
+14. SECURITY
+----------------------------------------
+
+Voice booking must still require login.
+
+No booking allowed without authenticated user.
+
+
+----------------------------------------
+15. PERFORMANCE
+----------------------------------------
+
+Voice recognition must start within 1 second.
+
+Speech response must start within 2 seconds.
+
+
+----------------------------------------
+FINAL RESULT
+----------------------------------------
+
+User should be able to book rides like this:
+
+Open app → press mic → speak → confirm → ride booked.
+
+This must work for:
+
+Ride
+Parcel
+Cargo
+Ride share
+Intercity.
+
+All responses must be in the SAME language the user speaks.

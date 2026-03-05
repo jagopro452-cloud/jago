@@ -1,0 +1,163 @@
+FINAL RIDE FLOW UX IMPLEMENTATION – JAGO / LIFTMATE
+
+The ride booking works, but the pickup interaction flow between driver and customer is incomplete. Before launching the application to production, the complete ride flow must match modern ride-hailing apps like Uber, Ola, or Rapido.
+
+The following features must be implemented and verified.
+
+---
+
+1. DRIVER PICKUP NAVIGATION
+
+Driver must have a clear navigation option.
+
+Driver screen must show:
+
+• Google Maps navigation button ("Navigate to Pickup")
+• Customer pickup pin on the map
+• Distance to pickup (example: 350 meters away)
+• Estimated arrival time countdown
+
+Driver must be able to open Google Maps navigation directly from the app.
+
+---
+
+2. DRIVER DETAILS ON CUSTOMER SCREEN
+
+Customer must see full driver details.
+
+Customer screen must show:
+
+• Driver photo
+• Driver rating
+• Masked phone number
+• Verified badge
+• Vehicle number
+• Vehicle type
+
+The placeholder icon must be replaced with actual driver information.
+
+---
+
+3. PICKUP ARRIVAL TIMER
+
+When driver accepts the ride:
+
+• ETA timer must start (example: Driver arriving in 3:20 minutes)
+
+When driver reaches pickup:
+
+• Waiting timer must start (example: waiting time 2 minutes)
+
+This prevents disputes between driver and customer.
+
+---
+
+4. ARRIVED BUTTON
+
+Driver must have a button:
+
+ARRIVED AT PICKUP
+
+When clicked:
+
+• Customer receives notification
+• Status changes to "Driver has arrived"
+
+---
+
+5. IMPROVED OTP FLOW
+
+Correct pickup flow must be:
+
+Driver reaches pickup
+Driver clicks ARRIVED
+Customer sits in vehicle
+Driver presses START RIDE
+Customer provides OTP
+Trip starts
+
+OTP must be required before the trip begins.
+
+---
+
+6. LIVE DRIVER TRACKING
+
+Customer must see real-time movement:
+
+• Driver icon moving on the map
+• Route from driver → pickup
+• Distance update in real time
+
+---
+
+7. CHAT SYSTEM
+
+Add chat between driver and customer.
+
+Include quick message buttons:
+
+"I am coming"
+"Please wait 2 minutes"
+"Where are you?"
+
+---
+
+8. TRIP STATUS INDICATORS
+
+Customer and driver must see ride stages clearly:
+
+1. Searching driver
+2. Driver accepted
+3. Driver arriving
+4. Driver arrived
+5. Ride started
+6. Ride completed
+
+---
+
+9. CANCEL REASON SYSTEM
+
+When cancelling a ride, the user must select a reason:
+
+Driver too far
+Change of plan
+Wrong pickup location
+Other reason
+
+---
+
+10. SAFETY FEATURES
+
+Customer app must include:
+
+• Share trip live location link
+• Emergency SOS button
+• Ride details sharing
+
+---
+
+11. FARE VISIBILITY RULE
+
+Follow the platform model correctly:
+
+Customer side → show contribution charge
+Driver side → show actual fare
+
+Do not expose full fare structure directly to the customer if the platform model requires abstraction.
+
+---
+
+FINAL REQUIREMENT
+
+Implement all missing ride-flow UX components and verify that the following screens work correctly:
+
+Searching driver
+Driver accepted
+Driver arriving
+Driver arrived
+OTP verification
+Trip active
+Trip completed
+Rating screen
+
+Only after these are implemented and verified can the application be considered ready for production.
