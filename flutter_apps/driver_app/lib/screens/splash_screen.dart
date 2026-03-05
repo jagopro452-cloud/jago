@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
+import 'onboarding/language_select_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -56,9 +57,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     await Future.delayed(const Duration(seconds: 3));
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
+    final langSelected = prefs.getBool('language_selected') ?? false;
     if (!mounted) return;
+    Widget nextScreen;
+    if (!langSelected) {
+      nextScreen = const LanguageSelectScreen();
+    } else if (token != null) {
+      nextScreen = const HomeScreen();
+    } else {
+      nextScreen = const LoginScreen();
+    }
     Navigator.pushReplacement(context, PageRouteBuilder(
-      pageBuilder: (_, a, __) => token != null ? const HomeScreen() : const LoginScreen(),
+      pageBuilder: (_, a, __) => nextScreen,
       transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
       transitionDuration: const Duration(milliseconds: 500),
     ));
