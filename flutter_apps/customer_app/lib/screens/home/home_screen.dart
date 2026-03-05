@@ -491,7 +491,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Text(
             'Hello, $_userName! 👋',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 27,
               color: textColor,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
@@ -1147,8 +1147,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             alignment: Alignment.topCenter,
             children: [
               Container(
-                width: 66,
-                height: 66,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
@@ -1158,13 +1158,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: g1.withOpacity(0.38),
-                      blurRadius: 14,
-                      offset: const Offset(0, 5),
+                      color: g1.withOpacity(0.42),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: g1.withOpacity(0.15),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: Center(child: Text(s['emoji'] as String, style: const TextStyle(fontSize: 30))),
+                child: Center(child: Text(s['emoji'] as String, style: const TextStyle(fontSize: 33))),
               ),
               if (isPopular)
                 Positioned(
@@ -1342,37 +1347,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildInAHurryCard() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: GestureDetector(
         onTap: () => _openSearch(presetVehicle: 'bike'),
         child: Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFFFF6B35), Color(0xFFFF8C55)],
+              colors: [Color(0xFFFF6B35), Color(0xFFFF8C55), Color(0xFFFFAA70)],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFFFF6B35).withOpacity(0.38), blurRadius: 18, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFFFF6B35).withOpacity(0.15), blurRadius: 32, offset: const Offset(0, 12)),
+            ],
           ),
           child: Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('In a hurry?', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                const Text('Bike ride in 2 min', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('Book Now', style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.w700, fontSize: 13)),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Text('IN A HURRY?',
+                    style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                ),
+                const SizedBox(height: 8),
+                const Text('Bike ride\nin 2 min',
+                  style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.15)),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Text('Book Now',
+                      style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.w800, fontSize: 13)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFFFF6B35)),
+                  ]),
                 ),
               ]),
             ),
-            const Text('🏍️', style: TextStyle(fontSize: 64)),
+            Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Text('🏍️', style: TextStyle(fontSize: 70)),
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8)),
+                child: const Text('from ₹20',
+                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+              ),
+            ]),
           ]),
         ),
       ),
@@ -1386,32 +1421,52 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: GestureDetector(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen())),
         child: Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF0D1B3E) : const Color(0xFF1A2A5E),
-            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: isDark
+                ? [const Color(0xFF0D1B3E), const Color(0xFF152550)]
+                : [const Color(0xFF1A2A5E), const Color(0xFF0F1E48)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3), width: 1),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))],
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(isDark ? 0.35 : 0.18), blurRadius: 16, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFFFFD700).withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 8)),
+            ],
           ),
           child: Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: const Color(0xFFFFD700).withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-                  child: const Text('INTERCITY', style: TextStyle(color: Color(0xFFFFD700), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [const Color(0xFFFFD700).withOpacity(0.2), const Color(0xFFFFD700).withOpacity(0.08)]),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3))),
+                  child: const Text('INTERCITY',
+                    style: TextStyle(color: Color(0xFFFFD700), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
                 ),
-                const SizedBox(height: 8),
-                const Text('Go anywhere,\nanytime', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, height: 1.2)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  const Text('Explore routes', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w600, fontSize: 13)),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward, color: Color(0xFFFFD700), size: 16),
-                ]),
+                const SizedBox(height: 10),
+                const Text('Go anywhere,\nanytime',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2)),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.4))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Text('Explore routes',
+                      style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w700, fontSize: 12)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, color: Color(0xFFFFD700), size: 14),
+                  ]),
+                ),
               ]),
             ),
-            const Text('🛣️', style: TextStyle(fontSize: 52)),
+            const Text('🛣️', style: TextStyle(fontSize: 60)),
           ]),
         ),
       ),
