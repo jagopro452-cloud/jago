@@ -8,6 +8,7 @@ import '../../config/api_config.dart';
 import '../../main.dart' show themeNotifier, saveThemePreference;
 import '../../services/localization_service.dart';
 import '../auth/login_screen.dart';
+import '../onboarding/language_select_screen.dart';
 import '../performance/performance_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
 import '../referral/referral_screen.dart';
@@ -453,6 +454,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             actions: [
               IconButton(
+                onPressed: () {
+                  final isDark = themeNotifier.value == ThemeMode.dark;
+                  saveThemePreference(isDark ? ThemeMode.light : ThemeMode.dark);
+                  // Persist to server
+                  AuthService.getToken().then((token) {
+                    http.patch(
+                      Uri.parse('${ApiConfig.baseUrl}/api/app/driver/theme'),
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer $token',
+                      },
+                      body: jsonEncode({'theme': isDark ? 'light' : 'dark'}),
+                    ).catchError((_) => http.Response('', 500));
+                  });
+                },
+                icon: ValueListenableBuilder<ThemeMode>(
+                  valueListenable: themeNotifier,
+                  builder: (_, mode, __) => Icon(
+                    mode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              IconButton(
                 onPressed: _showEditNameSheet,
                 icon: Container(
                   padding: const EdgeInsets.all(6),
@@ -782,26 +807,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildDriverLanguageTile() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF111827);
+    final subtextColor = isDark ? Colors.white45 : Colors.grey.shade500;
     final currentLang = L.supportedLanguages.firstWhere(
       (l) => l['code'] == L.lang,
       orElse: () => L.supportedLanguages.first,
     );
     return ListTile(
-      onTap: _showDriverLanguageSheet,
+      onTap: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LanguageSelectScreen(fromProfile: true))),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: Container(
         width: 38, height: 38,
-        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
-        child: const Icon(Icons.translate_rounded, color: Colors.teal, size: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF6B35).withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10)),
+        child: const Icon(Icons.translate_rounded, color: Color(0xFFFF6B35), size: 20),
       ),
-      title: const Text('Language / భాష', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+      title: Text('Language / భాష', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('${currentLang['flag']} ${currentLang['nativeName']}',
-            style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.45))),
+            style: TextStyle(fontSize: 11, color: subtextColor)),
           const SizedBox(width: 4),
-          Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.2), size: 20),
+          Icon(Icons.chevron_right_rounded, color: subtextColor, size: 20),
         ],
       ),
     );
