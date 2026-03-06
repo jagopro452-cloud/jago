@@ -1,0 +1,146 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
+import 'fcm_service.dart';
+
+class AuthService {
+  static const _tokenKey = 'auth_token';
+  static const _userKey = 'user_data';
+
+  static Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_tokenKey);
+  }
+
+  static Future<bool> isLoggedIn() async {
+    final t = await getToken();
+    return t != null && t.isNotEmpty;
+  }
+
+  static Future<Map<String, String>> getHeaders() async {
+    final token = await getToken();
+    return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+  }
+
+  static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'customer']) async {
+    final res = await http.post(Uri.parse(ApiConfig.sendOtp),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'phone': phone, 'userType': userType}));
+    return jsonDecode(res.body);
+  }
+
+  static Future<Map<String, dynamic>> verifyOtp(String phone, String otp, [String userType = 'customer']) async {
+    final res = await http.post(Uri.parse(ApiConfig.verifyOtp),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}));
+    final data = jsonDecode(res.body);
+    if (res.statusCode == 200 && data['token'] != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, data['token']);
+      await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+      // Save FCM token to server after login
+      FcmService().onLoginSuccess().catchError((_) {});
+    }
+    return data;
+  }
+
+  static Future<void> logout() async {
+    try {
+      final headers = await getHeaders();
+      await http.post(Uri.parse(ApiConfig.logout), headers: headers);
+    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userKey);
+  }
+
+  static Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final headers = await getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.customerProfile), headers: headers);
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> updateProfile({
+    String? fullName,
+    String? email,
+  }) async {
+    try {
+      final headers = await getHeaders();
+      final body = <String, dynamic>{};
+      if (fullName != null) body['fullName'] = fullName;
+      if (email != null) body['email'] = email;
+      final res = await http.patch(
+        Uri.parse(ApiConfig.updateProfile),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> loginWithPassword(String phone, String password) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.loginPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'password': password, 'userType': 'customer'}));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email}) async {
+    try {
+      final body = {'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'customer'};
+      if (email != null && email.isNotEmpty) body['email'] = email;
+      final res = await http.post(Uri.parse(ApiConfig.registerAccount),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> forgotPassword(String phone) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.forgotPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'userType': 'customer'}));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPassword(String phone, String otp, String newPassword) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.resetPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'otp': otp, 'newPassword': newPassword, 'userType': 'customer'}));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+}
