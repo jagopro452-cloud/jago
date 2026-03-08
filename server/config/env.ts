@@ -53,7 +53,7 @@ export function validateProductionReadiness(env: AppEnv): void {
   if (!env.ADMIN_PASSWORD) missing.push("ADMIN_PASSWORD");
   if (!env.GOOGLE_MAPS_API_KEY) missing.push("GOOGLE_MAPS_API_KEY");
   if (!env.OPS_API_KEY) missing.push("OPS_API_KEY");
-  if (!env.SOCKET_ALLOWED_ORIGINS) missing.push("SOCKET_ALLOWED_ORIGINS");
+  // SOCKET_ALLOWED_ORIGINS is optional — defaults to app URL if not set
 
   if (missing.length) {
     throw new Error(`Production environment is missing required variables: ${missing.join(", ")}`);
