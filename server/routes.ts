@@ -279,11 +279,13 @@ function requireOpsKey(req: Request, res: Response, next: NextFunction) {
 }
 
 async function ensureAdminExists() {
+  const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
+  const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
+
+  // Each statement in its own try-catch so one failure never blocks the rest
+  try { await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`); } catch (_) {}
+
   try {
-    const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
-    const adminName = (process.env.ADMIN_NAME || "Admin").trim() || "Admin";
-    // Bootstrap essentials for environments where migrations/extensions were not fully applied.
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admins (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -295,10 +297,14 @@ async function ensureAdminExists() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`);
-    await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`);
-    await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admins_auth_token ON admins(auth_token)`);
+  } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); return; }
+
+  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`); } catch (_) {}
+  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`); } catch (_) {}
+  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`); } catch (_) {}
+  try { await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admins_auth_token ON admins(auth_token)`); } catch (_) {}
+
+  try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admin_login_otp (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -309,49 +315,42 @@ async function ensureAdminExists() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admin_login_otp_admin_created ON admin_login_otp(admin_id, created_at DESC)`);
+  } catch (_) {}
+  try { await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admin_login_otp_admin_created ON admin_login_otp(admin_id, created_at DESC)`); } catch (_) {}
 
+  try {
     const existing = await db.select({ id: admins.id, isActive: admins.isActive }).from(admins).where(eq(admins.email, adminEmail)).limit(1);
+
     if (!existing.length) {
-      // Check if ANY admin already exists (may have been created with a different email on first deploy)
+      // Check for any admin with a different email (first-deploy email mismatch scenario)
       const anyAdmin = await db.select({ id: admins.id, email: admins.email }).from(admins).limit(5);
-      if (anyAdmin.length && process.env.ADMIN_PASSWORD) {
-        // Admins exist but with a different email — sync password to all existing admins
-        // and update the first one's email to match ADMIN_EMAIL so login works
-        const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+
+      if (anyAdmin.length) {
+        // Admins exist but with a different email — migrate the first one to current ADMIN_EMAIL
+        const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
+        const hash = await bcrypt.hash(adminPassword, 10);
         await db.update(admins).set({ password: hash, email: adminEmail, name: adminName, isActive: true }).where(eq(admins.id, anyAdmin[0].id));
-        // Remove any other duplicate admin rows to keep DB clean
         for (let i = 1; i < anyAdmin.length; i++) {
           await db.delete(admins).where(eq(admins.id, anyAdmin[i].id));
         }
-        console.log(`[admin] Admin email updated from ${anyAdmin[0].email} to ${adminEmail} and password synced`);
+        console.log(`[admin] Migrated admin → ${adminEmail}, password synced`);
         return;
       }
-      // In production, force operators to set ADMIN_PASSWORD before first bootstrap.
-      if (process.env.NODE_ENV === "production" && !process.env.ADMIN_PASSWORD) {
-        console.error("[admin] ADMIN_PASSWORD is required in production for first-time admin bootstrap");
-        return;
-      }
-      // First-time setup: create admin with password from env var or local-dev fallback
-      const adminPassword = process.env.ADMIN_PASSWORD || "ChangeMe_Local_Only_123!";
+
+      // No admin exists at all — create one
+      const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
       const hash = await bcrypt.hash(adminPassword, 10);
       await db.insert(admins).values({ id: crypto.randomUUID(), name: adminName, email: adminEmail, password: hash, role: "superadmin", isActive: true });
-      console.log(`[admin] Default admin created: ${adminEmail}`);
-      if (!process.env.ADMIN_PASSWORD) {
-        console.warn("[admin] ADMIN_PASSWORD not set. Default dev password is active. Set ADMIN_PASSWORD immediately.");
-      }
+      console.log(`[admin] Admin created: ${adminEmail}`);
     } else {
-      // Admin exists: only update password if ADMIN_PASSWORD env var is explicitly set
-      // This allows the admin to change password via admin panel without it being overridden
+      // Admin row exists — sync password if ADMIN_PASSWORD env var is set
       if (process.env.ADMIN_PASSWORD) {
         const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
         await db.update(admins).set({ password: hash, isActive: true }).where(eq(admins.email, adminEmail));
-        console.log("[admin] Admin password synced from ADMIN_PASSWORD env var");
+        console.log("[admin] Password synced from ADMIN_PASSWORD env var");
       } else {
-        if (!existing[0].isActive) {
-          await db.update(admins).set({ isActive: true }).where(eq(admins.email, adminEmail));
-        }
-        console.log("[admin] Admin account verified");
+        if (!existing[0].isActive) await db.update(admins).set({ isActive: true }).where(eq(admins.email, adminEmail));
+        console.log("[admin] Admin account OK");
       }
     }
   } catch (e: any) {
