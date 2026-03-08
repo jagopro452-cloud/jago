@@ -56,6 +56,7 @@ import DriverEarnings from "@/pages/admin/driver-earnings";
 import Referrals from "@/pages/admin/referrals";
 import DriverVerificationPage from "@/pages/admin/driver-verification";
 import OutstationPool from "@/pages/admin/outstation-pool";
+import ParcelOrders from "@/pages/admin/parcel-orders";
 
 export default function AdminRoutes() {
   return (
@@ -116,6 +117,7 @@ export default function AdminRoutes() {
         <Route path="/admin/app-design" component={AppDesignPage} />
         <Route path="/admin/languages" component={LanguagesPage} />
         <Route path="/admin/service-management" component={ServiceManagement} />
+        <Route path="/admin/parcel-orders" component={ParcelOrders} />
         <Route path="/admin/referrals" component={Referrals} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>

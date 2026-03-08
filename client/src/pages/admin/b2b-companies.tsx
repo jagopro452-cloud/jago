@@ -169,6 +169,9 @@ export default function B2BCompaniesPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [walletTarget, setWalletTarget] = useState<any>(null);
+  const [bulkTarget, setBulkTarget] = useState<any>(null);
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkSending, setBulkSending] = useState(false);
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/b2b-companies"],
@@ -197,6 +200,32 @@ export default function B2BCompaniesPage() {
       setWalletTarget(null);
     },
   });
+
+  const sendBulk = async () => {
+    if (!bulkTarget || !bulkCsv.trim()) return;
+    const lines = bulkCsv.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    const deliveries = lines.map(line => {
+      const [dropAddress, receiverName, receiverPhone] = line.split(",").map(s => s.trim());
+      return { dropAddress, receiverName, receiverPhone };
+    });
+    setBulkSending(true);
+    try {
+      const r = await fetch(`/api/b2b/${bulkTarget.id}/bulk-delivery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveries, vehicleCategory: "bike_parcel", paymentMethod: "b2b_wallet" }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Failed");
+      toast({ title: `${data.created} orders created for ${bulkTarget.companyName}` });
+      setBulkTarget(null);
+      setBulkCsv("");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setBulkSending(false);
+    }
+  };
 
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/b2b-companies/${id}`),
@@ -349,6 +378,11 @@ export default function B2BCompaniesPage() {
                           onClick={() => { setEditing(co); setOpen(true); }} data-testid={`btn-edit-b2b-${co.id}`}>
                           <i className="bi bi-pencil-fill"></i>
                         </button>
+                        <button className="btn btn-sm" style={{ borderRadius: 8, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa" }}
+                          onClick={() => { setBulkTarget(co); setBulkCsv(""); }}
+                          data-testid={`btn-bulk-${co.id}`} title="Bulk Delivery">
+                          <i className="bi bi-box-seam"></i>
+                        </button>
                         <button className="btn btn-sm btn-outline-danger" style={{ borderRadius: 8 }}
                           onClick={() => { if (confirm(`Delete ${co.companyName}?`)) remove.mutate(co.id); }}
                           data-testid={`btn-delete-b2b-${co.id}`}>
@@ -372,6 +406,46 @@ export default function B2BCompaniesPage() {
           onClose={() => setWalletTarget(null)}
           onSave={(d: any) => wallet.mutate({ id: walletTarget.id, data: d })}
           saving={wallet.isPending} />
+      )}
+
+      {bulkTarget && (
+        <div className="modal-backdrop-jago" onClick={() => setBulkTarget(null)}>
+          <div className="modal-jago" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-jago-header">
+              <h5 className="modal-jago-title">
+                <i className="bi bi-box-seam-fill me-2" style={{ color: "#ea580c" }} />
+                Bulk Delivery — {bulkTarget.companyName}
+              </h5>
+              <button className="modal-jago-close" onClick={() => setBulkTarget(null)}><i className="bi bi-x-lg" /></button>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label className="form-label-jago">Paste CSV — one delivery per line:</label>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>Format: <code>dropAddress, receiverName, receiverPhone</code></div>
+              <textarea
+                className="admin-form-control"
+                rows={8}
+                value={bulkCsv}
+                onChange={e => setBulkCsv(e.target.value)}
+                placeholder={"123 MG Road Hyderabad, Rahul, 9876543210\nFlat 4B Banjara Hills, Priya, 9123456789"}
+                style={{ fontFamily: "monospace", fontSize: 12 }}
+              />
+              <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+                {bulkCsv.trim() ? `${bulkCsv.trim().split("\n").filter(Boolean).length} deliveries ready` : "Enter delivery rows above"}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline-secondary btn-sm" onClick={() => setBulkTarget(null)}>Cancel</button>
+              <button
+                className="btn btn-sm"
+                style={{ background: "linear-gradient(135deg,#ea580c,#f59e0b)", color: "#fff", fontWeight: 700, border: "none" }}
+                disabled={!bulkCsv.trim() || bulkSending}
+                onClick={sendBulk}
+              >
+                {bulkSending ? "Creating…" : "Create Orders"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

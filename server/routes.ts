@@ -909,6 +909,79 @@ async function ensureOperationalSchema() {
             AND (tf.base_fare > 0 OR tf.fare_per_km > 0 OR tf.minimum_fare > 0)
         )
     `);
+
+    // ── platform_services: per-service activation + revenue model ────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS platform_services (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        service_key VARCHAR(50) UNIQUE NOT NULL,
+        service_name VARCHAR(100) NOT NULL,
+        service_category VARCHAR(50) NOT NULL DEFAULT 'rides',
+        service_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+        revenue_model VARCHAR(30) NOT NULL DEFAULT 'commission',
+        commission_rate NUMERIC(5,2) DEFAULT 15.0,
+        sort_order INTEGER DEFAULT 0,
+        icon VARCHAR(20) DEFAULT '🚗',
+        color VARCHAR(20) DEFAULT '#2F80ED',
+        description TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Seed 9 canonical services. Only bike_ride + parcel_delivery are active at launch.
+      INSERT INTO platform_services
+        (service_key, service_name, service_category, service_status, revenue_model, commission_rate, sort_order, icon, color, description)
+      VALUES
+        ('bike_ride',       'Bike Ride',          'rides',   'active',   'subscription',  0,    1, '🏍️', '#2F80ED', 'Quick and affordable bike taxi rides'),
+        ('auto_ride',       'Auto Ride',           'rides',   'inactive', 'subscription',  0,    2, '🛺',  '#F59E0B', 'Classic CNG auto rides'),
+        ('mini_car',        'Mini Car',            'rides',   'inactive', 'subscription',  0,    3, '🚕',  '#10B981', 'Budget sedan rides'),
+        ('sedan',           'Sedan',               'rides',   'inactive', 'subscription',  0,    4, '🚗',  '#8B5CF6', 'Comfortable sedan rides'),
+        ('suv',             'SUV',                 'rides',   'inactive', 'subscription',  0,    5, '🚙',  '#EF4444', 'Premium SUV rides'),
+        ('city_pool',       'City Car Pool',       'carpool', 'inactive', 'commission',   10.0,  6, '🚘',  '#06B6D4', 'Share city rides and save'),
+        ('intercity_pool',  'Intercity Car Pool',  'carpool', 'inactive', 'commission',   12.0,  7, '🛣️', '#6366F1', 'Intercity shared travel'),
+        ('outstation_pool', 'Outstation Pool',     'carpool', 'inactive', 'commission',   15.0,  8, '🗺️', '#EC4899', 'Long distance pool travel'),
+        ('parcel_delivery', 'Parcel Delivery',     'parcel',  'active',   'commission',   15.0,  9, '📦',  '#FF6B35', 'Porter-style parcel and goods delivery')
+      ON CONFLICT (service_key) DO NOTHING;
+    `).catch(() => {});
+
+    // ── parcel_orders: multi-drop Porter-style delivery ───────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS parcel_orders (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id UUID NOT NULL,
+        driver_id UUID,
+        vehicle_category VARCHAR(50) DEFAULT 'bike_parcel',
+        pickup_address TEXT NOT NULL,
+        pickup_lat NUMERIC(10,7),
+        pickup_lng NUMERIC(10,7),
+        pickup_contact_name VARCHAR(100),
+        pickup_contact_phone VARCHAR(20),
+        drop_locations JSONB NOT NULL DEFAULT '[]',
+        total_distance_km NUMERIC(8,2) DEFAULT 0,
+        weight_kg NUMERIC(8,2) DEFAULT 0,
+        base_fare NUMERIC(10,2) DEFAULT 0,
+        distance_fare NUMERIC(10,2) DEFAULT 0,
+        weight_fare NUMERIC(10,2) DEFAULT 0,
+        total_fare NUMERIC(10,2) DEFAULT 0,
+        commission_amt NUMERIC(10,2) DEFAULT 0,
+        commission_pct NUMERIC(5,2) DEFAULT 15.0,
+        current_drop_index INTEGER DEFAULT 0,
+        current_status VARCHAR(40) DEFAULT 'pending',
+        pickup_otp VARCHAR(6),
+        is_b2b BOOLEAN DEFAULT false,
+        b2b_company_id UUID,
+        payment_method VARCHAR(30) DEFAULT 'cash',
+        payment_status VARCHAR(30) DEFAULT 'pending',
+        notes TEXT DEFAULT '',
+        cancelled_reason TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_parcel_orders_customer ON parcel_orders(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_parcel_orders_driver  ON parcel_orders(driver_id);
+      CREATE INDEX IF NOT EXISTS idx_parcel_orders_status  ON parcel_orders(current_status);
+    `).catch(() => {});
+
   } catch (e: any) {
     console.error("[schema] ensureOperationalSchema error:", formatDbError(e));
   }
@@ -8959,6 +9032,375 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { id } = req.params;
       await rawDb.execute(rawSql`DELETE FROM app_languages WHERE id = ${id}::uuid`);
       res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PLATFORM SERVICES — per-service activation + revenue model control ──────
+  // Admin: list all 9 configured services
+  app.get("/api/platform-services", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM platform_services ORDER BY sort_order ASC`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: toggle status / update revenue model + commission rate
+  app.patch("/api/platform-services/:key", async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { service_status, revenue_model, commission_rate } = req.body;
+      const updates: string[] = ['updated_at=NOW()'];
+      if (service_status !== undefined) updates.push(`service_status='${service_status === 'active' ? 'active' : 'inactive'}'`);
+      if (revenue_model !== undefined && ['subscription','commission','hybrid'].includes(revenue_model)) {
+        updates.push(`revenue_model='${revenue_model}'`);
+      }
+      if (commission_rate !== undefined) updates.push(`commission_rate=${parseFloat(commission_rate)}`);
+      if (updates.length === 1) return res.status(400).json({ message: 'Nothing to update' });
+      const r = await rawDb.execute(rawSql`
+        UPDATE platform_services SET updated_at=NOW(),
+          service_status = COALESCE(${service_status ?? null}, service_status),
+          revenue_model  = COALESCE(${revenue_model  ?? null}, revenue_model),
+          commission_rate = COALESCE(${commission_rate != null ? parseFloat(commission_rate) : null}, commission_rate)
+        WHERE service_key = ${key}
+        RETURNING *
+      `);
+      if (!(r.rows as any[]).length) return res.status(404).json({ message: 'Service not found' });
+      res.json((r.rows as any[])[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // App: get only active services (for customer app home screen)
+  app.get("/api/app/platform-services", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT service_key, service_name, service_category, icon, color, description
+        FROM platform_services
+        WHERE service_status = 'active'
+        ORDER BY sort_order ASC
+      `);
+      res.json({ services: r.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
+
+  // Fare vehicle categories for parcel
+  const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string }> = {
+    bike_parcel:   { baseFare: 35,  perKm: 10, perKg: 5,  name: 'Bike Parcel'   },
+    auto_parcel:   { baseFare: 50,  perKm: 13, perKg: 7,  name: 'Auto Parcel'   },
+    tata_ace:      { baseFare: 150, perKm: 18, perKg: 3,  name: 'Tata Ace'      },
+    cargo_car:     { baseFare: 120, perKm: 16, perKg: 4,  name: 'Cargo Car'     },
+    bolero_cargo:  { baseFare: 200, perKm: 22, perKg: 3,  name: 'Bolero Cargo'  },
+  };
+
+  // Customer: get fare quote for multi-drop parcel
+  app.post("/api/app/parcel/quote", authApp, async (req, res) => {
+    try {
+      const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1 } = req.body;
+      const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
+      const totalDistance: number = parseFloat(req.body.totalDistanceKm ?? '5') || 5;
+      const baseFare    = vc.baseFare;
+      const distFare    = Math.round(totalDistance * vc.perKm);
+      const weightFare  = Math.round(parseFloat(weightKg) * vc.perKg);
+      const totalFare   = baseFare + distFare + weightFare;
+      const commPct     = 15;
+      const commAmt     = Math.round(totalFare * commPct / 100);
+      res.json({
+        vehicleCategory,
+        vehicleName: vc.name,
+        baseFare,
+        distanceFare: distFare,
+        weightFare,
+        totalFare,
+        commissionPct: commPct,
+        commissionAmt: commAmt,
+        driverEarnings: totalFare - commAmt,
+        dropCount: (dropLocations as any[]).length,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer: book a multi-drop parcel order
+  app.post("/api/app/parcel/book", authApp, async (req, res) => {
+    try {
+      const customerId = (req as any).userId;
+      const {
+        vehicleCategory = 'bike_parcel',
+        pickupAddress, pickupLat, pickupLng,
+        pickupContactName, pickupContactPhone,
+        dropLocations = [],
+        totalDistanceKm = 5,
+        weightKg = 1,
+        paymentMethod = 'cash',
+        notes = '',
+        isB2b = false, b2bCompanyId,
+      } = req.body;
+      if (!pickupAddress) return res.status(400).json({ message: 'pickupAddress required' });
+      if (!(dropLocations as any[]).length) return res.status(400).json({ message: 'At least one drop location required' });
+      const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
+      const dist    = parseFloat(totalDistanceKm) || 5;
+      const wt      = parseFloat(weightKg) || 1;
+      const baseFare   = vc.baseFare;
+      const distFare   = Math.round(dist * vc.perKm);
+      const wFare      = Math.round(wt * vc.perKg);
+      const totalFare  = baseFare + distFare + wFare;
+      const commPct    = 15;
+      const commAmt    = Math.round(totalFare * commPct / 100);
+      const pickupOtp  = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Attach a 6-digit OTP to each drop location for delivery verification
+      const dropsWithOtp = (dropLocations as any[]).map((d: any, i: number) => ({
+        ...d,
+        dropIndex: i,
+        deliveryOtp: Math.floor(100000 + Math.random() * 900000).toString(),
+        delivered_at: null,
+      }));
+
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO parcel_orders
+          (customer_id, vehicle_category, pickup_address, pickup_lat, pickup_lng,
+           pickup_contact_name, pickup_contact_phone, drop_locations,
+           total_distance_km, weight_kg, base_fare, distance_fare, weight_fare,
+           total_fare, commission_amt, commission_pct, current_status,
+           pickup_otp, is_b2b, b2b_company_id, payment_method, notes)
+        VALUES
+          (${customerId}::uuid, ${vehicleCategory}, ${pickupAddress},
+           ${pickupLat ?? null}, ${pickupLng ?? null},
+           ${pickupContactName ?? ''}, ${pickupContactPhone ?? ''},
+           ${JSON.stringify(dropsWithOtp)},
+           ${dist}, ${wt}, ${baseFare}, ${distFare}, ${wFare},
+           ${totalFare}, ${commAmt}, ${commPct}, 'searching',
+           ${pickupOtp}, ${isB2b ?? false}, ${b2bCompanyId ?? null},
+           ${paymentMethod}, ${notes})
+        RETURNING *
+      `);
+      const order = (r.rows as any[])[0];
+
+      // Notify nearby parcel-capable drivers via socket
+      if (io) {
+        io.emit('parcel:new_request', {
+          orderId: order.id,
+          vehicleCategory,
+          pickupAddress,
+          pickupLat, pickupLng,
+          totalFare,
+          dropCount: dropsWithOtp.length,
+        });
+      }
+
+      res.json({ success: true, orderId: order.id, pickupOtp, totalFare, drops: dropsWithOtp.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer: get active/recent parcel orders
+  app.get("/api/app/parcel/orders", authApp, async (req, res) => {
+    try {
+      const customerId = (req as any).userId;
+      const r = await rawDb.execute(rawSql`
+        SELECT po.*, u.full_name as driver_name, u.phone as driver_phone
+        FROM parcel_orders po
+        LEFT JOIN users u ON u.id = po.driver_id
+        WHERE po.customer_id = ${customerId}::uuid
+        ORDER BY po.created_at DESC
+        LIMIT 20
+      `);
+      res.json({ orders: r.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer: cancel parcel order
+  app.post("/api/app/parcel/:id/cancel", authApp, async (req, res) => {
+    try {
+      const customerId = (req as any).userId;
+      const { reason = 'Customer cancelled' } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE parcel_orders
+        SET current_status='cancelled', cancelled_reason=${reason}, updated_at=NOW()
+        WHERE id=${req.params.id}::uuid AND customer_id=${customerId}::uuid
+          AND current_status IN ('pending','searching')
+        RETURNING id
+      `);
+      if (!(r.rows as any[]).length) return res.status(400).json({ message: 'Cannot cancel this order' });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Driver: get pending parcel requests nearby
+  app.get("/api/driver/parcel/pending", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM parcel_orders
+        WHERE current_status = 'searching'
+        ORDER BY created_at ASC
+        LIMIT 20
+      `);
+      res.json({ orders: r.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Driver: accept a parcel order
+  app.post("/api/driver/parcel/:id/accept", async (req, res) => {
+    try {
+      const driverId = (req as any).userId || req.body.driverId;
+      const r = await rawDb.execute(rawSql`
+        UPDATE parcel_orders
+        SET driver_id=${driverId}::uuid, current_status='driver_assigned', updated_at=NOW()
+        WHERE id=${req.params.id}::uuid AND current_status='searching'
+          AND driver_id IS NULL
+        RETURNING *
+      `);
+      if (!(r.rows as any[]).length) return res.status(409).json({ message: 'Already assigned' });
+      const order = (r.rows as any[])[0];
+      if (io) io.to(`user:${order.customer_id}`).emit('parcel:driver_assigned', { orderId: order.id, driverId });
+      res.json({ success: true, order });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Driver: verify pickup OTP → start delivery
+  app.post("/api/driver/parcel/:id/pickup-otp", async (req, res) => {
+    try {
+      const { otp } = req.body;
+      const r = await rawDb.execute(rawSql`
+        SELECT id, pickup_otp, current_status, customer_id FROM parcel_orders WHERE id=${req.params.id}::uuid
+      `);
+      const order = (r.rows as any[])[0];
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      if (order.current_status !== 'driver_assigned') return res.status(400).json({ message: 'Invalid order state' });
+      if (String(order.pickup_otp) !== String(otp)) return res.status(400).json({ message: 'Invalid OTP' });
+      await rawDb.execute(rawSql`
+        UPDATE parcel_orders SET current_status='in_transit', updated_at=NOW() WHERE id=${req.params.id}::uuid
+      `);
+      if (io) io.to(`user:${order.customer_id}`).emit('parcel:in_transit', { orderId: order.id });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Driver: verify delivery OTP for a specific drop stop
+  app.post("/api/driver/parcel/:id/drop-otp", async (req, res) => {
+    try {
+      const { dropIndex, otp } = req.body;
+      const r = await rawDb.execute(rawSql`
+        SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id
+        FROM parcel_orders WHERE id=${req.params.id}::uuid
+      `);
+      const order = (r.rows as any[])[0];
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      if (order.current_status !== 'in_transit') return res.status(400).json({ message: 'Order not in transit' });
+      const drops: any[] = typeof order.drop_locations === 'string'
+        ? JSON.parse(order.drop_locations) : order.drop_locations;
+      const idx = parseInt(dropIndex ?? order.current_drop_index);
+      const drop = drops[idx];
+      if (!drop) return res.status(404).json({ message: 'Drop stop not found' });
+      if (String(drop.deliveryOtp) !== String(otp)) return res.status(400).json({ message: 'Invalid delivery OTP' });
+      drops[idx].delivered_at = new Date().toISOString();
+      const nextIdx = idx + 1;
+      const allDelivered = nextIdx >= drops.length;
+      await rawDb.execute(rawSql`
+        UPDATE parcel_orders
+        SET drop_locations = ${JSON.stringify(drops)},
+            current_drop_index = ${nextIdx},
+            current_status = ${allDelivered ? 'completed' : 'in_transit'},
+            updated_at = NOW()
+        WHERE id = ${req.params.id}::uuid
+      `);
+      if (allDelivered) {
+        // Credit driver wallet
+        const driverEarnings = Math.round(order.total_fare * 0.85);
+        await rawDb.execute(rawSql`
+          UPDATE wallets SET balance = balance + ${driverEarnings}, updated_at=NOW()
+          WHERE user_id = ${order.driver_id}::uuid
+        `).catch(() => {});
+        if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
+      }
+      res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: list all parcel orders with filters
+  app.get("/api/admin/parcel-orders", async (req, res) => {
+    try {
+      const { status, b2b, limit = 100, offset = 0 } = req.query;
+      const rows = await rawDb.execute(rawSql`
+        SELECT po.*,
+          cu.full_name as customer_name, cu.phone as customer_phone,
+          dr.full_name as driver_name,   dr.phone as driver_phone
+        FROM parcel_orders po
+        LEFT JOIN users cu ON cu.id = po.customer_id
+        LEFT JOIN users dr ON dr.id = po.driver_id
+        ${status ? rawSql`WHERE po.current_status = ${status}` : rawSql`WHERE TRUE`}
+        ${b2b === 'true' ? rawSql`AND po.is_b2b = true` : rawSql``}
+        ORDER BY po.created_at DESC
+        LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}
+      `);
+      res.json({ orders: rows.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: get single parcel order detail
+  app.get("/api/admin/parcel-orders/:id", async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT po.*, cu.full_name as customer_name, cu.phone as customer_phone,
+               dr.full_name as driver_name, dr.phone as driver_phone
+        FROM parcel_orders po
+        LEFT JOIN users cu ON cu.id = po.customer_id
+        LEFT JOIN users dr ON dr.id = po.driver_id
+        WHERE po.id = ${req.params.id}::uuid
+      `);
+      if (!(r.rows as any[]).length) return res.status(404).json({ message: 'Not found' });
+      res.json((r.rows as any[])[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // B2B: bulk delivery — create multiple parcel orders for a business
+  app.post("/api/b2b/:companyId/bulk-delivery", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const { customerId, vehicleCategory = 'bike_parcel', pickupAddress, pickupLat, pickupLng,
+              pickupContactName, pickupContactPhone, deliveries = [], weightKg = 1, notes = '' } = req.body;
+      if (!pickupAddress) return res.status(400).json({ message: 'pickupAddress required' });
+      if (!(deliveries as any[]).length) return res.status(400).json({ message: 'deliveries array required' });
+      const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
+      const wt = parseFloat(weightKg) || 1;
+      const results: any[] = [];
+      for (const delivery of deliveries as any[]) {
+        const dist     = parseFloat(delivery.distanceKm ?? '5') || 5;
+        const baseFare = vc.baseFare;
+        const distF    = Math.round(dist * vc.perKm);
+        const wtF      = Math.round(wt * vc.perKg);
+        const total    = baseFare + distF + wtF;
+        const commAmt  = Math.round(total * 0.15);
+        const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const drops = [{
+          address: delivery.dropAddress,
+          lat: delivery.dropLat,
+          lng: delivery.dropLng,
+          receiverName: delivery.receiverName ?? '',
+          receiverPhone: delivery.receiverPhone ?? '',
+          dropIndex: 0,
+          deliveryOtp: Math.floor(100000 + Math.random() * 900000).toString(),
+          delivered_at: null,
+        }];
+        const r = await rawDb.execute(rawSql`
+          INSERT INTO parcel_orders
+            (customer_id, vehicle_category, pickup_address, pickup_lat, pickup_lng,
+             pickup_contact_name, pickup_contact_phone, drop_locations,
+             total_distance_km, weight_kg, base_fare, distance_fare, weight_fare,
+             total_fare, commission_amt, commission_pct, current_status,
+             pickup_otp, is_b2b, b2b_company_id, notes)
+          VALUES
+            (${customerId ?? null}, ${vehicleCategory}, ${pickupAddress},
+             ${pickupLat ?? null}, ${pickupLng ?? null},
+             ${pickupContactName ?? ''}, ${pickupContactPhone ?? ''},
+             ${JSON.stringify(drops)},
+             ${dist}, ${wt}, ${baseFare}, ${distF}, ${wtF},
+             ${total}, ${commAmt}, 15, 'searching',
+             ${pickupOtp}, true, ${companyId}::uuid, ${notes})
+          RETURNING id, total_fare
+        `);
+        results.push((r.rows as any[])[0]);
+      }
+      res.json({ success: true, ordersCreated: results.length, orders: results });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
