@@ -1,6 +1,6 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
-/* ─── Hooks ─── */
+/* --- Hooks --- */
 function useReveal() {
   const ref = useRef<HTMLDivElement>(null);
   const [vis, setVis] = useState(false);
@@ -32,7 +32,7 @@ function useCountUp(target: number, duration = 2000) {
   return { ref, val };
 }
 
-/* ─── Phone Demo Screens ─── */
+/* --- Phone Demo Screens --- */
 const SCREENS = ["home", "route", "fare", "pilot", "track"] as const;
 type ScreenType = typeof SCREENS[number];
 
@@ -48,7 +48,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
     <div style={{ height: 28, background: "#0A0F2E", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", flexShrink: 0 }}>
       <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.8)", fontFamily: "Space Grotesk,sans-serif" }}>9:41</span>
       <div style={{ width: 52, height: 8, borderRadius: 4, background: "#000" }} />
-      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.7)" }}>●●● ▋</span>
+      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.7)" }}>??? ?</span>
     </div>
   );
 
@@ -59,24 +59,24 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${i * 18}%`, height: 1, background: "rgba(30,109,229,0.08)" }} />)}
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${i * 18}%`, width: 1, background: "rgba(30,109,229,0.08)" }} />)}
         <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.95)", borderRadius: 8, padding: "3px 9px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 5 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1455D3" }} />
-          <span style={{ fontSize: 9, fontWeight: 800, color: "#1455D3", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 1 }}>JAGO</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
+          <span style={{ fontSize: 9, fontWeight: 800, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 1 }}>JAGO</span>
         </div>
         <div style={{ position: "absolute", left: "48%", top: "45%", transform: "translate(-50%,-50%)" }}>
-          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#1455D3", border: "3px solid #fff", boxShadow: "0 0 0 7px rgba(20,85,211,0.18)" }} />
+          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#2F80ED", border: "3px solid #fff", boxShadow: "0 0 0 7px rgba(47,128,237,0.18)" }} />
         </div>
       </div>
       <div style={{ background: "#fff", padding: "12px 12px 10px", boxShadow: "0 -4px 20px rgba(0,0,0,0.07)" }}>
-        <p style={{ fontSize: 10, color: "#64748b", margin: "0 0 7px", fontFamily: "Space Grotesk,sans-serif" }}>Good morning, Rahul 👋</p>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0f5ff", borderRadius: 10, padding: "8px 10px", marginBottom: 9, border: "1px solid rgba(20,85,211,0.1)" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1455D3", flexShrink: 0 }} />
+        <p style={{ fontSize: 10, color: "#64748b", margin: "0 0 7px", fontFamily: "Space Grotesk,sans-serif" }}>Good morning, Rahul ??</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0f5ff", borderRadius: 10, padding: "8px 10px", marginBottom: 9, border: "1px solid rgba(47,128,237,0.1)" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED", flexShrink: 0 }} />
           <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>Where do you want to go?</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-around" }}>
           {["Bike","Auto","Car","Parcel"].map((s, si) => (
             <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#f0f5ff", border: "1px solid rgba(20,85,211,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1455D3" strokeWidth="2.2" strokeLinecap="round">
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#f0f5ff", border: "1px solid rgba(47,128,237,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2" strokeLinecap="round">
                   {si === 0 && <><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></>}
                   {si === 1 && <><circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M10 18h4M7 15V9l3.5-3H18l2 4v5H10"/></>}
                   {si === 2 && <><path d="M5 17H3a1 1 0 01-1-1v-3l3-5h13l3 5v3a1 1 0 01-1 1h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></>}
@@ -94,15 +94,15 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
   if (screen === "route") return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
       <StatusBar />
-      <div style={{ background: "#1455D3", padding: "14px 12px 18px" }}>
+      <div style={{ background: "#2F80ED", padding: "14px 12px 18px" }}>
         <p style={{ fontSize: 9, color: "rgba(255,255,255,0.65)", margin: "0 0 8px", fontFamily: "Space Grotesk,sans-serif", textTransform: "uppercase", letterSpacing: 1 }}>Set destination</p>
         <div style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.12)", borderRadius: 8, padding: "7px 9px", marginBottom: 5 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.9)" }} />
           <span style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", fontFamily: "Space Grotesk,sans-serif" }}>Current Location</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#fff", borderRadius: 8, padding: "7px 9px" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1455D3" }} />
-          <span style={{ fontSize: 10, color: "#1455D3", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>Hitech City Metro</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
+          <span style={{ fontSize: 10, color: "#2F80ED", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>Hitech City Metro</span>
         </div>
       </div>
       <div style={{ padding: "10px 12px" }}>
@@ -110,7 +110,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         {[{ p: "Hitech City Metro", d: "3.2 km" }, { p: "Apollo Hospital", d: "5.8 km" }, { p: "Inorbit Mall", d: "2.1 km" }].map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ width: 28, height: 28, borderRadius: 7, background: "#f0f5ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1455D3" strokeWidth="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
             </div>
             <div>
               <p style={{ margin: 0, fontSize: 10.5, fontWeight: 600, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.p}</p>
@@ -120,8 +120,8 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         ))}
       </div>
       <div style={{ position: "absolute", bottom: 14, left: 12, right: 12 }}>
-        <div style={{ background: "#1455D3", borderRadius: 12, padding: "11px", textAlign: "center" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", fontFamily: "Space Grotesk,sans-serif" }}>Confirm Route →</span>
+        <div style={{ background: "#2F80ED", borderRadius: 12, padding: "11px", textAlign: "center" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", fontFamily: "Space Grotesk,sans-serif" }}>Confirm Route ?</span>
         </div>
       </div>
     </div>
@@ -132,25 +132,25 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <StatusBar />
       <div style={{ flex: 1, background: "linear-gradient(140deg,#dbeafe,#e0e7ff)", position: "relative", overflow: "hidden" }}>
         <svg style={{ position: "absolute", inset: "0" as any, width: "100%", height: "100%" }} viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M28 75 Q50 52 72 30" stroke="#1455D3" strokeWidth="2.5" fill="none" strokeDasharray="5 3" opacity="0.6" />
-          <circle cx="28" cy="75" r="3.5" fill="#fff" stroke="#1455D3" strokeWidth="1.5" />
-          <circle cx="72" cy="30" r="3.5" fill="#1455D3" />
+          <path d="M28 75 Q50 52 72 30" stroke="#2F80ED" strokeWidth="2.5" fill="none" strokeDasharray="5 3" opacity="0.6" />
+          <circle cx="28" cy="75" r="3.5" fill="#fff" stroke="#2F80ED" strokeWidth="1.5" />
+          <circle cx="72" cy="30" r="3.5" fill="#2F80ED" />
         </svg>
         <div style={{ position: "absolute", right: 10, top: 10, background: "#fff", borderRadius: 7, padding: "3px 8px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
-          <span style={{ fontSize: 9.5, fontWeight: 700, color: "#1455D3", fontFamily: "Space Grotesk,sans-serif" }}>3.2 km</span>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>3.2 km</span>
         </div>
       </div>
       <div style={{ background: "#fff", padding: "12px", boxShadow: "0 -4px 16px rgba(0,0,0,0.07)" }}>
         <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
-          {[{ t: "Bike", f: "₹45", e: "2m", a: true }, { t: "Auto", f: "₹75", e: "4m", a: false }, { t: "Car", f: "₹130", e: "5m", a: false }].map(o => (
-            <div key={o.t} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: `1.5px solid ${o.a ? "#1455D3" : "#e2e8f0"}`, background: o.a ? "#f0f5ff" : "#fff", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: 9.5, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", color: o.a ? "#1455D3" : "#334155" }}>{o.t}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 12, fontWeight: 800, color: o.a ? "#1455D3" : "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>{o.f}</p>
+          {[{ t: "Bike", f: "?45", e: "2m", a: true }, { t: "Auto", f: "?75", e: "4m", a: false }, { t: "Car", f: "?130", e: "5m", a: false }].map(o => (
+            <div key={o.t} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: `1.5px solid ${o.a ? "#2F80ED" : "#e2e8f0"}`, background: o.a ? "#f0f5ff" : "#fff", textAlign: "center" }}>
+              <p style={{ margin: 0, fontSize: 9.5, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", color: o.a ? "#2F80ED" : "#334155" }}>{o.t}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, fontWeight: 800, color: o.a ? "#2F80ED" : "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>{o.f}</p>
               <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>{o.e}</p>
             </div>
           ))}
         </div>
-        <div style={{ background: "linear-gradient(90deg,#1455D3,#2563eb)", borderRadius: 10, padding: "11px", textAlign: "center" }}>
+        <div style={{ background: "linear-gradient(90deg,#2F80ED,#2563eb)", borderRadius: 10, padding: "11px", textAlign: "center" }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", fontFamily: "Space Grotesk,sans-serif" }}>Confirm Booking</span>
         </div>
       </div>
@@ -160,7 +160,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
   if (screen === "pilot") return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
       <StatusBar />
-      <div style={{ background: "linear-gradient(135deg,#0A0F2E,#1455D3)", padding: "20px 12px 26px", textAlign: "center" }}>
+      <div style={{ background: "linear-gradient(135deg,#0A0F2E,#2F80ED)", padding: "20px 12px 26px", textAlign: "center" }}>
         <div style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,0.15)", margin: "0 auto 8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
@@ -170,30 +170,30 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <div style={{ flex: 1, padding: "12px", background: "#f8f9ff" }}>
         <div style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.07)", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#0A0F2E,#1455D3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#fff", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>R</div>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#0A0F2E,#2F80ED)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#fff", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>R</div>
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Ravi Kumar</p>
               <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                <span style={{ fontSize: 10, color: "#1455D3" }}>★</span>
-                <span style={{ fontSize: 9.5, color: "#475569", fontFamily: "Space Grotesk,sans-serif" }}>4.8 · 1,240 rides</span>
+                <span style={{ fontSize: 10, color: "#2F80ED" }}>?</span>
+                <span style={{ fontSize: 9.5, color: "#475569", fontFamily: "Space Grotesk,sans-serif" }}>4.8 � 1,240 rides</span>
               </div>
             </div>
-            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#f0f5ff", border: "1px solid rgba(20,85,211,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1455D3" strokeWidth="2.2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.08 1.2 2 2 0 012.07 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92z"/></svg>
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#f0f5ff", border: "1px solid rgba(47,128,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.08 1.2 2 2 0 012.07 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92z"/></svg>
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
             {[{ l: "Vehicle", v: "Activa" }, { l: "Plate", v: "TS09AB1234" }, { l: "OTP", v: "7482" }].map(x => (
               <div key={x.l} style={{ textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 7.5, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>{x.l}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 10, fontWeight: 700, color: x.l === "OTP" ? "#1455D3" : "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.v}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10, fontWeight: 700, color: x.l === "OTP" ? "#2F80ED" : "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.v}</p>
               </div>
             ))}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#f0f5ff", borderRadius: 9, padding: "9px 10px", border: "1px solid rgba(20,85,211,0.12)" }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1455D3" strokeWidth="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-          <span style={{ fontSize: 9.5, color: "#1455D3", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600 }}>Share OTP with pilot only</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#f0f5ff", borderRadius: 9, padding: "9px 10px", border: "1px solid rgba(47,128,237,0.12)" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span style={{ fontSize: 9.5, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600 }}>Share OTP with pilot only</span>
         </div>
       </div>
     </div>
@@ -205,32 +205,32 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <StatusBar />
       <div style={{ flex: 1, background: "linear-gradient(140deg,#dbeafe,#e0e7ff)", position: "relative" }}>
         <svg style={{ position: "absolute", inset: "0" as any, width: "100%", height: "100%" }} viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M28 68 Q48 50 68 30" stroke="#1455D3" strokeWidth="2.5" fill="none" opacity="0.3" />
-          <circle cx="28" cy="68" r="3" fill="#fff" stroke="#1455D3" strokeWidth="1.5" />
-          <circle cx="68" cy="30" r="3" fill="#1455D3" />
-          <circle cx="45" cy="52" r="4.5" fill="#1455D3" />
-          <circle cx="45" cy="52" r="8" fill="rgba(20,85,211,0.15)" />
+          <path d="M28 68 Q48 50 68 30" stroke="#2F80ED" strokeWidth="2.5" fill="none" opacity="0.3" />
+          <circle cx="28" cy="68" r="3" fill="#fff" stroke="#2F80ED" strokeWidth="1.5" />
+          <circle cx="68" cy="30" r="3" fill="#2F80ED" />
+          <circle cx="45" cy="52" r="4.5" fill="#2F80ED" />
+          <circle cx="45" cy="52" r="8" fill="rgba(47,128,237,0.15)" />
         </svg>
         <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 18, padding: "5px 13px", boxShadow: "0 2px 12px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1455D3" }} />
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
           <span style={{ fontSize: 9.5, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Pilot arriving in {eta} min</span>
         </div>
       </div>
       <div style={{ background: "#fff", padding: "10px 12px", boxShadow: "0 -4px 16px rgba(0,0,0,0.06)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
           <div>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Ravi Kumar · Bike</p>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Ravi Kumar � Bike</p>
             <p style={{ margin: "2px 0 0", fontSize: 8.5, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>TS09AB1234</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#1455D3", fontFamily: "Space Grotesk,sans-serif" }}>₹45</p>
+            <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>?45</p>
             <p style={{ margin: 0, fontSize: 8.5, color: "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>Cash</p>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {[{ l: "Call" }, { l: "Cancel" }, { l: "Chat" }].map((a, ai) => (
-            <div key={a.l} style={{ flex: 1, background: ai === 1 ? "#fff1f2" : "#f0f5ff", borderRadius: 9, padding: "7px 4px", textAlign: "center", border: `1px solid ${ai === 1 ? "#fecdd3" : "rgba(20,85,211,0.12)"}` }}>
-              <span style={{ fontSize: 9.5, fontWeight: 600, color: ai === 1 ? "#e11d48" : "#1455D3", fontFamily: "Space Grotesk,sans-serif" }}>{a.l}</span>
+            <div key={a.l} style={{ flex: 1, background: ai === 1 ? "#fff1f2" : "#f0f5ff", borderRadius: 9, padding: "7px 4px", textAlign: "center", border: `1px solid ${ai === 1 ? "#fecdd3" : "rgba(47,128,237,0.12)"}` }}>
+              <span style={{ fontSize: 9.5, fontWeight: 600, color: ai === 1 ? "#e11d48" : "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>{a.l}</span>
             </div>
           ))}
         </div>
@@ -250,7 +250,7 @@ function PhoneDemo() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
       <div style={{ position: "relative", width: 240, height: 494, animation: "jago-float 4s ease-in-out infinite" }}>
-        <div style={{ position: "absolute", inset: -28, borderRadius: 60, background: "radial-gradient(ellipse, rgba(20,85,211,0.35) 0%, transparent 70%)", filter: "blur(28px)" }} />
+        <div style={{ position: "absolute", inset: -28, borderRadius: 60, background: "radial-gradient(ellipse, rgba(47,128,237,0.35) 0%, transparent 70%)", filter: "blur(28px)" }} />
         <div style={{ position: "absolute", inset: 0, borderRadius: 42, background: "#0A0F2E", boxShadow: "0 48px 96px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 2px #161C3D", overflow: "hidden" }}>
           <div style={{ position: "absolute", left: -3, top: 96, width: 3, height: 24, background: "#161C3D", borderRadius: "2px 0 0 2px" }} />
           <div style={{ position: "absolute", left: -3, top: 132, width: 3, height: 24, background: "#161C3D", borderRadius: "2px 0 0 2px" }} />
@@ -273,7 +273,7 @@ function PhoneDemo() {
   );
 }
 
-/* ─── Scroll Marquee ─── */
+/* --- Scroll Marquee --- */
 const MARQUEE_ITEMS = ["Bike Taxi","Auto Ride","Cab Ride","Parcel Delivery","Goods Transport","Intercity Travel","Car Sharing","Safety Verified","Fair Pricing","60-Second Match","Live Tracking","Top Rated Pilots"];
 
 function Marquee() {
@@ -283,7 +283,7 @@ function Marquee() {
       <div style={{ display: "flex", gap: 40, animation: "jago-marquee 28s linear infinite", width: "max-content" }}>
         {items.map((item, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
-            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#1455D3" }} />
+            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#2F80ED" }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.45)", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 0.5 }}>{item}</span>
           </div>
         ))}
@@ -292,7 +292,7 @@ function Marquee() {
   );
 }
 
-/* ════════════════════════════ MAIN PAGE ════════════════════════════ */
+/* ---------------------------- MAIN PAGE ---------------------------- */
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
 
@@ -314,12 +314,12 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  /* ── Palette: Deep Navy + White ── */
+  /* -- Palette: Deep Navy + White -- */
   const N900 = "#06091A";
   const N800 = "#0A0F2E";
   const N700 = "#0D1340";
   const N600 = "#111A52";
-  const N500 = "#1455D3";
+  const N500 = "#2F80ED";
   const W    = "#FFFFFF";
   const W70  = "rgba(255,255,255,0.70)";
   const W40  = "rgba(255,255,255,0.40)";
@@ -345,12 +345,12 @@ export default function LandingPage() {
         @keyframes jago-fade-up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
         @keyframes jago-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
         @keyframes jago-screen-in{from{opacity:0;transform:translateX(24px) scale(.97)}to{opacity:1;transform:translateX(0) scale(1)}}
-        @keyframes jago-pulse{0%,100%{box-shadow:0 0 0 0 rgba(20,85,211,.55)}50%{box-shadow:0 0 0 14px rgba(20,85,211,0)}}
+        @keyframes jago-pulse{0%,100%{box-shadow:0 0 0 0 rgba(47,128,237,.55)}50%{box-shadow:0 0 0 14px rgba(47,128,237,0)}}
 
         .reveal{opacity:0;transform:translateY(36px);transition:opacity .8s ease,transform .8s ease}
         .reveal.vis{opacity:1;transform:translateY(0)}
         .svc-card{transition:transform .25s,box-shadow .25s,background .25s;cursor:pointer}
-        .svc-card:hover{transform:translateY(-6px);background:${N600} !important;box-shadow:0 24px 60px rgba(20,85,211,.22)!important}
+        .svc-card:hover{transform:translateY(-6px);background:${N600} !important;box-shadow:0 24px 60px rgba(47,128,237,.22)!important}
         .feat-card{transition:background .2s}
         .feat-card:hover{background:${N600} !important}
         .city-card{transition:transform .2s}
@@ -392,8 +392,8 @@ export default function LandingPage() {
 
         {/* HERO */}
         <section style={{ minHeight: "100vh", display: "flex", alignItems: "center", position: "relative", overflow: "hidden", paddingTop: 64 }}>
-          <div style={{ position: "absolute", top: "5%", right: "-5%", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle,rgba(20,85,211,0.14) 0%,transparent 70%)", animation: "jago-glow 16s ease-in-out infinite", pointerEvents: "none" }} />
-          <div style={{ position: "absolute", bottom: "5%", left: "-8%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(20,85,211,0.09) 0%,transparent 70%)", animation: "jago-glow 20s ease-in-out infinite reverse", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: "5%", right: "-5%", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle,rgba(47,128,237,0.14) 0%,transparent 70%)", animation: "jago-glow 16s ease-in-out infinite", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: "5%", left: "-8%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(47,128,237,0.09) 0%,transparent 70%)", animation: "jago-glow 20s ease-in-out infinite reverse", pointerEvents: "none" }} />
           <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${BORDER} 1px,transparent 1px),linear-gradient(90deg,${BORDER} 1px,transparent 1px)`, backgroundSize: "72px 72px", pointerEvents: "none" }} />
 
           <div className="container hero-grid" style={{ width: "100%", display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 56, alignItems: "center", padding: "72px 24px 96px" }}>
@@ -407,11 +407,11 @@ export default function LandingPage() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: W70, fontFamily: "Space Grotesk,sans-serif" }}>Live across 50+ cities in India</span>
               </div>
               <h1 style={{ fontSize: "clamp(40px,5vw,72px)", fontWeight: 800, lineHeight: 1.08, marginBottom: 24, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -2 }}>
-                India's Fastest<br />
-                <span style={{ color: N500 }}>Ride Platform.</span>
+                Move Smarter,<br />
+                <span style={{ color: N500 }}>Ride Anywhere.</span>
               </h1>
               <p style={{ fontSize: 18, color: W70, lineHeight: 1.8, maxWidth: 480, marginBottom: 44 }}>
-                Book a bike, auto, or cab in under 60 seconds. Safe rides with verified pilots — door to door, city to city.
+                Book a bike, auto, or cab in under 60 seconds. Smart rides with verified pilots — door to door, city to city.
               </p>
               <div className="hero-btns" style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 56 }}>
                 <a href="#download" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 11, background: W, color: N800, padding: "13px 22px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 700, boxShadow: "0 4px 28px rgba(0,0,0,.4)" }}>
@@ -456,7 +456,7 @@ export default function LandingPage() {
               <div style={{ textAlign: "center", maxWidth: 540, margin: "0 auto 64px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Our Services</div>
                 <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Every ride,<br />every need.</h2>
-                <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls — Jago gets you there.</p>
+                <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls � Jago gets you there.</p>
               </div>
               <div className="svc-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
                 {[
@@ -464,11 +464,11 @@ export default function LandingPage() {
                   { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M10 18h4M7 15V9l3.5-3H18l2 4v5H10"/></svg>, title: "Auto Ride", desc: "Classic CNG auto rides. Comfortable and pocket-friendly." },
                   { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a1 1 0 01-1-1v-3l3-5h13l3 5v3a1 1 0 01-1 1h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>, title: "Cab Ride", desc: "AC cab rides for family and business travel across the city." },
                   { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><rect x="3" y="8" width="7" height="13" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>, title: "Intercity", desc: "Outstation travel with transparent pricing and top pilots." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>, title: "Parcel Delivery", desc: "Send packages door to door — same day, same city." },
+                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>, title: "Parcel Delivery", desc: "Send packages door to door � same day, same city." },
                   { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><path d="M15 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>, title: "Goods Transport", desc: "Move furniture, appliances, and freight with trucks." },
                 ].map((s, i) => (
                   <div key={i} className="svc-card" style={{ background: N700, borderRadius: 20, padding: "28px 24px", border: `1px solid ${BORDER}` }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 24px rgba(20,85,211,0.4)" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 24px rgba(47,128,237,0.4)" }}>
                       {s.icon}
                     </div>
                     <h3 style={{ fontSize: 16.5, fontWeight: 700, marginBottom: 9, fontFamily: "Space Grotesk,sans-serif", color: W }}>{s.title}</h3>
@@ -491,7 +491,7 @@ export default function LandingPage() {
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why Jago</div>
                   <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
-                  <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first — for both riders and pilots.</p>
+                  <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first � for both riders and pilots.</p>
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                     <a href="#download" style={{ padding: "12px 22px", borderRadius: 12, background: N500, color: W, fontSize: 14, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Get the App</a>
                     <a href="/auth" style={{ padding: "12px 22px", borderRadius: 12, border: `1px solid ${BORDER}`, color: W70, fontSize: 14, fontWeight: 500, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Become a Pilot</a>
@@ -504,7 +504,7 @@ export default function LandingPage() {
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1110.34 18"/><path d="M7 6h1v4"/><path d="M16.71 13.88l.7.71-2.82 2.82"/></svg>, title: "No Surge Pricing", desc: "Fixed fares, no hidden charges, ever." },
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>, title: "Live GPS Tracking", desc: "Real-time tracking with family share link." },
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>, title: "In-App Chat", desc: "Talk to your pilot without sharing your number." },
-                    { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="white"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, title: "Rated 4.9★", desc: "Highest rated ride app in South India." },
+                    { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="white"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, title: "Rated 4.9?", desc: "Highest rated ride app in South India." },
                   ].map((w, i) => (
                     <div key={i} className="feat-card" style={{ background: N700, border: `1px solid ${BORDER}`, borderRadius: 16, padding: "18px" }}>
                       <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>{w.icon}</div>
@@ -532,7 +532,7 @@ export default function LandingPage() {
                   { refObj: sRides.ref,  val: `${(sRides.val/1000).toFixed(0)}K+`, label: "Rides Completed" },
                   { refObj: sCities.ref, val: `${sCities.val}+`, label: "Cities Active" },
                   { refObj: sPilots.ref, val: `${(sPilots.val/1000).toFixed(0)}K+`, label: "Verified Pilots" },
-                  { refObj: sRating.ref, val: `${(sRating.val/10).toFixed(1)}★`, label: "Avg Rider Rating" },
+                  { refObj: sRating.ref, val: `${(sRating.val/10).toFixed(1)}?`, label: "Avg Rider Rating" },
                 ].map((s, i) => (
                   <div key={i} ref={s.refObj} style={{ textAlign: "center", background: W06, backdropFilter: "blur(12px)", borderRadius: 20, padding: "36px 16px", border: `1px solid ${W10}` }}>
                     <p style={{ fontSize: 44, fontWeight: 800, color: W, margin: "0 0 10px", fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
@@ -554,7 +554,7 @@ export default function LandingPage() {
               </div>
               <div className="apps-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 {[
-                  { title: "Jago Customer App", sub: "For Riders",  desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly — all in one app.", cta: "Get Customer App", shade: "#1035A8" },
+                  { title: "Jago Customer App", sub: "For Riders",  desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly � all in one app.", cta: "Get Customer App", shade: "#1035A8" },
                   { title: "Jago Pilot App",    sub: "For Drivers", desc: "Accept trips, manage earnings, grow with Jago's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", shade: "#0A0F2E" },
                 ].map((d, i) => (
                   <div key={i} style={{ borderRadius: 24, padding: "44px 40px", background: `linear-gradient(135deg,${N500} 0%,${d.shade} 100%)`, position: "relative", overflow: "hidden" }}>
@@ -615,7 +615,7 @@ export default function LandingPage() {
                   </div>
                   <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with Jago?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
-                    Download now and get your first ride up to <strong style={{ color: W }}>₹50 OFF</strong> with code{" "}
+                    Download now and get your first ride up to <strong style={{ color: W }}>?50 OFF</strong> with code{" "}
                     <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGO50</strong>
                   </p>
                   <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
@@ -641,7 +641,7 @@ export default function LandingPage() {
             <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 40, marginBottom: 52 }}>
               <div>
                 <img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain", marginBottom: 18 }} />
-                <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
+                <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable � everywhere.</p>
               </div>
               {[
                 { t: "Company", l: [{ label: "About Us", href: "/about-us" }, { label: "Contact Us", href: "/contact-us" }, { label: "Become a Pilot", href: "/auth" }, { label: "Careers", href: "#" }] },
@@ -661,8 +661,8 @@ export default function LandingPage() {
               ))}
             </div>
             <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 Jago Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ♥ in India</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>� 2026 Jago Technologies Pvt. Ltd. � MindWhile IT Solutions Product � All rights reserved.</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ? in India</p>
             </div>
           </div>
         </footer>

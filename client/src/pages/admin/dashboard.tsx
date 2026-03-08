@@ -7,7 +7,7 @@ import {
 } from "recharts";
 
 const avatarBg = (name: string) => {
-  const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626"];
+  const colors = ["#2F80ED","#16a34a","#d97706","#9333ea","#0891b2","#dc2626"];
   return colors[(name || "A").charCodeAt(0) % colors.length];
 };
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
@@ -21,7 +21,7 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
 };
 
 const NOTIF_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
-  trip:     { icon: "bi-car-front-fill",    color: "#1a73e8", bg: "#e8f0fe" },
+  trip:     { icon: "bi-car-front-fill",    color: "#2F80ED", bg: "#EBF4FF" },
   driver:   { icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4" },
   payment:  { icon: "bi-cash-stack",        color: "#d97706", bg: "#fefce8" },
   alert:    { icon: "bi-exclamation-triangle-fill", color: "#dc2626", bg: "#fef2f2" },
@@ -112,7 +112,7 @@ export default function Dashboard() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const topStats = [
-    { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe", link: "/admin/customers", trend: "+12%", trendUp: true },
+    { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#2F80ED", bg: "#EBF4FF", link: "/admin/customers", trend: "+12%", trendUp: true },
     { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers", trend: "+5%", trendUp: true },
     { label: "Total Revenue", val: `₹${revenue}`, icon: "bi-currency-rupee", color: "#b45309", bg: "#fefce8", link: "/admin/reports", trend: "+18%", trendUp: true },
     { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips", trend: "+8%", trendUp: true },
@@ -126,7 +126,7 @@ export default function Dashboard() {
   ].filter(d => d.value > 0);
 
   const quickLinks = [
-    { label: "All Trips", icon: "bi-car-front", href: "/admin/trips", color: "#1a73e8" },
+    { label: "All Trips", icon: "bi-car-front", href: "/admin/trips", color: "#2F80ED" },
     { label: "Drivers", icon: "bi-person-badge", href: "/admin/drivers", color: "#16a34a" },
     { label: "Withdrawals", icon: "bi-cash-coin", href: "/admin/withdrawals", color: "#d97706" },
     { label: "Reports", icon: "bi-graph-up", href: "/admin/reports", color: "#7c3aed" },
@@ -196,7 +196,7 @@ export default function Dashboard() {
             const drv = svcData?.drivers;
             const services = [
               {
-                label: "City Rides", icon: "bi-car-front-fill", color: "#1a73e8", bg: "#eff6ff",
+                label: "City Rides", icon: "bi-car-front-fill", color: "#2F80ED", bg: "#eff6ff",
                 trips: svc?.rides?.trips ?? 0,
                 revenue: svc?.rides?.revenue ?? 0,
                 model: svc?.rides?.model ?? "subscription",
@@ -288,8 +288,8 @@ export default function Dashboard() {
                     <div className="text-muted small">Revenue & trips over the last 7 days</div>
                   </div>
                   <div className="d-flex gap-3 small">
-                    <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#1a73e8" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: "#1a73e8", display: "inline-block" }}></span>Revenue
+                    <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#2F80ED" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: "#2F80ED", display: "inline-block" }}></span>Revenue
                     </span>
                     <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#16a34a" }}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a", display: "inline-block" }}></span>Trips
@@ -302,8 +302,8 @@ export default function Dashboard() {
                       <AreaChart data={chart} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
                         <defs>
                           <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.25} />
-                            <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
+                            <stop offset="0%" stopColor="#2F80ED" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#2F80ED" stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="gradTrips" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
@@ -317,7 +317,7 @@ export default function Dashboard() {
                           contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12, padding: "10px 14px" }}
                           formatter={(val: any, name: string) => [name === "revenue" ? `₹${val}` : val, name === "revenue" ? "Revenue" : "Trips"]}
                         />
-                        <Area type="monotone" dataKey="revenue" stroke="#1a73e8" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#1a73e8" }} />
+                        <Area type="monotone" dataKey="revenue" stroke="#2F80ED" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#2F80ED" }} />
                         <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#gradTrips)" dot={false} activeDot={{ r: 5, fill: "#16a34a" }} />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -325,8 +325,8 @@ export default function Dashboard() {
                     <div style={{ height: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
                       {/* SVG empty state illustration */}
                       <svg width="120" height="70" viewBox="0 0 120 70" fill="none" style={{ opacity: 0.18 }}>
-                        <path d="M8 60 Q20 20 35 35 Q50 50 65 20 Q80 -10 95 30 Q105 55 112 40" stroke="#1a73e8" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                        <path d="M8 62 Q20 22 35 37 Q50 52 65 22 Q80 -8 95 32 Q105 57 112 42 L112 65 L8 65Z" fill="#1a73e8" fillOpacity="0.12"/>
+                        <path d="M8 60 Q20 20 35 35 Q50 50 65 20 Q80 -10 95 30 Q105 55 112 40" stroke="#2F80ED" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+                        <path d="M8 62 Q20 22 35 37 Q50 52 65 22 Q80 -8 95 32 Q105 57 112 42 L112 65 L8 65Z" fill="#2F80ED" fillOpacity="0.12"/>
                         <path d="M8 60 Q25 50 40 55 Q55 60 70 45 Q85 30 112 55" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" fill="none"/>
                         {[15,40,65,90].map((x,i) => (
                           <line key={i} x1={x} y1="10" x2={x} y2="62" stroke="#e2e8f0" strokeWidth="1"/>
@@ -341,8 +341,8 @@ export default function Dashboard() {
                       </div>
                       <div style={{ display: "flex", gap: 12 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", borderRadius: 8, padding: "6px 12px" }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#1a73e8" }}></div>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: "#1a73e8" }}>Revenue</span>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#2F80ED" }}></div>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: "#2F80ED" }}>Revenue</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0fdf4", borderRadius: 8, padding: "6px 12px" }}>
                           <div style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a" }}></div>
@@ -437,7 +437,7 @@ export default function Dashboard() {
                         return (
                           <tr key={item.trip.id} data-testid={`trip-row-${item.trip.id}`}>
                             <td className="ps-4">
-                              <span className="fw-bold" style={{ fontSize: 12, color: "#1a73e8", fontFamily: "monospace" }}>{item.trip.refId}</span>
+                              <span className="fw-bold" style={{ fontSize: 12, color: "#2F80ED", fontFamily: "monospace" }}>{item.trip.refId}</span>
                             </td>
                             <td>
                               <div className="d-flex align-items-center gap-2">
@@ -566,12 +566,12 @@ export default function Dashboard() {
             <div className="card-header bg-white py-3 px-3 border-0 d-flex align-items-center justify-content-between">
               <div>
                 <h6 className="mb-0 fw-bold" style={{ color: "#0f172a", fontSize: 14 }}>
-                  <i className="bi bi-bell-fill me-2" style={{ color: "#1a73e8" }}></i>
+                  <i className="bi bi-bell-fill me-2" style={{ color: "#2F80ED" }}></i>
                   Notifications
                 </h6>
               </div>
               <Link href="/admin/notifications">
-                <span style={{ fontSize: 11, color: "#1a73e8", cursor: "pointer", fontWeight: 600 }}>View all</span>
+                <span style={{ fontSize: 11, color: "#2F80ED", cursor: "pointer", fontWeight: 600 }}>View all</span>
               </Link>
             </div>
             <div className="card-body p-0" style={{ maxHeight: 420, overflowY: "auto" }}>

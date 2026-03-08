@@ -7,8 +7,8 @@
    JAGO CSS Variables (matching original style.css)
    ======================== */
 :root {
-  --bs-primary: #2563EB;
-  --bs-primary-rgb: 37, 99, 235;
+  --bs-primary: #2F80ED;
+  --bs-primary-rgb: 47, 128, 237;
   --bs-secondary: #DBEAFE;
   --bs-secondary-rgb: 219, 234, 254;
   --bs-success: #30b877;
@@ -28,7 +28,7 @@
   --bs-body-font-size: 0.875rem;
   --bs-border-color: #E2E8F0;
   --bs-white: #ffffff;
-  --text-primary: #2563EB;
+  --text-primary: #2F80ED;
   --text-secondary: #DBEAFE;
   --title-color: #0F172A;
   --title-color-rgb: 15, 23, 42;
@@ -143,7 +143,7 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom-color: rgba(255,255,255,0.07);
-  box-shadow: 0 1px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(37,99,235,0.08);
+  box-shadow: 0 1px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(47,128,237,0.08);
 }
 
 .dark .jago-stat-card {
@@ -187,7 +187,7 @@
 }
 
 .dark .jago-table tbody tr:hover {
-  background-color: rgba(37,99,235,0.06);
+  background-color: rgba(47,128,237,0.06);
 }
 
 .dark .jago-input {
@@ -255,7 +255,7 @@
 .dark .jago-login-input-group input:focus {
   background-color: #0f172a;
   border-color: var(--bs-primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
+  box-shadow: 0 0 0 3px rgba(47,128,237,0.2);
 }
 
 .dark .theme-input-style {
@@ -282,7 +282,7 @@
 
 /* Dark mode — badge/status fixes */
 .dark .badge-completed  { background-color: rgba(48,184,119,0.15); color: #4ade80; }
-.dark .badge-ongoing    { background-color: rgba(37,99,235,0.2); color: #60a5fa; }
+.dark .badge-ongoing    { background-color: rgba(47,128,237,0.2); color: #60a5fa; }
 .dark .badge-pending    { background-color: rgba(244,161,100,0.15); color: #fb923c; }
 .dark .badge-cancelled  { background-color: rgba(255,109,109,0.15); color: #f87171; }
 .dark .badge-accepted   { background-color: rgba(139,92,246,0.15); color: #a78bfa; }
@@ -290,7 +290,7 @@
 .dark .badge-unpaid     { background-color: rgba(255,109,109,0.15); color: #f87171; }
 .dark .badge-active     { background-color: rgba(48,184,119,0.15); color: #4ade80; }
 .dark .badge-inactive   { background-color: rgba(255,109,109,0.15); color: #f87171; }
-.dark .badge-primary    { background-color: rgba(37,99,235,0.2); color: #60a5fa; }
+.dark .badge-primary    { background-color: rgba(47,128,237,0.2); color: #60a5fa; }
 
 /* Dark mode — shadcn card overrides */
 .dark [class*="bg-white"],
@@ -353,7 +353,7 @@ a:hover { color: var(--bs-primary); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 4px 0 32px rgba(0,0,0,0.4), 1px 0 0 rgba(37,99,235,0.12);
+  box-shadow: 4px 0 32px rgba(0,0,0,0.4), 1px 0 0 rgba(47,128,237,0.12);
 }
 
 .aside-header {
@@ -365,8 +365,8 @@ a:hover { color: var(--bs-primary); }
   gap: 0.625rem;
   position: relative;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(37,99,235,0.2);
-  background: linear-gradient(135deg, rgba(37,99,235,0.1) 0%, rgba(0,0,0,0) 100%);
+  border-bottom: 1px solid rgba(47,128,237,0.2);
+  background: linear-gradient(135deg, rgba(47,128,237,0.1) 0%, rgba(0,0,0,0) 100%);
 }
 
 .aside-header .logo {
@@ -390,7 +390,7 @@ a:hover { color: var(--bs-primary); }
 .aside-header .logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: linear-gradient(135deg, #2F80ED, #0ea5e9);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -399,7 +399,7 @@ a:hover { color: var(--bs-primary); }
   font-size: 1.1rem;
   font-weight: 800;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.5);
+  box-shadow: 0 4px 12px rgba(47,128,237,0.5);
 }
 
 .toggle-menu-button {
@@ -408,7 +408,7 @@ a:hover { color: var(--bs-primary); }
   width: 26px;
   height: 26px;
   background: linear-gradient(135deg, #0D1B3E, #0a1628);
-  border: 1px solid rgba(37,99,235,0.35);
+  border: 1px solid rgba(47,128,237,0.35);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -464,7 +464,7 @@ body.aside-folded .toggle-menu-button i {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: linear-gradient(135deg, #2F80ED, #0ea5e9);
   display: grid;
   place-items: center;
   font-size: 0.8rem;
@@ -569,15 +569,15 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav li > a:hover {
-  background: rgba(37,99,235,0.14);
+  background: rgba(47,128,237,0.14);
   color: rgba(255,255,255,0.95);
 }
 
 .main-nav li.active > a {
-  background: linear-gradient(135deg, rgba(37,99,235,0.9), rgba(14,165,233,0.8));
+  background: linear-gradient(135deg, rgba(47,128,237,0.9), rgba(14,165,233,0.8));
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 3px 14px rgba(37,99,235,0.38);
+  box-shadow: 0 3px 14px rgba(47,128,237,0.38);
   border-left: 2px solid #60a5fa;
 }
 
@@ -601,7 +601,7 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav .badge-count {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: linear-gradient(135deg, #2F80ED, #0ea5e9);
   color: #fff;
   font-size: 0.62rem;
   padding: 0.1rem 0.4rem;
@@ -660,7 +660,7 @@ body.aside-folded .main-nav li > a i {
   display: flex;
   align-items: center;
   transition: left 200ms cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 1px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(37,99,235,0.03);
+  box-shadow: 0 1px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(47,128,237,0.03);
 }
 
 .header.fixed-top {
@@ -1087,7 +1087,7 @@ body.aside-folded .main-area {
 }
 
 .badge-completed  { background-color: rgba(48,184,119,0.15); color: #30b877; }
-.badge-ongoing    { background-color: rgba(37,99,235,0.12); color: #2563EB; }
+.badge-ongoing    { background-color: rgba(47,128,237,0.12); color: #2F80ED; }
 .badge-pending    { background-color: rgba(244,161,100,0.15); color: #f4a164; }
 .badge-cancelled  { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
 .badge-accepted   { background-color: rgba(139,92,246,0.12); color: #8b5cf6; }
@@ -1095,7 +1095,7 @@ body.aside-folded .main-area {
 .badge-unpaid     { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
 .badge-active     { background-color: rgba(48,184,119,0.15); color: #30b877; }
 .badge-inactive   { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
-.badge-primary    { background-color: rgba(37,99,235,0.12); color: #2563EB; }
+.badge-primary    { background-color: rgba(47,128,237,0.12); color: #2F80ED; }
 
 /* ========================
    JAGO BUTTONS
@@ -1222,7 +1222,7 @@ body.aside-folded .main-area {
    ======================== */
 .jago-login-bg {
   min-height: 100vh;
-  background: linear-gradient(135deg, #1e40af 0%, #2563EB 50%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #2F80ED 50%, #1d4ed8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1272,7 +1272,7 @@ body.aside-folded .main-area {
 .jago-login-logo .logo-icon {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, #2563EB, #1d4ed8);
+  background: linear-gradient(135deg, #2F80ED, #1d4ed8);
   border-radius: 16px;
   display: inline-grid;
   place-items: center;
@@ -1331,7 +1331,7 @@ body.aside-folded .main-area {
 .jago-login-input-group input:focus {
   border-color: var(--bs-primary);
   background-color: #fff;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  box-shadow: 0 0 0 3px rgba(47,128,237,0.1);
 }
 
 .jago-login-input-group .show-pw {
@@ -1570,7 +1570,7 @@ body.aside-folded .main-area {
 .login-brand-side {
   flex: 0 0 45%;
   max-width: 45%;
-  background: linear-gradient(160deg, #0F1B3D 0%, #1E3A8A 35%, #2563EB 70%, #3B82F6 100%);
+  background: linear-gradient(160deg, #0F1B3D 0%, #1E3A8A 35%, #2F80ED 70%, #3B82F6 100%);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1675,7 +1675,7 @@ body.aside-folded .main-area {
   top: 1.5rem;
   right: 1.5rem;
   background: rgba(37, 99, 235, 0.06);
-  color: #2563EB;
+  color: #2F80ED;
   padding: 0.3rem 0.8rem;
   border-radius: 20px;
   font-size: 0.7rem;
@@ -1747,7 +1747,7 @@ body.aside-folded .main-area {
 }
 
 .login-container .form-input:focus {
-  border-color: #2563EB;
+  border-color: #2F80ED;
   background: #fff;
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
 }
@@ -1766,7 +1766,7 @@ body.aside-folded .main-area {
 }
 
 .login-container .toggle-password:hover {
-  color: #2563EB;
+  color: #2F80ED;
 }
 
 .login-container .remember-row {
@@ -1786,7 +1786,7 @@ body.aside-folded .main-area {
 .login-container .remember-check input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: #2563EB;
+  accent-color: #2F80ED;
   cursor: pointer;
 }
 
@@ -1801,7 +1801,7 @@ body.aside-folded .main-area {
 .login-container .btn-login {
   width: 100%;
   padding: 0.875rem;
-  background: #2563EB;
+  background: #2F80ED;
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -1844,7 +1844,7 @@ body.aside-folded .main-area {
 
 .login-footer-demo .creds span {
   font-weight: 600;
-  color: #2563eb;
+  color: #2F80ED;
   font-family: monospace;
 }
 
@@ -1978,17 +1978,17 @@ body.aside-folded .main-area {
   width: 48px;
   height: 48px;
   font-size: 1.25rem;
-  background: rgba(37,99,235,0.1);
-  color: #2563EB;
+  background: rgba(47,128,237,0.1);
+  color: #2F80ED;
   transition: transform 0.2s ease;
 }
 
 .jd-stat-blue {
   background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%) !important;
-  box-shadow: 0 2px 12px rgba(37,99,235,0.1) !important;
+  box-shadow: 0 2px 12px rgba(47,128,237,0.1) !important;
 }
-.jd-stat-blue::after { background: #2563EB; }
-.jd-stat-blue .jd-s-icon { background: #2563EB !important; color: #fff !important; }
+.jd-stat-blue::after { background: #2F80ED; }
+.jd-stat-blue .jd-s-icon { background: #2F80ED !important; color: #fff !important; }
 
 .jd-stat-green {
   background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%) !important;
@@ -2352,7 +2352,7 @@ html, body {
 
 * { transition-property: background-color, border-color, box-shadow, transform, opacity;
     transition-duration: 160ms; transition-timing-function: cubic-bezier(.4,0,.2,1); }
-*:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+*:focus-visible { outline: 2px solid #2F80ED; outline-offset: 2px; }
 
 /* ── Page Fade-In ── */
 @keyframes pageFadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -2395,7 +2395,7 @@ html, body {
   border-radius: 12px !important;
   backdrop-filter: blur(10px);
 }
-.user-profile .avatar { background: rgba(37,99,235,0.6) !important; border: 2px solid rgba(255,255,255,0.2) !important; }
+.user-profile .avatar { background: rgba(47,128,237,0.6) !important; border: 2px solid rgba(255,255,255,0.2) !important; }
 .user-profile .card-title { color: #fff !important; font-weight: 600 !important; }
 .user-profile .card-text { color: rgba(255,255,255,0.6) !important; font-size: 0.7rem !important; }
 
@@ -2450,7 +2450,7 @@ html, body {
 .main-nav li > a:hover i { color: #93c5fd !important; }
 
 .main-nav li.active > a {
-  background: linear-gradient(90deg, rgba(37,99,235,0.35) 0%, rgba(37,99,235,0.12) 100%) !important;
+  background: linear-gradient(90deg, rgba(47,128,237,0.35) 0%, rgba(47,128,237,0.12) 100%) !important;
   color: #fff !important;
   font-weight: 600 !important;
   box-shadow: 0 0 0 1px rgba(59,130,246,0.25) inset !important;
@@ -2486,12 +2486,12 @@ body.aside-folded .header { left: 72px !important; }
 .header-icon-btn:hover { background: #eff6ff !important; border-color: #3b82f6 !important; color: #3b82f6 !important; }
 
 .header-avatar-btn {
-  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+  background: linear-gradient(135deg, #3b82f6, #2F80ED) !important;
   border-radius: 10px !important;
   width: 38px !important;
   height: 38px !important;
   border: none !important;
-  box-shadow: 0 2px 8px rgba(37,99,235,0.35) !important;
+  box-shadow: 0 2px 8px rgba(47,128,237,0.35) !important;
 }
 .header-avatar-btn i { color: #fff !important; }
 
@@ -2543,19 +2543,19 @@ thead tr th {
   transition: all 0.15s cubic-bezier(.4,0,.2,1) !important;
 }
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2F80ED 100%) !important;
   border: none !important;
-  box-shadow: 0 2px 8px rgba(37,99,235,0.3) !important;
+  box-shadow: 0 2px 8px rgba(47,128,237,0.3) !important;
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-  box-shadow: 0 4px 14px rgba(37,99,235,0.4) !important;
+  background: linear-gradient(135deg, #2F80ED 0%, #1d4ed8 100%) !important;
+  box-shadow: 0 4px 14px rgba(47,128,237,0.4) !important;
   transform: translateY(-1px) !important;
 }
-.btn-primary:active { transform: translateY(0) !important; box-shadow: 0 1px 4px rgba(37,99,235,0.25) !important; }
+.btn-primary:active { transform: translateY(0) !important; box-shadow: 0 1px 4px rgba(47,128,237,0.25) !important; }
 
 .btn-outline-primary {
-  color: #2563eb !important;
+  color: #2F80ED !important;
   border-color: #bfdbfe !important;
   background: transparent !important;
 }
@@ -2586,7 +2586,7 @@ thead tr th {
 .nav--tabs .nav-link:hover { background: rgba(255,255,255,0.7) !important; color: #334155 !important; }
 .nav--tabs .nav-link.active {
   background: #fff !important;
-  color: #2563eb !important;
+  color: #2F80ED !important;
   font-weight: 600 !important;
   box-shadow: 0 1px 6px rgba(0,0,0,0.1) !important;
 }
@@ -2594,7 +2594,7 @@ thead tr th {
 /* ── Badge Glow Effects ── */
 .badge.bg-success { background: linear-gradient(135deg, #22c55e, #16a34a) !important; }
 .badge.bg-danger  { background: linear-gradient(135deg, #f87171, #dc2626) !important; }
-.badge.bg-primary { background: linear-gradient(135deg, #60a5fa, #2563eb) !important; }
+.badge.bg-primary { background: linear-gradient(135deg, #60a5fa, #2F80ED) !important; }
 .badge.bg-warning.text-dark { background: linear-gradient(135deg, #fbbf24, #d97706) !important; color: #fff !important; }
 .badge.bg-info    { background: linear-gradient(135deg, #38bdf8, #0891b2) !important; }
 
@@ -2613,7 +2613,7 @@ thead tr th {
   transition: 0.2s cubic-bezier(.4,0,.2,1);
   box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
-.switcher_input:checked + .switcher_control { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.switcher_input:checked + .switcher_control { background: linear-gradient(135deg, #3b82f6, #2F80ED); }
 .switcher_input:checked + .switcher_control::before { transform: translateX(18px); }
 
 /* ── Form Inputs ── */
@@ -2797,7 +2797,7 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 .jl-brand {
   flex: 0 0 48%;
   max-width: 48%;
-  background: linear-gradient(145deg, #080e1f 0%, #0d1b3e 30%, #1a3a8f 65%, #2563eb 100%);
+  background: linear-gradient(145deg, #080e1f 0%, #0d1b3e 30%, #1a3a8f 65%, #2F80ED 100%);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -2890,7 +2890,7 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 
 .admin-shell .main-area {
   background:
-    radial-gradient(900px 350px at 100% -5%, rgba(37,99,235,0.07), transparent 60%),
+    radial-gradient(900px 350px at 100% -5%, rgba(47,128,237,0.07), transparent 60%),
     radial-gradient(800px 300px at 0% 105%, rgba(14,165,233,0.06), transparent 60%),
     #f1f5f9 !important;
 }
@@ -2945,7 +2945,7 @@ html[data-theme="dark"] .admin-shell .header-icon-btn:hover {
 
 html[data-theme="dark"] .admin-shell .main-area {
   background:
-    radial-gradient(900px 350px at 100% -5%, rgba(37,99,235,0.12), transparent 60%),
+    radial-gradient(900px 350px at 100% -5%, rgba(47,128,237,0.12), transparent 60%),
     radial-gradient(800px 300px at 0% 105%, rgba(14,165,233,0.09), transparent 60%),
     #060d1e !important;
 }
@@ -2954,7 +2954,7 @@ html[data-theme="dark"] .admin-shell .card,
 html[data-theme="dark"] .admin-dashboard-page .jd-stat-card,
 html[data-theme="dark"] .admin-dashboard-page .card {
   background: rgba(15, 23, 42, 0.95) !important;
-  border: 1px solid rgba(37,99,235,0.18) !important;
+  border: 1px solid rgba(47,128,237,0.18) !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -3175,10 +3175,10 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 .jl-form-logo-circle {
   width: 44px; height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, #3b82f6, #2F80ED);
   display: flex; align-items: center; justify-content: center;
   font-size: 1.1rem; color: #fff;
-  box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+  box-shadow: 0 4px 14px rgba(47,128,237,0.35);
   flex-shrink: 0;
 }
 .jl-form-logo-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
@@ -3244,9 +3244,9 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   transition: all 0.2s ease;
 }
 .jl-input:focus {
-  border-color: #2563eb;
+  border-color: #2F80ED;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(37,99,235,0.09);
+  box-shadow: 0 0 0 4px rgba(47,128,237,0.09);
 }
 .jl-eye-btn {
   position: absolute;
@@ -3261,7 +3261,7 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   padding: 0;
   transition: color 0.15s;
 }
-.jl-eye-btn:hover { color: #2563eb; }
+.jl-eye-btn:hover { color: #2F80ED; }
 
 .jl-row {
   display: flex;
@@ -3280,14 +3280,14 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 .jl-check-label input[type="checkbox"] {
   width: 15px; height: 15px;
-  accent-color: #2563eb;
+  accent-color: #2F80ED;
 }
 .jl-forgot-link {
   background: none;
   border: none;
   padding: 0;
   font-size: 0.82rem;
-  color: #2563eb;
+  color: #2F80ED;
   cursor: pointer;
   font-weight: 600;
   text-decoration: none;
@@ -3308,7 +3308,7 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   font-family: "Inter", sans-serif;
   cursor: pointer;
   letter-spacing: 0.02em;
-  box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+  box-shadow: 0 4px 16px rgba(47,128,237,0.35);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
@@ -3316,8 +3316,8 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   gap: 0.5rem;
 }
 .jl-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-  box-shadow: 0 6px 22px rgba(37,99,235,0.45);
+  background: linear-gradient(135deg, #2F80ED 0%, #1e40af 100%);
+  box-shadow: 0 6px 22px rgba(47,128,237,0.45);
   transform: translateY(-1px);
 }
 .jl-btn:active { transform: translateY(0); }
@@ -3363,7 +3363,7 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   border-radius: 6px;
   padding: 1px 8px;
   font-size: 0.78rem;
-  color: #2563eb;
+  color: #2F80ED;
   font-weight: 600;
 }
 
