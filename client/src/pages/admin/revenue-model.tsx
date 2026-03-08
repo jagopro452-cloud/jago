@@ -487,7 +487,7 @@ export default function RevenueModelPage() {
             </div>
           </div>
 
-          {/* Auto-lock threshold */}
+          {/* Auto-lock threshold + Launch Campaign */}
           <div className="row g-3 mt-2">
             <div className="col-md-4">
               <div className="p-3 rounded-3" style={{ border: "1.5px solid #fecaca", background: "#fff5f5" }}>
@@ -502,6 +502,45 @@ export default function RevenueModelPage() {
                 </div>
                 <div className="form-text" style={{ fontSize: 10.5, color: "#ef4444" }}>
                   Driver auto-locked when wallet balance drops below this value (typically -₹100)
+                </div>
+              </div>
+            </div>
+
+            {/* Launch Campaign toggle */}
+            <div className="col-md-5">
+              <div className="p-3 rounded-3 h-100" style={{ border: "1.5px solid #bbf7d0", background: "#f0fdf4" }}>
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <div className="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                    style={{ width: 32, height: 32, background: "#dcfce7", color: "#16a34a", fontSize: 16 }}>
+                    🎉
+                  </div>
+                  <span className="fw-semibold" style={{ fontSize: 14, color: "#15803d" }}>Launch Campaign</span>
+                  <span className={`badge rounded-pill ms-auto ${s["launch_campaign_enabled"] === "false" ? "bg-secondary" : "bg-success"}`}
+                    style={{ fontSize: 10 }}>
+                    {s["launch_campaign_enabled"] === "false" ? "OFF" : "ON"}
+                  </span>
+                </div>
+                <p className="mb-2" style={{ fontSize: 11.5, color: "#166534" }}>
+                  When enabled, newly approved drivers receive <strong>30 days free access</strong> — no commission, no platform fee.
+                </p>
+                <div className="d-flex gap-2">
+                  <button
+                    className={`btn btn-sm flex-fill ${s["launch_campaign_enabled"] !== "false" ? "btn-success" : "btn-outline-secondary"}`}
+                    style={{ fontSize: 12 }}
+                    onClick={() => set("launch_campaign_enabled", "true")}
+                    data-testid="btn-launch-campaign-on">
+                    <i className="bi bi-toggle-on me-1"></i>Enable
+                  </button>
+                  <button
+                    className={`btn btn-sm flex-fill ${s["launch_campaign_enabled"] === "false" ? "btn-danger" : "btn-outline-secondary"}`}
+                    style={{ fontSize: 12 }}
+                    onClick={() => set("launch_campaign_enabled", "false")}
+                    data-testid="btn-launch-campaign-off">
+                    <i className="bi bi-toggle-off me-1"></i>Disable
+                  </button>
+                </div>
+                <div className="form-text mt-1" style={{ fontSize: 10.5, color: "#166534" }}>
+                  Disabling this immediately stops free-period benefits for all drivers.
                 </div>
               </div>
             </div>

@@ -381,6 +381,9 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS revenue_model VARCHAR(30) DEFAULT 'commission';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS model_selected_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(20) DEFAULT 'light';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS onboard_date TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS free_period_end TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS launch_free_active BOOLEAN DEFAULT false;
 
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS logo_url TEXT;
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'two_wheeler';
@@ -552,7 +555,8 @@ async function ensureOperationalSchema() {
       VALUES
         ('driver_commission_pct','20'),
         ('auto_lock_threshold','-100'),
-        ('subscription_enabled','true')
+        ('subscription_enabled','true'),
+        ('launch_campaign_enabled','true')
       ON CONFLICT (key_name) DO NOTHING;
     `);
 
@@ -4361,6 +4365,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settingR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`).catch(() => ({ rows: [] as any[] }));
       const s: any = {};
       settingR.rows.forEach((row: any) => { s[row.key_name] = row.value; });
+
+      // ── Launch Benefit: check if this driver is in their 30-day free period ──
+      const driverBenefitR = await rawDb.execute(rawSql`
+        SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const driverBenefit = driverBenefitR.rows[0] as any;
+      const campaignGlobalOn = s['launch_campaign_enabled'] !== 'false';
+      const freePeriodStillValid = driverBenefit?.launch_free_active === true
+        && driverBenefit?.free_period_end
+        && new Date(driverBenefit.free_period_end) >= new Date();
+      const launchFreeApplied = campaignGlobalOn && freePeriodStillValid;
+
+      // Auto-expire: if period has ended, flip the flag off
+      if (driverBenefit?.launch_free_active === true && driverBenefit?.free_period_end && new Date(driverBenefit.free_period_end) < new Date()) {
+        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${driver.id}::uuid`).catch(() => {});
+      }
+
       // Per-service revenue model: use rides_model/parcels_model/cargo_model if set
       const tripServiceType = (tripRow.trip_type || tripRow.type || 'normal');
       let serviceModelKey = 'active_model';
@@ -4372,7 +4393,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let deductAmount = 0;
       let breakdown: any = {};
 
-      if (activeModel === "commission") {
+      if (launchFreeApplied) {
+        // 🎉 Launch Benefit: no commission, no subscription fee for this trip
+        deductAmount = 0;
+        breakdown = { model: "launch_free", commission: 0, platformFee: 0, gst: 0, insurance: 0, total: 0 };
+      } else if (activeModel === "commission") {
         const commPct = parseFloat(s.commission_pct || "15") / 100;
         const gstPct = parseFloat(s.commission_gst_pct || "18") / 100;
         const ins = parseFloat(s.commission_insurance_per_ride || "2");
@@ -6317,6 +6342,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (status === 'approved') {
         await rawDb.execute(rawSql`UPDATE users SET is_active=true WHERE id=${id}::uuid`);
+        // Check if the global launch campaign is enabled
+        const campaignR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='launch_campaign_enabled' LIMIT 1`).catch(() => ({ rows: [] }));
+        const campaignEnabled = (campaignR.rows[0] as any)?.value !== 'false';
+        if (campaignEnabled) {
+          await rawDb.execute(rawSql`
+            UPDATE users
+            SET onboard_date = NOW(),
+                free_period_end = NOW() + INTERVAL '30 days',
+                launch_free_active = true
+            WHERE id=${id}::uuid AND user_type='driver'
+          `);
+        }
       }
       // Send FCM notification if token exists
       const tokenR = await rawDb.execute(rawSql`SELECT fcm_token, full_name FROM users WHERE id=${id}::uuid`).catch(() => ({ rows: [] }));
@@ -6334,6 +6371,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (_) {}
       }
       res.json({ success: true, status });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Driver: Launch Benefit status endpoint ──────────────────────────────
+  app.get("/api/app/driver/launch-benefit", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const [benefitR, campaignR] = await Promise.all([
+        rawDb.execute(rawSql`SELECT launch_free_active, free_period_end, onboard_date FROM users WHERE id=${user.id}::uuid LIMIT 1`),
+        rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='launch_campaign_enabled' LIMIT 1`).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const row = benefitR.rows[0] as any;
+      const campaignGlobalOn = (campaignR.rows[0] as any)?.value !== 'false';
+      const now = new Date();
+      let launchFreeActive = row?.launch_free_active === true;
+      const freePeriodEnd: Date | null = row?.free_period_end ? new Date(row.free_period_end) : null;
+
+      // Auto-expire silently
+      if (launchFreeActive && freePeriodEnd && freePeriodEnd < now) {
+        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(() => {});
+        launchFreeActive = false;
+      }
+
+      const isActive = campaignGlobalOn && launchFreeActive && freePeriodEnd !== null && freePeriodEnd >= now;
+      const freeDaysRemaining = isActive && freePeriodEnd
+        ? Math.max(0, Math.ceil((freePeriodEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+      res.json({
+        active: isActive,
+        freeDaysRemaining,
+        freePeriodEnd: freePeriodEnd ? freePeriodEnd.toISOString() : null,
+        onboardDate: row?.onboard_date ? new Date(row.onboard_date).toISOString() : null,
+        message: isActive
+          ? `🎉 Launch Offer Active! No commission and no platform fee for your first 30 days. ${freeDaysRemaining} day(s) remaining.`
+          : null,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -6387,6 +6461,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const todayGross = parseFloat(today.gross);
       const todayCommission = parseFloat(today.commission);
 
+      // ── Launch Benefit: auto-expire + build response fields ──
+      const launchR = await rawDb.execute(rawSql`
+        SELECT launch_free_active, free_period_end, onboard_date FROM users WHERE id=${user.id}::uuid LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const launchRow = launchR.rows[0] as any;
+      const campaignSettR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='launch_campaign_enabled' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+      const campaignGlobalOn = (campaignSettR.rows[0] as any)?.value !== 'false';
+
+      let launchFreeActive = launchRow?.launch_free_active === true;
+      let freePeriodEnd: Date | null = launchRow?.free_period_end ? new Date(launchRow.free_period_end) : null;
+      const now = new Date();
+
+      // Auto-expire if period ended
+      if (launchFreeActive && freePeriodEnd && freePeriodEnd < now) {
+        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(() => {});
+        launchFreeActive = false;
+      }
+
+      const isLaunchBenefitActive = campaignGlobalOn && launchFreeActive && freePeriodEnd !== null && freePeriodEnd >= now;
+      const freeDaysRemaining = isLaunchBenefitActive && freePeriodEnd
+        ? Math.max(0, Math.ceil((freePeriodEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
       res.json({
         isOnline: di.isOnline ?? false,
         tripsToday: todayTrips,
@@ -6406,6 +6503,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         recentTrips: recentTrips.rows.map(camelize),
         dailyGoal: { target: 10, achieved: todayTrips },
         weeklyGoal: { target: 50, achieved: parseInt(week.trips) },
+        launchBenefit: {
+          active: isLaunchBenefitActive,
+          freeDaysRemaining,
+          freePeriodEnd: freePeriodEnd ? freePeriodEnd.toISOString() : null,
+          onboardDate: launchRow?.onboard_date ? new Date(launchRow.onboard_date).toISOString() : null,
+        },
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

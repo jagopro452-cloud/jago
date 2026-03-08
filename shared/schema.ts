@@ -38,6 +38,10 @@ export const users = pgTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }),
   resetOtp: varchar("reset_otp", { length: 10 }),
   resetOtpExpiry: timestamp("reset_otp_expiry"),
+  // Launch Benefit System
+  onboardDate: timestamp("onboard_date"),
+  freePeriodEnd: timestamp("free_period_end"),
+  launchFreeActive: boolean("launch_free_active").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
