@@ -470,6 +470,23 @@ async function ensureOperationalSchema() {
 
       -- Weight-based rate on vehicle_categories (for parcel vehicles)
       ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS weight_rate NUMERIC(10,2) DEFAULT 0;
+
+      -- Fix: missing users columns referenced by many routes
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_reason TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS prefer_female_driver BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(120);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(30);
+
+      -- Fix: safety_alerts missing columns (table may exist as older schema version)
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS user_id UUID;
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS triggered_by VARCHAR(20) DEFAULT 'customer';
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS acknowledged_by_name VARCHAR(120);
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMP;
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS police_notified BOOLEAN DEFAULT false;
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS nearby_drivers_notified INTEGER DEFAULT 0;
     `);
 
     await rawDb.execute(rawSql`
@@ -723,6 +740,33 @@ async function ensureOperationalSchema() {
       );
       INSERT INTO company_gst_wallet (id, balance, total_collected, total_trips)
       VALUES (1, 0, 0, 0) ON CONFLICT (id) DO NOTHING;
+    `).catch(() => {});
+
+    // Fix: completely missing tables (no CREATE TABLE existed anywhere)
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS driver_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID NOT NULL,
+        plan_id UUID,
+        start_date DATE,
+        end_date DATE,
+        payment_amount NUMERIC(10,2) DEFAULT 0,
+        payment_status VARCHAR(30) DEFAULT 'pending',
+        rides_used INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT true,
+        razorpay_payment_id VARCHAR(100),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_revenue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID,
+        trip_id UUID,
+        amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        revenue_type VARCHAR(50) DEFAULT 'commission',
+        breakdown JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `).catch(() => {});
 
     // ── Seed all vehicle categories (Bike, Auto, Mini Car, Sedan, SUV, Car Pool) ───
