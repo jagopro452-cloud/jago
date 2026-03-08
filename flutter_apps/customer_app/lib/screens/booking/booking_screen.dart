@@ -197,10 +197,54 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               if (idx >= 0) _selectedFareIndex = idx;
             }
           });
+        } else {
+          // Server returned no fares — compute client-side estimates so the UI always shows a price
+          if (mounted) setState(() => _allFares = _buildFallbackFares());
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Network error — show client-side estimates
+      if (mounted) setState(() => _allFares = _buildFallbackFares());
+    }
     if (mounted) setState(() => _estimating = false);
+  }
+
+  /// Builds client-side fare estimates (Bike/Auto/Car) when the server returns
+  /// no fares. Formula: Total = Base + (Distance × Per-KM Rate) + 5% GST.
+  List<Map<String, dynamic>> _buildFallbackFares() {
+    final dist = _distanceKm;
+    Map<String, dynamic> make(
+        String name, double base, double perKm, double minFareVal, int eta) {
+      final raw = (base + dist * perKm).clamp(minFareVal, double.infinity);
+      final gst = double.parse((raw * 0.05).toStringAsFixed(2));
+      final grandTotal = double.parse((raw + gst).toStringAsFixed(2));
+      return {
+        'vehicleCategoryId': null,
+        'vehicleName': name,
+        'baseFare': base,
+        'farePerKm': perKm,
+        'billableKm': dist,
+        'distanceFare': double.parse((dist * perKm).toStringAsFixed(2)),
+        'timeFare': 0.0,
+        'subtotal': double.parse(raw.toStringAsFixed(2)),
+        'gst': gst,
+        'estimatedFare': grandTotal,
+        'fareMin': (grandTotal * 0.95).floor(),
+        'fareMax': (grandTotal * 1.05).ceil(),
+        'minimumFare': minFareVal,
+        'cancellationFee': 10.0,
+        'waitingChargePerMin': 0.0,
+        'isNightCharge': false,
+        'nightMultiplier': 1.0,
+        'helperCharge': 0.0,
+        'estimatedTime': '$eta min',
+      };
+    }
+    return [
+      make('Bike', 25, 10, 28, (dist * 3).ceil()),
+      make('Auto', 35, 13, 40, (dist * 3.5).ceil()),
+      make('Car',  50, 16, 60, (dist * 4).ceil()),
+    ];
   }
 
   Future<void> _confirmBooking({String? razorpayPaymentId}) async {
@@ -1024,6 +1068,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         ])));
     }
     if (_allFares.isEmpty) {
+      final fbDist = _distanceKm;
+      final fbSubtotal = (25.0 + fbDist * 10.0).clamp(28.0, double.infinity);
+      final fbTotal = fbSubtotal * 1.05;
+      final fbMin = (fbTotal * 0.95).floor();
+      final fbMax = (fbTotal * 1.05).ceil();
       return Row(children: [
         Container(width: 52, height: 52,
           decoration: BoxDecoration(color: _jagoPrimary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
@@ -1031,10 +1080,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_vehicleName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: textMain)),
-          Text('${_distanceKm.toStringAsFixed(1)} km • Est. ~5 min',
+          Text('${fbDist.toStringAsFixed(1)} km • Est. ~${(fbDist * 3).ceil()} min',
             style: TextStyle(fontSize: 13, color: textSub, fontWeight: FontWeight.w500)),
         ])),
-        Text('--', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: textMain)),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('₹$fbMin–₹$fbMax',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _jagoPrimary)),
+          Text('est. fare', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+        ]),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1094,8 +1147,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final isSelected = i == _selectedFareIndex;
         final name = f['vehicleCategoryName']?.toString() ?? f['vehicleName']?.toString() ?? f['name']?.toString() ?? 'Vehicle';
         final fareVal = (f['estimatedFare'] ?? 0).toDouble();
+        final rawMin = (f['fareMin'] ?? (fareVal * 0.95)).toDouble();
+        final rawMax = (f['fareMax'] ?? (fareVal * 1.05)).toDouble();
         final time = f['estimatedTime']?.toString() ?? '~5 min';
         final displayFare = isSelected ? (fareVal - _promoDiscount).clamp(0.0, double.infinity) : fareVal;
+        final displayMin = (isSelected ? rawMin - _promoDiscount : rawMin).clamp(0.0, double.infinity);
+        final displayMax = (isSelected ? rawMax - _promoDiscount : rawMax).clamp(0.0, double.infinity);
         final tag = _getVehicleTag(i);
         final minFareVal = (f['minimumFare'] ?? 0).toDouble();
         final farePerKmVal = (f['farePerKm'] ?? 0).toDouble();
@@ -1168,9 +1225,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     ]),
                   ])),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('₹${displayFare.toStringAsFixed(0)}',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                        color: _jagoPrimary)),
+                    Text('₹${displayMin.floor()}–₹${displayMax.ceil()}',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _jagoPrimary)),
+                    Text('est. fare', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
                     if (isSelected && _promoDiscount > 0)
                       Text('saved ₹${_promoDiscount.toInt()}',
                         style: const TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),

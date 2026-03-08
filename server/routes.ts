@@ -5167,29 +5167,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY f.vehicle_category_id, vc.name
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
-        // NOTE: parse FIRST then apply fallback — DB returns "0" (truthy string), so
-        // parseFloat("0" || 30) = parseFloat("0") = 0 (wrong). Must do parseFloat("0") || 30 = 30 (correct).
-        const base = parseFloat(f.baseFare) || 30;
-        const perKm = parseFloat(f.farePerKm) || 12;
-        const perMin = parseFloat(f.farePerMin) || 0;
-        const minFare = parseFloat(f.minimumFare) || 20;
+        // Vehicle-name-specific defaults: Bike ₹25+₹10/km, Auto ₹35+₹13/km, Car ₹50+₹16/km
+        // (parse FIRST, then apply fallback — DB returns "0" as a truthy string so
+        //  parseFloat("0" || 30) = 0 (wrong); parseFloat("0") || 30 = 30 (correct))
+        const vn = (f.vehicleName || '').toLowerCase();
+        const isCar    = vn.includes('car') || vn.includes('suv');
+        const isAuto   = !isCar && (vn.includes('auto') || vn.includes('rickshaw'));
+        const isCargo  = vn.includes('cargo');
+        const isParcel = !isCargo && vn.includes('parcel');
+        const defaultBase  = isCar ? 50 : isAuto ? 35 : isCargo ? 80 : isParcel ? 35 : 25;
+        const defaultPerKm = isCar ? 16 : isAuto ? 13 : isCargo ? 20 : isParcel ? 13 : 10;
+        const defaultMin   = isCar ? 60 : isAuto ? 40 : isCargo ? 100 : isParcel ? 40 : 28;
+
+        const base           = parseFloat(f.baseFare)           || defaultBase;
+        const perKm          = parseFloat(f.farePerKm)          || defaultPerKm;
+        const perMin         = parseFloat(f.farePerMin)         || 0;
+        const minFare        = parseFloat(f.minimumFare)        || defaultMin;
         const nightMultiplier = parseFloat(f.nightChargeMultiplier) || 1.25;
-        const cancelFee = parseFloat(f.cancellationFee || 10);
-        const waitingPerMin = parseFloat(f.waitingChargePerMin || 0);
-        const helperCharge = parseFloat(f.helperCharge || 0);
+        const cancelFee      = parseFloat(f.cancellationFee)    || 10;
+        const waitingPerMin  = parseFloat(f.waitingChargePerMin) || 0;
+        const helperCharge   = parseFloat(f.helperCharge)       || 0;
 
-        // 500m threshold: base fare covers first 500m (0.5 km); beyond that per-km rate applies
-        const THRESHOLD_KM = 0.5;
-        const billableKm = Math.max(0, dist - THRESHOLD_KM);
-        const thresholdFare = dist <= THRESHOLD_KM ? 0 : 0; // base already covers first 500m
-        const distanceFare = billableKm * perKm;
-        const timeFare = dur * perMin;
+        // Formula: Total Fare = Base Fare + (Distance × Per-KM Rate)
+        // Base fare is the booking fee; every km is billable.
+        const billableKm  = dist;
+        const distanceFare = +(billableKm * perKm).toFixed(2);
+        const timeFare     = +(dur * perMin).toFixed(2);
 
-        let subtotal = base + distanceFare + timeFare + thresholdFare;
-        if (isNight) subtotal = subtotal * nightMultiplier;
+        let subtotal = base + distanceFare + timeFare;
+        if (isNight) subtotal = +(subtotal * nightMultiplier).toFixed(2);
         const total = Math.max(subtotal, minFare);
         const gst = +(total * 0.05).toFixed(2);
         const grandTotal = +(total + gst).toFixed(2);
+        // ±5% range shown in UI: "₹85 – ₹95"
+        const fareMin = Math.floor(grandTotal * 0.95);
+        const fareMax = Math.ceil(grandTotal * 1.05);
         const estTime = Math.max(5, Math.round(dist * 3));
 
         return {
@@ -5198,13 +5210,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           vehicleIcon: f.vehicleIcon,
           baseFare: +base.toFixed(2),
           farePerKm: +perKm.toFixed(2),
-          thresholdKm: THRESHOLD_KM,
           billableKm: +billableKm.toFixed(2),
-          distanceFare: +distanceFare.toFixed(2),
-          timeFare: +timeFare.toFixed(2),
+          distanceFare,
+          timeFare,
           subtotal: +total.toFixed(2),
           gst,
           estimatedFare: grandTotal,
+          fareMin,
+          fareMax,
           minimumFare: +minFare.toFixed(2),
           cancellationFee: +cancelFee.toFixed(2),
           waitingChargePerMin: +waitingPerMin.toFixed(2),
