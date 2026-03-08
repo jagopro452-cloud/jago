@@ -300,29 +300,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDashboardStats(): Promise<any> {
-    const [totalCustomers] = await db.select({ count: count() }).from(users).where(eq(users.userType, 'customer'));
-    const [totalDrivers] = await db.select({ count: count() }).from(users).where(eq(users.userType, 'driver'));
-    const [totalTrips] = await db.select({ count: count() }).from(tripRequests);
-    const [completedTrips] = await db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed'));
-    const [cancelledTrips] = await db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'cancelled'));
-    const [ongoingTrips] = await db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'ongoing'));
-    const [totalRevenue] = await db.select({ total: sum(tripRequests.actualFare) }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed'));
-    const [txRevenue] = await db.select({ total: sum(transactions.debit) }).from(transactions).where(eq(transactions.transactionType, 'ride_payment') as any);
-    const [pendingWithdrawals] = await db.select({ count: count() }).from(withdrawRequests).where(eq(withdrawRequests.status, 'pending'));
-    const [totalReviews] = await db.select({ count: count() }).from(reviews);
-    const [totalZones] = await db.select({ count: count() }).from(zones).where(eq(zones.isActive, true));
-    const [totalVehicleCategories] = await db.select({ count: count() }).from(vehicleCategories).where(eq(vehicleCategories.isActive, true));
+    const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try { return await fn(); } catch (_) { return fallback; }
+    };
 
-    const recentTrips = await db.select({
-      trip: tripRequests,
-      customer: { fullName: users.fullName },
-      vehicleCategory: { name: vehicleCategories.name },
+    const [totalCustomers] = await safe(() => db.select({ count: count() }).from(users).where(eq(users.userType, 'customer')), [{ count: 0 }]);
+    const [totalDrivers]   = await safe(() => db.select({ count: count() }).from(users).where(eq(users.userType, 'driver')), [{ count: 0 }]);
+    const [totalTrips]     = await safe(() => db.select({ count: count() }).from(tripRequests), [{ count: 0 }]);
+    const [completedTrips] = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed')), [{ count: 0 }]);
+    const [cancelledTrips] = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'cancelled')), [{ count: 0 }]);
+    const [ongoingTrips]   = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'ongoing')), [{ count: 0 }]);
+    const [totalRevenue]   = await safe(() => db.select({ total: sum(tripRequests.actualFare) }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed')), [{ total: "0" }]);
+    const [txRevenue]      = await safe(() => db.select({ total: sum(transactions.debit) }).from(transactions).where(eq(transactions.transactionType, 'ride_payment') as any), [{ total: "0" }]);
+    const [pendingWithdrawals] = await safe(() => db.select({ count: count() }).from(withdrawRequests).where(eq(withdrawRequests.status, 'pending')), [{ count: 0 }]);
+    const [totalReviews]   = await safe(() => db.select({ count: count() }).from(reviews), [{ count: 0 }]);
+    const [totalZones]     = await safe(() => db.select({ count: count() }).from(zones).where(eq(zones.isActive, true)), [{ count: 0 }]);
+    const [totalVehicleCategories] = await safe(() => db.select({ count: count() }).from(vehicleCategories).where(eq(vehicleCategories.isActive, true)), [{ count: 0 }]);
+
+    const recentTrips = await safe(() => db.select({
+      id: tripRequests.id,
+      refId: tripRequests.refId,
+      currentStatus: tripRequests.currentStatus,
+      estimatedFare: tripRequests.estimatedFare,
+      actualFare: tripRequests.actualFare,
+      tripType: tripRequests.tripType,
+      pickupAddress: tripRequests.pickupAddress,
+      destinationAddress: tripRequests.destinationAddress,
+      createdAt: tripRequests.createdAt,
+      customerName: users.fullName,
+      vehicleCategoryName: vehicleCategories.name,
     })
       .from(tripRequests)
       .leftJoin(users, eq(tripRequests.customerId, users.id))
       .leftJoin(vehicleCategories, eq(tripRequests.vehicleCategoryId, vehicleCategories.id))
       .orderBy(desc(tripRequests.createdAt))
-      .limit(10);
+      .limit(10), []);
 
     const tripRev = Number(totalRevenue.total || 0);
     const txRev = Number(txRevenue?.total || 0);

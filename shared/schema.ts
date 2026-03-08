@@ -10,6 +10,9 @@ export const admins = pgTable("admins", {
   password: varchar("password", { length: 191 }).notNull(),
   role: varchar("role", { length: 50 }).notNull().default("admin"),
   isActive: boolean("is_active").notNull().default(true),
+  authToken: text("auth_token"),
+  authTokenExpiresAt: timestamp("auth_token_expires_at"),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

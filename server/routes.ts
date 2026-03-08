@@ -297,7 +297,7 @@ async function ensureAdminExists() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
-  } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); return; }
+  } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); }
 
   try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`); } catch (_) {}
   try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`); } catch (_) {}
@@ -1331,6 +1331,107 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ── VEHICLE-FARES: All vehicle categories with their current fare config ──
+  // Used by the admin Fare Setup page (single unified view of all vehicles).
+  app.get("/api/vehicle-fares", async (req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`
+        SELECT
+          vc.id AS vehicle_category_id,
+          vc.name AS vehicle_name,
+          vc.type AS vehicle_type,
+          vc.icon AS vehicle_icon,
+          vc.is_active,
+          tf.id             AS fare_id,
+          tf.base_fare,
+          tf.fare_per_km,
+          tf.fare_per_min,
+          tf.fare_per_kg,
+          tf.minimum_fare,
+          tf.cancellation_fee,
+          tf.waiting_charge_per_min,
+          tf.night_charge_multiplier,
+          tf.helper_charge,
+          tf.zone_id,
+          z.name            AS zone_name
+        FROM vehicle_categories vc
+        LEFT JOIN LATERAL (
+          SELECT * FROM trip_fares tf2
+          WHERE tf2.vehicle_category_id = vc.id
+          ORDER BY tf2.created_at DESC
+          LIMIT 1
+        ) tf ON true
+        LEFT JOIN zones z ON z.id = tf.zone_id
+        ORDER BY
+          CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END,
+          vc.name
+      `);
+      res.json(rows.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Upsert fare for a specific vehicle category (no zone required)
+  app.post("/api/vehicle-fares/:vehicleCategoryId", async (req, res) => {
+    try {
+      const { vehicleCategoryId } = req.params;
+      const {
+        baseFare = 0, farePerKm = 0, farePerMin = 0, farePerKg = 0,
+        minimumFare = 0, cancellationFee = 0, waitingChargePerMin = 0,
+        nightChargeMultiplier = 1.25, helperCharge = 0, zoneId,
+      } = req.body;
+
+      // Check if a fare already exists for this vehicle category
+      const existing = await rawDb.execute(rawSql`
+        SELECT id FROM trip_fares WHERE vehicle_category_id = ${vehicleCategoryId}::uuid
+        ORDER BY created_at DESC LIMIT 1
+      `);
+
+      let result: any;
+      if (existing.rows.length) {
+        // UPDATE the existing row
+        const fareId = (existing.rows[0] as any).id;
+        result = await rawDb.execute(rawSql`
+          UPDATE trip_fares SET
+            base_fare               = ${parseFloat(String(baseFare)) || 0},
+            fare_per_km             = ${parseFloat(String(farePerKm)) || 0},
+            fare_per_min            = ${parseFloat(String(farePerMin)) || 0},
+            fare_per_kg             = ${parseFloat(String(farePerKg)) || 0},
+            minimum_fare            = ${parseFloat(String(minimumFare)) || 0},
+            cancellation_fee        = ${parseFloat(String(cancellationFee)) || 0},
+            waiting_charge_per_min  = ${parseFloat(String(waitingChargePerMin)) || 0},
+            night_charge_multiplier = ${parseFloat(String(nightChargeMultiplier)) || 1.25},
+            helper_charge           = ${parseFloat(String(helperCharge)) || 0},
+            zone_id                 = ${zoneId ? rawSql`${zoneId}::uuid` : rawSql`NULL`}
+          WHERE id = ${fareId}::uuid
+          RETURNING *
+        `);
+      } else {
+        // INSERT a new row
+        result = await rawDb.execute(rawSql`
+          INSERT INTO trip_fares
+            (vehicle_category_id, base_fare, fare_per_km, fare_per_min, fare_per_kg,
+             minimum_fare, cancellation_fee, waiting_charge_per_min,
+             night_charge_multiplier, helper_charge, zone_id)
+          VALUES (
+            ${vehicleCategoryId}::uuid,
+            ${parseFloat(String(baseFare)) || 0},
+            ${parseFloat(String(farePerKm)) || 0},
+            ${parseFloat(String(farePerMin)) || 0},
+            ${parseFloat(String(farePerKg)) || 0},
+            ${parseFloat(String(minimumFare)) || 0},
+            ${parseFloat(String(cancellationFee)) || 0},
+            ${parseFloat(String(waitingChargePerMin)) || 0},
+            ${parseFloat(String(nightChargeMultiplier)) || 1.25},
+            ${parseFloat(String(helperCharge)) || 0},
+            ${zoneId ? rawSql`${zoneId}::uuid` : rawSql`NULL`}
+          )
+          RETURNING *
+        `);
+      }
+      res.json(camelize(result.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // Transactions
