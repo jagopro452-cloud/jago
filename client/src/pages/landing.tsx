@@ -342,6 +342,22 @@ function Marquee() {
   );
 }
 
+/* ─────────────── Smart SVG Icon Components ─────────────── */
+const SvcBike = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/><path d="M14 10l1.5 4.5"/><path d="M11 10h4"/></svg>;
+const SvcAuto = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M10 18h4"/><path d="M7 15V9l3.5-3H18l2 4v5H10"/></svg>;
+const SvcCar = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a1 1 0 01-1-1v-3l3-5h13l3 5v3a1 1 0 01-1 1h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>;
+const SvcCity = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><rect x="3" y="8" width="7" height="13" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/><path d="M16 7h2m-2 4h2m-2 4h2"/><path d="M5 12h2m-2 4h2"/></svg>;
+const SvcParcel = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+const SvcTruck = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><path d="M15 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>;
+const SvcPhone = () => <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18" strokeWidth="3"/></svg>;
+const SvcMoto = () => <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/><path d="M14 10l1.5 4.5"/><path d="M11 10h4"/></svg>;
+const FeatLightning = () => <svg width="20" height="20" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="#f59e0b"/></svg>;
+const FeatShield = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E6DE5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>;
+const FeatMoney = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>;
+const FeatPin = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>;
+const FeatChat = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>;
+const FeatStar = () => <svg width="20" height="20" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="#f59e0b"/></svg>;
+
 /* ═══════════════════════════ MAIN PAGE ═══════════════════════════ */
 export default function LandingPage() {
   const { theme } = useTheme();
@@ -370,12 +386,12 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  /* Colour tokens — theme-aware */
-  const bg = isDark ? "#080c14" : "#f8fafc";
-  const surface = isDark ? "#0d1117" : "#ffffff";
-  const card = isDark ? "#111827" : "#f1f5f9";
-  const border = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
-  const text = isDark ? "#f1f5f9" : "#0f172a";
+  /* Colour tokens — deep navy brand palette */
+  const bg = "#06091c";
+  const surface = "#090d22";
+  const card = "#0e1330";
+  const border = "rgba(255,255,255,0.09)";
+  const text = "#eef2ff";
   const muted = "#64748b";
   const blue = "#1E6DE5";
   const blueBright = "#3b82f6";
@@ -456,13 +472,13 @@ export default function LandingPage() {
         .sec { padding:96px 0; }
       `}</style>
 
-      <div style={{ background: bg, color: text, minHeight: "100vh" }}>
+      <div style={{ background: `radial-gradient(ellipse at 25% 15%, #0d1a48 0%, #06091c 45%, #080b28 100%)`, color: text, minHeight: "100vh" }}>
 
         {/* ======= NAV ======= */}
         <nav style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
           backdropFilter: "blur(16px)",
-          background: scrolled ? (isDark ? "rgba(8,12,20,0.92)" : "rgba(248,250,252,0.92)") : (isDark ? "rgba(8,12,20,0.7)" : "rgba(248,250,252,0.7)"),
+          background: scrolled ? "rgba(6,9,28,0.96)" : "rgba(6,9,28,0.72)",
           borderBottom: scrolled ? `1px solid ${border}` : "1px solid transparent",
           transition: "all 0.3s",
         }}>
@@ -568,15 +584,15 @@ export default function LandingPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 20 }}>
                 {[
-                  { icon: "🛵", title: "Bike Taxi", desc: "Fastest way through city traffic. Affordable, quick 2-wheeler rides.", color: blue, g: `linear-gradient(135deg,${blue},${blueBright})` },
-                  { icon: "🛺", title: "Auto Ride", desc: "Classic CNG auto rides. Comfortable and pocket-friendly.", color: violet, g: "linear-gradient(135deg,#818cf8,#a78bfa)" },
-                  { icon: "🚗", title: "Cab Ride", desc: "AC cab rides for family and business travel across the city.", color: green, g: "linear-gradient(135deg,#10b981,#34d399)" },
-                  { icon: "🌆", title: "Intercity", desc: "Outstation travel with transparent pricing and top pilots.", color: amber, g: "linear-gradient(135deg,#f59e0b,#fbbf24)" },
-                  { icon: "📦", title: "Parcel Delivery", desc: "Send packages door to door — same day, same city.", color: "#f472b6", g: "linear-gradient(135deg,#ec4899,#f472b6)" },
-                  { icon: "🚛", title: "Goods Transport", desc: "Move furniture, appliances, and freight with dedicated trucks.", color: "#fb923c", g: "linear-gradient(135deg,#f97316,#fb923c)" },
+                  { icon: <SvcBike />, title: "Bike Taxi", desc: "Fastest way through city traffic. Affordable, quick 2-wheeler rides.", color: blue, g: `linear-gradient(135deg,${blue},${blueBright})` },
+                  { icon: <SvcAuto />, title: "Auto Ride", desc: "Classic CNG auto rides. Comfortable and pocket-friendly.", color: violet, g: "linear-gradient(135deg,#818cf8,#a78bfa)" },
+                  { icon: <SvcCar />, title: "Cab Ride", desc: "AC cab rides for family and business travel across the city.", color: green, g: "linear-gradient(135deg,#10b981,#34d399)" },
+                  { icon: <SvcCity />, title: "Intercity", desc: "Outstation travel with transparent pricing and top pilots.", color: amber, g: "linear-gradient(135deg,#f59e0b,#fbbf24)" },
+                  { icon: <SvcParcel />, title: "Parcel Delivery", desc: "Send packages door to door — same day, same city.", color: "#f472b6", g: "linear-gradient(135deg,#ec4899,#f472b6)" },
+                  { icon: <SvcTruck />, title: "Goods Transport", desc: "Move furniture, appliances, and freight with dedicated trucks.", color: "#fb923c", g: "linear-gradient(135deg,#f97316,#fb923c)" },
                 ].map(s => (
                   <div key={s.title} className="jago-svc-card" style={{ background: card, borderRadius: 20, padding: "26px 24px", border: `1px solid ${border}`, boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}>
-                    <div style={{ width: 54, height: 54, borderRadius: 14, background: s.g, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, marginBottom: 16, boxShadow: `0 8px 20px ${s.color}44` }}>{s.icon}</div>
+                    <div style={{ width: 54, height: 54, borderRadius: 14, background: s.g, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, boxShadow: `0 8px 24px ${s.color}55` }}>{s.icon}</div>
                     <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, fontFamily: "Space Grotesk,sans-serif", color: text }}>{s.title}</h3>
                     <p style={{ fontSize: 14, color: muted, lineHeight: 1.65 }}>{s.desc}</p>
                     <div style={{ marginTop: 16, fontSize: 13, fontWeight: 600, color: s.color, fontFamily: "Space Grotesk,sans-serif" }}>Book now →</div>
@@ -605,15 +621,15 @@ export default function LandingPage() {
                 {/* Right cards */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                   {[
-                    { icon: "⚡", title: "60-Second Match", desc: "Get a verified pilot matched in under a minute.", color: amber },
-                    { icon: "🔒", title: "Verified Pilots", desc: "Every pilot is background-checked and KYC verified.", color: blue },
-                    { icon: "💸", title: "No Surge", desc: "Fixed fares, no hidden charges, ever.", color: green },
-                    { icon: "📍", title: "Live Tracking", desc: "Real-time GPS tracking with family share.", color: violet },
-                    { icon: "💬", title: "In-app Chat", desc: "Talk to your pilot without sharing number.", color: "#f472b6" },
-                    { icon: "⭐", title: "Rated 4.9★", desc: "Highest rated ride app in South India.", color: amber },
+                    { icon: <FeatLightning />, title: "60-Second Match", desc: "Get a verified pilot matched in under a minute.", color: amber },
+                    { icon: <FeatShield />, title: "Verified Pilots", desc: "Every pilot is background-checked and KYC verified.", color: blue },
+                    { icon: <FeatMoney />, title: "No Surge", desc: "Fixed fares, no hidden charges, ever.", color: green },
+                    { icon: <FeatPin />, title: "Live Tracking", desc: "Real-time GPS tracking with family share.", color: violet },
+                    { icon: <FeatChat />, title: "In-app Chat", desc: "Talk to your pilot without sharing number.", color: "#f472b6" },
+                    { icon: <FeatStar />, title: "Rated 4.9★", desc: "Highest rated ride app in South India.", color: amber },
                   ].map(w => (
                     <div key={w.title} style={{ background: card, border: `1px solid ${border}`, borderRadius: 16, padding: "18px" }}>
-                      <div style={{ fontSize: 22, marginBottom: 8 }}>{w.icon}</div>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: `${w.color}22`, border: `1px solid ${w.color}44`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>{w.icon}</div>
                       <h4 style={{ fontSize: 14, fontWeight: 700, color: text, fontFamily: "Space Grotesk,sans-serif", marginBottom: 5 }}>{w.title}</h4>
                       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{w.desc}</p>
                     </div>
@@ -660,14 +676,14 @@ export default function LandingPage() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                 {[
-                  { title: "Jago Customer App", sub: "For Riders", icon: "📱", desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly — all in one app.", cta: "Get Customer App", bg: `linear-gradient(135deg,${blue} 0%,${violet} 100%)` },
-                  { title: "Jago Pilot App", sub: "For Drivers", icon: "🏍️", desc: "Accept trips, manage earnings, grow with Jago's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", bg: "linear-gradient(135deg,#10b981 0%,#059669 100%)" },
+                  { title: "Jago Customer App", sub: "For Riders", icon: <SvcPhone />, desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly — all in one app.", cta: "Get Customer App", bg: `linear-gradient(135deg,${blue} 0%,${violet} 100%)` },
+                  { title: "Jago Pilot App", sub: "For Drivers", icon: <SvcMoto />, desc: "Accept trips, manage earnings, grow with Jago's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", bg: "linear-gradient(135deg,#10b981 0%,#059669 100%)" },
                 ].map(d => (
                   <div key={d.title} style={{ borderRadius: 24, padding: "40px 36px", background: d.bg, position: "relative", overflow: "hidden" }}>
                     <div style={{ position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
                     <div style={{ position: "absolute", bottom: -50, left: -24, width: 180, height: 180, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
                     <div style={{ position: "relative", zIndex: 1 }}>
-                      <div style={{ fontSize: 42, marginBottom: 10 }}>{d.icon}</div>
+                      <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.12)", borderRadius: 16, padding: 10, marginBottom: 10 }}>{d.icon}</div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 6, fontFamily: "Space Grotesk,sans-serif" }}>{d.sub}</div>
                       <h3 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 12, fontFamily: "Space Grotesk,sans-serif" }}>{d.title}</h3>
                       <p style={{ fontSize: 15, color: "rgba(255,255,255,0.8)", lineHeight: 1.7, marginBottom: 26 }}>{d.desc}</p>
@@ -741,8 +757,7 @@ export default function LandingPage() {
               {/* Brand col */}
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${blue},${blueBright})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🏍️</div>
-                  <span style={{ fontSize: 22, fontWeight: 800, color: blue, fontFamily: "Space Grotesk,sans-serif" }}>JAGO</span>
+                  <img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain" }} />
                 </div>
                 <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
                 <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
