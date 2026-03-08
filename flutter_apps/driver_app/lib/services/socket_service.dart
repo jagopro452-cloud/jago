@@ -18,6 +18,7 @@ class SocketService {
   final _tripTimeoutController = StreamController<Map<String, dynamic>>.broadcast();
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
+  final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
@@ -27,6 +28,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onTripTimeout => _tripTimeoutController.stream;
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
+  Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -88,6 +90,11 @@ class SocketService {
     // Chat history loaded from DB on reconnect
     _socket!.on('trip:message_history', (data) {
       _messageHistoryController.add(Map<String, dynamic>.from(data));
+    });
+
+    // No available drivers found within all reassignment rounds
+    _socket!.on('trip:no_drivers', (data) {
+      _noDriversController.add(Map<String, dynamic>.from(data));
     });
 
     _socket!.connect();

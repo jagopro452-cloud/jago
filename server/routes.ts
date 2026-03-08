@@ -6416,6 +6416,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(() => {});
       }
 
+      // ── 15-second reassignment cycle ────────────────────────────────────────
+      // If no driver accepts within 15s, timeout current batch and dispatch next.
+      // Repeats up to 3 rounds (45s total). Auto-cancels trip if still unaccepted.
+      if (io && bestDrivers.length > 0) {
+        const _rTripId    = tripRow.id;
+        const _rCustomerId = customer.id;
+        const _rLat       = Number(pickupLat);
+        const _rLng       = Number(pickupLng);
+        const _rVcId      = vehicleCategoryId || undefined;
+        const _rFare      = Number(tripRow.estimatedFare || estimatedFare || 0);
+        const _rDist      = Number(tripRow.estimatedDistance || finalDistance || 0);
+        const _rBaseMsg   = {
+          refId: tripRow.refId,
+          customerName: customer.fullName || "Customer",
+          pickupAddress: pickupAddress || "",
+          destinationAddress: finalDestAddress,
+          pickupLat: _rLat,
+          pickupLng: _rLng,
+          estimatedFare: _rFare,
+          estimatedDistance: _rDist,
+          paymentMethod: finalPayment,
+          tripType,
+        };
+        // Closure-based recursive round scheduler (no TypeScript hoisting issues)
+        let _scheduleRound: (excludeIds: string[], round: number) => void;
+        _scheduleRound = (excludeIds: string[], round: number) => {
+          if (round > 3) return; // Max 3 reassignment rounds = 45 seconds
+          setTimeout(async () => {
+            try {
+              const chk = await rawDb.execute(rawSql`SELECT current_status FROM trip_requests WHERE id=${_rTripId}::uuid`);
+              if (!chk.rows.length || (chk.rows[0] as any)?.current_status !== 'searching') return;
+
+              // Emit timeout to drivers who were notified in this round
+              const prevRoundIds = excludeIds.filter(id => id !== _rCustomerId);
+              if (io) for (const dId of prevRoundIds) {
+                io.to(`user:${dId}`).emit("trip:timeout", { tripId: _rTripId });
+              }
+
+              // Find next batch of drivers (exclude all previously notified)
+              const next = await findBestDrivers(_rLat, _rLng, _rVcId, excludeIds, 5);
+              if (!next.length) {
+                // No more drivers — notify customer and auto-cancel
+                if (io) io.to(`user:${_rCustomerId}`).emit("trip:no_drivers", {
+                  tripId: _rTripId,
+                  message: "No pilots available nearby. Please try again.",
+                });
+                await rawDb.execute(rawSql`
+                  UPDATE trip_requests
+                  SET current_status='cancelled', cancel_reason='No pilots available in your area'
+                  WHERE id=${_rTripId}::uuid AND current_status='searching'
+                `).catch(() => {});
+                return;
+              }
+
+              if (io) {
+                for (const nd of next) {
+                  io.to(`user:${nd.driverId}`).emit("trip:new_request", { tripId: _rTripId, ...(_rBaseMsg as any) });
+                  if (nd.fcmToken) {
+                    notifyDriverNewRide({
+                      fcmToken: nd.fcmToken,
+                      driverName: nd.fullName,
+                      customerName: _rBaseMsg.customerName,
+                      pickupAddress: _rBaseMsg.pickupAddress,
+                      estimatedFare: _rFare,
+                      tripId: _rTripId,
+                    }).catch(() => {});
+                  }
+                }
+                console.log(`[AI] Reassign round ${round}: ${next.length} new drivers notified`);
+              }
+
+              // Schedule next round with expanded exclusion list
+              _scheduleRound([...excludeIds, ...next.map(d => d.driverId)], round + 1);
+            } catch (e: any) {
+              console.error('[trip-reassign]', e.message);
+            }
+          }, 15000);
+        };
+        _scheduleRound([_rCustomerId, ...bestDrivers.map(d => d.driverId)], 1);
+      }
+
       res.json({
         success: true,
         trip: tripRow,

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/alarm_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
@@ -203,6 +204,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ));
       }
     }));
+
+    // Server found no available drivers — notify the customer side (driver app ignores)
+    _subs.add(_socket.onNoDrivers.listen((_) {
+      // This event is for customer; driver app just ensures alarm is stopped
+      AlarmService().stopAlarm();
+    }));
   }
 
   @override
@@ -340,48 +347,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _showIncomingTrip() {
     if (_incomingTrip == null) return;
-    showModalBottomSheet(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder: (_) => IncomingTripSheet(
-        trip: _incomingTrip!,
-        onAccept: () async {
-          final trip = Map<String, dynamic>.from(_incomingTrip!);
-          Navigator.pop(context);
-          setState(() => _incomingTrip = null);
-          FcmService().dismissTripNotification();
+    // Push as a full-screen route — covers map + toolbar, works from any state
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: true,
+        fullscreenDialog: false,
+        barrierDismissible: false,
+        transitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) => IncomingTripSheet(
+          trip: _incomingTrip!,
+          onAccept: () async {
+            final trip = Map<String, dynamic>.from(_incomingTrip!);
+            Navigator.pop(context); // Pop the full-screen trip sheet
+            setState(() => _incomingTrip = null);
+            FcmService().dismissTripNotification();
 
-          // Accept via socket (real-time) + HTTP fallback
-          final tripId = trip['tripId'] ?? trip['id'] ?? '';
-          bool accepted = false;
-          if (_socketConnected) {
-            accepted = await _socket.acceptTrip(tripId);
-          }
-          if (!accepted) {
+            final tripId = trip['tripId'] ?? trip['id'] ?? '';
+            bool accepted = false;
+            if (_socketConnected) {
+              accepted = await _socket.acceptTrip(tripId);
+            }
+            if (!accepted) {
+              final token = await AuthService.getToken();
+              try {
+                await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
+                  headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                  body: jsonEncode({'tripId': tripId}));
+              } catch (_) {}
+            }
+            if (!mounted) return;
+            Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
+          },
+          onReject: () async {
+            final trip = Map<String, dynamic>.from(_incomingTrip!);
+            Navigator.pop(context); // Pop the full-screen trip sheet
+            setState(() => _incomingTrip = null);
+            FcmService().dismissTripNotification();
             final token = await AuthService.getToken();
             try {
-              await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
+              await http.post(Uri.parse(ApiConfig.driverRejectTrip),
                 headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-                body: jsonEncode({'tripId': tripId}));
+                body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}));
             } catch (_) {}
-          }
-          if (!mounted) return;
-          Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
-        },
-        onReject: () async {
-          final trip = Map<String, dynamic>.from(_incomingTrip!);
-          Navigator.pop(context);
-          setState(() => _incomingTrip = null);
-          FcmService().dismissTripNotification();
-          final token = await AuthService.getToken();
-          try {
-            await http.post(Uri.parse(ApiConfig.driverRejectTrip),
-              headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-              body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}));
-          } catch (_) {}
-        },
+          },
+        ),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: anim,
+          child: child,
+        ),
       ),
     );
   }
