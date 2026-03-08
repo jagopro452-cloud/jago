@@ -308,20 +308,7 @@ export default function LandingPage() {
                 >
                   Get Jago App
                 </a>
-                <a
-                  href="/admin"
-                  className="btn-raise"
-                  style={{
-                    padding: "12px 18px",
-                    borderRadius: 12,
-                    fontWeight: 700,
-                    background: tokens.panel,
-                    border: `1px solid ${tokens.border}`,
-                    color: tokens.text,
-                  }}
-                >
-                  Open Admin
-                </a>
+
               </div>
             </div>
 
@@ -470,34 +457,6 @@ export default function LandingPage() {
                 Live demand guidance, optimized routes, and consistent earnings workflows with verified trip lifecycle control.
               </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="admin" className="section" style={{ background: tokens.strip }}>
-        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 20px" }}>
-          <div className="reveal" style={{ borderRadius: 24, border: `1px solid ${tokens.border}`, background: tokens.heroCard, padding: "24px 22px" }}>
-            <h2 style={{ margin: "0 0 10px", fontSize: "clamp(26px, 3.4vw, 40px)", letterSpacing: "-0.8px" }}>
-              Super Admin Control Center
-            </h2>
-            <p style={{ margin: "0 0 18px", color: tokens.textSoft, maxWidth: 760, lineHeight: 1.7 }}>
-              Monitor fleet and demand in real-time with issue flags, service breakdowns, and operational quality signals from one command surface.
-            </p>
-            <a
-              href="/admin"
-              className="btn-raise"
-              style={{
-                display: "inline-block",
-                padding: "12px 18px",
-                borderRadius: 12,
-                background: `linear-gradient(135deg, ${tokens.accent}, ${tokens.accentAlt})`,
-                color: "#fff",
-                fontWeight: 800,
-                boxShadow: `0 14px 30px ${tokens.glow}`,
-              }}
-            >
-              View Admin Dashboard
-            </a>
           </div>
         </div>
       </section>
