@@ -391,12 +391,29 @@ async function ensureOperationalSchema() {
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS user_payable NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_wallet_credit NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS vehicle_type_name VARCHAR(100);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seats_booked INTEGER DEFAULT 1;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seat_price NUMERIC(10,2) DEFAULT 0;
+
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(50);
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS base_fare NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS fare_per_km NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS minimum_fare NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS waiting_charge_per_min NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS total_seats INTEGER DEFAULT 0;
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS is_carpool BOOLEAN DEFAULT false;
 
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS logo_url TEXT;
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'two_wheeler';
 
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_rides INTEGER DEFAULT 0;
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS plan_type VARCHAR(30) DEFAULT 'both';
+
+      -- Commission Settlement: per-driver pending balance tracking
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_commission_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_gst_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS total_pending_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_threshold NUMERIC(10,2) NOT NULL DEFAULT 200;
     `);
 
     await rawDb.execute(rawSql`
@@ -555,6 +572,29 @@ async function ensureOperationalSchema() {
         value TEXT NOT NULL,
         updated_at TIMESTAMP DEFAULT NOW()
       );
+
+      -- Commission settlements: records every driver payment toward pending balance
+      CREATE TABLE IF NOT EXISTS commission_settlements (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID NOT NULL,
+        trip_id UUID,
+        settlement_type VARCHAR(40) NOT NULL DEFAULT 'commission_debit',
+        -- settlement_type: commission_debit | gst_debit | payment_credit | manual_credit | adjustment
+        commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        gst_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        direction VARCHAR(10) NOT NULL DEFAULT 'debit',  -- debit | credit
+        balance_before NUMERIC(12,2) DEFAULT 0,
+        balance_after NUMERIC(12,2) DEFAULT 0,
+        ride_fare NUMERIC(12,2) DEFAULT 0,
+        service_type VARCHAR(30) DEFAULT 'ride',
+        payment_method VARCHAR(40),
+        razorpay_order_id VARCHAR(120),
+        razorpay_payment_id VARCHAR(120),
+        status VARCHAR(30) NOT NULL DEFAULT 'completed',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     await rawDb.execute(rawSql`
@@ -564,7 +604,9 @@ async function ensureOperationalSchema() {
         ('auto_lock_threshold','-100'),
         ('subscription_enabled','true'),
         ('launch_campaign_enabled','true'),
-        ('ride_gst_rate','5')
+        ('ride_gst_rate','5'),
+        ('commission_lock_threshold','200'),
+        ('commission_rate','15')
       ON CONFLICT (key_name) DO NOTHING;
     `);
 
@@ -581,49 +623,116 @@ async function ensureOperationalSchema() {
       VALUES (1, 0, 0, 0) ON CONFLICT (id) DO NOTHING;
     `).catch(() => {});
 
-    // ── Seed default vehicle categories if none exist ───────────────────────
-    const vcCount = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM vehicle_categories`);
-    if (parseInt((vcCount.rows[0] as any)?.cnt || '0') === 0) {
-      await rawDb.execute(rawSql`
-        INSERT INTO vehicle_categories (name, type, icon, is_active)
-        VALUES
-          ('Bike', 'ride', '🏍️', true),
-          ('Auto', 'ride', '🛺', true),
-          ('Car', 'ride', '🚗', true)
-        ON CONFLICT DO NOTHING
-      `);
-      console.log('[seed] Default vehicle categories created');
-    }
-
-    // ── Seed default trip_fares for active vehicle categories with no fares ─
-    // Uses subquery so it only inserts where no fare row exists yet (safe to re-run)
+    // ── Seed all vehicle categories (Bike, Auto, Mini Car, Sedan, SUV, Car Pool) ───
+    // Inserts each vehicle type if no category with that name exists yet (case-insensitive).
     await rawDb.execute(rawSql`
-      INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, fare_per_min, minimum_fare, cancellation_fee, night_charge_multiplier)
+      INSERT INTO vehicle_categories
+        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, total_seats, is_carpool)
+      SELECT v.vname, v.vtype, v.svc_type, v.icon, true,
+             v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
+             v.wait_charge::numeric, v.total_seats::int, v.is_carpool::boolean
+      FROM (VALUES
+        ('Bike',     'bike',     'ride', '🏍️',  30, 12,  40, 1, 0, false),
+        ('Auto',     'auto',     'ride', '🛺',   40, 15,  60, 2, 0, false),
+        ('Mini Car', 'mini_car', 'ride', '🚕',   60, 16,  80, 2, 0, false),
+        ('Sedan',    'sedan',    'ride', '🚗',   80, 18, 120, 3, 0, false),
+        ('SUV',      'suv',      'ride', '🚙',  100, 22, 150, 3, 0, false),
+        ('Car Pool', 'carpool',  'ride', '🚐',   80, 15, 100, 2, 4, true)
+      ) AS v(vname, vtype, svc_type, icon, base_fare, fare_per_km, minimum_fare, wait_charge, total_seats, is_carpool)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
+      )
+    `);
+    // Back-fill pricing + vehicle_type for any rows still missing them
+    await rawDb.execute(rawSql`
+      UPDATE vehicle_categories
+      SET
+        vehicle_type = COALESCE(NULLIF(vehicle_type,''), CASE
+          WHEN LOWER(name) LIKE '%bike%' OR LOWER(name) LIKE '%moto%' THEN 'bike'
+          WHEN LOWER(name) LIKE '%auto%' THEN 'auto'
+          WHEN LOWER(name) LIKE '%mini%' THEN 'mini_car'
+          WHEN LOWER(name) LIKE '%sedan%' THEN 'sedan'
+          WHEN LOWER(name) LIKE '%suv%' THEN 'suv'
+          WHEN LOWER(name) LIKE '%pool%' OR LOWER(name) LIKE '%share%' THEN 'carpool'
+          WHEN LOWER(name) LIKE '%car%' THEN 'sedan'
+          ELSE 'bike' END),
+        base_fare = CASE WHEN (base_fare IS NULL OR base_fare = 0) THEN
+          CASE WHEN LOWER(name) LIKE '%suv%' THEN 100
+               WHEN LOWER(name) LIKE '%sedan%' THEN 80
+               WHEN LOWER(name) LIKE '%mini%' OR LOWER(name) LIKE '%pool%' THEN 60
+               WHEN LOWER(name) LIKE '%car%' THEN 80
+               WHEN LOWER(name) LIKE '%auto%' THEN 40
+               ELSE 30 END ELSE base_fare END,
+        fare_per_km = CASE WHEN (fare_per_km IS NULL OR fare_per_km = 0) THEN
+          CASE WHEN LOWER(name) LIKE '%suv%' THEN 22
+               WHEN LOWER(name) LIKE '%sedan%' THEN 18
+               WHEN LOWER(name) LIKE '%mini%' THEN 16
+               WHEN LOWER(name) LIKE '%pool%' THEN 15
+               WHEN LOWER(name) LIKE '%car%' THEN 18
+               WHEN LOWER(name) LIKE '%auto%' THEN 15
+               ELSE 12 END ELSE fare_per_km END,
+        minimum_fare = CASE WHEN (minimum_fare IS NULL OR minimum_fare = 0) THEN
+          CASE WHEN LOWER(name) LIKE '%suv%' THEN 150
+               WHEN LOWER(name) LIKE '%sedan%' THEN 120
+               WHEN LOWER(name) LIKE '%mini%' THEN 80
+               WHEN LOWER(name) LIKE '%pool%' THEN 100
+               WHEN LOWER(name) LIKE '%car%' THEN 80
+               WHEN LOWER(name) LIKE '%auto%' THEN 60
+               ELSE 40 END ELSE minimum_fare END,
+        waiting_charge_per_min = CASE WHEN (waiting_charge_per_min IS NULL OR waiting_charge_per_min = 0) THEN
+          CASE WHEN LOWER(name) LIKE '%suv%' OR LOWER(name) LIKE '%sedan%' THEN 3
+               WHEN LOWER(name) LIKE '%auto%' OR LOWER(name) LIKE '%mini%' OR LOWER(name) LIKE '%car%' THEN 2
+               ELSE 1 END ELSE waiting_charge_per_min END
+      WHERE vehicle_type IS NULL OR base_fare = 0
+    `);
+    console.log('[seed] Vehicle categories seeded/updated');
+
+    // ── Seed trip_fares using vehicle_categories pricing as source of truth ──
+    // Inserts only where no fare row exists yet. Safe to re-run.
+    await rawDb.execute(rawSql`
+      INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, fare_per_min,
+                              minimum_fare, cancellation_fee, waiting_charge_per_min, night_charge_multiplier)
       SELECT
         vc.id,
-        CASE
-          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 60
-          WHEN LOWER(vc.name) LIKE '%auto%' THEN 40
-          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 80
+        COALESCE(NULLIF(vc.base_fare, 0), CASE
+          WHEN LOWER(vc.name) LIKE '%suv%'    THEN 100
+          WHEN LOWER(vc.name) LIKE '%sedan%'  THEN 80
+          WHEN LOWER(vc.name) LIKE '%mini%'   THEN 60
+          WHEN LOWER(vc.name) LIKE '%pool%' OR LOWER(vc.name) LIKE '%share%' THEN 80
+          WHEN LOWER(vc.name) LIKE '%car%'    THEN 80
+          WHEN LOWER(vc.name) LIKE '%auto%'   THEN 40
+          WHEN LOWER(vc.name) LIKE '%cargo%'  THEN 80
           WHEN LOWER(vc.name) LIKE '%parcel%' THEN 35
           ELSE 30
-        END,
-        CASE
-          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 18
-          WHEN LOWER(vc.name) LIKE '%auto%' THEN 15
-          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 20
+        END),
+        COALESCE(NULLIF(vc.fare_per_km, 0), CASE
+          WHEN LOWER(vc.name) LIKE '%suv%'    THEN 22
+          WHEN LOWER(vc.name) LIKE '%sedan%'  THEN 18
+          WHEN LOWER(vc.name) LIKE '%mini%'   THEN 16
+          WHEN LOWER(vc.name) LIKE '%pool%' OR LOWER(vc.name) LIKE '%share%' THEN 15
+          WHEN LOWER(vc.name) LIKE '%car%'    THEN 18
+          WHEN LOWER(vc.name) LIKE '%auto%'   THEN 15
+          WHEN LOWER(vc.name) LIKE '%cargo%'  THEN 20
           WHEN LOWER(vc.name) LIKE '%parcel%' THEN 13
           ELSE 12
-        END,
+        END),
         0,
-        CASE
-          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 70
-          WHEN LOWER(vc.name) LIKE '%auto%' THEN 50
-          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 100
+        COALESCE(NULLIF(vc.minimum_fare, 0), CASE
+          WHEN LOWER(vc.name) LIKE '%suv%'    THEN 150
+          WHEN LOWER(vc.name) LIKE '%sedan%'  THEN 120
+          WHEN LOWER(vc.name) LIKE '%mini%'   THEN 80
+          WHEN LOWER(vc.name) LIKE '%pool%' OR LOWER(vc.name) LIKE '%share%' THEN 100
+          WHEN LOWER(vc.name) LIKE '%car%'    THEN 80
+          WHEN LOWER(vc.name) LIKE '%auto%'   THEN 60
+          WHEN LOWER(vc.name) LIKE '%cargo%'  THEN 100
           WHEN LOWER(vc.name) LIKE '%parcel%' THEN 40
           ELSE 40
-        END,
+        END),
         10,
+        COALESCE(NULLIF(vc.waiting_charge_per_min, 0),
+          CASE WHEN LOWER(vc.name) LIKE '%suv%' OR LOWER(vc.name) LIKE '%sedan%' THEN 3
+               WHEN LOWER(vc.name) LIKE '%auto%' OR LOWER(vc.name) LIKE '%mini%' OR LOWER(vc.name) LIKE '%car%' THEN 2
+               ELSE 1 END),
         1.25
       FROM vehicle_categories vc
       WHERE vc.is_active = true
@@ -1384,17 +1493,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT
           vc.id AS vehicle_category_id,
           vc.name AS vehicle_name,
-          vc.type AS vehicle_type,
+          vc.vehicle_type,
+          vc.type AS service_type,
           vc.icon AS vehicle_icon,
           vc.is_active,
+          vc.total_seats,
+          vc.is_carpool,
           tf.id             AS fare_id,
-          tf.base_fare,
-          tf.fare_per_km,
+          COALESCE(NULLIF(tf.base_fare, 0), vc.base_fare)     AS base_fare,
+          COALESCE(NULLIF(tf.fare_per_km, 0), vc.fare_per_km) AS fare_per_km,
           tf.fare_per_min,
           tf.fare_per_kg,
-          tf.minimum_fare,
+          COALESCE(NULLIF(tf.minimum_fare, 0), vc.minimum_fare) AS minimum_fare,
           tf.cancellation_fee,
-          tf.waiting_charge_per_min,
+          COALESCE(NULLIF(tf.waiting_charge_per_min, 0), vc.waiting_charge_per_min) AS waiting_charge_per_min,
           tf.night_charge_multiplier,
           tf.helper_charge,
           tf.zone_id,
@@ -1408,6 +1520,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) tf ON true
         LEFT JOIN zones z ON z.id = tf.zone_id
         ORDER BY
+          CASE vc.vehicle_type
+            WHEN 'bike'     THEN 1
+            WHEN 'auto'     THEN 2
+            WHEN 'mini_car' THEN 3
+            WHEN 'sedan'    THEN 4
+            WHEN 'suv'      THEN 5
+            WHEN 'carpool'  THEN 6
+            ELSE 7
+          END,
           CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END,
           vc.name
       `);
@@ -1477,7 +1598,279 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Transactions
+  // ── ADMIN: Pricing Management ─────────────────────────────────────────────
+
+  // GET all vehicle categories with full pricing (vehicle_categories + trip_fares merged)
+  app.get("/api/admin/pricing/vehicles", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`
+        SELECT
+          vc.id, vc.name, vc.vehicle_type, vc.type, vc.icon, vc.is_active,
+          vc.base_fare     AS vc_base_fare,
+          vc.fare_per_km   AS vc_fare_per_km,
+          vc.minimum_fare  AS vc_minimum_fare,
+          vc.waiting_charge_per_min AS vc_waiting_charge,
+          vc.total_seats, vc.is_carpool,
+          tf.id            AS fare_id,
+          COALESCE(NULLIF(tf.base_fare, 0), vc.base_fare)    AS base_fare,
+          COALESCE(NULLIF(tf.fare_per_km, 0), vc.fare_per_km) AS fare_per_km,
+          COALESCE(NULLIF(tf.minimum_fare, 0), vc.minimum_fare) AS minimum_fare,
+          COALESCE(NULLIF(tf.waiting_charge_per_min, 0), vc.waiting_charge_per_min) AS waiting_charge_per_min,
+          tf.fare_per_min, tf.cancellation_fee, tf.night_charge_multiplier, tf.helper_charge
+        FROM vehicle_categories vc
+        LEFT JOIN LATERAL (
+          SELECT * FROM trip_fares tf2
+          WHERE tf2.vehicle_category_id = vc.id
+          ORDER BY tf2.created_at DESC LIMIT 1
+        ) tf ON true
+        ORDER BY
+          CASE vc.vehicle_type
+            WHEN 'bike'     THEN 1
+            WHEN 'auto'     THEN 2
+            WHEN 'mini_car' THEN 3
+            WHEN 'sedan'    THEN 4
+            WHEN 'suv'      THEN 5
+            WHEN 'carpool'  THEN 6
+            ELSE 7
+          END, vc.name
+      `);
+      res.json(rows.rows.map(camelize));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PUT /api/admin/pricing/vehicles/:id — update vehicle pricing in both vehicle_categories + trip_fares
+  app.put("/api/admin/pricing/vehicles/:id", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        baseFare, farePerKm, minimumFare, waitingChargePerMin,
+        farePerMin = 0, cancellationFee = 10, nightChargeMultiplier = 1.25,
+        helperCharge = 0, totalSeats, isActive, name, icon,
+      } = req.body;
+
+      // Validate required pricing fields
+      if (baseFare === undefined || farePerKm === undefined || minimumFare === undefined) {
+        return res.status(400).json({ message: "baseFare, farePerKm, minimumFare are required" });
+      }
+
+      const bf   = parseFloat(String(baseFare));
+      const pkm  = parseFloat(String(farePerKm));
+      const mf   = parseFloat(String(minimumFare));
+      const wc   = parseFloat(String(waitingChargePerMin ?? 0));
+      const pm   = parseFloat(String(farePerMin));
+      const cf   = parseFloat(String(cancellationFee));
+      const ncm  = parseFloat(String(nightChargeMultiplier));
+      const hc   = parseFloat(String(helperCharge));
+
+      // Update vehicle_categories primary pricing
+      const updateParts: string[] = [
+        `base_fare = ${bf}`,
+        `fare_per_km = ${pkm}`,
+        `minimum_fare = ${mf}`,
+        `waiting_charge_per_min = ${wc}`,
+      ];
+      if (totalSeats !== undefined) updateParts.push(`total_seats = ${parseInt(String(totalSeats)) || 0}`);
+      if (isActive !== undefined)   updateParts.push(`is_active = ${isActive === true || isActive === 'true'}`);
+      if (name)  updateParts.push(`name = '${String(name).replace(/'/g, "''")}'`);
+      if (icon)  updateParts.push(`icon = '${String(icon).replace(/'/g, "''")}'`);
+
+      const vcUpdated = await rawDb.execute(rawSql`
+        UPDATE vehicle_categories
+        SET base_fare = ${bf}, fare_per_km = ${pkm}, minimum_fare = ${mf},
+            waiting_charge_per_min = ${wc}
+            ${totalSeats !== undefined ? rawSql`, total_seats = ${parseInt(String(totalSeats)) || 0}` : rawSql``}
+            ${isActive !== undefined ? rawSql`, is_active = ${isActive === true || isActive === 'true'}` : rawSql``}
+        WHERE id = ${id}::uuid
+        RETURNING *
+      `);
+
+      if (!vcUpdated.rows.length) return res.status(404).json({ message: "Vehicle category not found" });
+
+      // Sync to trip_fares: upsert the fare row
+      const existingFare = await rawDb.execute(rawSql`
+        SELECT id FROM trip_fares WHERE vehicle_category_id = ${id}::uuid ORDER BY created_at DESC LIMIT 1
+      `);
+      if (existingFare.rows.length) {
+        await rawDb.execute(rawSql`
+          UPDATE trip_fares SET
+            base_fare = ${bf}, fare_per_km = ${pkm}, minimum_fare = ${mf},
+            waiting_charge_per_min = ${wc}, fare_per_min = ${pm},
+            cancellation_fee = ${cf}, night_charge_multiplier = ${ncm}, helper_charge = ${hc}
+          WHERE id = ${(existingFare.rows[0] as any).id}::uuid
+        `);
+      } else {
+        await rawDb.execute(rawSql`
+          INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, minimum_fare,
+            waiting_charge_per_min, fare_per_min, cancellation_fee, night_charge_multiplier, helper_charge)
+          VALUES (${id}::uuid, ${bf}, ${pkm}, ${mf}, ${wc}, ${pm}, ${cf}, ${ncm}, ${hc})
+        `);
+      }
+
+      res.json({ success: true, vehicleCategory: camelize(vcUpdated.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH /api/admin/pricing/vehicles/:id/availability — toggle vehicle availability
+  app.patch("/api/admin/pricing/vehicles/:id/availability", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE vehicle_categories SET is_active = ${isActive === true || isActive === 'true'}
+        WHERE id = ${req.params.id}::uuid RETURNING id, name, is_active
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Vehicle category not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/admin/pricing/settings — get GST rate, launch campaign, commission settings
+  app.get("/api/admin/pricing/settings", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings ORDER BY key_name`);
+      const settings: Record<string, string> = {};
+      r.rows.forEach((row: any) => { settings[row.key_name] = row.value; });
+      res.json({
+        settings,
+        gstRate: parseFloat(settings.ride_gst_rate || '5'),
+        commissionPct: parseFloat(settings.driver_commission_pct || '20'),
+        launchCampaignEnabled: settings.launch_campaign_enabled !== 'false',
+        activeModel: settings.active_model || 'commission',
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PUT /api/admin/pricing/settings — update one or more pricing settings
+  app.put("/api/admin/pricing/settings", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const updates = req.body as Record<string, string>;
+      if (!updates || typeof updates !== 'object') return res.status(400).json({ message: "Body must be an object of key→value" });
+      const allowedKeys = new Set([
+        'ride_gst_rate', 'driver_commission_pct', 'launch_campaign_enabled',
+        'active_model', 'rides_model', 'parcels_model', 'cargo_model', 'intercity_model',
+        'subscription_enabled', 'sub_platform_fee_per_ride',
+        'commission_pct', 'hybrid_commission_pct', 'hybrid_platform_fee_per_ride',
+        'commission_insurance_per_ride', 'auto_lock_threshold',
+        'commission_lock_threshold', 'commission_rate',
+      ]);
+      const invalidKeys = Object.keys(updates).filter(k => !allowedKeys.has(k));
+      if (invalidKeys.length) return res.status(400).json({ message: `Unknown setting keys: ${invalidKeys.join(', ')}` });
+      for (const [key, value] of Object.entries(updates)) {
+        await rawDb.execute(rawSql`
+          INSERT INTO revenue_model_settings (key_name, value, updated_at)
+          VALUES (${key}, ${String(value)}, NOW())
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      res.json({ success: true, updated: Object.keys(updates).length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── Admin: Commission Settlement Endpoints ────────────────────────────────
+
+  // GET /api/admin/commission-settlements — all settlement rows, filterable
+  app.get("/api/admin/commission-settlements", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const { driverId, type, direction, page = '1', limit = '50' } = req.query as Record<string, string>;
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      let whereClause = rawSql`WHERE 1=1`;
+      if (driverId) whereClause = rawSql`WHERE cs.driver_id = ${driverId}::uuid`;
+      const rows = await rawDb.execute(rawSql`
+        SELECT cs.*,
+               u.full_name as driver_name, u.phone as driver_phone, u.email as driver_email,
+               tr.ref_id as trip_ref, tr.pickup_address, tr.dropoff_address
+        FROM commission_settlements cs
+        JOIN users u ON u.id = cs.driver_id
+        LEFT JOIN trip_requests tr ON tr.id = cs.trip_id
+        ${whereClause}
+        ORDER BY cs.created_at DESC
+        LIMIT ${parseInt(limit)} OFFSET ${offset}
+      `);
+      const totalR = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM commission_settlements cs ${whereClause}`).catch(() => ({ rows: [{ cnt: 0 }] }));
+      res.json({ data: camelize(rows.rows), total: parseInt((totalR.rows[0] as any)?.cnt || 0), page: parseInt(page), limit: parseInt(limit) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/admin/commission-settlements/drivers — per-driver pending balance summary
+  app.get("/api/admin/commission-settlements/drivers", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`
+        SELECT u.id, u.full_name, u.phone, u.email, u.is_locked, u.lock_reason,
+               u.wallet_balance, u.pending_commission_balance, u.pending_gst_balance,
+               u.total_pending_balance, u.lock_threshold,
+               COUNT(DISTINCT tr.id) FILTER (WHERE tr.current_status='completed') as completed_trips,
+               MAX(tr.created_at) as last_trip_at,
+               COALESCE(SUM(cs.total_amount) FILTER (WHERE cs.direction='debit'), 0) as total_debited,
+               COALESCE(SUM(cs.total_amount) FILTER (WHERE cs.direction='credit'), 0) as total_paid
+        FROM users u
+        LEFT JOIN trip_requests tr ON tr.driver_id = u.id
+        LEFT JOIN commission_settlements cs ON cs.driver_id = u.id
+        WHERE u.user_type = 'driver'
+        GROUP BY u.id
+        ORDER BY u.total_pending_balance DESC
+      `);
+      res.json({ data: camelize(rows.rows), total: rows.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/admin/commission-settlements/drivers/:driverId/settle — admin manually settles partial/full amount
+  app.post("/api/admin/commission-settlements/drivers/:driverId/settle", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const { driverId } = req.params;
+      const { amount, method = 'cash', description, forceUnlock = false } = req.body;
+      const payAmt = parseFloat(String(amount));
+      if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const settings: any = {};
+      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
+
+      const balR = await rawDb.execute(rawSql`
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, is_locked
+        FROM users WHERE id=${driverId}::uuid LIMIT 1
+      `);
+      const bal: any = balR.rows[0] || {};
+      const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
+      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
+      const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
+
+      const gstReduction  = Math.min(prevGst, parseFloat((payAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05)).toFixed(2)));
+      const commReduction = Math.min(prevCommission, parseFloat((payAmt - gstReduction).toFixed(2)));
+      const newTotal      = Math.max(0, parseFloat((prevTotal - payAmt).toFixed(2)));
+      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
+      const newGst        = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance             = wallet_balance + ${payAmt},
+            pending_commission_balance = ${newCommission},
+            pending_gst_balance        = ${newGst},
+            total_pending_balance      = ${newTotal},
+            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${payAmt})
+        WHERE id = ${driverId}::uuid
+      `);
+      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+      const shouldUnlock = forceUnlock || newTotal < lockThreshold;
+      if (shouldUnlock && bal.is_locked) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driverId}::uuid`);
+      }
+      await rawDb.execute(rawSql`
+        INSERT INTO commission_settlements
+          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
+           direction, balance_before, balance_after, payment_method, status, description)
+        VALUES
+          (${driverId}::uuid, 'admin_settle', ${commReduction}, ${gstReduction}, ${payAmt},
+           'credit', ${prevTotal}, ${newTotal}, ${method},
+           'completed', ${description || 'Admin manual settlement'})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+        VALUES (${driverId}::uuid, ${payAmt}, 'admin_settlement', 'completed', ${description || 'Admin settlement'})
+      `).catch(() => {});
+      res.json({ success: true, newPendingBalance: newTotal, pendingCommission: newCommission, pendingGst: newGst, autoUnlocked: shouldUnlock && bal.is_locked });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Transactions
   app.get("/api/transactions", async (req, res) => {
     try {
       const { userId, page, limit } = req.query;
@@ -2503,19 +2896,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ─── Driver Wallet & Auto-Lock ───────────────────────────────────────────────
+  // ─── Driver Commission Settlement System ────────────────────────────────────
 
-  // Get all drivers with wallet info
+  // Helper: recalculate total_pending_balance and check auto-lock/unlock
+  async function checkAndApplySettlementLock(driverId: string, settings: Record<string, string>) {
+    const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+    const r = await rawDb.execute(rawSql`
+      SELECT total_pending_balance, is_locked FROM users WHERE id=${driverId}::uuid LIMIT 1
+    `);
+    const row: any = r.rows[0] || {};
+    const total = parseFloat(row.total_pending_balance ?? '0');
+    const isCurrentlyLocked = row.is_locked;
+    if (total >= lockThreshold && !isCurrentlyLocked) {
+      await rawDb.execute(rawSql`
+        UPDATE users SET is_locked=true,
+          lock_reason=${'Pending balance ₹' + total.toFixed(2) + ' exceeds ₹' + lockThreshold + '. Pay to unlock ride access.'},
+          locked_at=NOW()
+        WHERE id=${driverId}::uuid
+      `);
+      return { locked: true, autoLocked: true, total };
+    }
+    if (total < lockThreshold && isCurrentlyLocked) {
+      await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driverId}::uuid`);
+      return { locked: false, autoUnlocked: true, total };
+    }
+    return { locked: isCurrentlyLocked, total };
+  }
+
+  // Get all drivers with wallet + pending balance info
   app.get("/api/driver-wallet", async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT u.id, u.full_name, u.phone, u.email, u.user_type,
           u.wallet_balance, u.is_locked, u.lock_reason, u.locked_at,
-          u.pending_payment_amount, u.is_active,
+          u.pending_commission_balance, u.pending_gst_balance, u.total_pending_balance,
+          u.lock_threshold, u.pending_payment_amount, u.is_active,
           (SELECT COUNT(*) FROM trip_requests WHERE driver_id = u.id AND current_status='completed') as completed_trips,
           (SELECT COALESCE(SUM(actual_fare),0) FROM trip_requests WHERE driver_id = u.id AND current_status='completed') as gross_earnings
         FROM users u WHERE u.user_type = 'driver'
-        ORDER BY u.wallet_balance ASC
+        ORDER BY u.total_pending_balance DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -2525,43 +2944,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/driver-wallet/:id/history", async (req, res) => {
     try {
       const { id } = req.params;
-      const r = await rawDb.execute(rawSql`
-        SELECT * FROM driver_payments WHERE driver_id = ${id}::uuid ORDER BY created_at DESC LIMIT 50
+      const payments = await rawDb.execute(rawSql`
+        SELECT * FROM driver_payments WHERE driver_id = ${id}::uuid ORDER BY created_at DESC LIMIT 100
       `);
-      res.json({ data: camelize(r.rows) });
+      const settlements = await rawDb.execute(rawSql`
+        SELECT cs.*, tr.ref_id as trip_ref
+        FROM commission_settlements cs
+        LEFT JOIN trip_requests tr ON tr.id = cs.trip_id
+        WHERE cs.driver_id = ${id}::uuid
+        ORDER BY cs.created_at DESC LIMIT 100
+      `);
+      res.json({ payments: camelize(payments.rows), settlements: camelize(settlements.rows) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Deduct platform fee per ride (called after ride completion)
+  // Deduct platform fee per ride (called after ride completion — legacy endpoint)
   app.post("/api/driver-wallet/:id/deduct", async (req, res) => {
     try {
       const { id } = req.params;
-      const { amount, description, tripId } = req.body;
-      // Get revenue model settings
+      const { amount, description, tripId, gstPortion = 0 } = req.body;
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
-      const threshold = parseFloat(settings.auto_lock_threshold || "-100");
-      // Deduct from wallet
+
+      const gstAmt   = parseFloat(String(gstPortion)) || 0;
+      const commAmt  = parseFloat((parseFloat(String(amount)) - gstAmt).toFixed(2));
+      const totalAmt = parseFloat(String(amount));
+
+      const balR = await rawDb.execute(rawSql`
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
+        FROM users WHERE id=${id}::uuid LIMIT 1
+      `);
+      const bal: any = balR.rows[0] || {};
+      const prevTotal    = parseFloat(bal.total_pending_balance ?? '0') || 0;
+      const newCommission = parseFloat(((parseFloat(bal.pending_commission_balance ?? '0') || 0) + commAmt).toFixed(2));
+      const newGst        = parseFloat(((parseFloat(bal.pending_gst_balance ?? '0') || 0) + gstAmt).toFixed(2));
+      const newTotal      = parseFloat((prevTotal + totalAmt).toFixed(2));
+
       const updated = await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance - ${amount}, pending_payment_amount = GREATEST(0, -(wallet_balance - ${amount}))
+        UPDATE users
+        SET wallet_balance = wallet_balance - ${totalAmt},
+            pending_commission_balance = ${newCommission},
+            pending_gst_balance = ${newGst},
+            total_pending_balance = ${newTotal},
+            pending_payment_amount = GREATEST(0, -(wallet_balance - ${totalAmt}))
         WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
       `);
-      const row: any = updated.rows[0];
-      const newBalance = parseFloat(row.wallet_balance);
-      // Auto-lock if below threshold
-      if (newBalance < threshold && !row.is_locked) {
-        await rawDb.execute(rawSql`
-          UPDATE users SET is_locked = true, lock_reason = ${'Balance below ₹' + Math.abs(threshold) + ' threshold. Pay ₹' + Math.abs(newBalance).toFixed(2) + ' to unlock.'}, locked_at = NOW()
-          WHERE id = ${id}::uuid
-        `);
-      }
-      // Record payment
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${id}::uuid, ${amount}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
-      `);
-      res.json({ success: true, newBalance, autoLocked: newBalance < threshold });
+        VALUES (${id}::uuid, ${totalAmt}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        INSERT INTO commission_settlements (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount, direction, balance_before, balance_after, description)
+        VALUES (${id}::uuid, ${tripId ? rawSql`${tripId}::uuid` : rawSql`NULL`}, 'commission_debit', ${commAmt}, ${gstAmt}, ${totalAmt}, 'debit', ${prevTotal}, ${newTotal}, ${description || 'Fee deduction'})
+      `).catch(() => {});
+
+      const lockResult = await checkAndApplySettlementLock(id, settings);
+      const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
+      res.json({ success: true, newBalance, pendingBalance: newTotal, ...lockResult });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2579,11 +3019,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Razorpay: Create payment order for driver wallet top-up
+  // Razorpay: Create payment order for driver commission settlement
   app.post("/api/driver-wallet/:id/create-order", async (req, res) => {
     try {
       const { id } = req.params;
-      const { amount } = req.body; // amount in rupees
+      const { amount } = req.body;
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) {
@@ -2591,11 +3031,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `dw_${Date.now().toString(36)}` });
-      // Record pending payment
+      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
-        VALUES (${id}::uuid, ${amount}, 'wallet_topup', ${order.id}, 'pending', 'Wallet top-up via Razorpay')
+        VALUES (${id}::uuid, ${amount}, 'commission_payment', ${order.id}, 'pending', 'Commission settlement via Razorpay')
       `);
       res.json({ order, keyId });
     } catch (e: any) {
@@ -2604,7 +3043,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Razorpay: Verify payment + credit wallet
+  // Razorpay: Verify payment + reduce pending balance (partial payment supported)
   app.post("/api/driver-wallet/:id/verify-payment", async (req, res) => {
     try {
       const { id } = req.params;
@@ -2615,51 +3054,144 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
         if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
       }
-      // Credit wallet
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance + ${amount}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amount})
-        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
+
+      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const settings: any = {};
+      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
+
+      // Fetch current balances before payment
+      const balR = await rawDb.execute(rawSql`
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance
+        FROM users WHERE id=${id}::uuid LIMIT 1
       `);
-      const row: any = updated.rows[0];
-      const newBalance = parseFloat(row.wallet_balance);
-      // Auto-unlock if balance is now at or above the auto-lock threshold
-      const thresholdR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold'`);
-      const threshold = parseFloat((thresholdR.rows[0] as any)?.value || '-100');
-      const wasLocked = row.is_locked;
-      if (newBalance >= threshold && wasLocked) {
+      const bal: any = balR.rows[0] || {};
+      const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
+      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
+      const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
+      const paidAmt        = parseFloat(String(amount));
+
+      // Proportionally reduce commission vs GST (or reduce from commission first)
+      const gstReduction  = Math.min(prevGst, paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05));
+      const commReduction = Math.min(prevCommission, paidAmt - gstReduction);
+      const newTotal      = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
+      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
+      const newGst        = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance             = wallet_balance + ${paidAmt},
+            pending_commission_balance = ${newCommission},
+            pending_gst_balance        = ${newGst},
+            total_pending_balance      = ${newTotal},
+            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
+        WHERE id = ${id}::uuid
+        RETURNING wallet_balance, is_locked, total_pending_balance
+      `);
+      const updRow: any = updated.rows[0] || {};
+      const newWalletBalance = parseFloat(updRow.wallet_balance ?? 0);
+
+      // Auto-unlock check (based on pending threshold)
+      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+      const wasLocked = updRow.is_locked;
+      if (newTotal < lockThreshold && wasLocked) {
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
       }
-      // Update payment record
+
+      // Record settlement payment
       await rawDb.execute(rawSql`
-        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId}, razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
+        INSERT INTO commission_settlements
+          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
+           direction, balance_before, balance_after, payment_method,
+           razorpay_order_id, razorpay_payment_id, status, description)
+        VALUES
+          (${id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
+           'credit', ${prevTotal}, ${newTotal}, 'razorpay',
+           ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
+           ${'Commission payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
+          razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
         WHERE razorpay_order_id=${razorpayOrderId}
-      `);
-      res.json({ success: true, newBalance, autoUnlocked: newBalance >= threshold && wasLocked });
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+        VALUES (${id}::uuid, ${paidAmt}, 'commission_payment', 'completed', ${'Commission settlement: ₹' + paidAmt})
+      `).catch(() => {});
+
+      res.json({
+        success: true,
+        newWalletBalance,
+        pendingBalance: newTotal,
+        pendingCommission: newCommission,
+        pendingGst: newGst,
+        autoUnlocked: newTotal < lockThreshold && wasLocked,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Admin: manually credit wallet (offline payment)
+  // Admin: manually credit pending balance (offline/cash payment to platform)
   app.post("/api/driver-wallet/:id/credit", async (req, res) => {
     try {
       const { id } = req.params;
       const { amount, description } = req.body;
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance + ${amount}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amount})
-        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
+      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const settings: any = {};
+      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
+
+      const balR = await rawDb.execute(rawSql`
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
+        FROM users WHERE id=${id}::uuid LIMIT 1
       `);
-      const row: any = updated.rows[0];
-      const newBalance = parseFloat(row.wallet_balance);
-      const thresholdR2 = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold'`);
-      const threshold2 = parseFloat((thresholdR2.rows[0] as any)?.value || '-100');
-      const wasLocked2 = row.is_locked;
-      if (newBalance >= threshold2 && wasLocked2) {
+      const bal: any = balR.rows[0] || {};
+      const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
+      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
+      const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
+      const paidAmt        = parseFloat(String(amount));
+
+      const gstReduction  = Math.min(prevGst, paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05));
+      const commReduction = Math.min(prevCommission, paidAmt - gstReduction);
+      const newTotal      = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
+      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
+      const newGst        = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance             = wallet_balance + ${paidAmt},
+            pending_commission_balance = ${newCommission},
+            pending_gst_balance        = ${newGst},
+            total_pending_balance      = ${newTotal},
+            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
+        WHERE id = ${id}::uuid
+        RETURNING wallet_balance, is_locked, total_pending_balance
+      `);
+      const updRow: any = updated.rows[0] || {};
+      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+      const wasLocked = updRow.is_locked;
+      if (newTotal < lockThreshold && wasLocked) {
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
       }
       await rawDb.execute(rawSql`
+        INSERT INTO commission_settlements
+          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
+           direction, balance_before, balance_after, payment_method, status, description)
+        VALUES
+          (${id}::uuid, 'manual_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
+           'credit', ${prevTotal}, ${newTotal}, 'cash',
+           'completed', ${description || 'Manual payment received by admin'})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${id}::uuid, ${amount}, 'manual_credit', 'completed', ${description || 'Manual credit by admin'})
-      `);
-      res.json({ success: true, newBalance, autoUnlocked: newBalance >= threshold2 && wasLocked2 });
+        VALUES (${id}::uuid, ${paidAmt}, 'manual_credit', 'completed', ${description || 'Manual credit by admin'})
+      `).catch(() => {});
+      res.json({
+        success: true,
+        newBalance: parseFloat(updRow.wallet_balance ?? 0),
+        pendingBalance: newTotal,
+        pendingCommission: newCommission,
+        pendingGst: newGst,
+        autoUnlocked: newTotal < lockThreshold && wasLocked,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4375,7 +4907,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
       // Get trip details to use estimated_fare as fallback
-      const tripInfo = await rawDb.execute(rawSql`SELECT estimated_fare, estimated_distance, current_status, payment_method, customer_id, trip_type, type, delivery_otp FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
+      const tripInfo = await rawDb.execute(rawSql`
+        SELECT tr.estimated_fare, tr.estimated_distance, tr.current_status, tr.payment_method,
+               tr.customer_id, tr.trip_type, tr.type, tr.delivery_otp, tr.seats_booked,
+               vc.name as vehicle_name, vc.vehicle_type as vehicle_type_field,
+               vc.is_carpool, vc.total_seats
+        FROM trip_requests tr
+        LEFT JOIN vehicle_categories vc ON vc.id = tr.vehicle_category_id
+        WHERE tr.id=${tripId}::uuid AND tr.driver_id=${driver.id}::uuid`);
       if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
       const tripRow = tripInfo.rows[0] as any;
       if (tripRow.current_status !== 'on_the_way') return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
@@ -4394,6 +4933,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userDiscount = completedRidesCount < 2 ? parseFloat((rideFullFare * 0.50).toFixed(2)) : 0;
       const userPayable  = parseFloat((rideFullFare - userDiscount).toFixed(2));
 
+      // ── Car Pool: per-seat fare ───────────────────────────────────────────
+      const seatsBooked   = parseInt(tripRow.seats_booked ?? '1') || 1;
+      const isCarpool     = tripRow.is_carpool === true || tripRow.is_carpool === 'true';
+      const carpoolSeats  = parseInt(tripRow.total_seats ?? '4') || 4;
+      const seatPrice     = isCarpool ? parseFloat((fare / carpoolSeats).toFixed(2)) : 0;
+      const vehicleTypeName = tripRow.vehicle_name || tripRow.vehicle_type_field || null;
+
       // ── GST: 5% of full ride fare (government tax, always deducted from driver credit) ──
       const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='ride_gst_rate' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
       const rideGstRate = parseFloat((gstPctR.rows[0] as any)?.value || '5') / 100;
@@ -4405,7 +4951,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
             tips=${parseFloat(tips) || 0}, payment_status='paid',
             ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
-            user_payable=${userPayable}, gst_amount=${gstAmount}
+            user_payable=${userPayable}, gst_amount=${gstAmount},
+            vehicle_type_name=${vehicleTypeName},
+            seats_booked=${seatsBooked}, seat_price=${seatPrice}
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status = 'on_the_way'
         RETURNING *
@@ -4497,23 +5045,89 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(() => {});
       }
 
+      // ── Commission Settlement: add pending commission + GST to driver balance ──
+      // Driver collects full fare from user directly (cash/UPI).
+      // Platform's commission + GST are tracked as pending amounts the driver owes.
+      // (commission-only part without GST for separate column tracking)
+      const commissionOwed = parseFloat((deductAmount - gstAmount).toFixed(2));
+      const lockThresholdVal = parseFloat(s.commission_lock_threshold || "200");
+
       if (deductAmount > 0) {
-        const threshold = parseFloat(s.auto_lock_threshold || "-100");
+        // Fetch current pending balances before update
+        const balBeforeR = await rawDb.execute(rawSql`
+          SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
+          FROM users WHERE id=${driver.id}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const balBefore = balBeforeR.rows[0] as any || {};
+        const prevCommission = parseFloat(balBefore.pending_commission_balance ?? '0') || 0;
+        const prevGst        = parseFloat(balBefore.pending_gst_balance ?? '0') || 0;
+        const prevTotal      = parseFloat(balBefore.total_pending_balance ?? '0') || 0;
+
+        // Add new ride debits to pending balances
+        const newCommission = parseFloat((prevCommission + commissionOwed).toFixed(2));
+        const newGst        = parseFloat((prevGst + gstAmount).toFixed(2));
+        const newTotal      = parseFloat((prevTotal + deductAmount).toFixed(2));
+
+        // Also deduct from wallet_balance (negative balance system) + update pending fields
         const wUpd = await rawDb.execute(rawSql`
-          UPDATE users SET wallet_balance = wallet_balance - ${deductAmount}
-          WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
+          UPDATE users
+          SET wallet_balance            = wallet_balance - ${deductAmount},
+              pending_commission_balance = ${newCommission},
+              pending_gst_balance        = ${newGst},
+              total_pending_balance      = ${newTotal}
+          WHERE id=${driver.id}::uuid
+          RETURNING wallet_balance, is_locked, total_pending_balance
         `);
-        const newBalance = parseFloat((wUpd.rows[0] as any)?.wallet_balance || 0);
-        // Auto-lock if balance falls below threshold
-        if (newBalance < threshold && !(wUpd.rows[0] as any)?.is_locked) {
-          const lockMsg = `Wallet balance ₹${newBalance.toFixed(2)} is below minimum threshold ₹${threshold}. Recharge wallet to go online.`;
-          await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW() WHERE id=${driver.id}::uuid`);
+        const wRow: any = wUpd.rows[0] || {};
+        const newWalletBalance = parseFloat(wRow.wallet_balance ?? 0);
+
+        // Auto-lock: if total_pending_balance exceeds lock threshold → lock rides
+        const lockMsg = `Pending balance ₹${newTotal.toFixed(2)} exceeds ₹${lockThresholdVal} limit. Pay to unlock ride access.`;
+        if (newTotal >= lockThresholdVal && !wRow.is_locked) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW()
+            WHERE id=${driver.id}::uuid
+          `);
         }
-        // Auto-unlock if balance came back above threshold and was locked
-        if (newBalance >= threshold && (wUpd.rows[0] as any)?.is_locked) {
-          await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
+        // Also apply legacy wallet threshold lock
+        const legacyThreshold = parseFloat(s.auto_lock_threshold || "-100");
+        if (newWalletBalance < legacyThreshold && !wRow.is_locked) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET is_locked=true,
+              lock_reason=${'Wallet balance ₹' + newWalletBalance.toFixed(2) + ' below minimum. Pay ₹' + Math.abs(newWalletBalance).toFixed(2) + ' to unlock.'},
+              locked_at=NOW()
+            WHERE id=${driver.id}::uuid
+          `);
         }
-        // Record driver deduction
+
+        // Record in commission_settlements (split: commission + GST as separate lines)
+        const serviceTypeLabel = tripServiceType || 'ride';
+        if (commissionOwed > 0) {
+          await rawDb.execute(rawSql`
+            INSERT INTO commission_settlements
+              (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount,
+               direction, balance_before, balance_after, ride_fare, service_type, description)
+            VALUES
+              (${driver.id}::uuid, ${tripId}::uuid, 'commission_debit',
+               ${commissionOwed}, 0, ${commissionOwed},
+               'debit', ${prevTotal}, ${newTotal}, ${fare}, ${serviceTypeLabel},
+               ${'Commission ' + (breakdown.model || activeModel) + ' for trip ' + tripId.slice(0,8)})
+          `).catch(() => {});
+        }
+        if (gstAmount > 0) {
+          await rawDb.execute(rawSql`
+            INSERT INTO commission_settlements
+              (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount,
+               direction, balance_before, balance_after, ride_fare, service_type, description)
+            VALUES
+              (${driver.id}::uuid, ${tripId}::uuid, 'gst_debit',
+               0, ${gstAmount}, ${gstAmount},
+               'debit', ${prevTotal}, ${newTotal}, ${fare}, ${serviceTypeLabel},
+               ${'Government GST (5%) for trip ' + tripId.slice(0,8)})
+          `).catch(() => {});
+        }
+
+        // Record driver deduction in driver_payments (legacy table)
         const deductDesc = launchFreeApplied
           ? `Government GST ₹${gstAmount} for trip ${tripId.slice(0,8)}… (launch period)`
           : `Platform fee (${activeModel}) ₹${deductAmount} for trip ${tripId.slice(0,8)}…`;
@@ -4521,6 +5135,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
           VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${deductDesc})
         `).catch(() => {});
+
         // Credit admin revenue
         const revenueType = launchFreeApplied ? 'gst_only'
           : activeModel === 'commission' ? 'commission'
@@ -4727,11 +5342,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/driver/wallet", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const r = await rawDb.execute(rawSql`SELECT wallet_balance, is_locked, lock_reason, pending_payment_amount FROM users WHERE id=${driver.id}::uuid`);
+      const r = await rawDb.execute(rawSql`
+        SELECT wallet_balance, is_locked, lock_reason, pending_payment_amount,
+               pending_commission_balance, pending_gst_balance, total_pending_balance, lock_threshold
+        FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `);
       const payments = await rawDb.execute(rawSql`SELECT * FROM driver_payments WHERE driver_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 50`);
       const wdReqs = await rawDb.execute(rawSql`SELECT * FROM withdraw_requests WHERE user_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
       const d = r.rows[0] as any;
       const bal = parseFloat(d?.wallet_balance || 0);
+      const totalPending = parseFloat(d?.total_pending_balance ?? '0');
+      const lockThreshold = parseFloat(d?.lock_threshold ?? '200');
       const historyRows = camelize(payments.rows).map((p: any) => ({
         ...p,
         type: p.paymentType || p.type || 'deduction',
@@ -4745,9 +5366,153 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isLocked: d?.is_locked || false,
         lockReason: d?.lock_reason || null,
         pendingPaymentAmount: parseFloat(d?.pending_payment_amount || 0),
+        pendingCommission: parseFloat(d?.pending_commission_balance ?? '0'),
+        pendingGst: parseFloat(d?.pending_gst_balance ?? '0'),
+        totalPendingBalance: totalPending,
+        lockThreshold,
         history: historyRows,
         transactions: historyRows,
         withdrawRequests: wdReqs.rows.map(camelize),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Commission settlement status (detailed breakdown) ────────────────
+  app.get("/api/app/driver/settlement-status", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT wallet_balance, is_locked, lock_reason,
+               pending_commission_balance, pending_gst_balance, total_pending_balance, lock_threshold
+        FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `);
+      const row: any = r.rows[0] || {};
+      const pendingCommission = parseFloat(row.pending_commission_balance ?? '0');
+      const pendingGst        = parseFloat(row.pending_gst_balance ?? '0');
+      const totalPending      = parseFloat(row.total_pending_balance ?? '0');
+      const lockThreshold     = parseFloat(row.lock_threshold ?? '200');
+      const recent = await rawDb.execute(rawSql`
+        SELECT settlement_type, total_amount, direction, balance_before, balance_after,
+               payment_method, status, description, created_at
+        FROM commission_settlements WHERE driver_id=${driver.id}::uuid
+        ORDER BY created_at DESC LIMIT 10
+      `).catch(() => ({ rows: [] }));
+      let displayMessage = 'No pending dues';
+      if (totalPending > 0) {
+        displayMessage = `Platform Fee ₹${pendingCommission.toFixed(2)}\nGST ₹${pendingGst.toFixed(2)}\nTotal Due ₹${totalPending.toFixed(2)}`;
+      }
+      res.json({
+        pendingCommission,
+        pendingGst,
+        totalPendingBalance: totalPending,
+        lockThreshold,
+        isLocked: row.is_locked || false,
+        lockReason: row.lock_reason || null,
+        displayMessage,
+        recentSettlements: camelize(recent.rows),
+        progressPercent: lockThreshold > 0 ? Math.min(100, Math.round((totalPending / lockThreshold) * 100)) : 0,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Initiate Razorpay payment to settle pending commission ───────────
+  app.post("/api/app/driver/commission/create-order", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { amount } = req.body;
+      const keyId     = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured." });
+      // Validate amount against pending balance
+      const balR = await rawDb.execute(rawSql`SELECT total_pending_balance FROM users WHERE id=${driver.id}::uuid LIMIT 1`);
+      const bal: any = balR.rows[0] || {};
+      const pendingAmt = parseFloat(bal.total_pending_balance ?? '0');
+      const payAmt = parseFloat(String(amount));
+      if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
+      if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ₹${payAmt} exceeds pending balance ₹${pendingAmt.toFixed(2)}` });
+      const Razorpay = _require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await rzp.orders.create({ amount: Math.round(payAmt * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${driver.id}::uuid, ${payAmt}, 'commission_payment', ${order.id}, 'pending', ${'Commission settlement ₹' + payAmt})
+      `).catch(() => {});
+      res.json({ order, keyId, pendingBalance: pendingAmt });
+    } catch (e: any) {
+      const msg = e.message || e.error?.description || JSON.stringify(e).slice(0, 200);
+      res.status(500).json({ message: msg });
+    }
+  });
+
+  // ── DRIVER: Verify Razorpay commission payment ───────────────────────────────
+  app.post("/api/app/driver/commission/verify-payment", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keySecret) {
+        const expectedSig = crypto.createHmac("sha256", keySecret).update(razorpayOrderId + "|" + razorpayPaymentId).digest("hex");
+        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      }
+      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
+      const settings: any = {};
+      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
+
+      const balR = await rawDb.execute(rawSql`
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance, is_locked
+        FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `);
+      const bal: any = balR.rows[0] || {};
+      const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
+      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
+      const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
+      const paidAmt        = parseFloat(String(amount));
+      const gstReduction   = Math.min(prevGst, parseFloat((paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05)).toFixed(2)));
+      const commReduction  = Math.min(prevCommission, parseFloat((paidAmt - gstReduction).toFixed(2)));
+      const newTotal       = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
+      const newCommission  = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
+      const newGst         = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+
+      const updated = await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance             = wallet_balance + ${paidAmt},
+            pending_commission_balance = ${newCommission},
+            pending_gst_balance        = ${newGst},
+            total_pending_balance      = ${newTotal},
+            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
+        WHERE id = ${driver.id}::uuid
+        RETURNING wallet_balance, is_locked
+      `);
+      const updRow: any = updated.rows[0] || {};
+      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+      const wasLocked = updRow.is_locked;
+      if (newTotal < lockThreshold && wasLocked) {
+        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
+      }
+      await rawDb.execute(rawSql`
+        INSERT INTO commission_settlements
+          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
+           direction, balance_before, balance_after, payment_method,
+           razorpay_order_id, razorpay_payment_id, status, description)
+        VALUES
+          (${driver.id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
+           'credit', ${prevTotal}, ${newTotal}, 'razorpay',
+           ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
+           ${'Driver payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
+          razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId}
+      `).catch(() => {});
+      res.json({
+        success: true,
+        paidAmount: paidAmt,
+        newPendingBalance: newTotal,
+        pendingCommission: newCommission,
+        pendingGst: newGst,
+        autoUnlocked: newTotal < lockThreshold && wasLocked,
+        message: newTotal <= 0 ? 'All dues cleared! Account unlocked.' : `₹${newTotal.toFixed(2)} pending. Pay remaining to unlock.`,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5374,7 +6139,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // DISTINCT ON ensures exactly one row per vehicle category, avoiding zone duplicates
       const fareR = await rawDb.execute(rawSql`
         SELECT DISTINCT ON (f.vehicle_category_id)
-          f.*, vc.name as vehicle_name, vc.icon as vehicle_icon
+          f.*, vc.name as vehicle_name, vc.icon as vehicle_icon,
+          vc.vehicle_type as vc_vehicle_type,
+          vc.base_fare     as vc_base_fare,
+          vc.fare_per_km   as vc_fare_per_km,
+          vc.minimum_fare  as vc_minimum_fare,
+          vc.waiting_charge_per_min as vc_waiting_charge,
+          COALESCE(vc.total_seats, 0) as vc_total_seats,
+          COALESCE(vc.is_carpool, false) as vc_is_carpool
         FROM trip_fares f
         JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
         WHERE vc.is_active = true
@@ -5382,28 +6154,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY f.vehicle_category_id, vc.name
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
-        // Vehicle-name-specific defaults: Bike ₹30+₹12/km, Auto ₹40+₹15/km, Car ₹60+₹18/km
+        // Resolve vehicle name for smart defaults
         const vn = (f.vehicleName || '').toLowerCase();
-        const isCar    = vn.includes('car') || vn.includes('suv');
-        const isAuto   = !isCar && (vn.includes('auto') || vn.includes('rickshaw'));
+        const isSuv    = vn.includes('suv');
+        const isSedan  = !isSuv && (vn.includes('sedan') || (vn.includes('car') && !vn.includes('mini') && !vn.includes('pool') && !vn.includes('share')));
+        const isMini   = vn.includes('mini');
+        const isPool   = vn.includes('pool') || vn.includes('share');
+        const isAuto   = !isSuv && !isSedan && !isMini && !isPool && vn.includes('auto');
         const isCargo  = vn.includes('cargo');
         const isParcel = !isCargo && vn.includes('parcel');
-        const defaultBase  = isCar ? 60 : isAuto ? 40 : isCargo ? 80 : isParcel ? 35 : 30;
-        const defaultPerKm = isCar ? 18 : isAuto ? 15 : isCargo ? 20 : isParcel ? 13 : 12;
-        const defaultMin   = isCar ? 70 : isAuto ? 50 : isCargo ? 100 : isParcel ? 40 : 40;
 
-        const base           = parseFloat(f.baseFare)           || defaultBase;
-        const perKm          = parseFloat(f.farePerKm)          || defaultPerKm;
-        const perMin         = parseFloat(f.farePerMin)         || 0;
-        const minFare        = parseFloat(f.minimumFare)        || defaultMin;
+        // Smart defaults by vehicle type
+        const defaultBase  = isSuv ? 100 : isSedan ? 80 : isMini ? 60 : isPool ? 80 : isAuto ? 40 : isCargo ? 80 : isParcel ? 35 : 30;
+        const defaultPerKm = isSuv ? 22  : isSedan ? 18 : isMini ? 16 : isPool ? 15 : isAuto ? 15 : isCargo ? 20 : isParcel ? 13 : 12;
+        const defaultMin   = isSuv ? 150 : isSedan ? 120 : isMini ? 80 : isPool ? 100 : isAuto ? 60 : isCargo ? 100 : isParcel ? 40 : 40;
+        const defaultWait  = isSuv ? 3 : (isSedan || isMini || isPool || isAuto) ? 2 : 1;
+
+        // vehicle_categories pricing takes precedence over trip_fares (trip_fares is zone-specific override)
+        const base           = parseFloat(f.vcBaseFare)           || parseFloat(f.baseFare)           || defaultBase;
+        const perKm          = parseFloat(f.vcFarePerKm)          || parseFloat(f.farePerKm)          || defaultPerKm;
+        const perMin         = parseFloat(f.farePerMin)           || 0;
+        const minFare        = parseFloat(f.vcMinimumFare)        || parseFloat(f.minimumFare)        || defaultMin;
+        const waitPerMin     = parseFloat(f.vcWaitingCharge)      || parseFloat(f.waitingChargePerMin) || defaultWait;
         const nightMultiplier = parseFloat(f.nightChargeMultiplier) || 1.25;
         const cancelFee      = parseFloat(f.cancellationFee)    || 10;
-        const waitingPerMin  = parseFloat(f.waitingChargePerMin) || 0;
         const helperCharge   = parseFloat(f.helperCharge)       || 0;
+        const isCarpool      = f.vcIsCarpool === true || f.vcIsCarpool === 'true';
+        const totalSeats     = parseInt(f.vcTotalSeats) || 4;
 
-        // Formula: Total Fare = Base Fare + (Distance × Per-KM Rate)
-        // Base fare is the booking fee; every km is billable.
-        const billableKm  = dist;
+        // Formula: fullFare = base_fare + (distanceKm × fare_per_km), floored at minimum_fare
+        const billableKm   = dist;
         const distanceFare = +(billableKm * perKm).toFixed(2);
         const timeFare     = +(dur * perMin).toFixed(2);
 
@@ -5418,9 +6198,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const fareMax = Math.ceil(grandTotal * 1.05);
         const estTime = Math.max(5, Math.round(dist * 3));
 
+        // ── Car Pool: seat-based pricing ──────────────────────────────────
+        const seatPrice = isCarpool ? +(grandTotal / totalSeats).toFixed(2) : 0;
+
         return {
           vehicleCategoryId: f.vehicleCategoryId,
           vehicleName: f.vehicleName || "Ride",
+          vehicleType: f.vcVehicleType || null,
           vehicleIcon: f.vehicleIcon,
           baseFare: +base.toFixed(2),
           farePerKm: +perKm.toFixed(2),
@@ -5434,11 +6218,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           fareMax,
           minimumFare: +minFare.toFixed(2),
           cancellationFee: +cancelFee.toFixed(2),
-          waitingChargePerMin: +waitingPerMin.toFixed(2),
+          waitingChargePerMin: +waitPerMin.toFixed(2),
           isNightCharge: isNight,
           nightMultiplier: isNight ? nightMultiplier : 1,
           helperCharge: +helperCharge.toFixed(2),
           estimatedTime: estTime + " min",
+          // Car Pool fields
+          isCarpool,
+          totalSeats: isCarpool ? totalSeats : undefined,
+          seatPrice: isCarpool ? seatPrice : undefined,
+          seatPriceDisplay: isCarpool ? `₹${seatPrice}/seat` : undefined,
         };
       });
 

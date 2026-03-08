@@ -42,6 +42,11 @@ export const users = pgTable("users", {
   onboardDate: timestamp("onboard_date"),
   freePeriodEnd: timestamp("free_period_end"),
   launchFreeActive: boolean("launch_free_active").default(false),
+  // Commission Settlement — driver pending balances
+  pendingCommissionBalance: numeric("pending_commission_balance", { precision: 12, scale: 2 }).default("0"),
+  pendingGstBalance: numeric("pending_gst_balance", { precision: 12, scale: 2 }).default("0"),
+  totalPendingBalance: numeric("total_pending_balance", { precision: 12, scale: 2 }).default("0"),
+  lockThreshold: numeric("lock_threshold", { precision: 10, scale: 2 }).default("200"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -64,6 +69,15 @@ export const vehicleCategories = pgTable("vehicle_categories", {
   name: varchar("name", { length: 255 }).notNull(),
   icon: varchar("icon", { length: 255 }),
   type: varchar("type", { length: 50 }).default("ride"),
+  vehicleType: varchar("vehicle_type", { length: 50 }),  // bike, auto, mini_car, sedan, suv, carpool
+  // Pricing fields (zone-specific overrides live in trip_fares)
+  baseFare: numeric("base_fare", { precision: 10, scale: 2 }).default("0"),
+  farePerKm: numeric("fare_per_km", { precision: 10, scale: 2 }).default("0"),
+  minimumFare: numeric("minimum_fare", { precision: 10, scale: 2 }).default("0"),
+  waitingChargePerMin: numeric("waiting_charge_per_min", { precision: 10, scale: 2 }).default("0"),
+  // Car Pool fields
+  totalSeats: integer("total_seats").default(0),
+  isCarpool: boolean("is_carpool").default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -108,6 +122,10 @@ export const tripRequests = pgTable("trip_requests", {
   userPayable: numeric("user_payable", { precision: 23, scale: 3 }).default("0"),
   gstAmount: numeric("gst_amount", { precision: 23, scale: 3 }).default("0"),
   driverWalletCredit: numeric("driver_wallet_credit", { precision: 23, scale: 3 }).default("0"),
+  // Vehicle & carpool fields
+  vehicleTypeName: varchar("vehicle_type_name", { length: 100 }),
+  seatsBooked: integer("seats_booked").default(1),
+  seatPrice: numeric("seat_price", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
