@@ -81,7 +81,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
         boxShadow: "0 1px 8px rgba(0,0,0,0.07)",
       }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <img src="/jago-logo.png" alt={BRAND} style={{ height: 38, objectFit: "contain" }} />
+          <img src="/jago-logo.png" alt={BRAND} style={{ height: 38, objectFit: "contain", filter: isDark ? "none" : "brightness(0) saturate(100%)" }} />
         </a>
         <div style={{ flex: 1 }} />
         <div className="policy-nav-links">
@@ -98,7 +98,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
 
       {/* Hero */}
       <div style={{
-        background: "linear-gradient(135deg, #0b3c88 0%, #1559c1 55%, #0c7ca6 100%)",
+        background: "linear-gradient(135deg, #091a4a 0%, #1559c1 55%, #1e3fa8 100%)",
         color: "white", padding: "56px 24px 44px", textAlign: "center",
       }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>

@@ -562,13 +562,19 @@ async function ensureOperationalSchema() {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  setTimeout(ensureAdminExists, 1000);
   // Always run schema bootstrap on startup to ensure all columns/tables exist
   try {
     await ensureOperationalSchema();
     console.log("[schema] Operational schema verified OK");
   } catch (e: any) {
     console.error("[schema] startup schema error:", e.message);
+  }
+  // Must be awaited so the admins table exists before any login request is handled
+  try {
+    await ensureAdminExists();
+    console.log("[admin] Admin bootstrap complete");
+  } catch (e: any) {
+    console.error("[admin] startup admin error:", e.message);
   }
 
   // Apply API-level throttling for customer/driver mobile endpoints.
