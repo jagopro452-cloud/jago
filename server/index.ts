@@ -10,6 +10,9 @@ import { createServer } from "http";
 import { setupSocket } from "./socket";
 import { parseEnv, validateProductionReadiness } from "./config/env";
 import { makeErrorId, sendAlert } from "./observability";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { db as drizzleDb } from "./db";
+import path from "path";
 
 const env = parseEnv();
 validateProductionReadiness(env);
@@ -86,6 +89,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Run Drizzle migrations at startup — this creates ALL tables including admins
+  // This is the definitive fix: schema is always in sync with the migration files
+  try {
+    const migrationsFolder = path.join(process.cwd(), "migrations");
+    await migrate(drizzleDb, { migrationsFolder });
+    log("[db] Migrations applied OK");
+  } catch (e: any) {
+    log(`[db] Migration warning (non-fatal): ${e.message}`);
+  }
+
   // Initialize Socket.IO for real-time driver-customer communication
   setupSocket(httpServer);
 

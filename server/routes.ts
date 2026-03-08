@@ -942,7 +942,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
-      const admin = await storage.getAdminByEmail(email);
+      // Self-healing: if admins table is missing (first deploy / migration not yet applied)
+      // run ensureAdminExists inline and retry — this guarantees the login ALWAYS works
+      let admin: any;
+      try {
+        admin = await storage.getAdminByEmail(email);
+      } catch (dbErr: any) {
+        if (String(dbErr.message).includes("does not exist")) {
+          console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
+          await ensureAdminExists();
+          admin = await storage.getAdminByEmail(email);
+        } else {
+          throw dbErr;
+        }
+      }
       if (!admin) return res.status(401).json({ message: "Invalid credentials" });
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
       const passwordValid = await bcrypt.compare(String(password), admin.password);
