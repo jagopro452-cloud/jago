@@ -1,7 +1,7 @@
 import { useState } from "react";
-import jagoLogoBlue  from "@assets/JAGO_LOGOPNG_(1)_1772377612339.png";
-import jagoLogoWhite from "@assets/JAGO_LOGO_WightPNG_1772377612337.png";
-import pilotLogo     from "@assets/PILOT_LOGOPNG_1772377649091.png";
+const jagoLogoBlue  = "/jago-logo-blue.png";
+const jagoLogoWhite = "/jago-logo-white.png";
+const pilotLogo     = "/pilot-logo.png";
 
 type AppTab = "customer" | "driver";
 

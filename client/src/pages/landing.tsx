@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 
-import jagoLogoWhite from "@assets/JAGO_LOGO_WightPNG_1772377612337.png";
-import jagoLogoBlue from "@assets/JAGO_LOGOPNG_(1)_1772377612339.png";
-import pilotLogo from "@assets/PILOT_LOGOPNG_1772377649091.png";
+const jagoLogoWhite = "/jago-logo-white.png";
+const jagoLogoBlue = "/jago-logo-blue.png";
+const pilotLogo = "/pilot-logo.png";
 
 function useReveal() {
   useEffect(() => {
