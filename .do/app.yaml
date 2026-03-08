@@ -1,0 +1,60 @@
+name: jago-platform
+region: blr  # Bangalore (India closest)
+services:
+  - name: jago-server
+    source_dir: /
+    github:
+      repo: jagopro452-cloud/jago
+      branch: master
+      deploy_on_push: true
+    build_command: npm ci && npm run build
+    run_command: npm run start
+    http_port: 5000
+    instance_count: 1
+    instance_size_slug: basic-xs
+    health_check:
+      http_path: /api/health
+    envs:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "5000"
+      - key: DATABASE_URL
+        value: "REPLACE_WITH_DB_URL"
+        type: SECRET
+      - key: ADMIN_EMAIL
+        value: "admin@jagopro.org"
+      - key: ADMIN_NAME
+        value: "Jago Admin"
+      - key: ADMIN_PASSWORD
+        value: "REPLACE_WITH_STRONG_PASSWORD"
+        type: SECRET
+      - key: ADMIN_SESSION_TTL_HOURS
+        value: "8"
+      - key: ADMIN_2FA_REQUIRED
+        value: "false"
+      - key: ENABLE_DEV_OTP_RESPONSES
+        value: "false"
+      - key: GOOGLE_MAPS_API_KEY
+        value: "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
+        type: SECRET
+      - key: FIREBASE_WEB_API_KEY
+        value: "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
+        type: SECRET
+      - key: FIREBASE_SERVICE_ACCOUNT_KEY
+        value: "REPLACE_WITH_SERVICE_ACCOUNT_JSON"
+        type: SECRET
+      - key: OPS_API_KEY
+        value: "JagoOps2026XkP9mN3qR7wZ1vB8cT5yL2hF6dS4"
+        type: SECRET
+      - key: SOCKET_ALLOWED_ORIGINS
+        value: "https://jagopro.org"
+      - key: FAST2SMS_API_KEY
+        value: "REPLACE_WITH_FAST2SMS_KEY"
+        type: SECRET
+      - key: RAZORPAY_KEY_ID
+        value: "REPLACE_WITH_RAZORPAY_KEY_ID"
+        type: SECRET
+      - key: RAZORPAY_KEY_SECRET
+        value: "REPLACE_WITH_RAZORPAY_KEY_SECRET"
+        type: SECRET
