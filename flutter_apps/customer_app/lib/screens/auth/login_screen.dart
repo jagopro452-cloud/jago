@@ -123,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         if (res['success'] == true) {
           setState(() {
             _usingFirebaseOtp = false;
-            _serverOtp = res['otp']?.toString() ?? '';
+            _serverOtp = '';
             _otpSent = true;
           });
           _startTimer();
@@ -216,10 +216,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _buildHeader() {
     return Column(children: [
-      Container(
-        width: 64, height: 64,
-        decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(18)),
-        child: const Center(child: Text('J', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900))),
+      SizedBox(
+        width: 88, height: 88,
+        child: Image.asset(
+          'assets/images/jago_logo.png',
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Image.asset(
+            'assets/images/logo.png',
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Container(
+              width: 88, height: 88,
+              decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(20)),
+              child: const Center(child: Text('J', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900))),
+            ),
+          ),
+        ),
       ),
       const SizedBox(height: 12),
       const Text('JAGO', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF1E6DE5), letterSpacing: 3)),
@@ -289,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_otpSent ? 'Enter OTP' : 'Login with OTP', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.grey[900])),
         const SizedBox(height: 4),
-        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}${_serverOtp.isNotEmpty ? "  (Dev: $_serverOtp)" : ""}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
         const SizedBox(height: 24),
         _label('Phone Number'),
         const SizedBox(height: 8),

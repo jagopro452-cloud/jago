@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         if (!mounted) return;
         setState(() { _loading = false; });
         if (res['success'] == true) {
-          setState(() { _usingFirebaseOtp = false; _serverOtp = res['otp']?.toString() ?? ''; _otpSent = true; });
+          setState(() { _usingFirebaseOtp = false; _serverOtp = ''; _otpSent = true; });
           _startTimer();
           _showSnack('OTP sent to +91$phone');
         } else {
@@ -203,12 +203,25 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildHeader() {
     return Column(children: [
       Container(
-        width: 64, height: 64,
+        width: 88, height: 88,
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF1E3A8A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(18),
+          color: _surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: _blue.withValues(alpha: 0.3), width: 1.5),
+          boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.25), blurRadius: 24, spreadRadius: 2)],
         ),
-        child: const Center(child: Text('P', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900))),
+        child: Image.asset(
+          'assets/images/pilot_logo.png',
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Image.asset(
+            'assets/images/jago_logo_white.png',
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Center(
+              child: Text('P', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ),
       ),
       const SizedBox(height: 12),
       const Text('JAGO PILOT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 3)),
@@ -276,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_otpSent ? 'Enter OTP' : 'Login with OTP', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(height: 4),
-        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}${_serverOtp.isNotEmpty ? "  (Dev: $_serverOtp)" : ""}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.4))),
+        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.4))),
         const SizedBox(height: 24),
         _label('Phone Number'),
         const SizedBox(height: 8),
