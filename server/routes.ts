@@ -555,6 +555,41 @@ async function ensureOperationalSchema() {
         ('subscription_enabled','true')
       ON CONFLICT (key_name) DO NOTHING;
     `);
+
+    // ── Seed default vehicle categories if none exist ───────────────────────
+    const vcCount = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM vehicle_categories`);
+    if (parseInt((vcCount.rows[0] as any)?.cnt || '0') === 0) {
+      await rawDb.execute(rawSql`
+        INSERT INTO vehicle_categories (name, type, icon, is_active)
+        VALUES
+          ('Bike', 'ride', '🏍️', true),
+          ('Auto', 'ride', '🛺', true),
+          ('Car', 'ride', '🚗', true)
+        ON CONFLICT DO NOTHING
+      `);
+      console.log('[seed] Default vehicle categories created');
+    }
+
+    // ── Seed default trip_fares for active vehicle categories with no fares ─
+    // Uses subquery so it only inserts where no fare row exists yet (safe to re-run)
+    await rawDb.execute(rawSql`
+      INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, fare_per_min, minimum_fare, cancellation_fee, night_charge_multiplier)
+      SELECT
+        vc.id,
+        CASE vc.type WHEN 'car' THEN 50 WHEN 'cargo' THEN 80 WHEN 'parcel' THEN 35 ELSE 25 END,
+        CASE vc.type WHEN 'car' THEN 16 WHEN 'cargo' THEN 20 WHEN 'parcel' THEN 13 ELSE 10 END,
+        0,
+        CASE vc.type WHEN 'car' THEN 60 WHEN 'cargo' THEN 100 WHEN 'parcel' THEN 40 ELSE 28 END,
+        10,
+        1.25
+      FROM vehicle_categories vc
+      WHERE vc.is_active = true
+        AND NOT EXISTS (
+          SELECT 1 FROM trip_fares tf
+          WHERE tf.vehicle_category_id = vc.id
+            AND (tf.base_fare > 0 OR tf.fare_per_km > 0 OR tf.minimum_fare > 0)
+        )
+    `);
   } catch (e: any) {
     console.error("[schema] ensureOperationalSchema error:", formatDbError(e));
   }
@@ -5132,11 +5167,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY f.vehicle_category_id, vc.name
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
-        const base = parseFloat(f.baseFare || 30);
-        const perKm = parseFloat(f.farePerKm || 12);
-        const perMin = parseFloat(f.farePerMin || 0);
-        const minFare = parseFloat(f.minimumFare || 20);
-        const nightMultiplier = parseFloat(f.nightChargeMultiplier || 1.25);
+        // NOTE: parse FIRST then apply fallback — DB returns "0" (truthy string), so
+        // parseFloat("0" || 30) = parseFloat("0") = 0 (wrong). Must do parseFloat("0") || 30 = 30 (correct).
+        const base = parseFloat(f.baseFare) || 30;
+        const perKm = parseFloat(f.farePerKm) || 12;
+        const perMin = parseFloat(f.farePerMin) || 0;
+        const minFare = parseFloat(f.minimumFare) || 20;
+        const nightMultiplier = parseFloat(f.nightChargeMultiplier) || 1.25;
         const cancelFee = parseFloat(f.cancellationFee || 10);
         const waitingPerMin = parseFloat(f.waitingChargePerMin || 0);
         const helperCharge = parseFloat(f.helperCharge || 0);
