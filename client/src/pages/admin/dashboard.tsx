@@ -43,7 +43,7 @@ function LiveClock() {
 
   return (
     <div style={{
-      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+      background: "linear-gradient(135deg, #1a3d7c 0%, #1a5abf 50%, #2F80ED 100%)",
       borderRadius: 16, padding: "20px 18px", color: "white", textAlign: "center", marginBottom: 14,
     }}>
       <div style={{ fontSize: 10, letterSpacing: 3, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", marginBottom: 6 }}>Live Time</div>
@@ -119,9 +119,9 @@ export default function Dashboard() {
   ];
 
   const pieData = [
-    { name: "Completed", value: stats?.completedTrips || 0, color: "#16a34a" },
-    { name: "Ongoing",   value: stats?.ongoingTrips || 0,   color: "#2563eb" },
-    { name: "Cancelled", value: stats?.cancelledTrips || 0, color: "#dc2626" },
+    { name: "Completed", value: stats?.completedTrips || 0, color: "#2ECC71" },
+    { name: "Ongoing",   value: stats?.ongoingTrips || 0,   color: "#2F80ED" },
+    { name: "Cancelled", value: stats?.cancelledTrips || 0, color: "#E74C3C" },
     { name: "Other",     value: Math.max(0, (stats?.totalTrips || 0) - (stats?.completedTrips || 0) - (stats?.ongoingTrips || 0) - (stats?.cancelledTrips || 0)), color: "#94a3b8" },
   ].filter(d => d.value > 0);
 
@@ -508,10 +508,10 @@ export default function Dashboard() {
               </div>
               <div className="row g-2">
                 {[
-                  { label: "Completed", val: stats?.completedTrips ?? 0, color: "#16a34a", bg: "#f0fdf4", icon: "bi-check-circle-fill" },
-                  { label: "Ongoing", val: stats?.ongoingTrips ?? 0, color: "#2563eb", bg: "#eff6ff", icon: "bi-broadcast-pin" },
-                  { label: "Cancelled", val: stats?.cancelledTrips ?? 0, color: "#dc2626", bg: "#fef2f2", icon: "bi-x-circle-fill" },
-                  { label: "Withdrawals", val: stats?.pendingWithdrawals ?? 0, color: "#d97706", bg: "#fefce8", icon: "bi-clock-history" },
+                  { label: "Completed", val: stats?.completedTrips ?? 0, color: "#2ECC71", bg: "#f0fdf4", icon: "bi-check-circle-fill" },
+                  { label: "Ongoing", val: stats?.ongoingTrips ?? 0, color: "#2F80ED", bg: "#eff6ff", icon: "bi-broadcast-pin" },
+                  { label: "Cancelled", val: stats?.cancelledTrips ?? 0, color: "#E74C3C", bg: "#fef2f2", icon: "bi-x-circle-fill" },
+                  { label: "Withdrawals", val: stats?.pendingWithdrawals ?? 0, color: "#F39C12", bg: "#fefce8", icon: "bi-clock-history" },
                   { label: "Reviews", val: stats?.totalReviews ?? 0, color: "#f59e0b", bg: "#fffbeb", icon: "bi-star-fill" },
                   { label: "Zones", val: stats?.totalZones ?? 0, color: "#7c3aed", bg: "#f5f3ff", icon: "bi-map-fill" },
                 ].map((s, i) => (

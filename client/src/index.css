@@ -11,18 +11,22 @@
   --bs-primary-rgb: 47, 128, 237;
   --bs-secondary: #DBEAFE;
   --bs-secondary-rgb: 219, 234, 254;
-  --bs-success: #30b877;
-  --bs-success-rgb: 48, 184, 119;
-  --bs-danger: #ff6d6d;
-  --bs-danger-rgb: 255, 109, 109;
-  --bs-warning: #f4a164;
-  --bs-warning-rgb: 244, 161, 100;
+  --bs-success: #2ECC71;
+  --bs-success-rgb: 46, 204, 113;
+  --bs-danger: #E74C3C;
+  --bs-danger-rgb: 231, 76, 60;
+  --bs-warning: #F39C12;
+  --bs-warning-rgb: 243, 156, 18;
   --bs-info: #00a5ec;
   --bs-info-rgb: 0, 165, 236;
   --bs-dark: #0F172A;
   --bs-dark-rgb: 15, 23, 42;
   --bs-light: #f7f9fc;
-  --bs-body-bg: #F1F5F9;
+  --bs-body-bg: #F5F7FA;
+  --jago-gradient: linear-gradient(135deg, #4A90E2, #2F80ED);
+  --jago-gradient-dark: linear-gradient(135deg, #2F80ED, #1a5abf);
+  --jago-glow: 0 4px 20px rgba(47,128,237,0.35);
+  --jago-glow-sm: 0 2px 10px rgba(47,128,237,0.25);
   --bs-body-color: #64748B;
   --bs-body-font-family: "Inter", "Open Sans", sans-serif;
   --bs-body-font-size: 0.875rem;
@@ -281,15 +285,15 @@
 }
 
 /* Dark mode — badge/status fixes */
-.dark .badge-completed  { background-color: rgba(48,184,119,0.15); color: #4ade80; }
+.dark .badge-completed  { background-color: rgba(46,204,113,0.15); color: #4ade80; }
 .dark .badge-ongoing    { background-color: rgba(47,128,237,0.2); color: #60a5fa; }
-.dark .badge-pending    { background-color: rgba(244,161,100,0.15); color: #fb923c; }
-.dark .badge-cancelled  { background-color: rgba(255,109,109,0.15); color: #f87171; }
+.dark .badge-pending    { background-color: rgba(243,156,18,0.15); color: #fb923c; }
+.dark .badge-cancelled  { background-color: rgba(231,76,60,0.15); color: #f87171; }
 .dark .badge-accepted   { background-color: rgba(139,92,246,0.15); color: #a78bfa; }
-.dark .badge-paid       { background-color: rgba(48,184,119,0.15); color: #4ade80; }
-.dark .badge-unpaid     { background-color: rgba(255,109,109,0.15); color: #f87171; }
-.dark .badge-active     { background-color: rgba(48,184,119,0.15); color: #4ade80; }
-.dark .badge-inactive   { background-color: rgba(255,109,109,0.15); color: #f87171; }
+.dark .badge-paid       { background-color: rgba(46,204,113,0.15); color: #4ade80; }
+.dark .badge-unpaid     { background-color: rgba(231,76,60,0.15); color: #f87171; }
+.dark .badge-active     { background-color: rgba(46,204,113,0.15); color: #4ade80; }
+.dark .badge-inactive   { background-color: rgba(231,76,60,0.15); color: #f87171; }
 .dark .badge-primary    { background-color: rgba(47,128,237,0.2); color: #60a5fa; }
 
 /* Dark mode — shadcn card overrides */
@@ -995,10 +999,10 @@ body.aside-folded .main-area {
 }
 
 /* Stat card color variants */
-.stat-icon-primary { background-color: rgba(var(--bs-primary-rgb), 0.1); color: var(--bs-primary); }
-.stat-icon-success { background-color: rgba(48, 184, 119, 0.1); color: #30b877; }
-.stat-icon-warning { background-color: rgba(244, 161, 100, 0.1); color: #f4a164; }
-.stat-icon-danger  { background-color: rgba(255, 109, 109, 0.1); color: #ff6d6d; }
+.stat-icon-primary { background-color: rgba(47, 128, 237, 0.1); color: var(--bs-primary); }
+.stat-icon-success { background-color: rgba(46, 204, 113, 0.1); color: #2ECC71; }
+.stat-icon-warning { background-color: rgba(243, 156, 18, 0.1); color: #F39C12; }
+.stat-icon-danger  { background-color: rgba(231, 76, 60, 0.1); color: #E74C3C; }
 .stat-icon-info    { background-color: rgba(0, 165, 236, 0.1); color: #00a5ec; }
 .stat-icon-purple  { background-color: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
 
@@ -1086,36 +1090,48 @@ body.aside-folded .main-area {
   white-space: nowrap;
 }
 
-.badge-completed  { background-color: rgba(48,184,119,0.15); color: #30b877; }
+.badge-completed  { background-color: rgba(46,204,113,0.15); color: #2ECC71; }
 .badge-ongoing    { background-color: rgba(47,128,237,0.12); color: #2F80ED; }
-.badge-pending    { background-color: rgba(244,161,100,0.15); color: #f4a164; }
-.badge-cancelled  { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
+.badge-pending    { background-color: rgba(243,156,18,0.15); color: #F39C12; }
+.badge-cancelled  { background-color: rgba(231,76,60,0.15); color: #E74C3C; }
 .badge-accepted   { background-color: rgba(139,92,246,0.12); color: #8b5cf6; }
-.badge-paid       { background-color: rgba(48,184,119,0.15); color: #30b877; }
-.badge-unpaid     { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
-.badge-active     { background-color: rgba(48,184,119,0.15); color: #30b877; }
-.badge-inactive   { background-color: rgba(255,109,109,0.15); color: #ff6d6d; }
+.badge-paid       { background-color: rgba(46,204,113,0.15); color: #2ECC71; }
+.badge-unpaid     { background-color: rgba(231,76,60,0.15); color: #E74C3C; }
+.badge-active     { background-color: rgba(46,204,113,0.15); color: #2ECC71; }
+.badge-inactive   { background-color: rgba(231,76,60,0.15); color: #E74C3C; }
 .badge-primary    { background-color: rgba(47,128,237,0.12); color: #2F80ED; }
 
 /* ========================
    JAGO BUTTONS
    ======================== */
 .btn-jago-primary {
-  background-color: var(--bs-primary);
+  background: var(--jago-gradient);
   color: #fff;
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  transition: background-color 150ms, opacity 150ms;
+  transition: box-shadow 200ms, transform 150ms, opacity 150ms;
+  box-shadow: 0 2px 10px rgba(47,128,237,0.28);
 }
-.btn-jago-primary:hover { background-color: #1d4ed8; }
+.btn-jago-primary:hover { box-shadow: var(--jago-glow); transform: translateY(-1px); }
+.btn-jago-primary:active { transform: translateY(0); }
 .btn-jago-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* Bootstrap .btn-primary gradient override */
+.btn-primary, a.btn-primary {
+  background: var(--jago-gradient) !important;
+  border-color: #2F80ED !important;
+  box-shadow: 0 2px 10px rgba(47,128,237,0.25);
+  transition: box-shadow 200ms, transform 150ms;
+}
+.btn-primary:hover, a.btn-primary:hover { box-shadow: var(--jago-glow) !important; transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0) !important; }
 
 .btn-jago-outline {
   background-color: transparent;
@@ -1350,7 +1366,7 @@ body.aside-folded .main-area {
 .btn-login {
   width: 100%;
   padding: 0.75rem;
-  background-color: var(--bs-primary);
+  background: var(--jago-gradient);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -1358,16 +1374,18 @@ body.aside-folded .main-area {
   font-weight: 600;
   cursor: pointer;
   margin-top: 0.5rem;
-  transition: background-color 150ms;
+  transition: box-shadow 200ms, transform 150ms;
   font-family: var(--bs-body-font-family);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  box-shadow: 0 2px 12px rgba(47,128,237,0.3);
 }
 
-.btn-login:hover { background-color: #1d4ed8; }
-.btn-login:disabled { opacity: 0.7; cursor: not-allowed; }
+.btn-login:hover { box-shadow: var(--jago-glow); transform: translateY(-1px); }
+.btn-login:active { transform: translateY(0); }
+.btn-login:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
 /* ========================
    USER DROPDOWN MENU
@@ -1529,6 +1547,65 @@ body.aside-folded .main-area {
 @keyframes slideInToast {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+/* ========================
+   JAGO ANIMATION SYSTEM
+   ======================== */
+@keyframes jago-fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes jago-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes jago-slide-right {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes jago-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes jago-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(47,128,237,0.4); }
+  70%  { box-shadow: 0 0 0 10px rgba(47,128,237,0); }
+  100% { box-shadow: 0 0 0 0 rgba(47,128,237,0); }
+}
+@keyframes jago-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes jago-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+@keyframes jago-glow-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(47,128,237,0.3); }
+  50%       { box-shadow: 0 4px 32px rgba(47,128,237,0.55); }
+}
+
+/* Animation utilities */
+.anim-fade-up   { animation: jago-fade-up 0.5s cubic-bezier(.22,1,.36,1) both; }
+.anim-fade-in   { animation: jago-fade-in 0.4s ease both; }
+.anim-scale-in  { animation: jago-scale-in 0.35s cubic-bezier(.22,1,.36,1) both; }
+.anim-float     { animation: jago-float 3.5s ease-in-out infinite; }
+
+/* Dark mode — button glow effects */
+.dark .btn-jago-primary,
+.dark .btn-primary {
+  box-shadow: 0 2px 12px rgba(47,128,237,0.35);
+}
+.dark .btn-jago-primary:hover,
+.dark .btn-primary:hover {
+  box-shadow: 0 4px 24px rgba(47,128,237,0.6);
+}
+.dark .btn-login {
+  box-shadow: 0 2px 16px rgba(47,128,237,0.4);
+}
+.dark .btn-login:hover {
+  box-shadow: 0 4px 28px rgba(47,128,237,0.65);
 }
 
 /* ========================
@@ -1858,7 +1935,7 @@ body.aside-folded .main-area {
    DASHBOARD - jd-banner, jd-stat, jd-ride-card
    ======================== */
 .jd-banner {
-  background: linear-gradient(135deg, #FF6B35 0%, #D94F20 50%, #060D1E 100%);
+  background: linear-gradient(135deg, #1a3d7c 0%, #1a5abf 40%, #2F80ED 75%, #4A90E2 100%);
   border-radius: 16px;
   padding: 30px 32px;
   color: #fff;
@@ -1866,7 +1943,7 @@ body.aside-folded .main-area {
   overflow: hidden;
   margin-bottom: 24px;
   border: none;
-  box-shadow: 0 4px 24px rgba(255,107,53,0.35);
+  box-shadow: 0 4px 28px rgba(47,128,237,0.4);
 }
 
 .jd-banner::before {
@@ -2647,14 +2724,14 @@ thead tr th {
 
 /* ── Dashboard Banner ── */
 .jd-banner {
-  background: linear-gradient(135deg, #FF6B35 0%, #D94F20 45%, #060D1E 100%) !important;
+  background: linear-gradient(135deg, #1a3d7c 0%, #1a5abf 40%, #2F80ED 75%, #4A90E2 100%) !important;
   border-radius: 18px !important;
   padding: 1.5rem 2rem !important;
   margin-bottom: 1.25rem !important;
   color: #fff !important;
   position: relative !important;
   overflow: hidden !important;
-  box-shadow: 0 8px 32px rgba(255,107,53,0.35) !important;
+  box-shadow: 0 8px 32px rgba(47,128,237,0.35) !important;
 }
 .jd-banner::before {
   content: "";

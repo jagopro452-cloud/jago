@@ -581,6 +581,52 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* DRIVER EARNINGS */}
+        <section id="earnings" className="sec" style={{ background: N900, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(circle at 70% 50%, rgba(47,128,237,0.12) 0%, transparent 60%)`, pointerEvents: "none" }} />
+          <div className="container" style={{ position: "relative" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }} className="hero-grid">
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Pilot Earnings</div>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Drive more.<br />Earn more.</h2>
+                <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 420 }}>Jago pilots earn industry-leading pay with daily payouts, surge bonuses, and zero commission cuts for the first 3 months.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 36 }}>
+                  {[
+                    { val: "₹2,500+", label: "Avg. daily earnings" },
+                    { val: "0%", label: "Commission — first 90 days" },
+                    { val: "₹500", label: "Weekly performance bonus" },
+                    { val: "24h", label: "Daily payout cycle" },
+                  ].map((e, i) => (
+                    <div key={i} style={{ background: `rgba(47,128,237,0.08)`, borderRadius: 16, padding: "20px 18px", border: `1px solid rgba(47,128,237,0.2)` }}>
+                      <p style={{ fontSize: 26, fontWeight: 800, color: N500, fontFamily: "Space Grotesk,sans-serif", margin: "0 0 4px", lineHeight: 1.1 }}>{e.val}</p>
+                      <p style={{ fontSize: 12, color: W40, margin: 0, lineHeight: 1.5 }}>{e.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <a href="/auth" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 26px", borderRadius: 12, background: `linear-gradient(135deg, #4A90E2, #2F80ED)`, color: W, textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 4px 20px rgba(47,128,237,0.35)" }}>
+                  Become a Pilot <ArrowR />
+                </a>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {[
+                  { icon: "💳", title: "Daily Pay", desc: "Request your earnings any day — no weekly lock-in. Money hits your bank within 2 hours." },
+                  { icon: "🏆", title: "Reward Tiers", desc: "Bronze → Silver → Gold → Platinum. Higher tiers unlock better trip rates and priority dispatch." },
+                  { icon: "⛽", title: "Fuel Savings", desc: "Partner pump discounts up to ₹8/litre at 200+ stations across service cities." },
+                  { icon: "🛡️", title: "100% Insured", desc: "Every trip covered under Jago Shield — accident, vehicle damage, and third-party liability." },
+                ].map((b, i) => (
+                  <div key={i} style={{ display: "flex", gap: 18, background: N800, borderRadius: 16, padding: "20px 22px", border: `1px solid ${BORDER}`, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 26, flexShrink: 0, lineHeight: 1 }}>{b.icon}</span>
+                    <div>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, color: W, fontFamily: "Space Grotesk,sans-serif", margin: "0 0 5px" }}>{b.title}</h4>
+                      <p style={{ fontSize: 13, color: W40, margin: 0, lineHeight: 1.65 }}>{b.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* CITIES */}
         <section id="cities" className="sec" style={{ background: N800 }}>
           <div className="container">
