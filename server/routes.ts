@@ -449,6 +449,16 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_gst_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS total_pending_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_threshold NUMERIC(10,2) NOT NULL DEFAULT 200;
+
+      -- Parcel / delivery fields on trip_requests
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_fare NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS customer_fare NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS parcel_category_id UUID;
+
+      -- Weight-based rate on vehicle_categories (for parcel vehicles)
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS weight_rate NUMERIC(10,2) DEFAULT 0;
     `);
 
     await rawDb.execute(rawSql`
@@ -630,6 +640,44 @@ async function ensureOperationalSchema() {
         description TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      -- Outstation carpool (driver posts city-to-city rides, customers book seats)
+      CREATE TABLE IF NOT EXISTS outstation_pool_rides (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID NOT NULL,
+        from_city VARCHAR(120) NOT NULL,
+        to_city VARCHAR(120) NOT NULL,
+        route_km NUMERIC(10,2) DEFAULT 0,
+        departure_date DATE,
+        departure_time VARCHAR(20),
+        total_seats INTEGER DEFAULT 4,
+        available_seats INTEGER DEFAULT 4,
+        vehicle_number VARCHAR(60),
+        vehicle_model VARCHAR(120),
+        fare_per_seat NUMERIC(10,2) DEFAULT 0,
+        note TEXT,
+        is_active BOOLEAN DEFAULT true,
+        status VARCHAR(30) DEFAULT 'scheduled',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS outstation_pool_bookings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        ride_id UUID NOT NULL,
+        customer_id UUID,
+        seats_booked INTEGER DEFAULT 1,
+        total_fare NUMERIC(10,2) DEFAULT 0,
+        from_city VARCHAR(120),
+        to_city VARCHAR(120),
+        pickup_address TEXT,
+        dropoff_address TEXT,
+        status VARCHAR(30) DEFAULT 'confirmed',
+        payment_status VARCHAR(30) DEFAULT 'pending',
+        payment_method VARCHAR(40) DEFAULT 'cash',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     await rawDb.execute(rawSql`
@@ -641,7 +689,15 @@ async function ensureOperationalSchema() {
         ('launch_campaign_enabled','true'),
         ('ride_gst_rate','5'),
         ('commission_lock_threshold','200'),
-        ('commission_rate','15')
+        ('commission_rate','15'),
+        ('rides_model','subscription'),
+        ('parcels_model','commission'),
+        ('cargo_model','commission'),
+        ('intercity_model','commission'),
+        ('outstation_pool_model','commission'),
+        ('outstation_pool_mode','off'),
+        ('subscription_mode','off'),
+        ('commission_mode','on')
       ON CONFLICT (key_name) DO NOTHING;
     `);
 
@@ -678,6 +734,27 @@ async function ensureOperationalSchema() {
         SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
       )
     `);
+
+    // ── Seed parcel vehicle categories (Porter model) ───────────────────────
+    // weight_rate is per-kg surcharge added on top of base + distance fare.
+    await rawDb.execute(rawSql`
+      INSERT INTO vehicle_categories
+        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, weight_rate, total_seats, is_carpool)
+      SELECT v.vname, v.vtype, 'parcel', v.icon, true,
+             v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
+             0::numeric, v.weight_rate::numeric, 0::int, false
+      FROM (VALUES
+        ('Bike Parcel',  'bike_parcel',  '🏍️', 30, 10,  40, 3),
+        ('Auto Parcel',  'auto_parcel',  '🛺',  40, 12,  60, 4),
+        ('Tata Ace',     'tata_ace',     '🚛',  80, 20, 120, 5),
+        ('Cargo Car',    'cargo_car',    '🚗',  80, 18, 100, 5),
+        ('Bolero Cargo', 'bolero_cargo', '🚙', 100, 22, 150, 6)
+      ) AS v(vname, vtype, icon, base_fare, fare_per_km, minimum_fare, weight_rate)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
+      )
+    `);
+    console.log('[seed] Parcel vehicle categories seeded/updated');
     // Back-fill pricing + vehicle_type for any rows still missing them
     await rawDb.execute(rawSql`
       UPDATE vehicle_categories
@@ -988,6 +1065,149 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(500).json({ message: e.message });
     }
   });
+
+  // ── COMPREHENSIVE ADMIN DASHBOARD ──────────────────────────────────────────
+  // Single endpoint with per-service breakdowns, driver wallet health, subscription stats
+  app.get("/api/admin/dashboard", async (_req, res) => {
+    try {
+      const [tripsR, driversR, customersR, walletR, subscriptionsR, carpoolR, parcelsR, outstationR, settingsR] = await Promise.all([
+        // All-time trip counts + revenue per service type
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int                                                              AS total_trips,
+            COUNT(*) FILTER (WHERE current_status = 'completed')::int                 AS completed_trips,
+            COUNT(*) FILTER (WHERE current_status = 'cancelled')::int                 AS cancelled_trips,
+            COUNT(*) FILTER (WHERE current_status IN ('searching','driver_assigned','accepted','arrived','on_the_way'))::int AS active_trips,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status = 'completed'), 0) AS total_revenue,
+            -- Today
+            COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE)::int              AS today_trips,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed' AND DATE(created_at)=CURRENT_DATE), 0) AS today_revenue,
+            -- This week
+            COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('week', NOW()))::int      AS week_trips,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed' AND created_at>=DATE_TRUNC('week',NOW())), 0) AS week_revenue,
+            -- This month
+            COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month', NOW()))::int     AS month_trips,
+            COALESCE(SUM(actual_fare) FILTER (WHERE current_status='completed' AND created_at>=DATE_TRUNC('month',NOW())), 0) AS month_revenue,
+            -- By service type (rides only)
+            COUNT(*) FILTER (WHERE trip_type IN ('ride','normal') AND current_status='completed')::int  AS ride_trips,
+            COALESCE(SUM(actual_fare) FILTER (WHERE trip_type IN ('ride','normal') AND current_status='completed'), 0) AS ride_revenue,
+            -- Commission totals
+            COALESCE(SUM(commission_amount) FILTER (WHERE current_status='completed'), 0)   AS total_commission_collected,
+            COALESCE(SUM(gst_amount) FILTER (WHERE current_status='completed'), 0)          AS total_gst_collected
+          FROM trip_requests
+        `),
+        // Driver stats
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int                                                              AS total_drivers,
+            COUNT(*) FILTER (WHERE is_active = true AND verification_status='verified')::int AS active_drivers,
+            COUNT(*) FILTER (WHERE is_locked = true)::int                             AS locked_drivers,
+            COALESCE(SUM(CASE WHEN total_pending_balance > 0 THEN total_pending_balance ELSE 0 END), 0) AS total_pending_commission
+          FROM users WHERE user_type = 'driver'
+        `),
+        // Customer stats
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int                                                              AS total_customers,
+            COUNT(*) FILTER (WHERE is_active = true)::int                             AS active_customers,
+            COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month', NOW()))::int     AS new_this_month
+          FROM users WHERE user_type = 'customer'
+        `),
+        // Online drivers right now
+        rawDb.execute(rawSql`
+          SELECT COUNT(*)::int AS online_drivers
+          FROM driver_locations WHERE is_online = true
+        `).catch(() => ({ rows: [{ online_drivers: 0 }] as any[] })),
+        // Active subscriptions
+        rawDb.execute(rawSql`
+          SELECT COUNT(*)::int AS active_subscriptions
+          FROM driver_subscriptions
+          WHERE status = 'active' AND end_date >= CURRENT_DATE
+        `).catch(() => ({ rows: [{ active_subscriptions: 0 }] as any[] })),
+        // Carpool stats
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int AS total_carpool_trips,
+            COALESCE(SUM(actual_fare), 0) AS carpool_revenue
+          FROM trip_requests
+          WHERE trip_type = 'carpool' AND current_status = 'completed'
+        `),
+        // Parcel stats
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int AS total_parcel_trips,
+            COALESCE(SUM(actual_fare), 0) AS parcel_revenue
+          FROM trip_requests
+          WHERE trip_type IN ('parcel','delivery') AND current_status = 'completed'
+        `),
+        // Outstation pool stats
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(DISTINCT opr.id)::int AS total_outstation_rides,
+            COUNT(opb.id)::int AS total_outstation_bookings,
+            COALESCE(SUM(opb.total_fare) FILTER (WHERE opb.status = 'confirmed'), 0) AS outstation_revenue
+          FROM outstation_pool_rides opr
+          LEFT JOIN outstation_pool_bookings opb ON opb.ride_id = opr.id
+        `).catch(() => ({ rows: [{ total_outstation_rides: 0, total_outstation_bookings: 0, outstation_revenue: 0 }] as any[] })),
+        // Service model settings
+        rawDb.execute(rawSql`
+          SELECT key_name, value FROM revenue_model_settings
+          WHERE key_name IN ('rides_model','parcels_model','cargo_model','intercity_model','outstation_pool_model','outstation_pool_mode','subscription_mode','commission_mode')
+        `),
+      ]);
+
+      const trips  = (tripsR.rows[0] as any) || {};
+      const drv    = (driversR.rows[0] as any) || {};
+      const cust   = (customersR.rows[0] as any) || {};
+      const wallet = (walletR.rows[0] as any) || {};
+      const subs   = (subscriptionsR.rows[0] as any) || {};
+      const cp     = (carpoolR.rows[0] as any) || {};
+      const parcels= (parcelsR.rows[0] as any) || {};
+      const opool  = (outstationR.rows[0] as any) || {};
+      const svcSettings: Record<string, string> = {};
+      for (const row of settingsR.rows as any[]) svcSettings[row.key_name] = row.value;
+
+      res.json({
+        summary: {
+          totalTrips:             parseInt(trips.total_trips || 0),
+          completedTrips:         parseInt(trips.completed_trips || 0),
+          cancelledTrips:         parseInt(trips.cancelled_trips || 0),
+          activeTrips:            parseInt(trips.active_trips || 0),
+          totalRevenue:           parseFloat(trips.total_revenue || 0),
+          todayTrips:             parseInt(trips.today_trips || 0),
+          todayRevenue:           parseFloat(trips.today_revenue || 0),
+          weekTrips:              parseInt(trips.week_trips || 0),
+          weekRevenue:            parseFloat(trips.week_revenue || 0),
+          monthTrips:             parseInt(trips.month_trips || 0),
+          monthRevenue:           parseFloat(trips.month_revenue || 0),
+          totalCommissionCollected: parseFloat(trips.total_commission_collected || 0),
+          totalGstCollected:      parseFloat(trips.total_gst_collected || 0),
+        },
+        services: {
+          rides:       { trips: parseInt(trips.ride_trips || 0), revenue: parseFloat(trips.ride_revenue || 0), model: svcSettings['rides_model'] || 'subscription' },
+          parcels:     { trips: parseInt(parcels.total_parcel_trips || 0), revenue: parseFloat(parcels.parcel_revenue || 0), model: svcSettings['parcels_model'] || 'commission' },
+          carpool:     { trips: parseInt(cp.total_carpool_trips || 0), revenue: parseFloat(cp.carpool_revenue || 0), model: svcSettings['intercity_model'] || 'commission' },
+          outstationPool: { rides: parseInt(opool.total_outstation_rides || 0), bookings: parseInt(opool.total_outstation_bookings || 0), revenue: parseFloat(opool.outstation_revenue || 0), model: svcSettings['outstation_pool_model'] || 'commission', mode: svcSettings['outstation_pool_mode'] || 'off' },
+        },
+        drivers: {
+          total:               parseInt(drv.total_drivers || 0),
+          active:              parseInt(drv.active_drivers || 0),
+          online:              parseInt(wallet.online_drivers || 0),
+          locked:              parseInt(drv.locked_drivers || 0),
+          totalPendingCommission: parseFloat(drv.total_pending_commission || 0),
+          activeSubscriptions: parseInt(subs.active_subscriptions || 0),
+        },
+        customers: {
+          total:       parseInt(cust.total_customers || 0),
+          active:      parseInt(cust.active_customers || 0),
+          newThisMonth: parseInt(cust.new_this_month || 0),
+        },
+        serviceSettings: svcSettings,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+
 
   app.get("/api/dashboard/chart", async (req, res) => {
     try {
@@ -1797,6 +2017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const allowedKeys = new Set([
         'ride_gst_rate', 'driver_commission_pct', 'launch_campaign_enabled',
         'active_model', 'rides_model', 'parcels_model', 'cargo_model', 'intercity_model',
+        'outstation_pool_model', 'outstation_pool_mode', 'subscription_mode', 'commission_mode',
         'subscription_enabled', 'sub_platform_fee_per_ride',
         'commission_pct', 'hybrid_commission_pct', 'hybrid_platform_fee_per_ride',
         'commission_insurance_per_ride', 'auto_lock_threshold',
@@ -3393,6 +3614,201 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY b.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── OUTSTATION POOL ────────────────────────────────────────────────────────
+  // Driver: post a city-to-city ride, list own rides
+  app.post("/api/app/driver/outstation-pool/rides", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { fromCity, toCity, routeKm, departureDate, departureTime, totalSeats, vehicleNumber, vehicleModel, farePerSeat, note } = req.body;
+      if (!fromCity || !toCity) return res.status(400).json({ message: "fromCity and toCity are required" });
+
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO outstation_pool_rides
+          (driver_id, from_city, to_city, route_km, departure_date, departure_time,
+           total_seats, available_seats, vehicle_number, vehicle_model, fare_per_seat, note)
+        VALUES
+          (${driver.id}::uuid, ${fromCity}, ${toCity},
+           ${parseFloat(routeKm) || 0}, ${departureDate || null}, ${departureTime || null},
+           ${parseInt(totalSeats) || 4}, ${parseInt(totalSeats) || 4},
+           ${vehicleNumber || null}, ${vehicleModel || null},
+           ${parseFloat(farePerSeat) || 0}, ${note || null})
+        RETURNING *
+      `);
+      res.json({ success: true, ride: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/app/driver/outstation-pool/rides", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT opr.*,
+          COUNT(opb.id) as total_bookings,
+          COALESCE(SUM(opb.total_fare), 0) as total_fare_collected
+        FROM outstation_pool_rides opr
+        LEFT JOIN outstation_pool_bookings opb ON opb.ride_id = opr.id AND opb.status != 'cancelled'
+        WHERE opr.driver_id = ${driver.id}::uuid
+        GROUP BY opr.id
+        ORDER BY opr.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/app/driver/outstation-pool/rides/:id", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      const { status, isActive, farePerSeat, note } = req.body;
+      await rawDb.execute(rawSql`
+        UPDATE outstation_pool_rides
+        SET
+          status     = COALESCE(${status || null}, status),
+          is_active  = COALESCE(${isActive != null ? isActive : null}, is_active),
+          fare_per_seat = COALESCE(${farePerSeat != null ? parseFloat(farePerSeat) : null}, fare_per_seat),
+          note       = COALESCE(${note || null}, note),
+          updated_at = NOW()
+        WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid
+      `);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer: search outstation pool rides
+  app.get("/api/app/customer/outstation-pool/search", authApp, async (req, res) => {
+    try {
+      const { fromCity, toCity, date } = req.query as any;
+      if (!fromCity || !toCity) return res.status(400).json({ message: "fromCity and toCity are required" });
+
+      const r = await rawDb.execute(rawSql`
+        SELECT opr.*,
+          u.full_name as driver_name, u.phone as driver_phone,
+          dd.avg_rating as driver_rating, dd.total_trips
+        FROM outstation_pool_rides opr
+        LEFT JOIN users u ON u.id = opr.driver_id
+        LEFT JOIN driver_details dd ON dd.user_id = opr.driver_id
+        WHERE LOWER(opr.from_city) LIKE ${`%${fromCity.toLowerCase()}%`}
+          AND LOWER(opr.to_city) LIKE ${`%${toCity.toLowerCase()}%`}
+          AND opr.is_active = true
+          AND opr.status = 'scheduled'
+          AND opr.available_seats > 0
+          ${date ? rawSql`AND opr.departure_date = ${date}::date` : rawSql``}
+        ORDER BY opr.departure_date ASC, opr.fare_per_seat ASC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Customer: book seats in outstation pool ride
+  app.post("/api/app/customer/outstation-pool/book", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { rideId, seatsBooked = 1, pickupAddress, dropoffAddress, paymentMethod = 'cash' } = req.body;
+      if (!rideId) return res.status(400).json({ message: "rideId is required" });
+
+      const seats = Math.max(1, parseInt(seatsBooked));
+
+      // Check availability
+      const rideRes = await rawDb.execute(rawSql`
+        SELECT * FROM outstation_pool_rides
+        WHERE id = ${rideId}::uuid AND is_active = true AND status = 'scheduled'
+        LIMIT 1
+      `);
+      if (!rideRes.rows.length) return res.status(404).json({ message: "Ride not found or no longer available" });
+      const ride = rideRes.rows[0] as any;
+      if (ride.available_seats < seats) return res.status(400).json({ message: `Only ${ride.available_seats} seat(s) available` });
+
+      const totalFare = parseFloat(ride.fare_per_seat) * seats;
+
+      // Create booking and decrement available seats atomically
+      const [bookingRes] = await Promise.all([
+        rawDb.execute(rawSql`
+          INSERT INTO outstation_pool_bookings
+            (ride_id, customer_id, seats_booked, total_fare, from_city, to_city,
+             pickup_address, dropoff_address, payment_method, status, payment_status)
+          VALUES
+            (${rideId}::uuid, ${customer.id}::uuid, ${seats}, ${totalFare},
+             ${ride.from_city}, ${ride.to_city},
+             ${pickupAddress || null}, ${dropoffAddress || null},
+             ${paymentMethod}, 'confirmed', 'pending')
+          RETURNING *
+        `),
+        rawDb.execute(rawSql`
+          UPDATE outstation_pool_rides
+          SET available_seats = available_seats - ${seats}, updated_at = NOW()
+          WHERE id = ${rideId}::uuid
+        `),
+      ]);
+      res.json({ success: true, booking: camelize(bookingRes.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/app/customer/outstation-pool/bookings", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT opb.*,
+          opr.departure_date, opr.departure_time, opr.vehicle_number, opr.vehicle_model,
+          u.full_name as driver_name, u.phone as driver_phone
+        FROM outstation_pool_bookings opb
+        LEFT JOIN outstation_pool_rides opr ON opr.id = opb.ride_id
+        LEFT JOIN users u ON u.id = opr.driver_id
+        WHERE opb.customer_id = ${customer.id}::uuid
+        ORDER BY opb.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: manage outstation pool
+  app.get("/api/admin/outstation-pool/rides", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT opr.*,
+          u.full_name as driver_name, u.phone as driver_phone,
+          COUNT(opb.id)::int as total_bookings,
+          COALESCE(SUM(opb.total_fare), 0) as total_revenue
+        FROM outstation_pool_rides opr
+        LEFT JOIN users u ON u.id = opr.driver_id
+        LEFT JOIN outstation_pool_bookings opb ON opb.ride_id = opr.id AND opb.status != 'cancelled'
+        GROUP BY opr.id, u.full_name, u.phone
+        ORDER BY opr.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/admin/outstation-pool/bookings", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const r = await rawDb.execute(rawSql`
+        SELECT opb.*,
+          u.full_name as customer_name, u.phone as customer_phone,
+          d.full_name as driver_name
+        FROM outstation_pool_bookings opb
+        LEFT JOIN users u ON u.id = opb.customer_id
+        LEFT JOIN outstation_pool_rides opr ON opr.id = opb.ride_id
+        LEFT JOIN users d ON d.id = opr.driver_id
+        ${status && status !== 'all' ? rawSql`WHERE opb.status = ${status}` : rawSql``}
+        ORDER BY opb.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/admin/outstation-pool/settings", async (req, res) => {
+    try {
+      const { mode } = req.body; // 'on' | 'off'
+      if (!['on','off'].includes(mode)) return res.status(400).json({ message: "mode must be 'on' or 'off'" });
+      await rawDb.execute(rawSql`
+        INSERT INTO revenue_model_settings (key_name, value)
+        VALUES ('outstation_pool_mode', ${mode})
+        ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `);
+      res.json({ success: true, outstation_pool_mode: mode });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5076,10 +5492,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // driverWalletCredit = what driver actually keeps
       const driverWalletCredit = parseFloat((fare - deductAmount).toFixed(2));
 
-      // Save all pricing fields: commission_amount + driver_wallet_credit
+      // Save all pricing fields: commission_amount + driver_wallet_credit + driver_fare + customer_fare
       await rawDb.execute(rawSql`
         UPDATE trip_requests
-        SET commission_amount=${deductAmount}, driver_wallet_credit=${driverWalletCredit}
+        SET commission_amount=${deductAmount},
+            driver_wallet_credit=${driverWalletCredit},
+            driver_fare=${driverWalletCredit},
+            customer_fare=${userPayable}
         WHERE id=${tripId}::uuid
       `);
 
@@ -6297,6 +6716,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PARCEL FARE ESTIMATE (weight + distance based) ────────────────────────
+  // Formula: customerFare = base_fare + (distanceKm × fare_per_km) + (weightKg × weight_rate)
+  // driverFare  = customerFare — platform commission (per parcels_model setting)
+  app.post("/api/app/customer/estimate-parcel-fare", async (req, res) => {
+    try {
+      const { pickupLat, pickupLng, destLat, destLng, weightKg = 0 } = req.body;
+
+      const pLat = Number(pickupLat), pLng = Number(pickupLng);
+      const dLat = Number(destLat),  dLng = Number(destLng);
+
+      // Haversine distance
+      let distKm = 0;
+      if (pLat && pLng && dLat && dLng) {
+        const R = 6371;
+        const dLa = (dLat - pLat) * Math.PI / 180;
+        const dLo = (dLng - pLng) * Math.PI / 180;
+        const a = Math.sin(dLa / 2) ** 2 + Math.cos(pLat * Math.PI / 180) * Math.cos(dLat * Math.PI / 180) * Math.sin(dLo / 2) ** 2;
+        distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      // Fetch all active parcel vehicles + their weight_rate
+      const vcRes = await rawDb.execute(rawSql`
+        SELECT id, name, vehicle_type, icon,
+               base_fare, fare_per_km, minimum_fare, weight_rate
+        FROM vehicle_categories
+        WHERE type = 'parcel' AND is_active = true
+        ORDER BY base_fare ASC
+      `);
+
+      if (!vcRes.rows.length) return res.status(404).json({ message: "No parcel vehicle types configured" });
+
+      // Fetch parcels commission model setting
+      const settingsRes = await rawDb.execute(rawSql`
+        SELECT key_name, value FROM revenue_model_settings
+        WHERE key_name IN ('parcels_model','driver_commission_pct','commission_rate','ride_gst_rate')
+      `);
+      const settings: Record<string, string> = {};
+      for (const row of settingsRes.rows as any[]) settings[row.key_name] = row.value;
+
+      const parcelsModel = settings['parcels_model'] || 'commission';
+      const commPct = parseFloat(settings['driver_commission_pct'] || '20') / 100;
+      const gstRate = parseFloat(settings['ride_gst_rate'] || '5') / 100;
+
+      const wt = Math.max(0, Number(weightKg));
+
+      const fares = (vcRes.rows as any[]).map(vc => {
+        const baseFare   = parseFloat(vc.base_fare   || 0);
+        const perKm      = parseFloat(vc.fare_per_km || 0);
+        const minFare    = parseFloat(vc.minimum_fare || 0);
+        const weightRate = parseFloat(vc.weight_rate  || 0);
+
+        const rawFare = baseFare + (distKm * perKm) + (wt * weightRate);
+        const customerFare = Math.ceil(Math.max(rawFare, minFare));
+        const gstAmount    = Math.ceil(customerFare * gstRate);
+        const grandTotal   = customerFare + gstAmount;
+
+        // driverFare = what driver earns after platform deduction
+        let platformFee = 0;
+        if (parcelsModel === 'commission') {
+          platformFee = Math.ceil(customerFare * commPct);
+        }
+        const driverFare = Math.max(0, customerFare - platformFee);
+
+        return {
+          vehicleCategoryId: vc.id,
+          vehicleName: vc.name,
+          vehicleType: vc.vehicle_type,
+          icon: vc.icon,
+          distanceKm: Math.round(distKm * 10) / 10,
+          weightKg: wt,
+          baseFare,
+          perKmCharge: Math.ceil(distKm * perKm),
+          weightCharge: Math.ceil(wt * weightRate),
+          customerFare,
+          gstAmount,
+          grandTotal,
+          driverFare,
+          platformFee,
+        };
+      });
+
+      res.json({ fares, distanceKm: Math.round(distKm * 10) / 10, weightKg: wt });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
