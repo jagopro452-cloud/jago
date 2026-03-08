@@ -139,9 +139,11 @@
 
 /* Dark mode — admin layout overrides */
 .dark .header {
-  background-color: #0f172a;
-  border-bottom-color: rgba(255,255,255,0.06);
-  box-shadow: 0 1px 8px rgba(0,0,0,0.3);
+  background-color: rgba(15,23,42,0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-color: rgba(255,255,255,0.07);
+  box-shadow: 0 1px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(37,99,235,0.08);
 }
 
 .dark .jago-stat-card {
@@ -339,19 +341,19 @@ a:hover { color: var(--bs-primary); }
    03.3: ASIDE (SIDEBAR)
    ======================== */
 .aside {
-  width: 210px;
+  width: 220px;
   position: fixed;
   left: 0;
   top: 0;
   height: 100%;
   z-index: 1031;
-  transition: width 150ms ease;
+  transition: width 200ms cubic-bezier(.4,0,.2,1);
   border-right: none;
-  background: linear-gradient(175deg, #060D1E 0%, #0D1B3E 40%, #0a1628 100%);
+  background: linear-gradient(180deg, #0a1628 0%, #0d1f3c 45%, #0f2347 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 4px 0 32px rgba(0,0,0,0.35), 1px 0 0 rgba(255,107,53,0.08);
+  box-shadow: 4px 0 32px rgba(0,0,0,0.4), 1px 0 0 rgba(37,99,235,0.12);
 }
 
 .aside-header {
@@ -363,8 +365,8 @@ a:hover { color: var(--bs-primary); }
   gap: 0.625rem;
   position: relative;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,107,53,0.15);
-  background: linear-gradient(135deg, rgba(255,107,53,0.07) 0%, rgba(0,0,0,0) 100%);
+  border-bottom: 1px solid rgba(37,99,235,0.2);
+  background: linear-gradient(135deg, rgba(37,99,235,0.1) 0%, rgba(0,0,0,0) 100%);
 }
 
 .aside-header .logo {
@@ -373,25 +375,22 @@ a:hover { color: var(--bs-primary); }
   gap: 0.6rem;
   font-weight: 900;
   font-size: 1.4rem;
-  color: #FF6B35;
+  color: #fff;
   text-decoration: none;
   letter-spacing: 2px;
 }
 
 .aside-header .logo-text {
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   font-weight: 900;
-  background: linear-gradient(135deg, #FF6B35, #FFD700);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #fff;
   letter-spacing: 3px;
 }
 
 .aside-header .logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #FF6B35, #FF8C5A);
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -400,7 +399,7 @@ a:hover { color: var(--bs-primary); }
   font-size: 1.1rem;
   font-weight: 800;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(255,107,53,0.4);
+  box-shadow: 0 4px 12px rgba(37,99,235,0.5);
 }
 
 .toggle-menu-button {
@@ -409,12 +408,12 @@ a:hover { color: var(--bs-primary); }
   width: 26px;
   height: 26px;
   background: linear-gradient(135deg, #0D1B3E, #0a1628);
-  border: 1px solid rgba(255,107,53,0.25);
+  border: 1px solid rgba(37,99,235,0.35);
   border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: transform 150ms;
+  transition: transform 180ms;
   z-index: 10;
 }
 
@@ -462,10 +461,10 @@ body.aside-folded .toggle-menu-button i {
 
 .user-profile .avatar,
 .user-profile .avatar.rounded-circle {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #FF6B35, #FF8C5A);
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   display: grid;
   place-items: center;
   font-size: 0.8rem;
@@ -570,16 +569,16 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav li > a:hover {
-  background: linear-gradient(135deg, rgba(255,107,53,0.12), rgba(255,255,255,0.04));
+  background: rgba(37,99,235,0.14);
   color: rgba(255,255,255,0.95);
 }
 
 .main-nav li.active > a {
-  background: linear-gradient(135deg, rgba(255,107,53,0.85), rgba(255,140,90,0.75));
+  background: linear-gradient(135deg, rgba(37,99,235,0.9), rgba(14,165,233,0.8));
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 2px 12px rgba(255,107,53,0.3);
-  border-left: 2px solid #FF6B35;
+  box-shadow: 0 3px 14px rgba(37,99,235,0.38);
+  border-left: 2px solid #60a5fa;
 }
 
 .main-nav li > a i {
@@ -602,7 +601,7 @@ body.aside-folded .toggle-menu-button i {
 }
 
 .main-nav .badge-count {
-  background: linear-gradient(135deg, #FF6B35, #FF8C5A);
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   color: #fff;
   font-size: 0.62rem;
   padding: 0.1rem 0.4rem;
@@ -613,7 +612,7 @@ body.aside-folded .toggle-menu-button i {
 
 /* Folded aside */
 body.aside-folded .aside {
-  width: 70px;
+  width: 68px;
 }
 
 body.aside-folded .aside-header .logo-text,
@@ -651,15 +650,17 @@ body.aside-folded .main-nav li > a i {
   position: fixed;
   top: 0;
   right: 0;
-  left: 210px;
+  left: 220px;
   height: 64px;
   z-index: 1030;
-  background-color: #fff;
-  border-bottom: 1px solid #F1F5F9;
+  background-color: rgba(255,255,255,0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(226,232,240,0.8);
   display: flex;
   align-items: center;
-  transition: left 150ms ease;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,107,53,0.04);
+  transition: left 200ms cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 1px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(37,99,235,0.03);
 }
 
 .header.fixed-top {
@@ -667,7 +668,7 @@ body.aside-folded .main-nav li > a i {
 }
 
 body.aside-folded .header {
-  left: 70px;
+  left: 68px;
 }
 
 .header-inner {
@@ -878,15 +879,15 @@ body.aside-folded .header {
    03.4: MAIN AREA
    ======================== */
 .main-area {
-  margin-left: 210px;
+  margin-left: 220px;
   padding-top: 64px;
   min-height: 100vh;
   background-color: var(--bs-body-bg);
-  transition: margin-left 150ms ease;
+  transition: margin-left 200ms cubic-bezier(.4,0,.2,1);
 }
 
 body.aside-folded .main-area {
-  margin-left: 70px;
+  margin-left: 68px;
 }
 
 .main-content {
@@ -898,8 +899,11 @@ body.aside-folded .main-area {
   display: none;
   position: fixed;
   inset: 0;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(0,0,0,0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   z-index: 1030;
+  transition: opacity 250ms;
 }
 
 .aside-overlay.active { display: block; }
@@ -907,12 +911,13 @@ body.aside-folded .main-area {
 @media (max-width: 1199px) {
   .aside {
     transform: translateX(-100%) !important;
-    transition: transform 250ms cubic-bezier(.4,0,.2,1), width 150ms ease !important;
+    transition: transform 280ms cubic-bezier(.4,0,.2,1) !important;
+    box-shadow: none !important;
   }
 
   body.aside-open .aside {
     transform: translateX(0) !important;
-    box-shadow: 4px 0 24px rgba(0,0,0,0.15) !important;
+    box-shadow: 4px 0 32px rgba(0,0,0,0.35) !important;
   }
 
   .header {
@@ -2877,15 +2882,17 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 }
 
 .admin-shell .header {
-  background: rgba(255, 255, 255, 0.9) !important;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.14) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
 }
 
 .admin-shell .main-area {
   background:
-    radial-gradient(800px 300px at 100% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
-    radial-gradient(700px 260px at 0% 110%, rgba(59, 130, 246, 0.1), transparent 60%),
-    #eef5ff !important;
+    radial-gradient(900px 350px at 100% -5%, rgba(37,99,235,0.07), transparent 60%),
+    radial-gradient(800px 300px at 0% 105%, rgba(14,165,233,0.06), transparent 60%),
+    #f1f5f9 !important;
 }
 
 .admin-dashboard-page .jd-banner {
@@ -2901,13 +2908,14 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 
 .admin-dashboard-page .jd-stat-card,
 .admin-dashboard-page .card {
-  border: 1px solid rgba(147, 197, 253, 0.26) !important;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(226,232,240,0.5) !important;
+  transition: box-shadow 200ms ease, transform 200ms ease !important;
 }
 
 .admin-dashboard-page .card:hover,
 .admin-dashboard-page .jd-stat-card:hover {
-  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.1), 0 2px 8px rgba(0,0,0,0.06) !important;
   transform: translateY(-2px) !important;
 }
 
@@ -2916,8 +2924,11 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 }
 
 html[data-theme="dark"] .admin-shell .header {
-  background: rgba(7, 13, 30, 0.92) !important;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2) !important;
+  background: rgba(10, 15, 30, 0.94) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.15) !important;
+  box-shadow: 0 1px 20px rgba(0,0,0,0.4) !important;
 }
 
 html[data-theme="dark"] .admin-shell .header-icon-btn {
@@ -2934,17 +2945,17 @@ html[data-theme="dark"] .admin-shell .header-icon-btn:hover {
 
 html[data-theme="dark"] .admin-shell .main-area {
   background:
-    radial-gradient(800px 300px at 100% -10%, rgba(56, 189, 248, 0.16), transparent 60%),
-    radial-gradient(700px 260px at 0% 110%, rgba(59, 130, 246, 0.12), transparent 60%),
-    #040b1b !important;
+    radial-gradient(900px 350px at 100% -5%, rgba(37,99,235,0.12), transparent 60%),
+    radial-gradient(800px 300px at 0% 105%, rgba(14,165,233,0.09), transparent 60%),
+    #060d1e !important;
 }
 
 html[data-theme="dark"] .admin-shell .card,
 html[data-theme="dark"] .admin-dashboard-page .jd-stat-card,
 html[data-theme="dark"] .admin-dashboard-page .card {
-  background: #0f172a !important;
-  border: 1px solid rgba(148, 163, 184, 0.22) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(37,99,235,0.18) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
 }
 
 html[data-theme="dark"] .admin-shell .card-header,
