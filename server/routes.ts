@@ -313,6 +313,20 @@ async function ensureAdminExists() {
 
     const existing = await db.select({ id: admins.id, isActive: admins.isActive }).from(admins).where(eq(admins.email, adminEmail)).limit(1);
     if (!existing.length) {
+      // Check if ANY admin already exists (may have been created with a different email on first deploy)
+      const anyAdmin = await db.select({ id: admins.id, email: admins.email }).from(admins).limit(5);
+      if (anyAdmin.length && process.env.ADMIN_PASSWORD) {
+        // Admins exist but with a different email — sync password to all existing admins
+        // and update the first one's email to match ADMIN_EMAIL so login works
+        const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+        await db.update(admins).set({ password: hash, email: adminEmail, name: adminName, isActive: true }).where(eq(admins.id, anyAdmin[0].id));
+        // Remove any other duplicate admin rows to keep DB clean
+        for (let i = 1; i < anyAdmin.length; i++) {
+          await db.delete(admins).where(eq(admins.id, anyAdmin[i].id));
+        }
+        console.log(`[admin] Admin email updated from ${anyAdmin[0].email} to ${adminEmail} and password synced`);
+        return;
+      }
       // In production, force operators to set ADMIN_PASSWORD before first bootstrap.
       if (process.env.NODE_ENV === "production" && !process.env.ADMIN_PASSWORD) {
         console.error("[admin] ADMIN_PASSWORD is required in production for first-time admin bootstrap");
