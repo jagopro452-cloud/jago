@@ -8,12 +8,16 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
 
-// Determine SSL config: disable for local, allow self-signed for cloud DBs
+// Disable TLS cert chain verification for cloud DBs (Neon, Supabase, etc.)
+// These providers use intermediate CAs that can trigger "self-signed cert in chain" errors
 const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
+if (!isLocalDb) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+  ssl: isLocalDb ? false : { rejectUnauthorized: false, checkServerIdentity: () => undefined },
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,

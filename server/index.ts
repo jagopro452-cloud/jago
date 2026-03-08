@@ -1,3 +1,8 @@
+// Must be set before any DB or TLS connections are made
+if (process.env.NODE_ENV !== "test") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
