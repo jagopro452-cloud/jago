@@ -13,7 +13,7 @@ class SpinWheelScreen extends StatefulWidget {
 
 class _SpinWheelScreenState extends State<SpinWheelScreen>
     with SingleTickerProviderStateMixin {
-  static const _blue = Color(0xFF1565C0);
+  static const _blue = Color(0xFF1E6DE5);
 
   bool _loading = true;
   bool _spinning = false;
@@ -238,7 +238,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
               duration: const Duration(milliseconds: 200),
               width: 160, height: 56,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF1565C0)]),
+                gradient: const LinearGradient(colors: [Color(0xFF1E6DE5), Color(0xFF4A8FEF)]),
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 2)],
               ),

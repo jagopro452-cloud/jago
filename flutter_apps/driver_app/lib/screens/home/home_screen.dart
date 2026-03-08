@@ -55,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Timer? _locationTimer;
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
+  int _navIndex = 0;
 
   static const Color _jagoPrimary = Color(0xFF1E6DE5);
   static const Color _bg = Color(0xFF060D1E);
@@ -566,6 +567,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Scaffold(
         key: _scaffoldKey,
         drawer: _buildDrawer(),
+        bottomNavigationBar: _buildDriverBottomNav(),
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 14),
@@ -1354,6 +1356,72 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
         ]),
       ),
+    );
+  }
+
+  Widget _buildDriverBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _bg,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 20, offset: const Offset(0, -4))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _driverNavItem(Icons.map_rounded, 'Home', 0),
+              _driverNavItem(Icons.currency_rupee_rounded, 'Earnings', 1),
+              _driverNavItem(Icons.account_balance_wallet_rounded, 'Wallet', 2),
+              _driverNavItem(Icons.person_rounded, 'Profile', 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _driverNavItem(IconData icon, String label, int index) {
+    final active = _navIndex == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _navIndex = index);
+        if (index == 0) return;
+        if (index == 1) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))
+              .then((_) => setState(() => _navIndex = 0));
+        } else if (index == 2) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()))
+              .then((_) => setState(() => _navIndex = 0));
+        } else if (index == 3) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => setState(() => _navIndex = 0));
+        }
+      },
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 40,
+          height: 32,
+          decoration: BoxDecoration(
+            color: active ? _jagoPrimary.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Icon(icon, size: 20, color: active ? _jagoPrimary : Colors.white38),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? _jagoPrimary : Colors.white38,
+          ),
+        ),
+      ]),
     );
   }
 
