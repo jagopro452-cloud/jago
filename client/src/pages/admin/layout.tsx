@@ -49,7 +49,19 @@ interface NavItem {
 interface NavSection {
   category: string;
   items: NavItem[];
+  roles?: string[]; // undefined = visible to all
 }
+
+// Sections accessible per employee role. Super admin / admin see everything.
+// Undefined roles = visible to all authenticated admins.
+const ROLE_SECTION_ACCESS: Record<string, string[]> = {
+  operations_head: ["Dashboard","Zone Management","Trip Management","Promotion Management","User Management","Parcel Management","B2B / Porter","Vehicle Management","Fare Management","Transactions & Reports","Help & Support","Blog Management","Reviews","Business Management"],
+  zone_head: ["Dashboard","Zone Management","Trip Management","User Management","Fare Management","Transactions & Reports","Help & Support","Reviews"],
+  zone_manager: ["Dashboard","Zone Management","Trip Management","User Management","Fare Management"],
+  driver_onboarding_exec: ["Dashboard","User Management","Vehicle Management"],
+  support_agent: ["Dashboard","Trip Management","Help & Support","User Management"],
+  marketing_exec: ["Dashboard","Promotion Management","User Management","Blog Management","Reviews"],
+};
 
 const navSections: NavSection[] = [
   {
@@ -270,6 +282,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const isActive = (href: string) => location === href || location.startsWith(href + "/");
 
+  // Filter nav sections by role — super_admin / admin / undefined role = full access
+  const adminRole = (admin.role || "").toLowerCase();
+  const isSuperAdmin = !adminRole || adminRole === "superadmin" || adminRole === "super_admin" || adminRole === "admin";
+  const allowedSections: Set<string> | null = isSuperAdmin ? null : (ROLE_SECTION_ACCESS[adminRole] ? new Set(ROLE_SECTION_ACCESS[adminRole]) : null);
+  const visibleNav = allowedSections ? navSections.filter(s => allowedSections.has(s.category)) : navSections;
+
   const handleLogout = async () => {
     try {
       await fetch("/api/admin/logout", {
@@ -350,7 +368,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
 
             <ul className="main-nav nav">
-              {navSections.map((section) => (
+              {visibleNav.map((section) => (
                 <li key={section.category} className="nav-section-group" style={{ listStyle: "none", padding: 0, margin: 0 }}>
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                     <li className="nav-category" title={section.category}>

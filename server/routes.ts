@@ -7619,6 +7619,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── DRIVER: Upload pickup location photo (ride security) ─────────────────
+  app.post("/api/app/driver/trip-photo", authApp, upload.single("photo"), async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { tripId } = req.body;
+      const photoUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      if (!photoUrl || !tripId) return res.status(400).json({ message: "photo and tripId required" });
+      // Ensure column exists, then update
+      await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS pickup_photo_url TEXT`).catch(() => {});
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET pickup_photo_url=${photoUrl}
+        WHERE id=${tripId}::uuid AND driver_id=${user.id}::uuid
+      `);
+      res.json({ success: true, photoUrl });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── DRIVER: Upload documents (DL, RC, Aadhar) ────────────────────────────
   app.post("/api/app/driver/upload-document", authApp, upload.single("document"), async (req, res) => {
     try {

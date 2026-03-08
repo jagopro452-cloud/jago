@@ -80,4 +80,5 @@ class ApiConfig {
   static String get driverWithdrawRequest => '$baseUrl/api/app/driver/withdraw-request';
   static String get deleteAccount => '$baseUrl/api/app/driver/account';
   static String get verifyDeliveryOtp => '$baseUrl/api/app/driver/verify-delivery-otp';
+  static String get tripPhoto => '$baseUrl/api/app/driver/trip-photo';
 }

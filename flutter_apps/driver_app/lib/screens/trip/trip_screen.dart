@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -437,22 +438,120 @@ class _TripScreenState extends State<TripScreen> {
       if (res.statusCode == 200) {
         // Notify customer trip started via socket
         _socket.updateTripStatus(tripId, 'on_the_way', otp: otp);
-        setState(() => _status = 'in_progress');
+        setState(() { _status = 'in_progress'; _loading = false; });
         final destLat = (_trip?['destinationLat'] as num?)?.toDouble();
         final destLng = (_trip?['destinationLng'] as num?)?.toDouble();
         if (destLat != null && destLng != null && destLat != 0) {
           _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(destLat, destLng)));
         }
+        // Prompt driver to take a pickup location photo (ride security)
+        _showPickupPhotoPrompt(tripId);
       } else {
         final err = jsonDecode(res.body);
         if (!mounted) return;
         _showSnack(err['message'] ?? 'Wrong OTP', error: true);
+        setState(() => _loading = false);
       }
     } catch (_) {
       if (!mounted) return;
       _showSnack('Network error. Try again.', error: true);
+      setState(() => _loading = false);
     }
-    if (mounted) setState(() => _loading = false);
+  }
+
+  /// Show a bottom sheet prompting driver to capture a pickup location photo.
+  void _showPickupPhotoPrompt(String tripId) {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4,
+            decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _blue.withValues(alpha: 0.25)),
+            ),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: _blue.withValues(alpha: 0.18), shape: BoxShape.circle),
+                child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF60A5FA), size: 26)),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Pickup Location Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text('Capture a photo at the pickup point for ride security.',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12)),
+              ])),
+            ]),
+          ),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white60,
+                  side: const BorderSide(color: Colors.white24),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue, foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
+                icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                label: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w800)),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _captureAndUploadPickupPhoto(tripId);
+                },
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  /// Opens the camera, captures a pickup photo and uploads it to the server.
+  Future<void> _captureAndUploadPickupPhoto(String tripId) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 70,
+        maxWidth: 1280,
+      );
+      if (picked == null || !mounted) return;
+      _showSnack('Uploading pickup photo…');
+      final token = await AuthService.getToken();
+      final req = http.MultipartRequest('POST', Uri.parse(ApiConfig.tripPhoto));
+      req.headers['Authorization'] = 'Bearer $token';
+      req.fields['tripId'] = tripId;
+      req.files.add(await http.MultipartFile.fromPath('photo', picked.path));
+      final response = await req.send();
+      if (response.statusCode == 200 && mounted) {
+        _showSnack('Pickup photo saved ✓');
+      }
+    } catch (_) {
+      // Photo is optional — don't block trip on failure
+    }
   }
 
   void _showCancelDialog() {

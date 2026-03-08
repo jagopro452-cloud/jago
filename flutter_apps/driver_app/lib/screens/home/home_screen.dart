@@ -14,6 +14,7 @@ import '../../widgets/incoming_trip_sheet.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_verification_screen.dart';
+import '../verification/face_verification_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
@@ -456,8 +457,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Check if face verification is needed before going online.
+  /// Returns true if face verification screen was pushed (caller should return).
+  Future<bool> _checkFaceVerificationAndProceed() async {
+    try {
+      final token = await AuthService.getToken();
+      final res = await http.get(
+        Uri.parse(ApiConfig.checkVerification),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['needsVerification'] == true && mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FaceVerificationScreen(
+                reason: data['reason']?.toString() ?? 'daily_check',
+                onVerified: () => Navigator.pop(context),
+              ),
+            ),
+          );
+          // After verification completes, retry the online toggle
+          if (mounted) _toggleOnline();
+          return true;
+        }
+      }
+    } catch (_) {
+      // Face check timed out or failed — let driver go online anyway
+    }
+    return false;
+  }
+
   Future<void> _toggleOnline() async {
     HapticFeedback.mediumImpact();
+    // Going online: check if face re-verification is required (daily / every 10 trips)
+    if (!_isOnline) {
+      final redirected = await _checkFaceVerificationAndProceed();
+      if (redirected) return;
+    }
     setState(() => _toggling = true);
     final newStatus = !_isOnline;
     try {

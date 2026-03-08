@@ -3,9 +3,25 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-const ROLES = ["employee", "manager", "zone_manager", "support", "admin"];
+const ROLES = [
+  "super_admin",
+  "operations_head",
+  "zone_head",
+  "zone_manager",
+  "driver_onboarding_exec",
+  "support_agent",
+  "marketing_exec",
+];
 const ROLE_COLORS: Record<string, string> = {
-  employee: "#64748b", manager: "#1a73e8", zone_manager: "#7c3aed",
+  super_admin: "#dc2626",
+  operations_head: "#1a73e8",
+  zone_head: "#7c3aed",
+  zone_manager: "#9333ea",
+  driver_onboarding_exec: "#0891b2",
+  support_agent: "#16a34a",
+  marketing_exec: "#d97706",
+  // legacy fallbacks
+  employee: "#64748b", manager: "#1a73e8", zone_manager_old: "#7c3aed",
   support: "#16a34a", admin: "#dc2626",
 };
 
@@ -20,7 +36,7 @@ export default function EmployeesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [zoneFilter, setZoneFilter] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "employee", zoneId: "", isActive: true });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "support_agent", zoneId: "", isActive: true });
 
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", zoneFilter],
@@ -62,7 +78,7 @@ export default function EmployeesPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: "", email: "", phone: "", role: "employee", zoneId: "", isActive: true });
+    setForm({ name: "", email: "", phone: "", role: "support_agent", zoneId: "", isActive: true });
     setShowModal(true);
   };
   const openEdit = (e: any) => {
