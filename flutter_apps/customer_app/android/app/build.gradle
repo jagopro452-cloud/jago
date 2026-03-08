@@ -28,8 +28,8 @@ android {
         applicationId "com.mindwhile.jago_customer"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 6
-        versionName "1.0.6"
+        versionCode 29
+        versionName "1.0.29"
         multiDexEnabled true
     }
 

@@ -1535,6 +1535,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+  app.patch("/api/discounts/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE discounts SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
 
   // Spin Wheel
   app.get("/api/spin-wheel", async (_req, res) => {
@@ -1554,6 +1561,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await rawDb.execute(rawSql`DELETE FROM spin_wheel_items WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/spin-wheel/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/spin-wheel/:id", async (req, res) => {
+    try {
+      const { label, reward_amount, rewardAmount, reward_type, rewardType, probability, is_active, isActive } = req.body;
+      const lbl = label; const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType; const prob = probability; const active = is_active ?? isActive;
+      const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET label=${lbl}, reward_amount=${rAmt}, reward_type=${rType}, probability=${prob}, is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

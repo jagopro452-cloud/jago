@@ -34,6 +34,16 @@ export default function SpinWheelPage() {
     },
   });
 
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/spin-wheel/${id}`, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/spin-wheel"] });
+      toast({ title: "Status updated" });
+    },
+    onError: () => toast({ title: "Failed to update status", variant: "destructive" }),
+  });
+
   return (
     <>
     
@@ -82,6 +92,13 @@ export default function SpinWheelPage() {
                       <td>{item.probability}%</td>
                       <td><span className={`badge ${item.isActive ? "bg-success" : "bg-secondary"}`}>{item.isActive ? "Active" : "Inactive"}</span></td>
                       <td>
+                        <button
+                          className={`btn btn-sm me-1 ${item.isActive ? "btn-outline-warning" : "btn-outline-success"}`}
+                          onClick={() => toggleMutation.mutate({ id: item.id, isActive: !item.isActive })}
+                          title={item.isActive ? "Deactivate" : "Activate"}
+                        >
+                          <i className={`bi ${item.isActive ? "bi-toggle-on" : "bi-toggle-off"}`}></i>
+                        </button>
                         <button className="btn btn-sm btn-outline-primary me-1" onClick={() => { setEditing(item); setForm({ label: item.label, rewardAmount: item.rewardAmount, rewardType: item.rewardType, probability: item.probability, isActive: item.isActive }); setShowModal(true); }}><i className="bi bi-pencil-fill"></i></button>
                         <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(item.id); }}><i className="bi bi-trash-fill"></i></button>
                       </td>

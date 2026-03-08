@@ -1319,7 +1319,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        if (s['type'] == 'parcel') {
+        if (s['type'] == 'parcel' || s['type'] == 'cargo') {
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => ParcelBookingScreen(
               pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));

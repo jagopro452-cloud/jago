@@ -34,6 +34,16 @@ export default function DiscountsPage() {
     },
   });
 
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/discounts/${id}`, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
+      toast({ title: "Status updated" });
+    },
+    onError: () => toast({ title: "Failed to update status", variant: "destructive" }),
+  });
+
   const openAdd = () => {
     setEditing(null);
     setForm({ name: "", discountAmount: "", discountType: "percentage", minOrderAmount: "", maxDiscountAmount: "", isActive: true });
@@ -98,6 +108,14 @@ export default function DiscountsPage() {
                         </span>
                       </td>
                       <td>
+                        <button
+                          className={`btn btn-sm me-1 ${d.isActive ? "btn-outline-warning" : "btn-outline-success"}`}
+                          onClick={() => toggleMutation.mutate({ id: d.id, isActive: !d.isActive })}
+                          title={d.isActive ? "Deactivate" : "Activate"}
+                          data-testid={`btn-toggle-discount-${d.id}`}
+                        >
+                          <i className={`bi ${d.isActive ? "bi-toggle-on" : "bi-toggle-off"}`}></i>
+                        </button>
                         <button className="btn btn-sm btn-outline-primary me-1" onClick={() => openEdit(d)} data-testid={`btn-edit-discount-${d.id}`}>
                           <i className="bi bi-pencil-fill"></i>
                         </button>

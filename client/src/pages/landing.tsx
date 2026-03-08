@@ -469,8 +469,7 @@ export default function LandingPage() {
           <div className="container" style={{ height: 66, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             {/* Logo */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 12, background: `linear-gradient(135deg,${blue},${blueBright})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🏍️</div>
-              <span style={{ fontSize: 22, fontWeight: 800, background: `linear-gradient(135deg,#fff,${blueBright})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontFamily: "Space Grotesk,sans-serif", letterSpacing: -0.5 }}>JAGO</span>
+              <img src="/jago-logo.png" alt="JAGO" style={{ height: 38, width: "auto", objectFit: "contain" }} />
             </div>
             {/* Desktop links */}
             <div style={{ display: "flex", gap: 28, alignItems: "center" }}>
@@ -480,7 +479,6 @@ export default function LandingPage() {
             </div>
             {/* CTA */}
             <div style={{ display: "flex", gap: 10 }}>
-              <a href="/auth" style={{ padding: "8px 18px", borderRadius: 10, border: `1px solid ${border}`, color: text, fontSize: 13, fontWeight: 500, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", backdropFilter: "blur(8px)", background: "rgba(255,255,255,0.04)" }}>Login</a>
               <a href="#download" style={{ padding: "8px 18px", borderRadius: 10, background: `linear-gradient(135deg,${blue},${blueBright})`, color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", boxShadow: `0 4px 16px rgba(30,109,229,0.4)`, animation: "jago-pulse 2.5s infinite" }}>Get App</a>
             </div>
           </div>
@@ -498,10 +496,8 @@ export default function LandingPage() {
             {/* LEFT */}
             <div style={{ animation: "jago-fade-up 0.9s ease forwards" }}>
               {/* JAGO Logo mark in hero */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg,${blue},${blueBright})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, boxShadow: `0 6px 20px rgba(30,109,229,0.4)` }}>🏍️</div>
-                <span style={{ fontSize: 28, fontWeight: 800, background: `linear-gradient(135deg,${blue},${violet})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontFamily: "Space Grotesk,sans-serif", letterSpacing: -0.5 }}>JAGO</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: green, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 20, padding: "3px 10px", fontFamily: "Space Grotesk,sans-serif" }}>v2.0</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+                <img src="/jago-logo.png" alt="JAGO" style={{ height: 52, width: "auto", objectFit: "contain" }} />
               </div>
               {/* Eyebrow badge */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(30,109,229,0.12)", border: "1px solid rgba(30,109,229,0.3)", borderRadius: 30, padding: "6px 14px", marginBottom: 28 }}>
