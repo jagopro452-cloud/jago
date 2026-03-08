@@ -8,4 +8,4 @@ function run(command: string) {
 }
 
 run("vite build");
-run("esbuild server/index.ts --platform=node --bundle --format=esm --packages=external --outfile=dist/index.js");
+run("esbuild server/index.ts --platform=node --bundle --format=esm --packages=external --define:process.env.NODE_ENV='\"production\"' --outfile=dist/index.js");
