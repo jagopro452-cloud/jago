@@ -4686,6 +4686,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
 
+      // ── Server-side fare calculation (fallback when client sends 0 or missing) ──
+      let computedFare = Number(estimatedFare) || 0;
+      if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
+        try {
+          const fareConfig = await rawDb.execute(rawSql`
+            SELECT base_fare, fare_per_km, fare_per_min, minimum_fare, night_charge_multiplier
+            FROM trip_fares
+            WHERE vehicle_category_id = ${vehicleCategoryId}::uuid
+              AND (zone_id IS NULL OR zone_id IN (
+                SELECT id FROM zones WHERE is_active = true ORDER BY created_at ASC LIMIT 1
+              ))
+            ORDER BY created_at DESC
+            LIMIT 1
+          `);
+          if (fareConfig.rows.length) {
+            const fc = fareConfig.rows[0] as any;
+            const base   = parseFloat(fc.base_fare   || "0");
+            const perKm  = parseFloat(fc.fare_per_km || "0");
+            const perMin = parseFloat(fc.fare_per_min || "0");
+            const minFare = parseFloat(fc.minimum_fare || "0");
+            const dist  = Number(finalDistance) || 0;
+            // Apply night charge multiplier between 22:00-06:00
+            const hr = new Date().getHours();
+            const isNight = hr >= 22 || hr < 6;
+            const nightMult = isNight ? parseFloat(fc.night_charge_multiplier || "1") : 1;
+            const raw = (base + perKm * dist + perMin * 0) * nightMult;
+            computedFare = Math.max(raw, minFare);
+          } else {
+            // Absolute fallback: ₹30 + ₹12/km (standard bike fare)
+            const dist = Number(finalDistance) || 0;
+            computedFare = Math.max(30 + 12 * dist, 30);
+          }
+        } catch (fareErr: any) {
+          console.error("[fare-calc] fallback error:", fareErr.message);
+          const dist = Number(finalDistance) || 0;
+          computedFare = Math.max(30 + 12 * dist, 30);
+        }
+      }
+
       // Auto-cancel any trips stuck in 'searching' for more than 3 minutes
       await rawDb.execute(rawSql`
         UPDATE trip_requests
@@ -4731,7 +4770,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
           ${pickupAddress || ""}, ${Number(pickupLat) || 0}, ${Number(pickupLng) || 0},
           ${finalDestAddress}, ${Number(finalDestLat) || 0}, ${Number(finalDestLng) || 0},
-          ${Number(estimatedFare) || 0}, ${Number(finalDistance) || 0}, ${finalPayment},
+          ${computedFare}, ${Number(finalDistance) || 0}, ${finalPayment},
           ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
           ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
           ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}
