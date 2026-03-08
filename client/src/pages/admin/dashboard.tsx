@@ -101,6 +101,7 @@ const CUSTOM_LABEL = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, nam
 
 export default function Dashboard() {
   const { data: stats, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/stats"] });
+  const { data: svcData } = useQuery<any>({ queryKey: ["/api/admin/dashboard"], staleTime: 30_000 });
   const { data: chart = [] } = useQuery<any[]>({ queryKey: ["/api/dashboard/chart"] });
   const { data: notifs = [] } = useQuery<any[]>({ queryKey: ["/api/notifications"] });
 
@@ -188,6 +189,93 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          {/* Services Overview */}
+          {(() => {
+            const svc = svcData?.services;
+            const drv = svcData?.drivers;
+            const services = [
+              {
+                label: "City Rides", icon: "bi-car-front-fill", color: "#1a73e8", bg: "#eff6ff",
+                trips: svc?.rides?.trips ?? 0,
+                revenue: svc?.rides?.revenue ?? 0,
+                model: svc?.rides?.model ?? "subscription",
+                href: "/admin/trips",
+              },
+              {
+                label: "Parcels", icon: "bi-box-seam-fill", color: "#16a34a", bg: "#f0fdf4",
+                trips: svc?.parcels?.trips ?? 0,
+                revenue: svc?.parcels?.revenue ?? 0,
+                model: svc?.parcels?.model ?? "commission",
+                href: "/admin/parcel-trips",
+              },
+              {
+                label: "Intercity Carpool", icon: "bi-people-fill", color: "#7c3aed", bg: "#f5f3ff",
+                trips: svc?.carpool?.trips ?? 0,
+                revenue: svc?.carpool?.revenue ?? 0,
+                model: svc?.carpool?.model ?? "commission",
+                href: "/admin/intercity-carsharing",
+              },
+              {
+                label: "Outstation Pool", icon: "bi-signpost-2-fill", color: "#d97706", bg: "#fefce8",
+                trips: svc?.outstationPool?.bookings ?? 0,
+                revenue: svc?.outstationPool?.revenue ?? 0,
+                model: svc?.outstationPool?.mode === "on" ? "active" : "inactive",
+                modelColor: svc?.outstationPool?.mode === "on" ? "#16a34a" : "#94a3b8",
+                href: "/admin/outstation-pool",
+              },
+            ];
+            const pendingComm = drv?.totalPendingCommission ?? 0;
+            return (
+              <>
+                <div className="mb-2 mt-1" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>Services Overview</span>
+                  {pendingComm > 0 && (
+                    <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                      ₹{pendingComm.toLocaleString("en-IN", { maximumFractionDigits: 0 })} pending commission
+                    </span>
+                  )}
+                </div>
+                <div className="row g-3 mb-3">
+                  {services.map((s, i) => (
+                    <div key={i} className="col-xl-3 col-sm-6">
+                      <Link href={s.href}>
+                        <div style={{
+                          background: "white", borderRadius: 14, padding: "14px 16px",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+                          border: `1.5px solid ${s.color}18`,
+                          cursor: "pointer", transition: "box-shadow 0.18s",
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.boxShadow = `0 4px 16px ${s.color}22`)}
+                          onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.07)")}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: 16 }}></i>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{s.label}</div>
+                              <div style={{ fontSize: 10, color: (s as any).modelColor ?? s.color, fontWeight: 600, textTransform: "capitalize" }}>{s.model}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{svcData ? s.trips.toLocaleString() : "—"}</div>
+                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>trips</div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>₹{svcData ? s.revenue.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>revenue</div>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
           {/* Charts Row */}
           <div className="row g-3 mb-3">

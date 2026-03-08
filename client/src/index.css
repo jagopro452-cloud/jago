@@ -4178,3 +4178,31 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   border: 1px solid rgba(125, 211, 252, 0.18) !important;
 }
 
+/* ── Services overview cards dark mode ── */
+.admin-shell .svc-overview-card {
+  background: rgba(8, 17, 38, 0.6) !important;
+  border-color: rgba(125, 211, 252, 0.14) !important;
+}
+
+/* ── Admin table mobile scrolling ── */
+@media (max-width: 768px) {
+  .admin-dashboard-page .table-responsive {
+    -webkit-overflow-scrolling: touch;
+    border-radius: 0 0 14px 14px;
+  }
+  .admin-dashboard-page .col-xl-3 {
+    min-width: 200px;
+  }
+}
+
+/* ── Outstation pool toggle animation ── */
+.jago-toggle-btn {
+  transition: background 0.22s, box-shadow 0.22s;
+}
+.jago-toggle-btn.active {
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.18);
+}
+.jago-toggle-btn.inactive {
+  box-shadow: 0 0 0 3px rgba(148,163,184,0.18);
+}
+

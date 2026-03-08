@@ -55,6 +55,7 @@ import Insurance from "@/pages/admin/insurance";
 import DriverEarnings from "@/pages/admin/driver-earnings";
 import Referrals from "@/pages/admin/referrals";
 import DriverVerificationPage from "@/pages/admin/driver-verification";
+import OutstationPool from "@/pages/admin/outstation-pool";
 
 export default function AdminRoutes() {
   return (
@@ -67,6 +68,7 @@ export default function AdminRoutes() {
         <Route path="/admin/trips" component={Trips} />
         <Route path="/admin/car-sharing" component={CarSharing} />
         <Route path="/admin/intercity-carsharing" component={IntercityCarSharing} />
+        <Route path="/admin/outstation-pool" component={OutstationPool} />
         <Route path="/admin/parcel-refunds" component={ParcelRefunds} />
         <Route path="/admin/safety-alerts" component={SafetyAlerts} />
         <Route path="/admin/banners" component={Banners} />

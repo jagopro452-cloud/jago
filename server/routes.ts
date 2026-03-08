@@ -396,6 +396,17 @@ async function ensureOperationalSchema() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    // Used by forgot-password / reset-password flow
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS admin_otp_resets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(191) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        is_used BOOLEAN NOT NULL DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
 
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
