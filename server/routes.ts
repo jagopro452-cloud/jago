@@ -281,12 +281,11 @@ function requireOpsKey(req: Request, res: Response, next: NextFunction) {
 async function ensureAdminExists() {
   const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
   const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
+  const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
 
-  // Each statement in its own try-catch so one failure never blocks the rest
-  try { await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`); } catch (_) {}
-
+  // ── Step 1: Guarantee the tables exist using rawDb (same path as ensureOperationalSchema)
   try {
-    await db.execute(sql`
+    await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS admins (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
@@ -294,18 +293,16 @@ async function ensureAdminExists() {
         password VARCHAR(191) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'admin',
         is_active BOOLEAN NOT NULL DEFAULT true,
+        auth_token TEXT,
+        auth_token_expires_at TIMESTAMP,
+        last_login_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
   } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); }
 
-  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`); } catch (_) {}
-  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`); } catch (_) {}
-  try { await db.execute(sql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`); } catch (_) {}
-  try { await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admins_auth_token ON admins(auth_token)`); } catch (_) {}
-
   try {
-    await db.execute(sql`
+    await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS admin_login_otp (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         admin_id UUID NOT NULL,
@@ -316,40 +313,52 @@ async function ensureAdminExists() {
       )
     `);
   } catch (_) {}
-  try { await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_admin_login_otp_admin_created ON admin_login_otp(admin_id, created_at DESC)`); } catch (_) {}
+  try { await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_admins_auth_token ON admins(auth_token)`); } catch (_) {}
+  try { await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_admin_login_otp_admin_created ON admin_login_otp(admin_id, created_at DESC)`); } catch (_) {}
 
+  // ── Step 2: Seed / sync admin account using rawDb (never uses Drizzle ORM table refs)
   try {
-    const existing = await db.select({ id: admins.id, isActive: admins.isActive }).from(admins).where(eq(admins.email, adminEmail)).limit(1);
+    const existingR = await rawDb.execute(rawSql`
+      SELECT id, is_active FROM admins WHERE email = ${adminEmail} LIMIT 1
+    `);
+    const existingRow: any = existingR.rows[0];
 
-    if (!existing.length) {
-      // Check for any admin with a different email (first-deploy email mismatch scenario)
-      const anyAdmin = await db.select({ id: admins.id, email: admins.email }).from(admins).limit(5);
+    if (!existingRow) {
+      // Check for any admin with a different email (first-deploy email mismatch)
+      const anyR = await rawDb.execute(rawSql`SELECT id, email FROM admins ORDER BY created_at ASC LIMIT 5`);
+      const hash = await bcrypt.hash(adminPassword, 10);
 
-      if (anyAdmin.length) {
-        // Admins exist but with a different email — migrate the first one to current ADMIN_EMAIL
-        const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
-        const hash = await bcrypt.hash(adminPassword, 10);
-        await db.update(admins).set({ password: hash, email: adminEmail, name: adminName, isActive: true }).where(eq(admins.id, anyAdmin[0].id));
-        for (let i = 1; i < anyAdmin.length; i++) {
-          await db.delete(admins).where(eq(admins.id, anyAdmin[i].id));
+      if (anyR.rows.length > 0) {
+        // Migrate the first admin to the configured ADMIN_EMAIL
+        const firstAdmin: any = anyR.rows[0];
+        await rawDb.execute(rawSql`
+          UPDATE admins SET email=${adminEmail}, name=${adminName}, password=${hash}, is_active=true
+          WHERE id=${firstAdmin.id}::uuid
+        `);
+        for (let i = 1; i < anyR.rows.length; i++) {
+          const a: any = anyR.rows[i];
+          await rawDb.execute(rawSql`DELETE FROM admins WHERE id=${a.id}::uuid`).catch(() => {});
         }
         console.log(`[admin] Migrated admin → ${adminEmail}, password synced`);
-        return;
+      } else {
+        // No admin at all — create one
+        await rawDb.execute(rawSql`
+          INSERT INTO admins (name, email, password, role, is_active)
+          VALUES (${adminName}, ${adminEmail}, ${hash}, 'superadmin', true)
+          ON CONFLICT (email) DO NOTHING
+        `);
+        console.log(`[admin] Admin created: ${adminEmail}`);
       }
-
-      // No admin exists at all — create one
-      const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
-      const hash = await bcrypt.hash(adminPassword, 10);
-      await db.insert(admins).values({ id: crypto.randomUUID(), name: adminName, email: adminEmail, password: hash, role: "superadmin", isActive: true });
-      console.log(`[admin] Admin created: ${adminEmail}`);
     } else {
-      // Admin row exists — sync password if ADMIN_PASSWORD env var is set
+      // Admin exists — sync password from env var if explicitly set
       if (process.env.ADMIN_PASSWORD) {
         const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
-        await db.update(admins).set({ password: hash, isActive: true }).where(eq(admins.email, adminEmail));
+        await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true WHERE email=${adminEmail}`);
         console.log("[admin] Password synced from ADMIN_PASSWORD env var");
       } else {
-        if (!existing[0].isActive) await db.update(admins).set({ isActive: true }).where(eq(admins.email, adminEmail));
+        if (!existingRow.is_active) {
+          await rawDb.execute(rawSql`UPDATE admins SET is_active=true WHERE email=${adminEmail}`);
+        }
         console.log("[admin] Admin account OK");
       }
     }
@@ -361,6 +370,32 @@ async function ensureAdminExists() {
 async function ensureOperationalSchema() {
   try {
     await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+
+    // ── Core auth tables — must always exist even if Drizzle migrations haven't run ──
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS admins (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(191) NOT NULL UNIQUE,
+        password VARCHAR(191) NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        auth_token TEXT,
+        auth_token_expires_at TIMESTAMP,
+        last_login_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS admin_login_otp (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        admin_id UUID NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        is_used BOOLEAN NOT NULL DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
 
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
@@ -1129,16 +1164,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
-      // Self-healing: if admins table is missing (first deploy / migration not yet applied)
-      // run ensureAdminExists inline and retry — this guarantees the login ALWAYS works
+
+      // Self-healing: ensure admins table & seed exist before querying.
+      // Uses rawDb directly so it works regardless of Drizzle ORM table state.
+      const lookupAdmin = async (lookupEmail: string) => {
+        const r = await rawDb.execute(rawSql`
+          SELECT id, name, email, password, role, is_active as "isActive"
+          FROM admins WHERE LOWER(email) = ${lookupEmail.trim().toLowerCase()} LIMIT 1
+        `);
+        if (!r.rows.length) return null;
+        const row: any = r.rows[0];
+        return { id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, isActive: row.isActive };
+      };
+
       let admin: any;
       try {
-        admin = await storage.getAdminByEmail(email);
+        admin = await lookupAdmin(email);
       } catch (dbErr: any) {
-        if (String(dbErr.message).includes("does not exist")) {
+        if (String(dbErr.message).toLowerCase().includes("does not exist")) {
           console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
           await ensureAdminExists();
-          admin = await storage.getAdminByEmail(email);
+          admin = await lookupAdmin(email);
         } else {
           throw dbErr;
         }
@@ -1183,7 +1229,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { email, otp } = req.body;
       if (!email || !otp) return res.status(400).json({ message: "Email and OTP are required" });
-      const admin = await storage.getAdminByEmail(email);
+      const adminR = await rawDb.execute(rawSql`
+        SELECT id, name, email, role, is_active as "isActive"
+        FROM admins WHERE LOWER(email)=${email.trim().toLowerCase()} LIMIT 1
+      `);
+      const admin: any = adminR.rows[0];
       if (!admin) return res.status(401).json({ message: "Invalid credentials" });
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
 
