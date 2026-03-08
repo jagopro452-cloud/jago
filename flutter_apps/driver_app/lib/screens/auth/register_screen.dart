@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -117,7 +116,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _submit() async {
     setState(() => _loading = true);
     try {
-      final token = await AuthService.getToken();
+      // Ensure driver has an account and token. If not logged in, register first.
+      String? token = await AuthService.getToken();
+      if (token == null || token.isEmpty) {
+        final phone = _phoneCtrl.text.trim();
+        final password = _passwordCtrl.text;
+        final name = _nameCtrl.text.trim();
+        if (phone.length != 10) throw Exception('Enter a valid 10-digit phone number');
+        if (password.length < 6) throw Exception('Password must be at least 6 characters');
+        if (name.length < 2) throw Exception('Please enter your full name');
+        final regRes = await AuthService.registerWithPassword(phone, password, name);
+        if (regRes['success'] != true) {
+          throw Exception(regRes['message'] ?? 'Registration failed. Try again.');
+        }
+        token = await AuthService.getToken();
+      }
+
       final headers = {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'};
 
       // 1. Update Profile Fields
@@ -141,7 +155,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (profileRes.statusCode != 200) {
-        throw Exception(jsonDecode(profileRes.body)['message'] ?? 'Failed to update profile');
+        String msg = 'Failed to update profile';
+        try {
+          if ((profileRes.headers['content-type'] ?? '').contains('application/json')) {
+            final decoded = jsonDecode(profileRes.body);
+            msg = decoded['message'] ?? msg;
+          }
+        } catch (_) {}
+        throw Exception(msg);
       }
 
       // 2. Upload Documents
@@ -160,7 +181,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           await http.post(
             Uri.parse('${ApiConfig.baseUrl}/api/app/driver/upload-document-base64'),
             headers: headers,
-            body: jsonEncode({'docType': entry.key, 'base64': b64}),
+            body: jsonEncode({'docType': entry.key, 'imageData': b64}),
           );
         }
       }
@@ -321,7 +342,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5))),
+          Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
           const SizedBox(height: 32),
           ...children,
         ],

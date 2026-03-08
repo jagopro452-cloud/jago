@@ -88,7 +88,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.2)),
       ),
       child: Column(children: [
         Row(children: [

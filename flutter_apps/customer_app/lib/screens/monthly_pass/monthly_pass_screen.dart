@@ -106,7 +106,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
                               value: ((_activePlan!['ridesUsed'] ?? 0) / (_activePlan!['ridesTotal'] ?? 30)).clamp(0.0, 1.0),
-                              backgroundColor: Colors.white.withOpacity(0.3),
+                              backgroundColor: Colors.white.withValues(alpha: 0.3),
                               valueColor: const AlwaysStoppedAnimation(Colors.amber),
                               minHeight: 8,
                             ),
@@ -138,8 +138,8 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: color.withOpacity(0.3)),
-                        boxShadow: [BoxShadow(color: color.withOpacity(0.08), blurRadius: 12)],
+                        border: Border.all(color: color.withValues(alpha: 0.3)),
+                        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 12)],
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(16),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -27,6 +28,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   String _serverOtp = '';
   int _seconds = 0;
   Timer? _timer;
+  // Firebase OTP
+  String? _firebaseVerificationId;
+  bool _usingFirebaseOtp = false;
 
   bool _loading = false;
   late AnimationController _fadeCtrl;
@@ -95,29 +99,75 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneOtpCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.sendOtp(phone, 'driver');
-    setState(() => _loading = false);
-    if (!mounted) return;
-    if (res['success'] == true) {
-      setState(() { _otpSent = true; _serverOtp = res['otp']?.toString() ?? ''; });
-      _startTimer();
-      _showSnack('OTP sent to +91$phone');
-    } else {
-      _showSnack(res['message'] ?? 'Failed to send OTP. Try again.', error: true);
-    }
+    // Try Firebase Phone Auth first; fall back to server OTP
+    FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (verificationId) {
+        if (!mounted) return;
+        setState(() {
+          _firebaseVerificationId = verificationId;
+          _usingFirebaseOtp = true;
+          _loading = false;
+          _otpSent = true;
+        });
+        _startTimer();
+        _showSnack('OTP sent to +91$phone');
+      },
+      onError: (error) async {
+        if (!mounted) return;
+        final res = await AuthService.sendOtp(phone, 'driver');
+        if (!mounted) return;
+        setState(() { _loading = false; });
+        if (res['success'] == true) {
+          setState(() { _usingFirebaseOtp = false; _serverOtp = res['otp']?.toString() ?? ''; _otpSent = true; });
+          _startTimer();
+          _showSnack('OTP sent to +91$phone');
+        } else {
+          _showSnack(res['message'] ?? 'Failed to send OTP. Try again.', error: true);
+        }
+      },
+      onAutoVerify: (idToken) async {
+        if (!mounted) return;
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+        if (!mounted) return;
+        setState(() => _loading = false);
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        }
+      },
+    );
   }
 
   Future<void> _verifyOtp() async {
+    final phone = _phoneOtpCtrl.text.trim();
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.verifyOtp(_phoneOtpCtrl.text.trim(), otp, 'driver');
-    setState(() => _loading = false);
-    if (!mounted) return;
-    if (res['success'] == true) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+    if (_usingFirebaseOtp && _firebaseVerificationId != null) {
+      try {
+        final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: otp, verificationId: _firebaseVerificationId);
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+        setState(() => _loading = false);
+        if (!mounted) return;
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        } else {
+          _showSnack(res['message'] ?? 'Verification failed. Try again.', error: true);
+        }
+      } catch (e) {
+        setState(() => _loading = false);
+        _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
+      }
     } else {
-      _showSnack(res['message'] ?? 'Invalid OTP. Try again.', error: true);
+      final res = await AuthService.verifyOtp(phone, otp, 'driver');
+      setState(() => _loading = false);
+      if (!mounted) return;
+      if (res['success'] == true) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      } else {
+        _showSnack(res['message'] ?? 'Invalid OTP. Try again.', error: true);
+      }
     }
   }
 
@@ -163,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       const SizedBox(height: 12),
       const Text('JAGO PILOT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 3)),
       const SizedBox(height: 4),
-      Text('Drive smart. Earn more.', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.35), fontWeight: FontWeight.w500)),
+      Text('Drive smart. Earn more.', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.35), fontWeight: FontWeight.w500)),
     ]);
   }
 
@@ -195,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Welcome Back, Pilot!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(height: 4),
-        Text('Login with your phone & password', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.4))),
+        Text('Login with your phone & password', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.4))),
         const SizedBox(height: 24),
         _label('Phone Number'),
         const SizedBox(height: 8),
@@ -226,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_otpSent ? 'Enter OTP' : 'Login with OTP', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(height: 4),
-        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}${_serverOtp.isNotEmpty ? "  (Dev: $_serverOtp)" : ""}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.4))),
+        Text(_otpSent ? 'OTP sent to +91${_phoneOtpCtrl.text}${_serverOtp.isNotEmpty ? "  (Dev: $_serverOtp)" : ""}' : 'Quick login — no password needed!', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.4))),
         const SizedBox(height: 24),
         _label('Phone Number'),
         const SizedBox(height: 8),
@@ -241,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _otpField(),
           const SizedBox(height: 8),
           if (_seconds > 0)
-            Center(child: Text('Resend OTP in ${_seconds}s', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13)))
+            Center(child: Text('Resend OTP in ${_seconds}s', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13)))
           else
             Center(child: GestureDetector(onTap: _sendOtp, child: Text('Resend OTP', style: TextStyle(color: _blue, fontWeight: FontWeight.w600, fontSize: 13)))),
           const SizedBox(height: 28),
@@ -249,7 +299,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           const SizedBox(height: 12),
           Center(child: GestureDetector(
             onTap: () => setState(() { _otpSent = false; _otpCtrl.clear(); }),
-            child: Text('← Change Number', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13, fontWeight: FontWeight.w600)),
+            child: Text('← Change Number', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13, fontWeight: FontWeight.w600)),
           )),
         ],
         const SizedBox(height: 24),
@@ -258,12 +308,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _label(String text) => Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withOpacity(0.5)));
+  Widget _label(String text) => Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.5)));
 
   Widget _phoneField(TextEditingController ctrl, {bool enabled = true}) {
     return Container(
       decoration: BoxDecoration(
-        color: enabled ? _surface : _surface.withOpacity(0.5),
+        color: enabled ? _surface : _surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),
@@ -276,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
-          decoration: InputDecoration(hintText: 'Enter 10-digit number', hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
+          decoration: InputDecoration(hintText: 'Enter 10-digit number', hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
         )),
       ]),
     );
@@ -291,11 +341,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
         decoration: InputDecoration(
           hintText: 'Enter your password',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          prefixIcon: Icon(Icons.lock_outline_rounded, color: Colors.white.withOpacity(0.3)),
-          suffixIcon: IconButton(icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white.withOpacity(0.3)), onPressed: () => setState(() => _showPassword = !_showPassword)),
+          prefixIcon: Icon(Icons.lock_outline_rounded, color: Colors.white.withValues(alpha: 0.3)),
+          suffixIcon: IconButton(icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white.withValues(alpha: 0.3)), onPressed: () => setState(() => _showPassword = !_showPassword)),
         ),
       ),
     );
@@ -310,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 12, color: _blue),
-        decoration: InputDecoration(hintText: '• • • • • •', hintStyle: TextStyle(fontSize: 20, color: Colors.white.withOpacity(0.15), letterSpacing: 8), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 16)),
+        decoration: InputDecoration(hintText: '• • • • • •', hintStyle: TextStyle(fontSize: 20, color: Colors.white.withValues(alpha: 0.15), letterSpacing: 8), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 16)),
       ),
     );
   }
@@ -320,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       width: double.infinity, height: 56,
       child: ElevatedButton(
         onPressed: _loading ? null : onTap,
-        style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, disabledBackgroundColor: _blue.withOpacity(0.4), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+        style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, disabledBackgroundColor: _blue.withValues(alpha: 0.4), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
         child: _loading
             ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
             : Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
@@ -330,7 +380,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _registerLink() {
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text("New here? ", style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14)),
+      Text("New here? ", style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
       GestureDetector(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
         child: Text('Register Now', style: TextStyle(color: _blue, fontWeight: FontWeight.w800, fontSize: 14)),

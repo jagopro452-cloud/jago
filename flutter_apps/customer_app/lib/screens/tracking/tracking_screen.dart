@@ -112,7 +112,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
       infoWindow: const InfoWindow(title: 'Your Pilot'),
     ));
-    _mapController?.animateCamera(CameraUpdate.newLatLng(pos));
+    // Keep camera on driver when trip is in progress (driver arriving or started)
+    if (_status == 'driver_assigned' || _status == 'accepted' ||
+        _status == 'arrived' || _status == 'in_progress' || _status == 'on_the_way') {
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(pos, 16));
+    }
   }
 
   @override
@@ -201,6 +205,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             final pLng = (trip['pickupLng'] as num?)?.toDouble();
             if (pLat != null && pLng != null && pLat != 0) {
               _center = LatLng(pLat, pLng);
+              // Animate camera only when driver is not yet assigned (searching state)
+              if (_status == 'searching') {
+                _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+              }
             }
           });
           if (_status == 'completed' || _status == 'cancelled') _pollTimer?.cancel();
@@ -258,7 +266,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           const SizedBox(height: 20),
           Row(children: [
             Container(padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 20)),
             const SizedBox(width: 12),
             Text('Cancel Reason', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDark ? Colors.white : const Color(0xFF111827))),
@@ -355,9 +363,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: [Colors.red.withOpacity(0.15), Colors.red.withOpacity(0.07)]),
+                                gradient: LinearGradient(colors: [Colors.red.withValues(alpha: 0.15), Colors.red.withValues(alpha: 0.07)]),
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                               ),
                               child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                                 Icon(Icons.cancel_rounded, size: 16, color: Color(0xFFEF4444)),
@@ -377,9 +385,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: [Colors.green.withOpacity(0.15), Colors.green.withOpacity(0.07)]),
+                                gradient: LinearGradient(colors: [Colors.green.withValues(alpha: 0.15), Colors.green.withValues(alpha: 0.07)]),
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Colors.green.withOpacity(0.35)),
+                                border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
                               ),
                               child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                                 Icon(Icons.phone_in_talk_rounded, size: 16, color: Colors.green),
@@ -418,9 +426,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: color.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.18), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
       ),
       child: Row(children: [
         if (_status == 'searching')
@@ -430,14 +438,14 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               width: 44, height: 44,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withOpacity(0.1 + _pulseCtrl.value * 0.1),
+                color: color.withValues(alpha: 0.1 + _pulseCtrl.value * 0.1),
               ),
               child: Icon(info['icon'] as IconData, color: color, size: 22)),
           )
         else
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: Icon(info['icon'] as IconData, color: color, size: 22)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -463,7 +471,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E6DE5).withOpacity(0.1),
+                color: const Color(0xFF1E6DE5).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.share_rounded, color: Color(0xFF1E6DE5), size: 15),
@@ -489,8 +497,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _blue.withOpacity(isDark ? 0.3 : 0.15), width: 1.5),
-        boxShadow: [BoxShadow(color: _blue.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))],
+        border: Border.all(color: _blue.withValues(alpha: isDark ? 0.3 : 0.15), width: 1.5),
+        boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
       ),
       child: Column(children: [
         Padding(
@@ -503,7 +511,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   colors: [_blue, const Color(0xFF1244A2)],
                   begin: Alignment.topLeft, end: Alignment.bottomRight),
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))],
+                boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20))),
@@ -523,7 +531,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      color: _blue.withOpacity(0.08),
+                      color: _blue.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6)),
                     child: Text(vehicleName, style: TextStyle(color: _blue, fontSize: 10, fontWeight: FontWeight.w800)),
                   ),
@@ -544,7 +552,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(colors: [_blue, Color(0xFF1244A2)]),
                       borderRadius: BorderRadius.circular(13),
-                      boxShadow: [BoxShadow(color: _blue.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                      boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
                     ),
                     child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
                 ),
@@ -566,7 +574,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                     decoration: BoxDecoration(
                       color: const Color(0xFF25D366),
                       borderRadius: BorderRadius.circular(13),
-                      boxShadow: [BoxShadow(color: const Color(0xFF25D366).withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                      boxShadow: [BoxShadow(color: const Color(0xFF25D366).withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
                     ),
                     child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20)),
                 ),
@@ -579,7 +587,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(colors: [Color(0xFF7F1D1D), Colors.red]),
                     borderRadius: BorderRadius.circular(13),
-                    boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.35), blurRadius: 8, offset: const Offset(0,3))],
+                    boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
                   ),
                   child: const Icon(Icons.sos_rounded, color: Colors.white, size: 20)),
               ),
@@ -591,9 +599,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: _blue.withOpacity(0.06),
+              color: _blue.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _blue.withOpacity(0.12))),
+              border: Border.all(color: _blue.withValues(alpha: 0.12))),
             child: Row(children: [
               Icon(Icons.directions_car_rounded, color: _blue, size: 14),
               const SizedBox(width: 6),
@@ -677,13 +685,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1200) : const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.withOpacity(0.35), width: 1.5),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.12),
+            color: Colors.orange.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(Icons.lock_rounded, color: Colors.orange, size: 20)),
@@ -707,7 +715,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: Colors.orange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.copy_rounded, color: Colors.orange, size: 16)),
@@ -732,9 +740,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.15)),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: color),
@@ -750,14 +758,14 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: _green.withOpacity(0.05),
+          color: _green.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _green.withOpacity(0.2), width: 1),
+          border: Border.all(color: _green.withValues(alpha: 0.2), width: 1),
         ),
         child: Column(children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: _green.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: _green.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 32)),
           const SizedBox(height: 10),
           Text('Trip Completed! 🎉',
@@ -827,13 +835,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.04),
+          color: Colors.red.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.red.withOpacity(0.15)),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
         ),
         child: Row(children: [
           Container(padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), shape: BoxShape.circle),
             child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 22)),
           const SizedBox(width: 12),
           Expanded(child: Text('Trip cancelled. Sorry for the inconvenience.',

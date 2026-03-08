@@ -31,8 +31,8 @@ async function postJson(path, payload, headers = {}) {
   report.opsMetrics = await getJson("/api/ops/metrics", { "x-ops-key": opsKey });
 
   report.adminLogin = await postJson("/api/admin/login", {
-    email: process.env.ADMIN_EMAIL || "admin@admin.com",
-    password: process.env.ADMIN_PASSWORD || "",
+    email: process.env.ADMIN_EMAIL || "admin@example.com",
+    password: process.env.ADMIN_PASSWORD || "ChangeMe_Dev_Only_123!",
   });
 
   let adminToken = report.adminLogin.body?.token;
@@ -40,7 +40,7 @@ async function postJson(path, payload, headers = {}) {
     const otp = report.adminLogin.body?.otp;
     if (otp) {
       const verify = await postJson("/api/admin/login/verify-2fa", {
-        email: process.env.ADMIN_EMAIL || "admin@admin.com",
+        email: process.env.ADMIN_EMAIL || "admin@example.com",
         otp,
       });
       report.admin2faVerify = verify;

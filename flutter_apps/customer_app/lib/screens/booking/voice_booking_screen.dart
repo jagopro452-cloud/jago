@@ -604,7 +604,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               decoration: BoxDecoration(
                 color: _surface,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: _primary.withOpacity(0.4)),
+                border: Border.all(color: _primary.withValues(alpha: 0.4)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(_selectedLang.flag, style: const TextStyle(fontSize: 18)),
@@ -637,7 +637,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                     color: micColor,
                     boxShadow: [
                       BoxShadow(
-                        color: micColor.withOpacity(_isListening ? 0.4 + 0.3 * _pulseCtrl.value : 0.3),
+                        color: micColor.withValues(alpha: _isListening ? 0.4 + 0.3 * _pulseCtrl.value : 0.3),
                         blurRadius: _isListening ? 30 + 20 * _pulseCtrl.value : 20,
                         spreadRadius: _isListening ? 5 + 5 * _pulseCtrl.value : 2,
                       ),
@@ -726,20 +726,20 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: isSelected ? _primary.withOpacity(0.1) : _surface,
+                    color: isSelected ? _primary.withValues(alpha: 0.1) : _surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                         color: isSelected ? _primary : Colors.white12,
                         width: isSelected ? 2 : 1),
                     boxShadow: isSelected
-                        ? [BoxShadow(color: _primary.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 4))]
+                        ? [BoxShadow(color: _primary.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))]
                         : [],
                   ),
                   child: Row(children: [
                     Container(
                       width: 42, height: 42,
                       decoration: BoxDecoration(
-                        color: isSelected ? _primary.withOpacity(0.15) : Colors.white10,
+                        color: isSelected ? _primary.withValues(alpha: 0.15) : Colors.white10,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(_iconForVehicle(name),
@@ -817,9 +817,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade900.withOpacity(0.4),
+                  color: Colors.green.shade900.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green.shade700.withOpacity(0.5)),
+                  border: Border.all(color: Colors.green.shade700.withValues(alpha: 0.5)),
                 ),
                 child: Row(children: [
                   AnimatedBuilder(
@@ -830,7 +830,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                         shape: BoxShape.circle,
                         color: Colors.green.shade400,
                         boxShadow: [BoxShadow(
-                          color: Colors.green.withOpacity(0.5 + _pulseCtrl.value * 0.3),
+                          color: Colors.green.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3),
                           blurRadius: 6 + _pulseCtrl.value * 4,
                         )],
                       ),

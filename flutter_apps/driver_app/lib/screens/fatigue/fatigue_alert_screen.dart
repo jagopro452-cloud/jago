@@ -66,7 +66,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
                     decoration: BoxDecoration(
                       color: levelBg,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: levelColor.withOpacity(0.3)),
+                      border: Border.all(color: levelColor.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       children: [
@@ -77,7 +77,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: levelColor),
                         ),
                         const SizedBox(height: 8),
-                        Text(rec, textAlign: TextAlign.center, style: TextStyle(color: levelColor.withOpacity(0.8), height: 1.4)),
+                        Text(rec, textAlign: TextAlign.center, style: TextStyle(color: levelColor.withValues(alpha: 0.8), height: 1.4)),
                       ],
                     ),
                   ),

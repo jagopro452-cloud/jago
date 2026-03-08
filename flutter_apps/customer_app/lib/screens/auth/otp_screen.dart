@@ -123,7 +123,8 @@ class _OtpScreenState extends State<OtpScreen> {
               child: _seconds > 0
                 ? Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.grey[400]))
                 : TextButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      await AuthService.sendOtp(widget.phone, 'customer');
                       setState(() => _seconds = 30);
                       _startTimer();
                     },

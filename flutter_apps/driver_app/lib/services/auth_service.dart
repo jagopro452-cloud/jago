@@ -22,6 +22,11 @@ class AuthService {
   static Future<void> saveUser(Map<String, dynamic> userData) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userKey, jsonEncode(userData));
+    // Save commonly accessed fields separately for quick reads
+    final name = userData['fullName'] ?? userData['full_name'] ?? userData['name'] ?? '';
+    final phone = userData['phone'] ?? '';
+    if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
+    if (phone.toString().isNotEmpty) await prefs.setString('user_phone', phone.toString());
   }
 
   static Future<Map<String, dynamic>?> getSavedUser() async {
@@ -45,28 +50,42 @@ class AuthService {
   }
 
   static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'driver']) async {
-    final res = await http.post(
-      Uri.parse(ApiConfig.sendOtp),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'userType': userType}),
-    );
-    return jsonDecode(res.body);
+    try {
+      final res = await http.post(
+        Uri.parse(ApiConfig.sendOtp),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'userType': userType}),
+      );
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
+    }
   }
 
   static Future<Map<String, dynamic>> verifyOtp(String phone, String otp, [String userType = 'driver']) async {
-    final res = await http.post(
-      Uri.parse(ApiConfig.verifyOtp),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}),
-    );
-    final data = jsonDecode(res.body);
-    if (res.statusCode == 200 && data['token'] != null) {
-      await saveToken(data['token']);
-      await saveUser(data['user'] ?? data);
-      // Save FCM token to server after login
-      FcmService().onLoginSuccess().catchError((_) {});
+    try {
+      final res = await http.post(
+        Uri.parse(ApiConfig.verifyOtp),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}),
+      );
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && data['token'] != null) {
+        await saveToken(data['token']);
+        await saveUser(data['user'] ?? data);
+        // Save FCM token to server after login
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
-    return data;
   }
 
   static Future<void> logout() async {
@@ -107,8 +126,28 @@ class AuthService {
     }
   }
 
-  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email, String? vehicleNumber, String? vehicleModel, String? vehicleCategoryId}) async {
+  /// Verify a Firebase Phone Auth ID token with our server.
+  static Future<Map<String, dynamic>> verifyFirebaseToken(String idToken, String phone, [String userType = 'driver']) async {
     try {
+      final res = await http.post(Uri.parse(ApiConfig.verifyFirebaseToken),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'firebaseIdToken': idToken, 'phone': phone, 'userType': userType}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && data['token'] != null) {
+        await saveToken(data['token']);
+        await saveUser(data['user'] ?? data);
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email, String? vehicleNumber, String? vehicleModel, String? vehicleCategoryId}) async {    try {
       final body = <String, dynamic>{'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'driver'};
       if (email != null && email.isNotEmpty) body['email'] = email;
       final res = await http.post(Uri.parse(ApiConfig.registerAccount),

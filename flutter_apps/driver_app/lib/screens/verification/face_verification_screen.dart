@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
@@ -75,15 +76,23 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
       request.headers['Authorization'] = 'Bearer $token';
       request.files.add(await http.MultipartFile.fromPath('selfie', _selfieFile!.path));
       final streamedResponse = await request.send();
+      final body = await streamedResponse.stream.bytesToString();
       if (streamedResponse.statusCode == 200) {
         setState(() { _submitted = true; _loading = false; });
         await Future.delayed(const Duration(milliseconds: 1500));
         widget.onVerified();
       } else {
-        setState(() { _error = 'Verification failed. Try again.'; _loading = false; });
+        String msg = 'Verification failed. Try again.';
+        try {
+          if (body.trimLeft().startsWith('{')) {
+            final data = jsonDecode(body) as Map<String, dynamic>;
+            msg = data['message'] ?? msg;
+          }
+        } catch (_) {}
+        setState(() { _error = msg; _loading = false; });
       }
     } catch (e) {
-      setState(() { _error = 'Network error. Try again.'; _loading = false; });
+      setState(() { _error = 'Network error. Please check connection.'; _loading = false; });
     }
   }
 
@@ -111,7 +120,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
         backgroundColor: const Color(0xFF060D1E),
         body: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withOpacity(0.2), shape: BoxShape.circle),
+            Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withValues(alpha: 0.2), shape: BoxShape.circle),
               child: const Icon(Icons.verified_user, color: Color(0xFF22C55E), size: 56)),
             const SizedBox(height: 20),
             const Text('Verified! ✅', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
@@ -137,9 +146,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F).withOpacity(0.5),
+                color: const Color(0xFF1E3A5F).withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.5)),
+                border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.5)),
               ),
               child: Row(children: [
                 const Icon(Icons.shield_outlined, color: Color(0xFF3B82F6), size: 22),
@@ -205,7 +214,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: const Color(0xFF3B82F6), width: 3),
-                  color: const Color(0xFF2563EB).withOpacity(0.2),
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.2),
                 ),
                 child: Center(
                   child: Container(

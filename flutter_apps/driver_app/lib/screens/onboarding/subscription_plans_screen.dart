@@ -251,7 +251,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'Subscribe and keep 100% of every ride',
-                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
                       ),
                     ],
                   ),
@@ -287,7 +287,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     bool isPopular = name.toString().toLowerCase().contains('weekly');
     bool isBestValue = name.toString().toLowerCase().contains('basic');
     
-    Color borderColor = Colors.white.withOpacity(0.1);
+    Color borderColor = Colors.white.withValues(alpha: 0.1);
     if (isSelected) borderColor = _primary;
     if (isBestValue && isSelected) borderColor = _gold;
 
@@ -303,7 +303,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: borderColor, width: 2),
           boxShadow: isSelected ? [
-            BoxShadow(color: (isBestValue ? _gold : _primary).withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 8))
+            BoxShadow(color: (isBestValue ? _gold : _primary).withValues(alpha: 0.1), blurRadius: 15, offset: const Offset(0, 8))
           ] : [],
         ),
         child: Stack(
@@ -319,7 +319,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: (isBestValue ? _gold : _primary).withOpacity(0.2),
+                          color: (isBestValue ? _gold : _primary).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -342,9 +342,9 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     children: [
                       Text('₹$price', style: TextStyle(color: _primary, fontSize: 28, fontWeight: FontWeight.w900)),
                       const SizedBox(width: 4),
-                      Text('per $durationDays days', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                      Text('per $durationDays days', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
                       const Spacer(),
-                      Text('≈ ₹$dailyRate/day', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text('≈ ₹$dailyRate/day', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13, fontWeight: FontWeight.w500)),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -356,7 +356,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       children: [
                         Icon(Icons.check, color: Colors.green.shade400, size: 16),
                         const SizedBox(width: 8),
-                        Text(f, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
+                        Text(f, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13)),
                       ],
                     ),
                   )),
@@ -415,7 +415,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: [_primary, const Color(0xFF4A8FEF)]),
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: _primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: _primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
         ),
         child: ElevatedButton(
           onPressed: _subscribe,

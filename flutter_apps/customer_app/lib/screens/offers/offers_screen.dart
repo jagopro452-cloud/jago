@@ -122,7 +122,7 @@ class _OffersScreenState extends State<OffersScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
+            color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text('${_offers.length} Active', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -155,7 +155,7 @@ class _OffersScreenState extends State<OffersScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Column(children: [
         // Top section
@@ -165,7 +165,7 @@ class _OffersScreenState extends State<OffersScreen> {
             Container(
               width: 52, height: 52,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(_discountIcon(type), color: color, size: 26),
@@ -197,7 +197,7 @@ class _OffersScreenState extends State<OffersScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_discountLabel(offer),
@@ -225,7 +225,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFF),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: color.withOpacity(0.3), width: 1.5, style: BorderStyle.solid),
+                  border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5, style: BorderStyle.solid),
                 ),
                 child: Text(code,
                   style: TextStyle(

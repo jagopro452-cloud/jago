@@ -176,7 +176,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -187,7 +187,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
             maxLines: 1, overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: _green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(color: _green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
             child: Text('₹${seatPrice.toStringAsFixed(0)}/seat', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 12)),
           ),
         ]),
@@ -210,7 +210,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: available > 0 ? _blue.withOpacity(0.08) : Colors.red.withOpacity(0.08),
+              color: available > 0 ? _blue.withValues(alpha: 0.08) : Colors.red.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('$available seats left',
@@ -253,7 +253,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -262,7 +262,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
             maxLines: 1, overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
             child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800)),
           ),
         ]),

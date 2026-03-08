@@ -58,9 +58,9 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final status = _data?['verificationStatus'] ?? 'pending';
-    final name = _data?['profile']?['name'] ?? 'Pilot';
+    final name = _data?['fullName'] ?? _data?['full_name'] ?? 'Pilot';
     final docs = (_data?['documents'] as List?) ?? [];
-    final rejectionNote = _data?['profile']?['rejection_note'];
+    final rejectionNote = _data?['rejectionNote'] ?? _data?['rejection_note'];
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -96,7 +96,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'Hello $name, your account is currently being verified by our team.',
-                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.6)),
+                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.6)),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
@@ -131,9 +131,9 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -181,7 +181,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
         subtitle: note != null ? Text(note, style: TextStyle(color: Colors.red.shade300, fontSize: 12)) : null,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
           child: Text(
             status.toString().toUpperCase(),
             style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),

@@ -197,7 +197,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         onPressed: _loading ? null : _register,
         style: ElevatedButton.styleFrom(
           backgroundColor: _blue, foregroundColor: Colors.white,
-          disabledBackgroundColor: _blue.withOpacity(0.5),
+          disabledBackgroundColor: _blue.withValues(alpha: 0.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),

@@ -154,9 +154,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [_green.withOpacity(0.15), _blue.withOpacity(0.1)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(colors: [_green.withValues(alpha: 0.15), _blue.withValues(alpha: 0.1)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _green.withOpacity(0.25), width: 1),
+        border: Border.all(color: _green.withValues(alpha: 0.25), width: 1),
       ),
       child: Column(children: [
         const Text('Net Earnings', style: TextStyle(color: Colors.white60, fontSize: 13)),
@@ -176,12 +176,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06), width: 1),
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, color: color, size: 18),
         ),
         const SizedBox(width: 10),
@@ -200,7 +200,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06), width: 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -227,7 +227,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   width: 30,
                   height: (frac * 90).clamp(4.0, 90.0),
                   decoration: BoxDecoration(
-                    color: isToday ? _green : _blue.withOpacity(0.6),
+                    color: isToday ? _green : _blue.withValues(alpha: 0.6),
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                   ),
                 ),

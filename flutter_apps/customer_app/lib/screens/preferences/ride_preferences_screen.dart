@@ -168,9 +168,9 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
   Widget _banner() => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      gradient: LinearGradient(colors: [const Color(0xFF2563EB).withOpacity(0.1), const Color(0xFF7C3AED).withOpacity(0.1)]),
+      gradient: LinearGradient(colors: [const Color(0xFF2563EB).withValues(alpha: 0.1), const Color(0xFF7C3AED).withValues(alpha: 0.1)]),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2)),
+      border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.2)),
     ),
     child: const Row(children: [
       Icon(Icons.tune, color: Color(0xFF2563EB)),
@@ -187,7 +187,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     child: Row(children: [
       Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: val ? const Color(0xFF2563EB).withOpacity(0.1) : Colors.grey.shade100, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: val ? const Color(0xFF2563EB).withValues(alpha: 0.1) : Colors.grey.shade100, shape: BoxShape.circle),
         child: Icon(icon, color: val ? const Color(0xFF2563EB) : Colors.grey, size: 20),
       ),
       const SizedBox(width: 12),
@@ -198,7 +198,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
           Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       )),
-      Switch(value: val, onChanged: onChanged, activeColor: const Color(0xFF2563EB)),
+      Switch(value: val, onChanged: onChanged, activeThumbColor: const Color(0xFF2563EB)),
     ]),
   );
 
@@ -208,7 +208,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: _preferredGender == value ? const Color(0xFF2563EB).withOpacity(0.1) : Colors.grey.shade100,
+          color: _preferredGender == value ? const Color(0xFF2563EB).withValues(alpha: 0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.transparent),
         ),

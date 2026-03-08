@@ -269,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         CircleAvatar(
                           radius: 44,
                           backgroundColor:
-                              accentColor.withOpacity(0.15),
+                              accentColor.withValues(alpha: 0.15),
                           child: Text(
                             _name.isNotEmpty
                                 ? _name[0].toUpperCase()
@@ -409,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       height: 36,
                       decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.white.withOpacity(0.08)
+                              ? Colors.white.withValues(alpha: 0.08)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8)),
                       child: Icon(
@@ -495,7 +495,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: textColor.withOpacity(0.5),
+              color: textColor.withValues(alpha: 0.5),
               letterSpacing: 0.8)),
       const SizedBox(height: 4),
       Container(
@@ -525,7 +525,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-              color: color.withOpacity(isDark ? 0.15 : 0.1),
+              color: color.withValues(alpha: isDark ? 0.15 : 0.1),
               borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, color: color, size: 18),
         ),
@@ -553,7 +553,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: const Color(0xFF1E6DE5).withOpacity(0.1),
+          color: const Color(0xFF1E6DE5).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 20),
@@ -592,7 +592,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(child: Container(width: 40, height: 4,
-                  decoration: BoxDecoration(color: subColor.withOpacity(0.3), borderRadius: BorderRadius.circular(2)))),
+                  decoration: BoxDecoration(color: subColor.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 16),
                 Row(children: [
                   const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 22),
@@ -622,11 +622,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
                           color: isSelected
-                            ? const Color(0xFF1E6DE5).withOpacity(0.08)
-                            : const Color(0xFF1E6DE5).withOpacity(0.02),
+                            ? const Color(0xFF1E6DE5).withValues(alpha: 0.08)
+                            : const Color(0xFF1E6DE5).withValues(alpha: 0.02),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isSelected ? const Color(0xFF1E6DE5) : subColor.withOpacity(0.15),
+                            color: isSelected ? const Color(0xFF1E6DE5) : subColor.withValues(alpha: 0.15),
                             width: isSelected ? 1.5 : 1,
                           ),
                         ),
@@ -689,7 +689,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -699,7 +699,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 fontWeight: FontWeight.w500,
                 color: textColor)),
         trailing: Icon(Icons.chevron_right_rounded,
-            color: textColor.withOpacity(0.3), size: 20),
+            color: textColor.withValues(alpha: 0.3), size: 20),
         onTap: onTap,
       ),
       Divider(height: 1, color: divColor, indent: 68),

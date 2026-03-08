@@ -35,15 +35,20 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
 
   Future<void> _loadDocuments() async {
     setState(() => _loading = true);
-    final headers = await AuthService.getHeaders();
-    final res = await http.get(Uri.parse(ApiConfig.driverDocuments), headers: headers);
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      final docs = (data['documents'] as List?) ?? [];
-      final statusMap = <String, dynamic>{};
-      for (final d in docs) statusMap[d['docType']] = d;
-      if (mounted) setState(() { _docStatus = statusMap; _loading = false; });
-    } else {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.driverDocuments), headers: headers);
+      if (res.statusCode == 200 &&
+          (res.headers['content-type'] ?? '').contains('application/json')) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final docs = (data['documents'] as List?) ?? [];
+        final statusMap = <String, dynamic>{};
+        for (final d in docs) statusMap[d['docType']] = d;
+        if (mounted) setState(() { _docStatus = statusMap; _loading = false; });
+      } else {
+        if (mounted) setState(() => _loading = false);
+      }
+    } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -60,8 +65,12 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       request.files.add(await http.MultipartFile.fromPath('document', picked.path));
       final response = await request.send();
       if (response.statusCode == 200) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document uploaded! Under review.'), backgroundColor: Color(0xFF2563EB)));
         await _loadDocuments();
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Please try again.'), backgroundColor: Colors.red));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Try again.'), backgroundColor: Colors.red));
@@ -163,7 +172,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF091629),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withOpacity(0.3) : const Color(0xFF1E3A5F)),
+        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withValues(alpha: 0.3) : const Color(0xFF1E3A5F)),
       ),
       child: Row(
         children: [

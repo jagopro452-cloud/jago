@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phone;
   final String otp;
-  const OtpScreen({super.key, required this.phone, required this.otp});
+  final String? firebaseVerificationId;
+  const OtpScreen({super.key, required this.phone, required this.otp, this.firebaseVerificationId});
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
@@ -18,9 +20,14 @@ class _OtpScreenState extends State<OtpScreen> {
   bool _loading = false;
   int _seconds = 30;
   Timer? _timer;
+  String? _verificationId;
 
   @override
-  void initState() { super.initState(); _startTimer(); }
+  void initState() {
+    super.initState();
+    _verificationId = widget.firebaseVerificationId;
+    _startTimer();
+  }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -32,15 +39,43 @@ class _OtpScreenState extends State<OtpScreen> {
   Future<void> _verify() async {
     if (_otpCtrl.text.length != 6) return;
     setState(() => _loading = true);
-    final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
-    setState(() => _loading = false);
-    if (res['success'] == true) {
-      Navigator.pushAndRemoveUntil(context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+
+    if (_verificationId != null) {
+      // Firebase path
+      try {
+        final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: _otpCtrl.text,
+          verificationId: _verificationId,
+        );
+        final res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'driver');
+        setState(() => _loading = false);
+        if (!mounted) return;
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        } else {
+          _showError(res['message'] ?? 'Verification failed. Try again.');
+        }
+      } catch (e) {
+        setState(() => _loading = false);
+        _showError(e.toString().replaceAll('Exception: ', ''));
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid OTP'), backgroundColor: Colors.red));
+      // Server OTP fallback
+      final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
+      setState(() => _loading = false);
+      if (res['success'] == true) {
+        Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      } else {
+        _showError(res['message'] ?? 'Invalid OTP');
+      }
     }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   @override
@@ -53,7 +88,7 @@ class _OtpScreenState extends State<OtpScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF060D1E), elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7)),
+          icon: Icon(Icons.arrow_back_ios, color: Colors.white.withValues(alpha: 0.7)),
           onPressed: () => Navigator.pop(context)),
         actions: [
           IconButton(icon: const Icon(Icons.help_outline, color: Color(0xFF2563EB)),
@@ -68,7 +103,7 @@ class _OtpScreenState extends State<OtpScreen> {
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 8),
           Text('Sent to +91-${widget.phone}',
-            style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.4))),
+            style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.4))),
           if (ApiConfig.isDev && widget.otp.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Dev OTP: ${widget.otp}',
@@ -85,11 +120,11 @@ class _OtpScreenState extends State<OtpScreen> {
               borderRadius: BorderRadius.circular(10),
               fieldHeight: 52,
               fieldWidth: 46,
-              activeFillColor: Colors.white.withOpacity(0.08),
-              inactiveFillColor: Colors.white.withOpacity(0.05),
-              selectedFillColor: Colors.white.withOpacity(0.1),
+              activeFillColor: Colors.white.withValues(alpha: 0.08),
+              inactiveFillColor: Colors.white.withValues(alpha: 0.05),
+              selectedFillColor: Colors.white.withValues(alpha: 0.1),
               activeColor: const Color(0xFF2563EB),
-              inactiveColor: Colors.white.withOpacity(0.15),
+              inactiveColor: Colors.white.withValues(alpha: 0.15),
               selectedColor: const Color(0xFF2563EB),
             ),
             enableActiveFill: true,
@@ -114,9 +149,21 @@ class _OtpScreenState extends State<OtpScreen> {
           const SizedBox(height: 20),
           Center(
             child: _seconds > 0
-              ? Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.white.withOpacity(0.35)))
+              ? Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.white.withValues(alpha: 0.35)))
               : TextButton(
-                  onPressed: () { setState(() => _seconds = 30); _startTimer(); },
+                  onPressed: () async {
+                    setState(() { _seconds = 30; });
+                    _startTimer();
+                    // Try Firebase resend first
+                    FirebaseOtpService.sendOtp(
+                      phoneNumber: '+91${widget.phone}',
+                      onCodeSent: (vId) => setState(() => _verificationId = vId),
+                      onError: (_) async {
+                        // Fallback to server OTP
+                        await AuthService.sendOtp(widget.phone, 'driver');
+                      },
+                    );
+                  },
                   child: const Text('Resend OTP',
                     style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600))),
           ),

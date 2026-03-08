@@ -148,6 +148,13 @@ export function setupSocket(httpServer: HttpServer) {
             UPDATE driver_locations SET is_online=${isOnline}, updated_at=NOW()
             WHERE driver_id=${userId}::uuid
           `);
+          await rawDb.execute(rawSql`
+            UPDATE users
+            SET is_online=${isOnline},
+                current_lat=COALESCE(${lat ?? null}, current_lat),
+                current_lng=COALESCE(${lng ?? null}, current_lng)
+            WHERE id=${userId}::uuid
+          `);
           if (lat && lng) {
             await rawDb.execute(rawSql`
               UPDATE driver_locations SET lat=${lat}, lng=${lng} WHERE driver_id=${userId}::uuid
@@ -468,6 +475,15 @@ export function setupSocket(httpServer: HttpServer) {
     socket.on("disconnect", () => {
       driverSockets.delete(userId);
       customerSockets.delete(userId);
+      if (userType === "driver") {
+        rawDb.execute(rawSql`
+          UPDATE driver_locations SET is_online=false, updated_at=NOW()
+          WHERE driver_id=${userId}::uuid
+        `).catch(() => {});
+        rawDb.execute(rawSql`
+          UPDATE users SET is_online=false WHERE id=${userId}::uuid
+        `).catch(() => {});
+      }
       console.log(`[SOCKET] ${userType} ${userId} disconnected`);
     });
   });

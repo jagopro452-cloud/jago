@@ -1,4 +1,4 @@
-const BASE = process.env.LOAD_BASE_URL || "http://127.0.0.1:5001";
+const BASE = process.env.LOAD_BASE_URL || "http://127.0.0.1:5000";
 const TOTAL_REQUESTS = Number(process.env.LOAD_TOTAL_REQUESTS || 400);
 const CONCURRENCY = Number(process.env.LOAD_CONCURRENCY || 40);
 const PATHS = ["/api/health", "/api/intercity-routes"];

@@ -99,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 24),
@@ -112,19 +112,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 15),
               decoration: InputDecoration(
                 hintText: 'Your full name',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                 filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
+                fillColor: Colors.white.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: const BorderSide(color: _blue)),
-                prefixIcon: Icon(Icons.person_rounded, color: Colors.white.withOpacity(0.4)),
+                prefixIcon: Icon(Icons.person_rounded, color: Colors.white.withValues(alpha: 0.4)),
               ),
             ),
             const SizedBox(height: 16),
@@ -228,7 +228,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Container(
             width: 40, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
@@ -239,7 +239,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
           const SizedBox(height: 6),
           Text('Choose how you want to remove your account.',
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13)),
           const SizedBox(height: 20),
           GestureDetector(
             onTap: () {
@@ -252,9 +252,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Deactivate Account?',
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                   content: Text('Your account will be deactivated. Your data is kept. Contact support to reactivate.',
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.orange,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -268,9 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.08),
+                color: Colors.orange.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: const Row(children: [
                 Icon(Icons.pause_circle_outline, color: Colors.orange, size: 22),
@@ -294,9 +294,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Delete Permanently?',
                     style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
                   content: Text('This will permanently delete all your data including earnings history, KYC documents, and personal information. This cannot be undone.',
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
+                    TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -309,9 +309,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.08),
+                color: Colors.red.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
               ),
               child: const Row(children: [
                 Icon(Icons.delete_forever, color: Colors.red, size: 22),
@@ -343,7 +343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Container(
             width: 40, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
@@ -354,7 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
           const SizedBox(height: 6),
           Text('JAGO Pilot support team always ready!',
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13)),
           const SizedBox(height: 20),
           _supportOption(
             icon: Icons.chat_bubble_rounded, color: _blue,
@@ -389,24 +389,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
+          color: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.12)),
+          border: Border.all(color: color.withValues(alpha: 0.12)),
         ),
         child: Row(children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(width: 14),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 2),
-            Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+            Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
           ]),
           const Spacer(),
-          Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.3)),
+          Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.3)),
         ]),
       ),
     );
@@ -449,7 +449,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             pinned: true,
             backgroundColor: _bg,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withOpacity(0.7)),
+              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withValues(alpha: 0.7)),
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
@@ -482,7 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
@@ -541,14 +541,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             letterSpacing: -0.3)),
                       const SizedBox(height: 4),
                       Text('+91-$_phone',
-                        style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 13)),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
                       const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: _statusColor().withOpacity(0.12),
+                          color: _statusColor().withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _statusColor().withOpacity(0.3)),
+                          border: Border.all(color: _statusColor().withValues(alpha: 0.3)),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(
@@ -670,7 +670,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         leading: Container(
                           width: 38, height: 38,
                           decoration: BoxDecoration(
-                            color: Colors.deepPurple.withOpacity(0.18),
+                            color: Colors.deepPurple.withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
@@ -679,12 +679,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: Text(isDark ? 'Dark Mode' : 'Light Mode',
                           style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
                         subtitle: Text(isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
                         trailing: Switch(
                           value: isDark,
                           onChanged: (val) => saveThemePreference(val ? ThemeMode.dark : ThemeMode.light),
-                          activeColor: _blue,
-                          trackColor: WidgetStateProperty.all(Colors.white.withOpacity(0.12)),
+                          activeThumbColor: _blue,
+                          trackColor: WidgetStateProperty.all(Colors.white.withValues(alpha: 0.12)),
                         ),
                       );
                     },
@@ -707,11 +707,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         title: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                         content: Text('Are you sure you want to logout?',
-                          style: TextStyle(color: Colors.white.withOpacity(0.6))),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
-                            child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5)))),
+                            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -731,7 +731,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 32),
                 Center(
                   child: Text('JAGO Pilot v1.0.2 · MindWhile IT Solutions Pvt Ltd',
-                    style: TextStyle(color: Colors.white.withOpacity(0.15), fontSize: 11)),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 11)),
                 ),
                 const SizedBox(height: 24),
               ],
@@ -749,12 +749,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.15)),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
         ),
         child: Column(children: [
           Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 10),
+          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10),
             textAlign: TextAlign.center),
         ]),
       ),
@@ -771,7 +771,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
@@ -794,10 +794,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Row(children: [
-        Icon(icon, size: 16, color: Colors.white.withOpacity(0.3)),
+        Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.3)),
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 10)),
+          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10)),
           const SizedBox(height: 2),
           Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
         ]),
@@ -821,7 +821,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Container(
         width: 38, height: 38,
         decoration: BoxDecoration(
-          color: const Color(0xFF1E6DE5).withOpacity(0.12),
+          color: const Color(0xFF1E6DE5).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10)),
         child: const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 20),
       ),
@@ -845,7 +845,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: Column(children: children),
       ),
@@ -858,16 +858,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: Container(
         width: 38, height: 38,
-        decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-      trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.2), size: 20),
+      trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.2), size: 20),
     );
   }
 
   Widget _divider() => Divider(
-    height: 1, color: Colors.white.withOpacity(0.04),
+    height: 1, color: Colors.white.withValues(alpha: 0.04),
     indent: 64, endIndent: 16,
   );
 }

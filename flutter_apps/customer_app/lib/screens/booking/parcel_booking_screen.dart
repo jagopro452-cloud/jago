@@ -340,13 +340,13 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
                 color: isSelected ? _dark : Colors.grey[200]!,
                 width: isSelected ? 2 : 1,
               ),
-              boxShadow: isSelected ? [BoxShadow(color: _dark.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 4))] : [],
+              boxShadow: isSelected ? [BoxShadow(color: _dark.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 4))] : [],
             ),
             child: Row(children: [
               Container(
                 width: 56, height: 56,
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.white.withOpacity(0.12) : const Color(0xFFF5F5F5),
+                  color: isSelected ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(child: Text(_emojiFor(name), style: const TextStyle(fontSize: 28))),
@@ -363,7 +363,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
                   Text(_descFor(name, type),
                     style: TextStyle(
                       fontSize: 12,
-                      color: isSelected ? Colors.white.withOpacity(0.65) : Colors.grey[500],
+                      color: isSelected ? Colors.white.withValues(alpha: 0.65) : Colors.grey[500],
                     )),
                 ]),
               ),
@@ -377,7 +377,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
                 Text('base fare',
                   style: TextStyle(
                     fontSize: 10,
-                    color: isSelected ? Colors.white.withOpacity(0.5) : Colors.grey[400],
+                    color: isSelected ? Colors.white.withValues(alpha: 0.5) : Colors.grey[400],
                   )),
               ]),
             ]),
@@ -651,7 +651,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
             Switch(
               value: _needsHelper,
               onChanged: (v) => setState(() => _needsHelper = v),
-              activeColor: _dark,
+              activeThumbColor: _dark,
             ),
           ]),
         ),

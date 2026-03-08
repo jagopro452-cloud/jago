@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTheme } from "@/components/theme-provider";
 
 const COMPANY = "MindWhile IT Solutions Pvt Ltd";
 const BRAND   = "JAGO";
@@ -8,18 +9,61 @@ const ADDRESS = "Hyderabad, Telangana, India";
 const YEAR    = new Date().getFullYear();
 
 function PolicyLayout({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  const tokens = {
+    bg: isDark ? "#060d1e" : "#f8fafc",
+    navBg: isDark ? "rgba(9,16,35,0.92)" : "#ffffff",
+    navBorder: isDark ? "rgba(148,163,184,0.2)" : "#e2e8f0",
+    navText: isDark ? "#cbd5e1" : "#64748b",
+    panel: isDark ? "#0f172a" : "#ffffff",
+    panelBorder: isDark ? "rgba(148,163,184,0.16)" : "transparent",
+    bodyText: isDark ? "#cbd5e1" : "#374151",
+    heading: isDark ? "#e2e8f0" : "#1e293b",
+    sectionBorder: isDark ? "rgba(148,163,184,0.22)" : "#f1f5f9",
+    infoBg: isDark ? "rgba(30,109,229,0.14)" : "#eff6ff",
+    infoBorder: isDark ? "rgba(59,130,246,0.36)" : "#bfdbfe",
+    infoText: isDark ? "#bfdbfe" : "#1e40af",
+    cardBg: isDark ? "rgba(15,23,42,0.78)" : "#f8fafc",
+    cardBorder: isDark ? "rgba(148,163,184,0.18)" : "#f1f5f9",
+  };
+
   useEffect(() => {
     document.title = `${title} — ${BRAND}`;
     return () => { document.title = BRAND; };
   }, [title]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'Manrope', 'Segoe UI', sans-serif" }}>
+    <div className="policy-root" style={{ minHeight: "100vh", background: tokens.bg, fontFamily: "'Manrope', 'Segoe UI', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-        .policy-nav-links { display: flex; gap: 20px; font-size: 13px; color: #64748b; }
+        .policy-nav-links { display: flex; gap: 20px; font-size: 13px; color: ${tokens.navText}; }
+        .policy-nav-links a { color: ${tokens.navText}; text-decoration: none; font-weight: 500; }
+        .policy-nav-links a:hover { color: #60a5fa; }
         .policy-values-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 8px 0 20px; }
         .policy-contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+        .policy-section-title {
+          font-size: 17px; font-weight: 700; color: ${tokens.heading};
+          margin-top: 36px; margin-bottom: 10px; padding-bottom: 8px;
+          border-bottom: 2px solid ${tokens.sectionBorder}; display: flex; align-items: center; gap: 8px;
+        }
+        .policy-paragraph { margin: 0 0 14px; color: ${tokens.bodyText}; }
+        .policy-list { padding-left: 20px; margin: 0 0 16px; }
+        .policy-list-item { color: ${tokens.bodyText}; margin-bottom: 7px; padding-left: 4px; }
+        .policy-info-box {
+          background: ${tokens.infoBg}; border: 1px solid ${tokens.infoBorder};
+          border-left: 4px solid #2563eb; border-radius: 10px; padding: 14px 18px;
+          margin-bottom: 20px; color: ${tokens.infoText}; font-size: 13.5px;
+        }
+        .policy-value-card {
+          background: ${tokens.cardBg}; border-radius: 12px; padding: 16px 18px; border: 1px solid ${tokens.cardBorder};
+        }
+        .policy-root [style*="color: #1e293b"] { color: ${tokens.heading} !important; }
+        .policy-root [style*="color: #64748b"],
+        .policy-root [style*="color: #4b5563"] { color: ${tokens.bodyText} !important; }
+        .policy-root [style*="background: #f8fafc"] { background: ${tokens.cardBg} !important; }
+        .policy-root a { color: #60a5fa; }
         @media (max-width: 900px) {
           .policy-nav-links { display: none; }
         }
@@ -30,7 +74,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
 
       {/* Sticky Nav */}
       <nav style={{
-        background: "#fff", borderBottom: "1px solid #e2e8f0",
+        background: tokens.navBg, borderBottom: `1px solid ${tokens.navBorder}`,
         padding: "0 32px", height: 64,
         display: "flex", alignItems: "center",
         position: "sticky", top: 0, zIndex: 200,
@@ -41,14 +85,14 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
         </a>
         <div style={{ flex: 1 }} />
         <div className="policy-nav-links">
-          <a href="/about-us" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>About</a>
-          <a href="/privacy" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>Privacy</a>
-          <a href="/terms" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>Terms</a>
-          <a href="/refund-policy" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>Refund</a>
-          <a href="/cookie-policy" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>Cookie</a>
-          <a href="/contact-us" style={{ textDecoration: "none", color: "#64748b", fontWeight: 500 }}>Contact</a>
+          <a href="/about-us">About</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/refund-policy">Refund</a>
+          <a href="/cookie-policy">Cookie</a>
+          <a href="/contact-us">Contact</a>
         </div>
-        <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 20px" }} />
+        <div style={{ width: 1, height: 20, background: tokens.navBorder, margin: "0 20px" }} />
         <a href="/" style={{ fontSize: 13, color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>← Home</a>
       </nav>
 
@@ -78,9 +122,10 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
       {/* Content */}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "44px 24px 80px" }}>
         <div style={{
-          background: "white", borderRadius: 20, padding: "44px 48px",
+          background: tokens.panel, borderRadius: 20, padding: "44px 48px",
+          border: `1px solid ${tokens.panelBorder}`,
           boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
-          lineHeight: 1.85, color: "#374151",
+          lineHeight: 1.85, color: tokens.bodyText,
           fontSize: 14.5,
         }}>
           {children}
@@ -101,29 +146,20 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
 }
 
 const S = ({ children }: { children: React.ReactNode }) => (
-  <h3 style={{
-    fontSize: 17, fontWeight: 700, color: "#1e293b",
-    marginTop: 36, marginBottom: 10,
-    paddingBottom: 8, borderBottom: "2px solid #f1f5f9",
-    display: "flex", alignItems: "center", gap: 8,
-  }}>{children}</h3>
+  <h3 className="policy-section-title">{children}</h3>
 );
 const P = ({ children }: { children: React.ReactNode }) => (
-  <p style={{ margin: "0 0 14px", color: "#4b5563" }}>{children}</p>
+  <p className="policy-paragraph">{children}</p>
 );
 const UL = ({ items }: { items: string[] }) => (
-  <ul style={{ paddingLeft: 20, margin: "0 0 16px" }}>
+  <ul className="policy-list">
     {items.map((it, i) => (
-      <li key={i} style={{ color: "#4b5563", marginBottom: 7, paddingLeft: 4 }}>{it}</li>
+      <li key={i} className="policy-list-item">{it}</li>
     ))}
   </ul>
 );
 const InfoBox = ({ children }: { children: React.ReactNode }) => (
-  <div style={{
-    background: "#eff6ff", border: "1px solid #bfdbfe",
-    borderLeft: "4px solid #2563eb", borderRadius: 10,
-    padding: "14px 18px", marginBottom: 20, color: "#1e40af", fontSize: 13.5,
-  }}>{children}</div>
+  <div className="policy-info-box">{children}</div>
 );
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -236,13 +272,16 @@ export function TermsPage() {
   return (
     <PolicyLayout title="Terms & Conditions" badge="Legal Agreement">
       <InfoBox>
-        Please read these Terms carefully before using the {BRAND} platform. By creating an account or using our services, you agree to be bound by these Terms. If you do not agree, please do not use {BRAND}.
+        These Terms & Conditions are a legally binding agreement between you and {COMPANY} for access to and use of the {BRAND} platform. Please read them carefully before using any feature of the service.
       </InfoBox>
 
-      <S>1. About the Platform</S>
-      <P>{BRAND} is a technology platform developed and operated by {COMPANY}. {BRAND} provides a marketplace connecting Customers (people who need transportation or delivery services) with Pilots (independent service providers who fulfil those requests). {COMPANY} does not itself provide transportation or delivery services — it operates the technology platform that enables these connections.</P>
+      <S>1. Acceptance of Terms</S>
+      <P>By registering, accessing, or using {BRAND}, you confirm that you are at least 18 years old, legally competent to contract, and agree to follow these Terms, our Privacy Policy, and any additional rules displayed within the app. If you do not agree, you must discontinue use of the Platform.</P>
 
-      <S>2. Definitions</S>
+      <S>2. Platform Role and Scope</S>
+      <P>{COMPANY} operates {BRAND} as a digital marketplace that connects Customers with independent service providers known as Pilots. Unless explicitly stated otherwise, {COMPANY} is not itself a transportation carrier, delivery company, or employer of Pilots.</P>
+
+      <S>3. Definitions</S>
       <UL items={[
         `"${BRAND}" or "Platform" — the ${BRAND} website, mobile applications, and APIs operated by ${COMPANY}`,
         `"${COMPANY}" / "we" / "us" — MindWhile IT Solutions Pvt Ltd, the developer and operator of ${BRAND}`,
@@ -252,16 +291,17 @@ export function TermsPage() {
         '"Wallet" — the in-app digital account for storing credits, earnings, and processing payments',
       ]} />
 
-      <S>3. Eligibility</S>
+      <S>4. Eligibility and Account Responsibility</S>
       <UL items={[
         "You must be at least 18 years of age to register and use the Platform",
         "You must provide accurate, complete, and current information during registration",
         "You must maintain a single account — multiple accounts for the same individual are prohibited",
         "You must not have been previously suspended or banned from the Platform",
         "Pilots must hold valid documents as required under applicable law (driving licence, vehicle registration, insurance)",
+        "You are responsible for all activity performed using your account credentials",
       ]} />
 
-      <S>4. Customer Terms</S>
+      <S>5. Customer Terms</S>
       <UL items={[
         "Customers may book rides, parcel deliveries, cargo services, and intercity trips through the Platform",
         "The fare displayed before booking is an estimate; the final fare may vary based on actual distance and time",
@@ -272,7 +312,7 @@ export function TermsPage() {
         "Unused wallet balance is non-refundable except where required by law",
       ]} />
 
-      <S>5. Pilot Terms</S>
+      <S>6. Pilot Terms</S>
       <UL items={[
         "Pilots must complete the full KYC and document verification process before accepting trips",
         "Pilots are independent service providers and are not employees or agents of " + COMPANY,
@@ -285,7 +325,7 @@ export function TermsPage() {
         "Pilots must not solicit customers for off-platform bookings or accept payments outside the Platform for trips initiated on the Platform",
       ]} />
 
-      <S>6. Bookings and Cancellations</S>
+      <S>7. Bookings, Cancellations, and No-Show Rules</S>
       <UL items={[
         "Bookings are confirmed once a Pilot accepts the request",
         "Customers may cancel a booking before the Pilot begins travelling to the pickup point, subject to the cancellation policy in effect at the time",
@@ -295,7 +335,7 @@ export function TermsPage() {
         COMPANY + " reserves the right to modify the cancellation policy and applicable fees with reasonable notice",
       ]} />
 
-      <S>7. Payments and Wallet</S>
+      <S>8. Payments, Wallet, and Settlements</S>
       <UL items={[
         "All fares are calculated automatically based on distance, vehicle type, time, and applicable surge pricing",
         "Accepted payment methods include cash, in-app wallet, UPI, and any other method displayed in the app",
@@ -306,10 +346,10 @@ export function TermsPage() {
         "Promotional wallet credits and bonuses may carry additional conditions and expiry dates",
       ]} />
 
-      <S>8. Ratings and Reviews</S>
+      <S>9. Ratings and Reviews</S>
       <P>Both Customers and Pilots may rate each other after a trip. Ratings are used to maintain service quality and safety on the Platform. Attempts to manipulate ratings (self-rating, coercing ratings, or coordinated fake reviews) are prohibited and may result in account suspension.</P>
 
-      <S>9. Prohibited Conduct</S>
+      <S>10. Prohibited Conduct</S>
       <P>The following are strictly prohibited on the {BRAND} Platform:</P>
       <UL items={[
         "Providing false, misleading, or fraudulent information during registration or use",
@@ -320,12 +360,13 @@ export function TermsPage() {
         "Reverse engineering, decompiling, or attempting to extract the Platform's source code",
         "Sharing your account credentials with any other person",
         "Transporting prohibited or illegal items through the Platform",
+        "Uploading content, logos, or materials that infringe third-party copyright, trademark, or other intellectual property rights",
       ]} />
 
-      <S>10. Platform Availability</S>
+      <S>11. Platform Availability</S>
       <P>{COMPANY} aims to provide uninterrupted access to {BRAND} but does not guarantee 100% uptime. The Platform may be unavailable during maintenance, updates, or due to circumstances beyond our control (including natural disasters, internet outages, or force majeure events). {COMPANY} shall not be liable for any losses arising from Platform unavailability.</P>
 
-      <S>11. Limitation of Liability</S>
+      <S>12. Limitation of Liability</S>
       <P>{COMPANY} operates a technology platform and is not a transportation or logistics provider. To the maximum extent permitted by applicable law:</P>
       <UL items={[
         COMPANY + " is not liable for the actions, conduct, or omissions of Pilots or Customers",
@@ -334,22 +375,26 @@ export function TermsPage() {
         "Users engage with the Platform at their own risk, and are advised to exercise standard personal safety precautions",
       ]} />
 
-      <S>12. Indemnity</S>
+      <S>13. Indemnity</S>
       <P>You agree to defend and indemnify {COMPANY}, its directors, officers, employees, and affiliates from claims, liabilities, penalties, and costs arising out of your misuse of the Platform, breach of these Terms, or violation of applicable law.</P>
 
-      <S>13. No Warranty</S>
+      <S>14. Disclaimer of Warranties</S>
       <P>The Platform is provided on an "as is" and "as available" basis. Except where required by law, {COMPANY} disclaims implied warranties including merchantability, fitness for a particular purpose, and non-infringement.</P>
 
-      <S>14. Intellectual Property</S>
-      <P>The {BRAND} name, logo, design, software, and all associated intellectual property are the exclusive property of {COMPANY}. You may not reproduce, distribute, or create derivative works without express written permission from {COMPANY}.</P>
+      <S>15. Intellectual Property, Copyright, and Trademarks</S>
+      <P>All content, software, interface designs, brand assets, text, graphics, and source code made available through {BRAND} are owned by or licensed to {COMPANY} and protected under applicable intellectual property laws. "{BRAND}" and related logos are trademarks or service marks of {COMPANY}.</P>
+      <P>You may not copy, reproduce, republish, modify, distribute, publicly display, or create derivative works from Platform materials without prior written permission from {COMPANY}. If you believe your intellectual property rights are infringed, contact us at <a href={`mailto:${EMAIL}`}>{EMAIL}</a> with complete details for review.</P>
 
-      <S>15. Modifications to Terms</S>
+      <S>16. Third-Party Rights and Responsibilities</S>
+      <P>Users must ensure that any content, business names, brand elements, and documents shared through the Platform are lawful and do not violate third-party rights. {COMPANY} may remove or restrict access to content that appears to infringe copyright, trademark, privacy, or contractual rights.</P>
+
+      <S>17. Modifications to Terms</S>
       <P>We may update these Terms from time to time. Material changes will be communicated via in-app notice or email at least 14 days before they take effect. Continued use of the Platform after the effective date constitutes acceptance of the revised Terms.</P>
 
-      <S>16. Governing Law and Disputes</S>
+      <S>18. Governing Law and Dispute Resolution</S>
       <P>These Terms are governed by the laws of India. Any disputes arising under these Terms shall be subject to the exclusive jurisdiction of competent courts in Hyderabad, Telangana, India. Before initiating proceedings, users must first raise a written dispute notice to <a href={`mailto:${EMAIL}`}>{EMAIL}</a> and allow a 15-day resolution window.</P>
 
-      <S>17. Contact</S>
+      <S>19. Contact</S>
       <P><strong>{COMPANY}</strong><br />{ADDRESS}<br />Email: <a href={`mailto:${EMAIL}`}>{EMAIL}</a> · Website: <a href={`https://${WEBSITE}`}>{WEBSITE}</a></P>
     </PolicyLayout>
   );
@@ -364,51 +409,54 @@ export function AboutPage() {
       <div style={{ textAlign: "center", marginBottom: 36 }}>
         <img src="/jago-logo.png" alt={BRAND} style={{ height: 72, objectFit: "contain", marginBottom: 16 }} />
         <p style={{ fontSize: 18, color: "#1e293b", fontWeight: 600, maxWidth: 600, margin: "0 auto", lineHeight: 1.5 }}>
-          JAGO is a smart mobility super platform built for safer daily movement, reliable logistics, and scalable local commerce.
+          JAGO is a technology-first mobility and logistics platform built to make urban movement safer, faster, and more dependable.
         </p>
       </div>
 
-      <S>About {COMPANY}</S>
-      <P>{COMPANY} is a technology company based in Hyderabad, Telangana, India. We build digital infrastructure for transportation and logistics. {BRAND} is our flagship smart mobility platform designed for Indian consumers, pilots, and enterprises.</P>
-      <P>Our focus is simple: improve reliability, reduce wait times, increase pilot earnings visibility, and deliver safer journeys through OTP-first and data-driven operations.</P>
+      <S>Who We Are</S>
+      <P>{COMPANY}, headquartered in Hyderabad, Telangana, builds digital infrastructure for transportation and local commerce. {BRAND} is our flagship product, created to serve Customers, Pilots, and business operators with one connected platform.</P>
+      <P>Our team combines product design, data systems, and operational discipline to deliver dependable experiences at scale. We focus on practical innovation that improves everyday trips, deliveries, and service reliability.</P>
 
-      <S>What is {BRAND}?</S>
-      <P>{BRAND} is an end-to-end mobility and logistics platform that connects Customers with verified Pilots for:</P>
+      <S>What {BRAND} Delivers</S>
+      <P>{BRAND} brings multiple transport and logistics services into a single platform:</P>
       <UL items={[
-        "Ride-sharing: Bikes, autos, cars, SUVs — on demand, across the city",
-        "Parcel delivery: Door-to-door parcel service with OTP verification and live tracking",
-        "Cargo transportation: Small to medium cargo movement for businesses and individuals",
-        "Intercity trips: Scheduled and on-demand intercity rides",
-        "Car sharing: Shared rides for intercity or intracity routes",
+        "On-demand rides across bike, auto, car, and premium categories",
+        "Door-to-door parcel delivery with real-time tracking and OTP confirmation",
+        "Cargo movement support for individuals and small businesses",
+        "Intercity travel options with route-level planning",
+        "Integrated wallet and digital payment support for seamless checkout",
       ]} />
 
-      <S>Our Pilots</S>
-      <P>We call our service providers "Pilots" because they navigate with skill, responsibility, and care. Every Pilot on the {BRAND} platform undergoes a thorough verification process including identity verification, document checks, and vehicle inspection before they can begin accepting trips.</P>
-      <P>We support our Pilots with transparent earnings, daily payouts, performance-based rewards, and dedicated support. We treat Pilots as valued partners, not just service providers.</P>
+      <S>Our Pilot Network</S>
+      <P>We call our driver partners "Pilots" to reflect skill, accountability, and service standards. Every Pilot undergoes structured onboarding, identity verification, and mandatory document checks before activation.</P>
+      <P>We support Pilots through transparent earnings views, payout workflows, and quality-based incentives. Our goal is to build a fair ecosystem where both Customers and Pilots can trust the platform.</P>
 
-      <S>Our Platform</S>
-      <P>The {BRAND} platform is built on modern, scalable technology:</P>
+      <S>Technology Foundation</S>
+      <P>{BRAND} is engineered for reliability, observability, and secure scale:</P>
       <UL items={[
-        "Real-time GPS tracking with sub-second location updates",
-        "OTP-secured pickup and delivery confirmation",
-        "AI-assisted surge pricing based on real-time demand",
-        "Multi-layer commission and earnings management",
-        "In-app wallet with UPI integration and daily settlement",
-        "SOS and emergency alert system for Pilot and Customer safety",
-        "Comprehensive admin console for operators and fleet managers",
+        "Live GPS tracking and status telemetry during active services",
+        "OTP-based service confirmation for pickups and deliveries",
+        "Dynamic pricing controls driven by demand and availability",
+        "Wallet, settlement, and payout systems with audit-ready records",
+        "Safety workflows including emergency escalation support",
+        "Operational dashboard for superadmin and business teams",
       ]} />
+
+      <S>Intellectual Property and Brand Use</S>
+      <P>{BRAND} content published on this site is original to {COMPANY} unless clearly credited otherwise. Brand names, logos, and service marks displayed on the Platform are protected by applicable intellectual property laws and may not be used without authorization.</P>
+      <P>If you believe any content on this Platform conflicts with your copyright or trademark rights, you may report it to <a href={`mailto:${EMAIL}`}>{EMAIL}</a> with supporting evidence. We review and act on valid notices promptly.</P>
 
       <S>Our Values</S>
       <div className="policy-values-grid">
         {[
-          { icon: "🛡️", title: "Safety First", desc: "Every trip is monitored. SOS alerts, live tracking, and emergency support are always available." },
-          { icon: "🔍", title: "Transparency", desc: "Clear fare breakdowns, honest earnings statements, no hidden charges — ever." },
-          { icon: "🤝", title: "Fair to All", desc: "We balance the interests of Customers, Pilots, and operators through clear, consistent policies." },
-          { icon: "💡", title: "Continuous Innovation", desc: "We ship improvements regularly based on real user feedback and platform data." },
-          { icon: "🌍", title: "Local Impact", desc: "By empowering Pilots, we support local livelihoods and strengthen community mobility networks." },
-          { icon: "📊", title: "Data-Driven", desc: "Every decision is backed by data — from route optimisation to earnings fairness." },
+          { icon: "🛡️", title: "Safety by Design", desc: "Safety controls are embedded into product flows, from onboarding to trip completion." },
+          { icon: "🔍", title: "Clear Transparency", desc: "Users get visible pricing, clear policies, and accountable support interactions." },
+          { icon: "🤝", title: "Balanced Marketplace", desc: "We design outcomes that work for Customers, Pilots, and business operators." },
+          { icon: "💡", title: "Practical Innovation", desc: "We ship purposeful improvements that solve real operational problems." },
+          { icon: "🌍", title: "Local Economic Value", desc: "We enable livelihood opportunities and better mobility access in growing cities." },
+          { icon: "📊", title: "Measured Decisions", desc: "Product and policy decisions are guided by data, quality signals, and service outcomes." },
         ].map(v => (
-          <div key={v.title} style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px", border: "1px solid #f1f5f9" }}>
+          <div key={v.title} className="policy-value-card">
             <div style={{ fontSize: 22, marginBottom: 6 }}>{v.icon}</div>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{v.title}</div>
             <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>{v.desc}</div>

@@ -99,14 +99,14 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             decoration: BoxDecoration(
-                              color: selected ? _primary.withOpacity(0.08) : cardBg,
+                              color: selected ? _primary.withValues(alpha: 0.08) : cardBg,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: selected ? _primary : (isDark ? Colors.white12 : const Color(0xFFE5E7EB)),
                                 width: selected ? 2 : 1,
                               ),
                               boxShadow: selected ? [
-                                BoxShadow(color: _primary.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 3)),
+                                BoxShadow(color: _primary.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 3)),
                               ] : null,
                             ),
                             child: Padding(
@@ -125,7 +125,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                                     Text(lang['name']!,
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: selected ? _primary.withOpacity(0.7) : textSub,
+                                        color: selected ? _primary.withValues(alpha: 0.7) : textSub,
                                         fontWeight: FontWeight.w500,
                                       )),
                                   ],
@@ -166,7 +166,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ).copyWith(
-                        overlayColor: WidgetStateProperty.all(Colors.white.withOpacity(0.15)),
+                        overlayColor: WidgetStateProperty.all(Colors.white.withValues(alpha: 0.15)),
                       ),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Text(
@@ -213,7 +213,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                 child: Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     shape: BoxShape.circle),
                   child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20)),
               ),
@@ -240,9 +240,9 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 margin: const EdgeInsets.symmetric(horizontal: 32),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.07),
+                  color: Colors.white.withValues(alpha: 0.07),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
                 ),
                 child: Column(children: [
                   const Text('👋', style: TextStyle(fontSize: 28)),

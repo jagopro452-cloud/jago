@@ -63,7 +63,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20)]),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20)]),
           child: const Icon(Icons.person, size: 60, color: Color(0xFF2563EB)),
         ),
         const SizedBox(height: 16),
@@ -84,7 +84,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
                   color: _selectedTip == t ? const Color(0xFF2563EB) : Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: _selectedTip == t ? const Color(0xFF2563EB) : Colors.grey.shade200),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
                 ),
                 child: Column(
                   children: [

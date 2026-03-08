@@ -142,7 +142,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="container-fluid">
+    <div className="container-fluid admin-dashboard-page">
 
       {/* ── FULL WIDTH BANNER ── */}
       <div className="jd-banner mb-3" data-testid="dashboard-banner">

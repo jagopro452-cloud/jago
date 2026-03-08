@@ -31,7 +31,7 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
           title: const Text('Add Saved Place'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
-              value: label,
+              initialValue: label,
               items: ['Home', 'Work', 'Other'].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
               onChanged: (v) => setS(() => label = v!),
               decoration: const InputDecoration(labelText: 'Label', border: OutlineInputBorder()),

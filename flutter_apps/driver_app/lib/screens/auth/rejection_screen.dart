@@ -28,7 +28,7 @@ class RejectionScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               reason ?? 'Please review the comments below and re-upload the necessary documents.',
-              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 15),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 15),
             ),
             const SizedBox(height: 32),
             const Text('Rejected Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -66,9 +66,9 @@ class RejectionScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFEF4444).withOpacity(0.1),
+        color: const Color(0xFFEF4444).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

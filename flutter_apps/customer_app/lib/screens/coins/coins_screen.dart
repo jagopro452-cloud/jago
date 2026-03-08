@@ -68,7 +68,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
         title: Row(children: [
           Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: const Color(0xFF2563EB).withValues(alpha: 0.1), shape: BoxShape.circle),
             child: const Icon(Icons.monetization_on, color: Color(0xFF2563EB), size: 20),
           ),
           const SizedBox(width: 8),
@@ -103,7 +103,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
                           child: Text('= ₹$rupeeValue cashback', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         ),
                       ],
@@ -115,7 +115,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)]),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)]),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -181,7 +181,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: (h['amount'] > 0 ? Colors.green : Colors.red).withOpacity(0.1),
+                            color: (h['amount'] > 0 ? Colors.green : Colors.red).withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(h['amount'] > 0 ? Icons.add : Icons.remove,

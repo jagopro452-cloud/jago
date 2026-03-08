@@ -1,20 +1,34 @@
 class ApiConfig {
-  static const String prodBaseUrl = 'https://78d2d7f4-5b0a-4649-b698-b5927a4f487e-00-13osjf2l6nw7f.janeway.replit.dev';
-  static const String devBaseUrl = 'http://10.0.2.2:5000';
+  // Override at compile time:  --dart-define=API_BASE_URL=https://yourdomain.com
+  static const String compileTimeBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
-  static bool _isProd = true;
-  static String get baseUrl => _isProd ? prodBaseUrl : devBaseUrl;
+  // Production server URL
+  static const String _prodUrl = 'https://jagopro.org';
+
+  // LAN IP for local testing only
+  static const String _lanDevUrl = 'http://192.168.1.11:5000';
+
+  static bool _isProd = true; // PRODUCTION BUILD
+
+  static String get baseUrl {
+    if (compileTimeBaseUrl.isNotEmpty) {
+      final u = compileTimeBaseUrl;
+      return u.endsWith('/') ? u.substring(0, u.length - 1) : u;
+    }
+    return _isProd ? _prodUrl : _lanDevUrl;
+  }
   static bool get isDev => !_isProd;
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static const String googleMapsApiKey = 'AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw';
+  static const String googleMapsApiKey = 'AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8';
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
 
   static String get sendOtp => '$baseUrl/api/app/send-otp';
   static String get verifyOtp => '$baseUrl/api/app/verify-otp';
+  static String get verifyFirebaseToken => '$baseUrl/api/app/verify-firebase-token';
   static String get loginPassword => '$baseUrl/api/app/login-password';
   static String get registerAccount => '$baseUrl/api/app/register';
   static String get forgotPassword => '$baseUrl/api/app/forgot-password';

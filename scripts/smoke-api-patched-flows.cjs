@@ -1,5 +1,3 @@
-const { Client } = require('pg');
-
 const BASE = process.env.SMOKE_BASE_URL || 'http://localhost:5000';
 
 async function postJson(path, body, token) {
@@ -35,47 +33,42 @@ async function getJson(path, token) {
   return { status: res.status, body: json };
 }
 
-async function getLatestOtp(db, phone) {
-  const r = await db.query(
-    'SELECT otp FROM otp_logs WHERE phone=$1 ORDER BY created_at DESC LIMIT 1',
-    [phone]
-  );
-  return r.rows[0]?.otp;
-}
+async function registerAndLogin(phone, userType, fullName) {
+  const password = `Smoke_${phone}_123`;
+  await postJson('/api/app/register', {
+    phone,
+    password,
+    fullName,
+    userType,
+    email: `${userType}.${phone}@smoke.local`,
+  });
 
-async function issueTestToken(db, phone, userType, name) {
-  const existing = await db.query(
-    'SELECT id FROM users WHERE phone=$1 AND user_type=$2 LIMIT 1',
-    [phone, userType]
-  );
-  let userId = existing.rows[0]?.id;
-  if (!userId) {
-    const inserted = await db.query(
-      'INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance) VALUES ($1,$2,$3,true,10000) RETURNING id',
-      [name, phone, userType]
-    );
-    userId = inserted.rows[0].id;
+  const login = await postJson('/api/app/login-password', {
+    phone,
+    password,
+    userType,
+  });
+
+  if (login.status !== 200 || !login.body?.token) {
+    throw new Error(`login failed for ${userType}: ${JSON.stringify(login.body)}`);
   }
-  const token = `${userId}:${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
-  await db.query('UPDATE users SET auth_token=$1, is_active=true WHERE id=$2::uuid', [token, userId]);
-  return token;
+
+  return login.body.token;
 }
 
 (async () => {
-  const db = new Client({ connectionString: process.env.DATABASE_URL });
-  await db.connect();
-
   const ts = Date.now().toString().slice(-8);
   const customerPhone = `9${ts}1`;
   const driverPhone = `8${ts}2`;
 
-  const customerToken = await issueTestToken(db, customerPhone, 'customer', 'Smoke Customer');
-  const driverToken = await issueTestToken(db, driverPhone, 'driver', 'Smoke Driver');
+  const customerToken = await registerAndLogin(customerPhone, 'customer', 'Smoke Customer');
+  const driverToken = await registerAndLogin(driverPhone, 'driver', 'Smoke Driver');
 
   const routesResp = await getJson('/api/intercity-routes');
   if (routesResp.status !== 200 || !Array.isArray(routesResp.body)) {
     throw new Error(`intercity-routes failed: ${JSON.stringify(routesResp.body)}`);
   }
+
   const route = routesResp.body.find((r) => r.isActive) || routesResp.body[0];
   if (!route?.id) throw new Error('No intercity route found');
 
@@ -129,7 +122,6 @@ async function issueTestToken(db, phone, userType, name) {
   };
 
   console.log(JSON.stringify(summary, null, 2));
-  await db.end();
 })().catch(async (e) => {
   console.error('SMOKE_FAIL', e?.message || e);
   process.exit(1);

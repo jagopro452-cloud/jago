@@ -10,6 +10,9 @@ vite.config.ts.*
 .android-sdk/
 .pub-cache/
 .gradle-cache/
+.gradle/
+**/android/.gradle/
+**/local.properties
 .build-tmp/
 
 # Build outputs
@@ -32,3 +35,6 @@ build_output.log
 
 # Sensitive artifacts and prompt dumps
 attached_assets/
+
+# Local development PostgreSQL cluster (generated at runtime)
+.local-postgres/

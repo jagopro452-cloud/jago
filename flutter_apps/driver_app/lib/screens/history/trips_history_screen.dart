@@ -156,7 +156,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           Container(
             width: 40, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
@@ -164,7 +164,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             Container(
               width: 48, height: 48,
               decoration: BoxDecoration(
-                color: _statusColor(status).withOpacity(0.12),
+                color: _statusColor(status).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
@@ -179,12 +179,12 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               ),
               const SizedBox(height: 2),
               Text(_formatDate(t['createdAt']?.toString()),
-                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
             ])),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: _statusColor(status).withOpacity(0.12),
+                color: _statusColor(status).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(_statusLabel(status),
@@ -201,9 +201,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
+              color: Colors.white.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.07)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
             child: Row(children: [
               _tripStat('Fare', '₹${fare.toStringAsFixed(0)}', Icons.currency_rupee_rounded, _green),
@@ -221,10 +221,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           if (t['refId'] != null) ...[
             const SizedBox(height: 14),
             Row(children: [
-              Icon(Icons.tag_rounded, size: 14, color: Colors.white.withOpacity(0.3)),
+              Icon(Icons.tag_rounded, size: 14, color: Colors.white.withValues(alpha: 0.3)),
               const SizedBox(width: 6),
               Text('Trip ID: ${t['refId']}',
-                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12, fontFamily: 'monospace')),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12, fontFamily: 'monospace')),
             ]),
           ],
         ]),
@@ -236,12 +236,12 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         width: 32, height: 32,
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
         child: Icon(icon, color: color, size: 16),
       ),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
       ])),
@@ -254,13 +254,13 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       const SizedBox(height: 6),
       Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
       const SizedBox(height: 2),
-      Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 10)),
+      Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10)),
     ]));
   }
 
   Widget _vDivider() => Container(
     width: 1, height: 40,
-    color: Colors.white.withOpacity(0.07),
+    color: Colors.white.withValues(alpha: 0.07),
     margin: const EdgeInsets.symmetric(horizontal: 8),
   );
 
@@ -276,7 +276,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             pinned: true,
             backgroundColor: _bg,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withOpacity(0.7)),
+              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withValues(alpha: 0.7)),
               onPressed: () => Navigator.pop(context),
             ),
             title: const Text('My Trips',
@@ -339,7 +339,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               decoration: BoxDecoration(
                 color: _surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.07)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
               ),
               child: TextField(
                 controller: _searchCtrl,
@@ -350,11 +350,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Search by pickup or destination...',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withOpacity(0.3), size: 18),
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
+                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withValues(alpha: 0.3), size: 18),
                   suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear_rounded, color: Colors.white.withOpacity(0.3), size: 18),
+                        icon: Icon(Icons.clear_rounded, color: Colors.white.withValues(alpha: 0.3), size: 18),
                         onPressed: () {
                           _searchCtrl.clear();
                           setState(() => _searchQuery = '');
@@ -383,10 +383,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                             Container(
                               width: 72, height: 72,
                               decoration: BoxDecoration(
-                                color: _blue.withOpacity(0.1),
+                                color: _blue.withValues(alpha: 0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.route_outlined, size: 36, color: _blue.withOpacity(0.6)),
+                              child: Icon(Icons.route_outlined, size: 36, color: _blue.withValues(alpha: 0.6)),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -398,7 +398,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                               _searchQuery.isNotEmpty
                                 ? 'Try a different search term'
                                 : 'Your trip history will appear here',
-                              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
                             ),
                           ])),
                         )
@@ -422,7 +422,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                               decoration: BoxDecoration(
                                 color: _surface,
                                 borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
@@ -431,7 +431,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Container(
                                       width: 42, height: 42,
                                       decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
+                                        color: statusColor.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
@@ -450,7 +450,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                       Text(
                                         t['pickupAddress']?.toString() ?? '',
                                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(color: Colors.white.withOpacity(0.38), fontSize: 11),
+                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.38), fontSize: 11),
                                       ),
                                     ])),
                                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -461,7 +461,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.12),
+                                          color: statusColor.withValues(alpha: 0.12),
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(_statusLabel(status),
@@ -472,18 +472,18 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                   const SizedBox(height: 12),
                                   Row(children: [
                                     // Date
-                                    Icon(Icons.schedule_rounded, size: 12, color: Colors.white.withOpacity(0.3)),
+                                    Icon(Icons.schedule_rounded, size: 12, color: Colors.white.withValues(alpha: 0.3)),
                                     const SizedBox(width: 4),
                                     Text(_formatDate(t['createdAt']?.toString()),
-                                      style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11)),
+                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11)),
                                     const Spacer(),
                                     // Payment
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                       decoration: BoxDecoration(
                                         color: isPaid
-                                          ? Colors.green.withOpacity(0.1)
-                                          : Colors.orange.withOpacity(0.1),
+                                          ? Colors.green.withValues(alpha: 0.1)
+                                          : Colors.orange.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(5),
                                       ),
                                       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -504,7 +504,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: _blue.withOpacity(0.1),
+                                        color: _blue.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(5),
                                       ),
                                       child: Text(
@@ -530,9 +530,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.15)),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
         ),
         child: Column(children: [
           Icon(icon, color: color, size: 18),
@@ -540,7 +540,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           Text(value,
             style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w900)),
           const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 9),
+          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9),
             textAlign: TextAlign.center),
         ]),
       ),

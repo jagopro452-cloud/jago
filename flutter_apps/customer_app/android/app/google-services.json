@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "jago-customer-app",
-    "storage_bucket": "jago-customer-app.appspot.com"
+    "project_number": "159758556140",
+    "project_id": "jago-rides",
+    "storage_bucket": "jago-rides.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000001",
+        "mobilesdk_app_id": "1:159758556140:android:03b5ed5b03b9df7a2b3ec9",
         "android_client_info": {
           "package_name": "com.mindwhile.jago_customer"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyB_yncy2ojljQ_dehITVkPQrPDtoCQbuhw"
+          "current_key": "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
         }
       ],
       "services": {

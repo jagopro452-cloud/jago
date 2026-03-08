@@ -24,25 +24,45 @@ class AuthService {
   }
 
   static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'customer']) async {
-    final res = await http.post(Uri.parse(ApiConfig.sendOtp),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'userType': userType}));
-    return jsonDecode(res.body);
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.sendOtp),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'userType': userType}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
+    }
   }
 
   static Future<Map<String, dynamic>> verifyOtp(String phone, String otp, [String userType = 'customer']) async {
-    final res = await http.post(Uri.parse(ApiConfig.verifyOtp),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}));
-    final data = jsonDecode(res.body);
-    if (res.statusCode == 200 && data['token'] != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_tokenKey, data['token']);
-      await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
-      // Save FCM token to server after login
-      FcmService().onLoginSuccess().catchError((_) {});
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.verifyOtp),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        final user = data['user'] ?? data;
+        await prefs.setString(_userKey, jsonEncode(user));
+        // Cache commonly accessed fields for quick reads
+        final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
+        final userPhone = user['phone'] ?? phone;
+        if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
+        if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
+        // Save FCM token to server after login
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
-    return data;
   }
 
   static Future<void> logout() async {
@@ -93,7 +113,12 @@ class AuthService {
       if (res.statusCode == 200 && data['token'] != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, data['token']);
-        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        final user = data['user'] ?? data;
+        await prefs.setString(_userKey, jsonEncode(user));
+        final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
+        final userPhone = user['phone'] ?? phone;
+        if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
+        if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
@@ -102,8 +127,35 @@ class AuthService {
     }
   }
 
-  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email}) async {
+  /// Verify a Firebase ID token with our server and get our custom auth token.
+  /// Call this after [FirebaseOtpService.verifyOtp] returns an ID token.
+  static Future<Map<String, dynamic>> verifyFirebaseToken(String idToken, String phone, [String userType = 'customer']) async {
     try {
+      final res = await http.post(Uri.parse(ApiConfig.verifyFirebaseToken),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'firebaseIdToken': idToken, 'phone': phone, 'userType': userType}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && data['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, data['token']);
+        final user = data['user'] ?? data;
+        await prefs.setString(_userKey, jsonEncode(user));
+        final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
+        final userPhone = user['phone'] ?? phone;
+        if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
+        if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
+        FcmService().onLoginSuccess().catchError((_) {});
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check your connection.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email}) async {    try {
       final body = {'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'customer'};
       if (email != null && email.isNotEmpty) body['email'] = email;
       final res = await http.post(Uri.parse(ApiConfig.registerAccount),
@@ -113,7 +165,11 @@ class AuthService {
       if (res.statusCode == 200 && data['token'] != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, data['token']);
-        await prefs.setString(_userKey, jsonEncode(data['user'] ?? data));
+        final user = data['user'] ?? data;
+        await prefs.setString(_userKey, jsonEncode(user));
+        final name = user['fullName'] ?? user['full_name'] ?? fullName;
+        if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
+        await prefs.setString('user_phone', phone);
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;

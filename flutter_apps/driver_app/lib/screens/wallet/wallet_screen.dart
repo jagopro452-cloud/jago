@@ -80,7 +80,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Row(children: [
               Container(
                 width: 40, height: 40,
-                decoration: BoxDecoration(color: _primary.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: _primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
                 child: const Icon(Icons.account_balance_wallet, color: _primary, size: 20)),
               const SizedBox(width: 12),
               const Text('Recharge Wallet', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
@@ -167,9 +167,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: _primary.withOpacity(0.07),
+                color: _primary.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _primary.withOpacity(0.3))),
+                border: Border.all(color: _primary.withValues(alpha: 0.3))),
               child: Row(children: [
                 const Icon(Icons.info_outline, color: _primary, size: 16),
                 const SizedBox(width: 8),
@@ -306,7 +306,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 72, height: 72,
-            decoration: BoxDecoration(color: Colors.green.withOpacity(0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 48)),
           const SizedBox(height: 16),
           const Text('Recharge Successful!',
@@ -322,7 +322,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                color: Colors.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
               child: const Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.lock_open, color: Colors.green, size: 16),
                 SizedBox(width: 6),
@@ -538,7 +538,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         backgroundColor: _navy,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7)),
+          icon: Icon(Icons.arrow_back_ios, color: Colors.white.withValues(alpha: 0.7)),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Wallet', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -569,7 +569,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(
-                    color: (isLocked ? Colors.red : _primary).withOpacity(0.12),
+                    color: (isLocked ? Colors.red : _primary).withValues(alpha: 0.12),
                     shape: BoxShape.circle),
                   child: Icon(
                     isLocked ? Icons.lock_rounded : Icons.account_balance_wallet_rounded,
@@ -627,9 +627,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.08),
+                      color: Colors.red.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.withOpacity(0.3))),
+                      border: Border.all(color: Colors.red.withValues(alpha: 0.3))),
                     child: const Row(children: [
                       Icon(Icons.info_outline, color: Colors.red, size: 16),
                       SizedBox(width: 8),
@@ -650,9 +650,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   // Transactions tab
                   history.isEmpty
                     ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.receipt_long, color: Colors.white.withOpacity(0.2), size: 48),
+                        Icon(Icons.receipt_long, color: Colors.white.withValues(alpha: 0.2), size: 48),
                         const SizedBox(height: 12),
-                        Text('No transactions yet', style: TextStyle(color: Colors.white.withOpacity(0.3))),
+                        Text('No transactions yet', style: TextStyle(color: Colors.white.withValues(alpha: 0.3))),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
@@ -682,7 +682,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               Container(
                                 width: 40, height: 40,
                                 decoration: BoxDecoration(
-                                  color: (isCredit ? Colors.green : Colors.red).withOpacity(0.12),
+                                  color: (isCredit ? Colors.green : Colors.red).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
@@ -710,9 +710,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   // Withdrawals tab
                   withdrawals.isEmpty
                     ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.account_balance, color: Colors.white.withOpacity(0.2), size: 48),
+                        Icon(Icons.account_balance, color: Colors.white.withValues(alpha: 0.2), size: 48),
                         const SizedBox(height: 12),
-                        Text('No withdrawal requests yet', style: TextStyle(color: Colors.white.withOpacity(0.3))),
+                        Text('No withdrawal requests yet', style: TextStyle(color: Colors.white.withValues(alpha: 0.3))),
                         const SizedBox(height: 8),
                         if (!isLocked && balance >= 100)
                           TextButton.icon(
@@ -740,7 +740,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               Container(
                                 width: 40, height: 40,
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.12),
+                                  color: statusColor.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(Icons.account_balance, color: statusColor, size: 18)),
@@ -757,7 +757,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.12),
+                                  color: statusColor.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(status.toUpperCase(),

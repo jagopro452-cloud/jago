@@ -91,7 +91,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   width: size.width * 0.9, height: size.width * 0.9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(colors: [_primary, _primary.withOpacity(0)]),
+                    gradient: RadialGradient(colors: [_primary, _primary.withValues(alpha: 0)]),
                   ),
                 ),
               ),
@@ -129,10 +129,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   decoration: BoxDecoration(
                     color: _surface,
                     borderRadius: BorderRadius.circular(size.width * 0.14),
-                    border: Border.all(color: _primary.withOpacity(0.3), width: 1.5),
+                    border: Border.all(color: _primary.withValues(alpha: 0.3), width: 1.5),
                     boxShadow: [
-                      BoxShadow(color: _primary.withOpacity(0.28), blurRadius: 60, spreadRadius: 5),
-                      BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 25),
+                      BoxShadow(color: _primary.withValues(alpha: 0.28), blurRadius: 60, spreadRadius: 5),
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 25),
                     ],
                   ),
                   child: Image.asset(

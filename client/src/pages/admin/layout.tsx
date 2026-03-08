@@ -189,6 +189,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [location, setLocation] = useLocation();
   const clock = useLiveClock();
   const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
 
   const currentPage = (() => {
     for (const section of navSections) {
@@ -281,7 +282,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   return (
-    <div className="admin-wrapper">
+    <div className="admin-wrapper admin-shell">
       {/* Overlay */}
       <div
         className={`aside-overlay${mobileOpen ? " active" : ""}`}
@@ -300,14 +301,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <div style={{
               width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: "linear-gradient(135deg,#FF6B35,#FF8C5A)",
+              background: "linear-gradient(135deg,#1e6de5,#0ea5e9)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 3px 10px rgba(255,107,53,0.45)",
+              boxShadow: "0 3px 10px rgba(30,109,229,0.45)",
               fontSize: "0.85rem", fontWeight: 900, color: "#fff", letterSpacing: 0,
             }}>J</div>
             <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
               <span className="logo-text" style={{ fontSize: "1.1rem", letterSpacing: 2 }}>JAGO</span>
-              <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "rgba(255,107,53,0.6)", letterSpacing: 3, marginTop: 1 }}>ADMIN PANEL</span>
+              <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "rgba(30,109,229,0.72)", letterSpacing: 3, marginTop: 1 }}>ADMIN PANEL</span>
             </div>
           </a>
           <button
@@ -409,7 +410,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               onClick={() => setMobileOpen(!mobileOpen)}
               data-testid="btn-mobile-sidebar"
             >
-              <i className="bi bi-list fs-3" style={{ color: "#64748b" }}></i>
+              <i className="bi bi-list fs-3" style={{ color: isDark ? "#cbd5e1" : "#64748b" }}></i>
             </button>
             {/* Breadcrumb */}
             <div className="d-none d-md-flex align-items-center gap-2">
@@ -417,7 +418,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {currentPage.section}
               </span>
               <i className="bi bi-chevron-right" style={{ fontSize: 10, color: "#cbd5e1" }}></i>
-              <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 700 }}>{currentPage.label}</span>
+              <span style={{ fontSize: 13, color: isDark ? "#e2e8f0" : "#0f172a", fontWeight: 700 }}>{currentPage.label}</span>
             </div>
           </div>
           <div className="header-right-col">
@@ -426,13 +427,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {/* Live clock */}
                 <li className="d-none d-lg-block">
                   <div style={{
-                    background: "linear-gradient(135deg, #f0f6ff, #e8f0fe)",
-                    border: "1px solid #dbeafe",
+                    background: isDark
+                      ? "linear-gradient(135deg, rgba(30,64,175,0.25), rgba(56,189,248,0.16))"
+                      : "linear-gradient(135deg, #f0f6ff, #e8f0fe)",
+                    border: isDark ? "1px solid rgba(147,197,253,0.4)" : "1px solid #dbeafe",
                     borderRadius: 10,
                     padding: "5px 12px",
                     fontSize: 12,
                     fontWeight: 700,
-                    color: "#1e40af",
+                    color: isDark ? "#bfdbfe" : "#1e40af",
                     display: "flex",
                     alignItems: "center",
                     gap: 6
@@ -453,7 +456,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {theme === "dark" ? (
                       <i className="bi bi-sun-fill" style={{ color: "#fbbf24" }}></i>
                     ) : (
-                      <i className="bi bi-moon-fill" style={{ color: "#6366f1" }}></i>
+                      <i className="bi bi-moon-fill" style={{ color: "#2563eb" }}></i>
                     )}
                   </button>
                 </li>
@@ -503,8 +506,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </header>
 
       {/* Main Content */}
-      <div className="main-area">
-        <div className="main-area-inner">
+      <div className="main-area admin-main-area">
+        <div className="main-area-inner admin-main-inner">
           {children}
         </div>
       </div>

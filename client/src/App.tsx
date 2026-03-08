@@ -22,7 +22,7 @@ function AdminLogout() {
   useEffect(() => {
     localStorage.removeItem("jago-admin");
     setLocation("/admin/login");
-  }, []);
+  }, [setLocation]);
   return null;
 }
 
@@ -35,6 +35,14 @@ function RouteFallback() {
 }
 
 function Router() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
+
   return (
     <Switch>
       <Route path="/" component={LandingPage} />

@@ -27,6 +27,12 @@ function initFirebase() {
   }
 }
 
+// ── Get Firebase Admin instance (for token verification) ─────────────────────
+export function getFirebaseAdmin(): any {
+  initFirebase();
+  return admin;
+}
+
 // ── Send single FCM notification ─────────────────────────────────────────────
 export async function sendFcmNotification(opts: {
   fcmToken: string;

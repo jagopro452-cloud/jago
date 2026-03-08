@@ -105,15 +105,51 @@ Customer trip screen must show:
 
 ## Admin Dashboard Requirements
 
-- User and driver management
-- Driver onboarding + verification
-- Live trip monitoring
-- Revenue analytics
-- Surge configuration
-- Real-time tracking
-- Service configuration
-- AI insights
-- Safety operations tools
+- Professional superadmin control center with enterprise-grade information hierarchy
+- User and driver lifecycle management (KYC, status, risk flags, block/unblock, audit history)
+- Driver onboarding and document verification with queue-based workflows
+- Live trip monitoring with map + incident timeline + quick intervention actions
+- Revenue and commission analytics with trend cards, drilldowns, and export options
+- World-class analytics surfaces with multiple chart types (Area, Bar, Pie/Donut, Trend comparisons)
+- Surge and pricing configuration with rule preview and impact simulation
+- Service and city configuration with validation and rollback-safe updates
+- AI insights dashboard (demand anomalies, fraud signals, dispatch quality)
+- Safety operations module (SOS events, escalation matrix, response SLA tracking)
+- Role-based views for superadmin, admin, ops, finance, and support teams
+- Activity logs and admin audit trail for all sensitive actions
+
+### Superadmin Panel UI Rules (Must Follow)
+
+- Use a consistent 8px spacing system only (8/12/16/24/32/40/48)
+- Enforce strict alignment: all cards, table headers, filters, and buttons on shared grid columns
+- Dashboard shell: sticky top bar + left navigation + content container with max-width and centered layout
+- Section rhythm: page title, KPI row, filters row, content blocks (no random vertical gaps)
+- Card system: uniform corner radius, elevation scale, and internal padding (minimum 16px)
+- Tables: sticky header, zebra or subtle row separators, compact/comfortable density toggle
+- Filters: place in one horizontal toolbar with predictable order (search -> date -> status -> actions)
+- Action buttons: primary action right-aligned, secondary actions grouped, destructive actions isolated
+- Forms: two-column desktop grid, single-column mobile, clear required/optional indicators
+- Empty/loading/error/success states must be designed for every module (no blank screens)
+- Use clear visual hierarchy: primary metrics first, operational alerts second, detailed data third
+- Avoid floating/misaligned elements, overlapping widgets, and inconsistent paddings
+
+### Superadmin All-Pages Compliance Checklist (Non-Negotiable)
+
+- Apply the same layout system to every admin route, not only dashboard pages
+- Every admin page must use one shared content shell with fixed max-width and centered alignment
+- Every page must follow the same top structure order:
+Page title row
+Filter/action row
+Main data content
+- All page headers must use the same vertical rhythm and spacing tokens
+- All forms must use identical input heights, label spacing, help text spacing, and button alignment
+- All table pages must use the same header style, row density, sticky header behavior, and empty state design
+- All modal dialogs must use the same padding scale, section spacing, and action button placement
+- No per-page random margins or one-off pixel values unless there is a clear documented reason
+- Add design QA checks before release for desktop, tablet, and mobile on every admin module
+- Reject implementation if any screen has inconsistent padding, off-grid elements, or broken alignment
+- Reports pages must always include visual analytics, not table-only output
+- Minimum reports standard: KPI summary cards + trend chart + distribution chart + detailed table + export actions
 
 ## Map Requirements
 
@@ -124,12 +160,18 @@ Customer trip screen must show:
 
 ## UI/UX Requirements
 
-- Premium, minimal, modern design
-- Fast loading and smooth transitions
-- Card-based layout
-- Light and dark themes
-- One-hand mobile usability
-- Clear and quick service selection
+- Premium, modern, production-ready visual language with clear hierarchy
+- Pixel-consistent spacing and alignment across all pages and breakpoints
+- Fast loading with skeleton states and progressive rendering for heavy dashboards
+- Card-based layout with predictable grids (12-column desktop, 6 tablet, 4 mobile)
+- Light and dark themes with WCAG-compliant contrast ratios
+- One-hand mobile usability for critical operations and approval flows
+- Strong typography system with defined scale (H1/H2/H3/body/caption) and consistent line-heights
+- Component consistency: same button heights, input heights, corner radius, and icon sizing
+- Responsive behavior rules for tables/charts/filters (collapse strategy explicitly defined)
+- Micro-interactions only where meaningful: hover, focus, state change, confirmation feedback
+- Clear and quick service selection with reduced cognitive load and explicit labels
+- Accessibility first: keyboard navigation, focus visibility, and semantic form/error messaging
 
 ## Futuristic Capabilities
 

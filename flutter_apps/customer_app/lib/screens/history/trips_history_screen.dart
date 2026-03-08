@@ -55,11 +55,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))]),
                   child: Column(children: [
                     Row(children: [
                       Container(width: 44, height: 44,
-                        decoration: BoxDecoration(color: const Color(0xFF1E6DE5).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(color: const Color(0xFF1E6DE5).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                         child: const Icon(Icons.directions_bike, color: Color(0xFF1E6DE5), size: 24)),
                       const SizedBox(width: 12),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -75,7 +75,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: status == 'completed' ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                            color: status == 'completed' ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6)),
                           child: Text(status, style: TextStyle(
                             fontSize: 11, fontWeight: FontWeight.w500,

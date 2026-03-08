@@ -87,7 +87,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       decoration: BoxDecoration(
         gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0C2050), Color(0xFF1E3A5F)]),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.4)),
+        border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
@@ -105,7 +105,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
               ),
               Column(children: [
                 Text('$score', style: TextStyle(color: levelColor, fontSize: 22, fontWeight: FontWeight.bold)),
-                Text('Score', style: TextStyle(color: levelColor.withOpacity(0.7), fontSize: 10)),
+                Text('Score', style: TextStyle(color: levelColor.withValues(alpha: 0.7), fontSize: 10)),
               ]),
             ],
           ),
@@ -178,7 +178,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                       decoration: BoxDecoration(
                         color: isToday
                           ? const Color(0xFF3B82F6)
-                          : gross > 0 ? const Color(0xFF1E3A5F).withOpacity(0.9) : const Color(0xFF1E3A5F).withOpacity(0.3),
+                          : gross > 0 ? const Color(0xFF1E3A5F).withValues(alpha: 0.9) : const Color(0xFF1E3A5F).withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(4),
                         border: isToday ? Border.all(color: const Color(0xFF3B82F6), width: 1.5) : null,
                       ),
@@ -260,7 +260,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF1E3A5F))),
         child: Row(children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
@@ -302,7 +302,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
             : ['📈 Accept more trips to improve score', 'Avoid cancellations after accepting', 'Keep customers happy — polite service!'];
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF0C2050).withOpacity(0.5), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.3))),
+      decoration: BoxDecoration(color: const Color(0xFF0C2050).withValues(alpha: 0.5), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.3))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

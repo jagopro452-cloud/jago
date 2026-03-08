@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -27,6 +28,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   String _serverOtp = '';
   int _seconds = 0;
   Timer? _timer;
+  // Firebase OTP
+  String? _firebaseVerificationId;
+  bool _usingFirebaseOtp = false;
 
   bool _loading = false;
   late AnimationController _fadeCtrl;
@@ -94,16 +98,53 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneOtpCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.sendOtp(phone, 'customer');
-    setState(() => _loading = false);
-    if (!mounted) return;
-    if (res['success'] == true) {
-      setState(() { _otpSent = true; _serverOtp = res['otp']?.toString() ?? ''; });
-      _startTimer();
-      _showSnack('OTP sent to +91$phone');
-    } else {
-      _showSnack(res['message'] ?? 'Failed to send OTP. Try again.', error: true);
-    }
+
+    // Try Firebase Phone Auth first; fall back to server OTP if unavailable
+    bool firebaseSent = false;
+    FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (verificationId) {
+        if (!mounted) return;
+        setState(() {
+          _firebaseVerificationId = verificationId;
+          _usingFirebaseOtp = true;
+          _loading = false;
+          _otpSent = true;
+        });
+        _startTimer();
+        _showSnack('OTP sent to +91$phone');
+      },
+      onError: (error) async {
+        // Firebase failed — fall back to server OTP
+        if (!mounted) return;
+        final res = await AuthService.sendOtp(phone, 'customer');
+        if (!mounted) return;
+        setState(() { _loading = false; });
+        if (res['success'] == true) {
+          setState(() {
+            _usingFirebaseOtp = false;
+            _serverOtp = res['otp']?.toString() ?? '';
+            _otpSent = true;
+          });
+          _startTimer();
+          _showSnack('OTP sent to +91$phone');
+        } else {
+          _showSnack(res['message'] ?? 'Failed to send OTP. Try again.', error: true);
+        }
+      },
+      onAutoVerify: (idToken) async {
+        // Firebase auto-verified (Android) → login immediately
+        if (!mounted) return;
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+        if (!mounted) return;
+        setState(() => _loading = false);
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        }
+      },
+    );
+    firebaseSent = true;
+    if (firebaseSent) return; // wait for callbacks above
   }
 
   Future<void> _verifyOtp() async {
@@ -111,13 +152,36 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.verifyOtp(phone, otp, 'customer');
-    setState(() => _loading = false);
-    if (!mounted) return;
-    if (res['success'] == true) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+
+    if (_usingFirebaseOtp && _firebaseVerificationId != null) {
+      // Firebase verification path
+      try {
+        final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: otp,
+          verificationId: _firebaseVerificationId,
+        );
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+        setState(() => _loading = false);
+        if (!mounted) return;
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        } else {
+          _showSnack(res['message'] ?? 'Verification failed. Try again.', error: true);
+        }
+      } catch (e) {
+        setState(() => _loading = false);
+        _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
+      }
     } else {
-      _showSnack(res['message'] ?? 'Invalid OTP. Try again.', error: true);
+      // Server OTP fallback path
+      final res = await AuthService.verifyOtp(phone, otp, 'customer');
+      setState(() => _loading = false);
+      if (!mounted) return;
+      if (res['success'] == true) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      } else {
+        _showSnack(res['message'] ?? 'Invalid OTP. Try again.', error: true);
+      }
     }
   }
 
@@ -171,7 +235,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       padding: const EdgeInsets.all(4),
       child: TabBar(
         controller: _tabCtrl,
-        indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(11), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]),
+        indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(11), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 2))]),
         indicatorSize: TabBarIndicatorSize.tab,
         labelColor: _blue,
         unselectedLabelColor: Colors.grey[500],
@@ -318,7 +382,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       width: double.infinity, height: 56,
       child: ElevatedButton(
         onPressed: _loading ? null : onTap,
-        style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, disabledBackgroundColor: _blue.withOpacity(0.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+        style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, disabledBackgroundColor: _blue.withValues(alpha: 0.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
         child: _loading
             ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
             : Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),

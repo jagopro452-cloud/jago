@@ -76,8 +76,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: _blue.withOpacity(0.2), width: 1),
-          boxShadow: [BoxShadow(color: _blue.withOpacity(0.2), blurRadius: 30, spreadRadius: 2)],
+          border: Border.all(color: _blue.withValues(alpha: 0.2), width: 1),
+          boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.2), blurRadius: 30, spreadRadius: 2)],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           _buildTopBanner(),
@@ -110,12 +110,12 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: urgency
-            ? [const Color(0xFFF59E0B).withOpacity(0.2), const Color(0xFFF59E0B).withOpacity(0.08)]
-            : [_blue.withOpacity(0.22), _blue.withOpacity(0.06)],
+            ? [const Color(0xFFF59E0B).withValues(alpha: 0.2), const Color(0xFFF59E0B).withValues(alpha: 0.08)]
+            : [_blue.withValues(alpha: 0.22), _blue.withValues(alpha: 0.06)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
-        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
       ),
       child: Row(children: [
         Expanded(
@@ -127,7 +127,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
                   shape: BoxShape.circle,
                   color: urgency ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
                   boxShadow: [BoxShadow(
-                    color: (urgency ? const Color(0xFFF59E0B) : const Color(0xFF10B981)).withOpacity(0.5),
+                    color: (urgency ? const Color(0xFFF59E0B) : const Color(0xFF10B981)).withValues(alpha: 0.5),
                     blurRadius: 6)],
                 ),
               ),
@@ -142,9 +142,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: typeColor.withOpacity(0.18),
+                  color: typeColor.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: typeColor.withOpacity(0.4)),
+                  border: Border.all(color: typeColor.withValues(alpha: 0.4)),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(typeEmoji, style: const TextStyle(fontSize: 12)),
@@ -156,7 +156,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
             ]),
             const SizedBox(height: 4),
             Text('Accept to earn more — every trip counts!',
-              style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12, fontWeight: FontWeight.w500)),
           ]),
         ),
         const SizedBox(width: 16),
@@ -168,7 +168,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               builder: (_, __) => CircularProgressIndicator(
                 value: 1 - _ringCtrl.value,
                 strokeWidth: 5,
-                backgroundColor: Colors.white.withOpacity(0.08),
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
                 color: urgency ? const Color(0xFFF59E0B) : _blue,
               ),
             ),
@@ -178,7 +178,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               style: TextStyle(
                 color: urgency ? const Color(0xFFF59E0B) : Colors.white,
                 fontSize: 20, fontWeight: FontWeight.w900, height: 1)),
-            Text('sec', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.w600)),
+            Text('sec', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 9, fontWeight: FontWeight.w600)),
           ]),
         ]),
       ]),
@@ -191,8 +191,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -200,14 +200,14 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
             Container(width: 12, height: 12,
               decoration: BoxDecoration(
                 shape: BoxShape.circle, color: _blue,
-                boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 6)])),
+                boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 6)])),
             Expanded(
               child: Container(
                 width: 2, margin: const EdgeInsets.symmetric(vertical: 4),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [_blue.withOpacity(0.5), const Color(0xFFF59E0B).withOpacity(0.5)]),
+                    colors: [_blue.withValues(alpha: 0.5), const Color(0xFFF59E0B).withValues(alpha: 0.5)]),
                   borderRadius: BorderRadius.circular(1)),
               ),
             ),
@@ -215,7 +215,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               decoration: BoxDecoration(
                 color: const Color(0xFFF59E0B),
                 borderRadius: BorderRadius.circular(3),
-                boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.4), blurRadius: 6)])),
+                boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), blurRadius: 6)])),
           ]),
           const SizedBox(width: 14),
           Expanded(
@@ -229,7 +229,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               ]),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Container(height: 1, color: Colors.white.withOpacity(0.06)),
+                child: Container(height: 1, color: Colors.white.withValues(alpha: 0.06)),
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('Destination', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
@@ -261,26 +261,26 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.12), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.12), width: 1),
       ),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Container(
           width: 32, height: 32,
-          decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
           child: Icon(icon, color: color, size: 16),
         ),
         const SizedBox(height: 6),
         Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w900, height: 1)),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
       ]),
     );
   }
 
   Widget _vertDivider() {
-    return Container(width: 1, height: 40, color: Colors.white.withOpacity(0.08),
+    return Container(width: 1, height: 40, color: Colors.white.withValues(alpha: 0.08),
       margin: const EdgeInsets.symmetric(horizontal: 4));
   }
 
@@ -292,9 +292,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
           child: Container(
             height: 54,
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.08),
+              color: Colors.red.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.red.withOpacity(0.25), width: 1),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.25), width: 1),
             ),
             child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(Icons.close_rounded, color: Color(0xFFF87171), size: 20),
@@ -317,7 +317,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               ),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [BoxShadow(
-                color: const Color(0xFF16A34A).withOpacity(0.3),
+                color: const Color(0xFF16A34A).withValues(alpha: 0.3),
                 blurRadius: 12, offset: const Offset(0, 4))],
             ),
             child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

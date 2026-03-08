@@ -339,7 +339,7 @@ a:hover { color: var(--bs-primary); }
    03.3: ASIDE (SIDEBAR)
    ======================== */
 .aside {
-  width: 248px;
+  width: 210px;
   position: fixed;
   left: 0;
   top: 0;
@@ -651,7 +651,7 @@ body.aside-folded .main-nav li > a i {
   position: fixed;
   top: 0;
   right: 0;
-  left: 248px;
+  left: 210px;
   height: 64px;
   z-index: 1030;
   background-color: #fff;
@@ -878,7 +878,7 @@ body.aside-folded .header {
    03.4: MAIN AREA
    ======================== */
 .main-area {
-  margin-left: 248px;
+  margin-left: 210px;
   padding-top: 64px;
   min-height: 100vh;
   background-color: var(--bs-body-bg);
@@ -2466,7 +2466,7 @@ body.aside-folded .main-nav li.active > a i { color: #60a5fa !important; }
   -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
   border-bottom: 1px solid rgba(0,0,0,0.07) !important;
   box-shadow: 0 1px 12px rgba(0,0,0,0.06) !important;
-  left: 237px !important;
+  left: 210px !important;
 }
 body.aside-folded .header { left: 72px !important; }
 
@@ -2492,7 +2492,7 @@ body.aside-folded .header { left: 72px !important; }
 
 /* ── Main Area ── */
 .main-area {
-  margin-left: 237px !important;
+  margin-left: 210px !important;
   background: #eef2f8 !important;
   min-height: 100vh;
   transition: margin-left 150ms ease !important;
@@ -2837,6 +2837,138 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   width: 100%;
   max-width: 420px;
   color: #fff;
+}
+
+/* ===============================================
+   SUPERADMIN DEMO THEME OVERRIDES (2026-03-07)
+   =============================================== */
+.admin-shell .aside {
+  background: linear-gradient(180deg, #041025 0%, #071a3a 50%, #0b2454 100%) !important;
+  border-right: 1px solid rgba(96, 165, 250, 0.22) !important;
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.42) !important;
+}
+
+.admin-shell .aside-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent) !important;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.18) !important;
+}
+
+.admin-shell .nav-category {
+  color: rgba(186, 230, 253, 0.62) !important;
+}
+
+.admin-shell .main-nav li > a {
+  color: rgba(226, 232, 240, 0.84) !important;
+  border: 1px solid transparent !important;
+}
+
+.admin-shell .main-nav li > a i {
+  color: rgba(125, 211, 252, 0.85) !important;
+}
+
+.admin-shell .main-nav li > a:hover {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(37, 99, 235, 0.08)) !important;
+  border-color: rgba(125, 211, 252, 0.22) !important;
+}
+
+.admin-shell .main-nav li.active > a {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.32), rgba(59, 130, 246, 0.14)) !important;
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.32) inset !important;
+}
+
+.admin-shell .header {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.14) !important;
+}
+
+.admin-shell .main-area {
+  background:
+    radial-gradient(800px 300px at 100% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+    radial-gradient(700px 260px at 0% 110%, rgba(59, 130, 246, 0.1), transparent 60%),
+    #eef5ff !important;
+}
+
+.admin-dashboard-page .jd-banner {
+  background: linear-gradient(135deg, #0a1b47 0%, #123c8c 55%, #1e6de5 100%) !important;
+  box-shadow: 0 14px 32px rgba(30, 109, 229, 0.32) !important;
+  border: 1px solid rgba(147, 197, 253, 0.28) !important;
+}
+
+.admin-dashboard-page .jd-date-badge {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(191, 219, 254, 0.35) !important;
+}
+
+.admin-dashboard-page .jd-stat-card,
+.admin-dashboard-page .card {
+  border: 1px solid rgba(147, 197, 253, 0.26) !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06) !important;
+}
+
+.admin-dashboard-page .card:hover,
+.admin-dashboard-page .jd-stat-card:hover {
+  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.12) !important;
+  transform: translateY(-2px) !important;
+}
+
+.admin-dashboard-page .table-hover > tbody > tr:hover > * {
+  background: #eaf3ff !important;
+}
+
+html[data-theme="dark"] .admin-shell .header {
+  background: rgba(7, 13, 30, 0.92) !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2) !important;
+}
+
+html[data-theme="dark"] .admin-shell .header-icon-btn {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .admin-shell .header-icon-btn:hover {
+  background: rgba(30, 64, 175, 0.25) !important;
+  border-color: rgba(96, 165, 250, 0.5) !important;
+  color: #dbeafe !important;
+}
+
+html[data-theme="dark"] .admin-shell .main-area {
+  background:
+    radial-gradient(800px 300px at 100% -10%, rgba(56, 189, 248, 0.16), transparent 60%),
+    radial-gradient(700px 260px at 0% 110%, rgba(59, 130, 246, 0.12), transparent 60%),
+    #040b1b !important;
+}
+
+html[data-theme="dark"] .admin-shell .card,
+html[data-theme="dark"] .admin-dashboard-page .jd-stat-card,
+html[data-theme="dark"] .admin-dashboard-page .card {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[data-theme="dark"] .admin-shell .card-header,
+html[data-theme="dark"] .admin-dashboard-page .card-header,
+html[data-theme="dark"] .admin-dashboard-page .card-body,
+html[data-theme="dark"] .admin-dashboard-page .card-footer {
+  background: transparent !important;
+  color: #dbeafe !important;
+}
+
+html[data-theme="dark"] .admin-shell .table-hover > tbody > tr:hover > *,
+html[data-theme="dark"] .admin-dashboard-page .table-hover > tbody > tr:hover > * {
+  background: rgba(30, 64, 175, 0.2) !important;
+}
+
+html[data-theme="dark"] .admin-shell .text-muted,
+html[data-theme="dark"] .admin-shell th,
+html[data-theme="dark"] .admin-shell td {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .admin-dashboard-page .jd-banner {
+  background: linear-gradient(135deg, #0b1738 0%, #0f2f75 55%, #1d5fd8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.35) !important;
 }
 
 /* Logo */
@@ -3536,5 +3668,502 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
   .nav--tabs .nav-link { min-height: 36px; display: flex; align-items: center; }
   .dropdown-item { min-height: 40px; display: flex; align-items: center; }
   .switcher_input { width: 24px; height: 24px; }
+}
+
+/* ============================================================
+   Superadmin UX Precision Patch (scoped)
+   ============================================================ */
+.admin-shell {
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 20px;
+  --admin-space-6: 24px;
+  --admin-space-8: 32px;
+  --admin-shell-max: 1440px;
+}
+
+.admin-shell .admin-main-inner {
+  width: min(100%, var(--admin-shell-max));
+  margin: 0 auto;
+  padding: var(--admin-space-6) !important;
+}
+
+.admin-shell .header-inner {
+  width: min(100%, var(--admin-shell-max));
+  margin: 0 auto;
+  padding-inline: var(--admin-space-6);
+  min-height: 72px;
+}
+
+.admin-shell .aside-body {
+  padding: var(--admin-space-4) var(--admin-space-3) var(--admin-space-5) !important;
+}
+
+.admin-shell .aside-header {
+  padding: var(--admin-space-5) var(--admin-space-4) !important;
+}
+
+.admin-shell .user-profile {
+  margin-bottom: var(--admin-space-4);
+}
+
+.admin-shell .main-nav .nav-category {
+  padding-top: var(--admin-space-5) !important;
+  padding-bottom: var(--admin-space-2) !important;
+}
+
+.admin-shell .main-nav li > a {
+  min-height: 40px;
+  margin-bottom: 2px !important;
+}
+
+.admin-shell .main-nav li > a .link-title {
+  line-height: 1.25;
+}
+
+.admin-shell .admin-dashboard-page {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.admin-shell .admin-dashboard-page .row.g-3 {
+  --bs-gutter-x: 1rem;
+  --bs-gutter-y: 1rem;
+}
+
+.admin-shell .admin-dashboard-page .card {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.admin-shell .admin-dashboard-page .card-header {
+  padding: var(--admin-space-4) var(--admin-space-5) !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14) !important;
+}
+
+.admin-shell .admin-dashboard-page .card-body {
+  padding: var(--admin-space-4) var(--admin-space-5) !important;
+}
+
+.admin-shell .admin-dashboard-page .jd-banner {
+  margin-bottom: var(--admin-space-4) !important;
+  border-radius: 18px !important;
+  padding: var(--admin-space-6) !important;
+}
+
+.admin-shell .admin-dashboard-page .jd-banner-kpis {
+  margin-top: var(--admin-space-4);
+  padding-top: var(--admin-space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.admin-shell .admin-dashboard-page .jd-stat-card {
+  min-height: 132px;
+  padding: var(--admin-space-4) !important;
+}
+
+.admin-shell .admin-dashboard-page .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  vertical-align: middle;
+}
+
+.admin-shell .admin-dashboard-page .table tbody td {
+  vertical-align: middle;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+.admin-shell .admin-dashboard-page .table tbody tr + tr td {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.admin-shell .admin-dashboard-page .card-body[style*="max-height"] {
+  padding: 0 !important;
+}
+
+.admin-shell .admin-dashboard-page .card-body[style*="max-height"] > div {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (max-width: 1200px) {
+  .admin-shell .admin-main-inner,
+  .admin-shell .header-inner {
+    padding-inline: var(--admin-space-5);
+  }
+}
+
+@media (max-width: 992px) {
+  .admin-shell .admin-main-inner {
+    padding: var(--admin-space-4) !important;
+  }
+
+  .admin-shell .admin-dashboard-page .jd-banner {
+    padding: var(--admin-space-5) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-shell .admin-main-inner,
+  .admin-shell .header-inner {
+    padding-inline: var(--admin-space-3);
+  }
+
+  .admin-shell .admin-dashboard-page .card-header,
+  .admin-shell .admin-dashboard-page .card-body {
+    padding: var(--admin-space-3) var(--admin-space-4) !important;
+  }
+
+  .admin-shell .admin-dashboard-page .jd-banner {
+    padding: var(--admin-space-4) !important;
+  }
+}
+
+/* ============================================================
+   Superadmin All-Pages Standardization (global admin pages)
+   ============================================================ */
+.admin-shell .container-fluid {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.admin-shell .container-fluid > .d-flex.align-items-center.justify-content-between,
+.admin-shell .container-fluid > .d-flex.justify-content-between.align-items-center,
+.admin-shell .container-fluid > .d-flex.flex-wrap.align-items-center.justify-content-between {
+  margin-bottom: 16px !important;
+  gap: 12px !important;
+}
+
+.admin-shell .row.g-3 {
+  --bs-gutter-x: 1rem;
+  --bs-gutter-y: 1rem;
+}
+
+.admin-shell .row.g-3.mb-4,
+.admin-shell .row.g-3.mb-3 {
+  margin-bottom: 16px !important;
+}
+
+.admin-shell .card {
+  border-radius: 14px !important;
+}
+
+.admin-shell .card-header {
+  padding: 14px 16px !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15) !important;
+}
+
+.admin-shell .card-body {
+  padding: 16px !important;
+}
+
+.admin-shell .card-footer {
+  padding: 12px 16px !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.14) !important;
+}
+
+.admin-shell .card-header.bg-white {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-shell .card-header .nav--tabs,
+.admin-shell .card-header .search-form,
+.admin-shell .card-header .search-form_style-two,
+.admin-shell .card-header .btn-group {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.admin-shell .search-form.search-form_style-two {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-shell .search-form.search-form_style-two .search-form__input_group {
+  min-height: 40px;
+}
+
+.admin-shell .theme-input-style,
+.admin-shell .admin-form-control,
+.admin-shell select.theme-input-style,
+.admin-shell textarea.theme-input-style {
+  min-height: 40px;
+}
+
+.admin-shell textarea.theme-input-style,
+.admin-shell textarea.admin-form-control {
+  min-height: 92px;
+}
+
+.admin-shell .table-responsive {
+  border-radius: 0 0 14px 14px;
+}
+
+.admin-shell .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-shell .table tbody td {
+  vertical-align: middle;
+  padding-top: 11px !important;
+  padding-bottom: 11px !important;
+}
+
+.admin-shell .table tbody tr + tr td {
+  border-top: 1px solid rgba(148, 163, 184, 0.12) !important;
+}
+
+.admin-shell .btn,
+.admin-shell .btn.btn-sm,
+.admin-shell .header-icon-btn {
+  border-radius: 10px !important;
+}
+
+.admin-shell .btn.btn-sm {
+  min-height: 34px;
+}
+
+.admin-shell .modal-jago .row.g-3 {
+  --bs-gutter-x: 0.9rem;
+  --bs-gutter-y: 0.9rem;
+}
+
+@media (max-width: 992px) {
+  .admin-shell .card-header.bg-white {
+    align-items: flex-start;
+  }
+
+  .admin-shell .card-header.bg-white > * {
+    width: 100%;
+  }
+
+  .admin-shell .card-header.bg-white .btn,
+  .admin-shell .card-header.bg-white .btn-group {
+    width: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-shell .admin-main-inner {
+    padding: 12px !important;
+  }
+
+  .admin-shell .card-header,
+  .admin-shell .card-body,
+  .admin-shell .card-footer {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .admin-shell .container-fluid > .d-flex.align-items-center.justify-content-between,
+  .admin-shell .container-fluid > .d-flex.justify-content-between.align-items-center,
+  .admin-shell .container-fluid > .d-flex.flex-wrap.align-items-center.justify-content-between {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .admin-shell .table td,
+  .admin-shell .table th {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+
+/* ============================================================
+   Superadmin Mock-Style Theme Upgrade
+   ============================================================ */
+.admin-shell {
+  --sa-bg: radial-gradient(1000px 700px at 100% -20%, rgba(59, 130, 246, 0.18), transparent 60%), radial-gradient(900px 600px at -10% 120%, rgba(20, 184, 166, 0.16), transparent 60%), #050a18;
+  --sa-card: rgba(10, 18, 37, 0.82);
+  --sa-card-strong: rgba(14, 24, 46, 0.92);
+  --sa-border: rgba(147, 197, 253, 0.16);
+  --sa-text: #e5eeff;
+  --sa-soft: #9cb2d7;
+  --sa-accent: #5fa8ff;
+  --sa-accent-2: #2dd4bf;
+}
+
+.admin-shell .main-area {
+  background: var(--sa-bg) !important;
+}
+
+.admin-shell .header {
+  background: rgba(6, 12, 26, 0.76) !important;
+  border-bottom: 1px solid var(--sa-border) !important;
+  backdrop-filter: blur(14px);
+}
+
+.admin-shell .aside {
+  background: linear-gradient(170deg, rgba(8, 15, 32, 0.98) 0%, rgba(6, 11, 25, 0.98) 100%) !important;
+  border-right: 1px solid var(--sa-border) !important;
+}
+
+.admin-shell .header,
+.admin-shell .aside,
+.admin-shell .header .dropdown-menu,
+.admin-shell .admin-dashboard-page .card,
+.admin-shell .card {
+  box-shadow: 0 20px 44px rgba(2, 6, 23, 0.35);
+}
+
+.admin-shell .admin-dashboard-page .card,
+.admin-shell .card {
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
+}
+
+.admin-shell .admin-dashboard-page .card-header,
+.admin-shell .card-header,
+.admin-shell .card-header.bg-white {
+  background: transparent !important;
+  border-bottom: 1px solid var(--sa-border) !important;
+}
+
+.admin-shell .admin-dashboard-page .card-body,
+.admin-shell .card-body,
+.admin-shell .admin-main-inner,
+.admin-shell .main-nav li > a .link-title,
+.admin-shell .nav-category,
+.admin-shell .user-profile .card-title,
+.admin-shell .user-profile .card-text,
+.admin-shell .text-muted,
+.admin-shell .table tbody td,
+.admin-shell .table thead th,
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3,
+.admin-shell h4,
+.admin-shell h5,
+.admin-shell h6,
+.admin-shell p,
+.admin-shell span,
+.admin-shell label {
+  color: var(--sa-text) !important;
+}
+
+.admin-shell .text-muted,
+.admin-shell .table thead th,
+.admin-shell .nav-category,
+.admin-shell .card-text {
+  color: var(--sa-soft) !important;
+}
+
+.admin-shell .main-nav li > a {
+  border: 1px solid transparent;
+  background: transparent !important;
+}
+
+.admin-shell .main-nav li > a:hover {
+  border-color: rgba(96, 165, 250, 0.22);
+  background: rgba(15, 23, 42, 0.58) !important;
+}
+
+.admin-shell .main-nav li.active > a,
+.admin-shell .main-nav li.open > a {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(20, 184, 166, 0.18)) !important;
+  border-color: rgba(96, 165, 250, 0.32);
+}
+
+.admin-shell .header-icon-btn,
+.admin-shell .btn,
+.admin-shell .btn.btn-sm {
+  border-color: var(--sa-border) !important;
+  background: rgba(15, 23, 42, 0.45) !important;
+  color: var(--sa-text) !important;
+}
+
+.admin-shell .header-icon-btn:hover,
+.admin-shell .btn:hover {
+  border-color: rgba(96, 165, 250, 0.4) !important;
+  background: rgba(37, 99, 235, 0.25) !important;
+}
+
+.admin-shell .btn-primary,
+.admin-shell .btn-outline-primary {
+  background: linear-gradient(135deg, var(--sa-accent), var(--sa-accent-2)) !important;
+  border-color: transparent !important;
+  color: #041124 !important;
+  font-weight: 700;
+}
+
+.admin-shell .theme-input-style,
+.admin-shell .admin-form-control,
+.admin-shell select.theme-input-style,
+.admin-shell textarea.theme-input-style,
+.admin-shell .search-form__input_group {
+  background: rgba(10, 18, 37, 0.82) !important;
+  border-color: var(--sa-border) !important;
+  color: var(--sa-text) !important;
+}
+
+.admin-shell .search-form__input::placeholder,
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder {
+  color: #8aa3cc !important;
+}
+
+.admin-shell .table tbody tr:hover td {
+  background: rgba(37, 99, 235, 0.1) !important;
+}
+
+/* ── Modal / popup overrides: restore dark text on white background ── */
+.admin-shell .modal-jago,
+.admin-shell .modal-jago label,
+.admin-shell .modal-jago .form-label-jago,
+.admin-shell .modal-jago h4,
+.admin-shell .modal-jago h5,
+.admin-shell .modal-jago h6,
+.admin-shell .modal-jago p,
+.admin-shell .modal-jago span:not(.badge):not(.text-danger):not(.text-success):not(.text-warning):not(.text-muted),
+.admin-shell .modal-jago .input-group-text,
+.admin-shell .modal-jago .modal-jago-title {
+  color: #1e293b !important;
+}
+.admin-shell .modal-jago .text-muted,
+.admin-shell .modal-jago small {
+  color: #64748b !important;
+}
+.admin-shell .modal-jago .text-danger  { color: #dc2626 !important; }
+.admin-shell .modal-jago .text-success { color: #16a34a !important; }
+.admin-shell .modal-jago .text-warning { color: #d97706 !important; }
+.admin-shell .modal-jago .admin-form-control,
+.admin-shell .modal-jago .theme-input-style {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+.admin-shell .modal-jago .admin-form-control::placeholder,
+.admin-shell .modal-jago .theme-input-style::placeholder {
+  color: #94a3b8 !important;
+}
+.admin-shell .modal-jago .input-group-text {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.admin-shell .jd-banner {
+  background: linear-gradient(135deg, rgba(8, 27, 60, 0.95), rgba(10, 60, 85, 0.92)) !important;
+  border: 1px solid rgba(125, 211, 252, 0.25) !important;
+}
+
+.admin-shell .jd-banner .jd-date-badge,
+.admin-shell .jd-banner .jd-kpi,
+.admin-shell .jd-stat-card {
+  background: rgba(8, 17, 38, 0.6) !important;
+  border: 1px solid rgba(125, 211, 252, 0.18) !important;
 }
 

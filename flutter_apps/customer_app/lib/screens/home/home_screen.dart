@@ -362,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(children: [
           _buildTopSearchBar(isDark, cardBg, textColor),
+          _buildBrandHero(isDark, textColor),
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -412,31 +413,121 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [bannerColor, bannerColor.withOpacity(0.75)],
+            colors: [bannerColor, bannerColor.withValues(alpha: 0.75)],
             begin: Alignment.centerLeft, end: Alignment.centerRight),
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: bannerColor.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: bannerColor.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 4))],
         ),
         child: Row(children: [
           Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
             child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(statusLabel,
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
             Text('$driverName → ${dest.length > 30 ? '${dest.substring(0, 28)}...' : dest}',
-              style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 11, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w500)),
           ])),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10)),
             child: const Text('Track →', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
           ),
         ]),
+      ),
+    );
+  }
+
+  Widget _buildBrandHero(bool isDark, Color textColor) {
+    final cardGradient = isDark
+        ? [const Color(0xFF0A1635), const Color(0xFF1B4FB5)]
+        : [const Color(0xFFEAF2FF), Colors.white];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: cardGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _jagoPrimary.withValues(alpha: isDark ? 0.35 : 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: _jagoPrimary.withValues(alpha: isDark ? 0.25 : 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(8),
+            child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'JAGO CUSTOMER',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF1D4ED8),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Book Smarter, Ride Faster',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFDBEAFE),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'JAGO',
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF1D4ED8),
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -452,16 +543,16 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         gradient: isDark
           ? LinearGradient(
-              colors: [_jagoPrimary.withOpacity(0.15), _surface.withOpacity(0.8)],
+              colors: [_jagoPrimary.withValues(alpha: 0.15), _surface.withValues(alpha: 0.8)],
               begin: Alignment.topLeft, end: Alignment.bottomRight)
           : LinearGradient(
-              colors: [_jagoPrimary.withOpacity(0.08), Colors.white],
+              colors: [_jagoPrimary.withValues(alpha: 0.08), Colors.white],
               begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _jagoPrimary.withOpacity(isDark ? 0.18 : 0.12)),
+        border: Border.all(color: _jagoPrimary.withValues(alpha: isDark ? 0.18 : 0.12)),
         boxShadow: [
-          BoxShadow(color: _jagoPrimary.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 6)),
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(color: _jagoPrimary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 6)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -471,9 +562,9 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: _jagoPrimary.withOpacity(0.12),
+                color: _jagoPrimary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _jagoPrimary.withOpacity(0.28)),
+                border: Border.all(color: _jagoPrimary.withValues(alpha: 0.28)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(timeEmoji, style: const TextStyle(fontSize: 13)),
@@ -488,9 +579,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withOpacity(0.12),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 11),
@@ -581,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _pickup.split(',').first,
                   style: TextStyle(
                       fontSize: 12,
-                      color: textColor.withOpacity(0.7),
+                      color: textColor.withValues(alpha: 0.7),
                       fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -595,9 +686,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [const Color(0xFF10B981).withOpacity(0.15), const Color(0xFF059669).withOpacity(0.1)]),
+                  gradient: LinearGradient(colors: [const Color(0xFF10B981).withValues(alpha: 0.15), const Color(0xFF059669).withValues(alpha: 0.1)]),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 13),
@@ -618,11 +709,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: 38, height: 38,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade100,
+                  color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
                 ),
-                child: Icon(Icons.notifications_rounded, color: textColor.withOpacity(0.8), size: 20),
+                child: Icon(Icons.notifications_rounded, color: textColor.withValues(alpha: 0.8), size: 20),
               ),
               if (_unreadNotifCount > 0)
                 Positioned(
@@ -633,7 +724,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
                       borderRadius: BorderRadius.circular(10),
-                      boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withOpacity(0.4), blurRadius: 4)],
+                      boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.4), blurRadius: 4)],
                     ),
                     child: Center(child: Text(
                       _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
@@ -652,10 +743,10 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: isDark ? _surface : Colors.white,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: isDark ? _jagoPrimary.withOpacity(0.2) : _jagoPrimary.withOpacity(0.15), width: 1.5),
+              border: Border.all(color: isDark ? _jagoPrimary.withValues(alpha: 0.2) : _jagoPrimary.withValues(alpha: 0.15), width: 1.5),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 16, offset: const Offset(0, 5)),
-                BoxShadow(color: _jagoPrimary.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 6)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 16, offset: const Offset(0, 5)),
+                BoxShadow(color: _jagoPrimary.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 6)),
               ],
             ),
             child: Row(children: [
@@ -666,17 +757,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     colors: [_jagoPrimary, Color(0xFF4A8FEF)],
                     begin: Alignment.topLeft, end: Alignment.bottomRight),
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: _jagoPrimary.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 3))],
+                  boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
                 ),
                 child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 19),
               ),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text('Search destination...',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textColor.withOpacity(0.35))),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textColor.withValues(alpha: 0.35))),
                 if (_pickup.isNotEmpty && _pickup != 'Getting location...')
                   Text(_pickup.split(',').first, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, color: _jagoPrimary.withOpacity(0.7), fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontSize: 10, color: _jagoPrimary.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
               ])),
               GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
@@ -690,7 +781,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           colors: [_jagoPrimary, Color(0xFF4A8FEF)],
                           begin: Alignment.topLeft, end: Alignment.bottomRight),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: _jagoPrimary.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 3))],
+                        boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 3))],
                       ),
                       child: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
                     ),
@@ -720,7 +811,7 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF0D1B3E) : const Color(0xFFFFF4F0),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _jagoPrimary.withOpacity(0.2)),
+              border: Border.all(color: _jagoPrimary.withValues(alpha: 0.2)),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               const Icon(Icons.mic_rounded, color: _jagoPrimary, size: 14),
@@ -773,8 +864,8 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _jagoPrimary.withOpacity(0.08)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                border: Border.all(color: _jagoPrimary.withValues(alpha: 0.08)),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Padding(
@@ -837,9 +928,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: _jagoPrimary.withOpacity(0.08),
+                            color: _jagoPrimary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: _jagoPrimary.withOpacity(0.2))),
+                            border: Border.all(color: _jagoPrimary.withValues(alpha: 0.2))),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.electric_bike, size: 10, color: _jagoPrimary),
                             const SizedBox(width: 4),
@@ -851,11 +942,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.08),
+                          color: Colors.grey.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(8)),
                         child: Text(
                           payMethod == 'cash' ? '💵 Cash' : payMethod == 'wallet' ? '💳 Wallet' : '📱 UPI',
-                          style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w600)),
+                          style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 10, fontWeight: FontWeight.w600)),
                       ),
                     ]),
                   ),
@@ -909,7 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 4))
                   ],
@@ -918,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: _jagoPrimary.withOpacity(0.1),
+                      color: _jagoPrimary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(Icons.history, color: _jagoPrimary, size: 20),
@@ -938,12 +1029,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            Icon(Icons.arrow_forward, size: 12, color: textColor.withOpacity(0.3)),
+                            Icon(Icons.arrow_forward, size: 12, color: textColor.withValues(alpha: 0.3)),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(address,
                                   style: TextStyle(
-                                      fontSize: 12, color: textColor.withOpacity(0.5)),
+                                      fontSize: 12, color: textColor.withValues(alpha: 0.5)),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis),
                             ),
@@ -999,9 +1090,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: _jagoPrimary.withOpacity(0.1),
+                color: _jagoPrimary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _jagoPrimary.withOpacity(0.3)),
+                border: Border.all(color: _jagoPrimary.withValues(alpha: 0.3)),
               ),
               child: const Text('All Services', style: TextStyle(color: _jagoPrimary, fontSize: 11, fontWeight: FontWeight.w700)),
             ),
@@ -1037,7 +1128,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
                         begin: Alignment.centerLeft, end: Alignment.centerRight),
                       borderRadius: BorderRadius.circular(10),
-                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.5), blurRadius: 8)],
+                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.5), blurRadius: 8)],
                     ),
                     child: const Text('🔥 HOT', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
                   ),
@@ -1102,26 +1193,22 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         height: 116,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-                color: accentColor.withOpacity(0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4)),
-            BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2)),
+                color: accentColor.withValues(alpha: 0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 3)),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           child: Stack(children: [
             // Gradient background
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [cardBg, accentColor.withOpacity(0.06)],
+                  colors: [cardBg, accentColor.withValues(alpha: 0.06)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -1134,7 +1221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 4,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [accentColor, accentColor.withOpacity(0.3)],
+                    colors: [accentColor, accentColor.withValues(alpha: 0.3)],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
@@ -1154,7 +1241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Text(topLabel,
                               style: TextStyle(
                                   fontSize: 10,
-                                  color: accentColor.withOpacity(0.7),
+                                  color: accentColor.withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w600)),
                           const SizedBox(height: 5),
                         ],
@@ -1169,7 +1256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           width: 24, height: 3,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [accentColor, accentColor.withOpacity(0.3)]),
+                            gradient: LinearGradient(colors: [accentColor, accentColor.withValues(alpha: 0.3)]),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -1189,18 +1276,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildExploreSection(bool isDark, Color cardBg, Color textColor) {
     final services = [
-      {'key': 'bike', 'name': 'Bike Ride', 'emoji': '🏍️', 'type': 'ride', 'fare': '₹20',
-        'g1': const Color(0xFF1E6DE5), 'g2': const Color(0xFF4A8FEF)},
-      {'key': 'auto', 'name': 'Auto Ride', 'emoji': '🛺', 'type': 'ride', 'fare': '₹30',
-        'g1': const Color(0xFF1558B8), 'g2': const Color(0xFF1E6DE5)},
-      {'key': 'car', 'name': 'Car Ride', 'emoji': '🚗', 'type': 'ride', 'fare': '₹80',
-        'g1': const Color(0xFF4A8FEF), 'g2': const Color(0xFFFFB08A)},
-      {'key': 'parcel', 'name': 'Parcel', 'emoji': '📦', 'type': 'parcel', 'fare': '₹25',
-        'g1': const Color(0xFFCC4A10), 'g2': const Color(0xFF1558B8)},
-      {'key': 'cargo', 'name': 'Cargo', 'emoji': '🚛', 'type': 'cargo', 'fare': '₹100',
-        'g1': const Color(0xFFFFB830), 'g2': const Color(0xFFFF9500)},
-      {'key': 'intercity', 'name': 'Intercity', 'emoji': '🛣️', 'type': 'intercity', 'fare': '₹299',
-        'g1': const Color(0xFFFFD700), 'g2': const Color(0xFFFFA500)},
+      {'key': 'bike', 'name': 'Bike Ride', 'emoji': '🏍️', 'type': 'ride'},
+      {'key': 'auto', 'name': 'Auto Ride', 'emoji': '🛺', 'type': 'ride'},
+      {'key': 'car', 'name': 'Car Ride', 'emoji': '🚗', 'type': 'ride'},
+      {'key': 'parcel', 'name': 'Parcel', 'emoji': '📦', 'type': 'parcel'},
+      {'key': 'cargo', 'name': 'Cargo', 'emoji': '🚛', 'type': 'cargo'},
+      {'key': 'intercity', 'name': 'Intercity', 'emoji': '🛣️', 'type': 'intercity'},
     ];
 
     return Padding(
@@ -1234,9 +1315,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _exploreItem(Map<String, dynamic> s, bool isDark, Color textColor) {
-    final g1 = s['g1'] as Color? ?? _jagoPrimary;
-    final g2 = s['g2'] as Color? ?? _jagoPrimary;
-    final fare = s['fare'] as String? ?? '';
     final isPopular = s['key'] == 'auto';
     return GestureDetector(
       onTap: () {
@@ -1252,50 +1330,34 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       child: Container(
-        width: 92,
-        margin: const EdgeInsets.only(right: 16),
+        width: 76,
+        margin: const EdgeInsets.only(right: 14),
         child: Column(children: [
           Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
             children: [
               Container(
-                width: 80,
-                height: 80,
+                width: 64, height: 64,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [g1, g2],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                  color: isDark
+                    ? _jagoPrimary.withValues(alpha: 0.18)
+                    : _jagoPrimary.withValues(alpha: 0.09),
+                  border: Border.all(
+                    color: _jagoPrimary.withValues(alpha: isDark ? 0.35 : 0.2),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: g1.withOpacity(0.55),
-                      blurRadius: 22,
-                      offset: const Offset(0, 8),
-                    ),
-                    BoxShadow(
-                      color: g1.withOpacity(0.22),
-                      blurRadius: 40,
-                      offset: const Offset(0, 14),
+                      color: _jagoPrimary.withValues(alpha: isDark ? 0.18 : 0.10),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Stack(children: [
-                  Positioned.fill(
-                    child: Container(
-                      margin: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.28), width: 1.5),
-                      ),
-                    ),
-                  ),
-                  Center(child: Text(s['emoji'] as String,
-                    style: const TextStyle(fontSize: 36))),
-                ]),
+                child: Center(child: Text(s['emoji'] as String,
+                  style: const TextStyle(fontSize: 30))),
               ),
               if (isPopular)
                 Positioned(
@@ -1305,30 +1367,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(
                       color: _jagoPrimary,
                       borderRadius: BorderRadius.circular(8),
-                      boxShadow: [BoxShadow(color: _jagoPrimary.withOpacity(0.4), blurRadius: 6)],
                     ),
                     child: const Text('HOT', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(s['name'] as String,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: textColor.withOpacity(0.9)),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF374151)),
             textAlign: TextAlign.center, maxLines: 2),
-          if (fare.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: g1.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('from $fare',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: g1),
-                textAlign: TextAlign.center),
-            ),
-          ],
         ]),
       ),
     );
@@ -1341,7 +1390,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color: cardBg,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -1374,7 +1423,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: _jagoPrimary.withOpacity(0.45),
+                        color: _jagoPrimary.withValues(alpha: 0.45),
                         blurRadius: 14,
                         offset: const Offset(0, 4),
                       ),
@@ -1394,7 +1443,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _navCircleItem(IconData icon, String label, int index, Color iconColor, bool isDark) {
     final active = _navIndex == index;
-    final activeBg = isDark ? _jagoPrimary.withOpacity(0.15) : _jagoPrimary.withOpacity(0.1);
+    final activeBg = isDark ? _jagoPrimary.withValues(alpha: 0.15) : _jagoPrimary.withValues(alpha: 0.1);
     return GestureDetector(
       onTap: () {
         setState(() => _navIndex = index);
@@ -1446,13 +1495,13 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               CircleAvatar(
                 radius: 30,
-                backgroundColor: _jagoPrimary.withOpacity(0.2),
+                backgroundColor: _jagoPrimary.withValues(alpha: 0.2),
                 child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
                     style: const TextStyle(color: _jagoPrimary, fontSize: 24, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 12),
               Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-              Text(_userPhone, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+              Text(_userPhone, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
             ]),
           ),
           const Divider(color: Colors.white12),
@@ -1494,8 +1543,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF1E6DE5).withOpacity(0.38), blurRadius: 18, offset: const Offset(0, 6)),
-              BoxShadow(color: const Color(0xFF1E6DE5).withOpacity(0.15), blurRadius: 32, offset: const Offset(0, 12)),
+              BoxShadow(color: const Color(0xFF1E6DE5).withValues(alpha: 0.38), blurRadius: 18, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFF1E6DE5).withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 12)),
             ],
           ),
           child: Row(children: [
@@ -1504,7 +1553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8)),
                   child: const Text('IN A HURRY?',
                     style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
@@ -1518,7 +1567,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, offset: const Offset(0, 2))],
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Text('Book Now',
@@ -1535,7 +1584,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 margin: const EdgeInsets.only(top: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8)),
                 child: const Text('from ₹20',
                   style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
@@ -1562,8 +1611,8 @@ class _HomeScreenState extends State<HomeScreen> {
               begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.35), blurRadius: 20, offset: const Offset(0, 6)),
-              BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.15), blurRadius: 36, offset: const Offset(0, 12)),
+              BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), blurRadius: 36, offset: const Offset(0, 12)),
             ],
           ),
           child: Row(children: [
@@ -1571,7 +1620,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8)),
                 child: const Text('JAGO DELIVERS 📦',
                   style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
@@ -1589,7 +1638,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 8, offset: const Offset(0, 2))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 2))],
                   ),
                   child: const Row(mainAxisSize: MainAxisSize.min, children: [
                     Text('Send Now', style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w900, fontSize: 13)),
@@ -1601,9 +1650,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.3))),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.3))),
                   child: const Text('from ₹25', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
                 ),
               ]),
@@ -1634,10 +1683,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 : [const Color(0xFF1A2A5E), const Color(0xFF0F1E48)],
               begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3), width: 1),
+            border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.3), width: 1),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(isDark ? 0.35 : 0.18), blurRadius: 16, offset: const Offset(0, 6)),
-              BoxShadow(color: const Color(0xFFFFD700).withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 8)),
+              BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.18), blurRadius: 16, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFFFFD700).withValues(alpha: 0.08), blurRadius: 24, offset: const Offset(0, 8)),
             ],
           ),
           child: Row(children: [
@@ -1646,9 +1695,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [const Color(0xFFFFD700).withOpacity(0.2), const Color(0xFFFFD700).withOpacity(0.08)]),
+                    gradient: LinearGradient(colors: [const Color(0xFFFFD700).withValues(alpha: 0.2), const Color(0xFFFFD700).withValues(alpha: 0.08)]),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3))),
+                    border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.3))),
                   child: const Text('INTERCITY',
                     style: TextStyle(color: Color(0xFFFFD700), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
                 ),
@@ -1659,9 +1708,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFD700).withOpacity(0.12),
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.4))),
+                    border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4))),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Text('Explore routes',
                       style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w700, fontSize: 12)),
@@ -1698,19 +1747,42 @@ class _PlaceSearchSheet extends StatefulWidget {
 class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _results = [];
+  List<Map<String, dynamic>> _nearby = [];
   bool _loading = false;
   Timer? _debounce;
 
-  static const _popular = [
-    {'name': 'Hitech City, Hyderabad', 'lat': 17.4435, 'lng': 78.3772},
-    {'name': 'Ameerpet, Hyderabad', 'lat': 17.4374, 'lng': 78.4487},
-    {'name': 'Banjara Hills, Hyderabad', 'lat': 17.4109, 'lng': 78.4484},
-    {'name': 'Gachibowli, Hyderabad', 'lat': 17.4401, 'lng': 78.3489},
-    {'name': 'Kukatpally, Hyderabad', 'lat': 17.4849, 'lng': 78.3951},
-    {'name': 'LB Nagar, Hyderabad', 'lat': 17.3470, 'lng': 78.5537},
-    {'name': 'Secunderabad, Hyderabad', 'lat': 17.4399, 'lng': 78.4983},
-    {'name': 'Charminar, Hyderabad', 'lat': 17.3616, 'lng': 78.4747},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchNearby();
+  }
+
+  // Fetch actual nearby places based on real GPS coordinates
+  Future<void> _fetchNearby() async {
+    final lat = widget.pickupLat;
+    final lng = widget.pickupLng;
+    if (lat == 0.0 && lng == 0.0) return;
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=&format=json&limit=8&addressdetails=1'
+        '&lat=$lat&lon=$lng&bounded=0&featuretype=settlement,suburb,city'
+        '&viewbox=${lng - 0.15},${lat + 0.15},${lng + 0.15},${lat - 0.15}'
+      );
+      final resp = await http.get(url, headers: {'User-Agent': 'JAGOApp/1.0'});
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as List;
+        if (mounted && data.isNotEmpty) {
+          setState(() {
+            _nearby = data.map((d) => {
+              'name': d['display_name']?.toString().split(', ').take(3).join(', ') ?? '',
+              'lat': double.tryParse(d['lat']?.toString() ?? '0') ?? 0.0,
+              'lng': double.tryParse(d['lon']?.toString() ?? '0') ?? 0.0,
+            }).where((r) => (r['name'] as String).isNotEmpty).toList().cast<Map<String, dynamic>>();
+          });
+        }
+      }
+    } catch (_) {}
+  }
 
   Future<void> _search(String query) async {
     if (query.length < 3) {
@@ -1719,8 +1791,15 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     }
     setState(() => _loading = true);
     try {
+      final lat = widget.pickupLat;
+      final lng = widget.pickupLng;
+      // Bias results towards user's actual location using viewbox
+      final locationBias = (lat != 0.0 && lng != 0.0)
+        ? '&lat=$lat&lon=$lng&bounded=0'
+           '&viewbox=${lng - 0.3},${lat + 0.3},${lng + 0.3},${lat - 0.3}'
+        : '';
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query + ' Hyderabad')}&format=json&limit=6&addressdetails=1'
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=8&addressdetails=1$locationBias'
       );
       final resp = await http.get(url, headers: {'User-Agent': 'JAGOApp/1.0'});
       if (resp.statusCode == 200) {
@@ -1747,7 +1826,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final query = _ctrl.text;
-    final items = query.length >= 3 ? _results : _popular.cast<Map<String, dynamic>>();
+    final items = query.length >= 3 ? _results : _nearby;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetBg = isDark ? const Color(0xFF060D1E) : Colors.white;
@@ -1805,7 +1884,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                   if (query.length < 3 && i == 0) {
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                      child: Text('Popular destinations',
+                      child: Text(_nearby.isEmpty ? 'Start typing to search...' : 'Nearby places',
                         style: TextStyle(fontSize: 12, color: subColor, fontWeight: FontWeight.w600)),
                     );
                   }
@@ -1917,7 +1996,7 @@ class _AllServicesSheet extends StatelessWidget {
                   border: Border.all(color: isDark ? Colors.white10 : Colors.grey.shade200),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                       blurRadius: 8, offset: const Offset(0, 2)),
                   ],
                 ),

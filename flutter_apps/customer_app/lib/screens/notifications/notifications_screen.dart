@@ -137,15 +137,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final color = _colorForType(type);
                       return Container(
                         decoration: BoxDecoration(
-                          color: isRead ? cardBg : (isDark ? _blue.withOpacity(0.08) : const Color(0xFFEFF6FF)),
+                          color: isRead ? cardBg : (isDark ? _blue.withValues(alpha: 0.08) : const Color(0xFFEFF6FF)),
                           borderRadius: BorderRadius.circular(14),
-                          border: isRead ? null : Border.all(color: _blue.withOpacity(0.2)),
+                          border: isRead ? null : Border.all(color: _blue.withValues(alpha: 0.2)),
                         ),
                         child: ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           leading: Container(
                             width: 42, height: 42,
-                            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
                             child: Icon(_iconForType(type), color: color, size: 22),
                           ),
                           title: Text(

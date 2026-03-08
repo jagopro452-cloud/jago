@@ -1,6 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  BarChart,
+  Bar,
+} from "recharts";
 
 const fmtCur = (v: any) => `₹${parseFloat(v || 0).toFixed(2)}`;
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -97,6 +112,37 @@ export default function ReportsPage() {
   const earningRows = earnings?.rows || [];
   const summary = earnings?.summary || {};
 
+  const earningsTrend = earningRows.map((row: any) => ({
+    day: fmtDate(row.date),
+    revenue: Number(row.revenue || 0),
+    admin: Number(row.adminTotal || 0),
+  }));
+
+  const earningsBreakdown = [
+    { name: "Commission", value: Number(summary.totalCommission || 0), color: "#2563eb" },
+    { name: "GST", value: Number(summary.totalGst || 0), color: "#f59e0b" },
+    { name: "Insurance", value: Number(summary.totalInsurance || 0), color: "#0891b2" },
+  ].filter((d) => d.value > 0);
+
+  const tripStatusData = [
+    { name: "Completed", value: trips.filter((t: any) => t.currentStatus === "completed").length, color: "#16a34a" },
+    { name: "Cancelled", value: trips.filter((t: any) => t.currentStatus === "cancelled").length, color: "#dc2626" },
+    { name: "Ongoing", value: trips.filter((t: any) => t.currentStatus === "ongoing").length, color: "#2563eb" },
+    { name: "Other", value: trips.filter((t: any) => !["completed", "cancelled", "ongoing"].includes(t.currentStatus)).length, color: "#94a3b8" },
+  ].filter((d) => d.value > 0);
+
+  const paymentDistribution = Object.entries(
+    trips.reduce((acc: Record<string, number>, t: any) => {
+      const key = (t.paymentMethod || "unknown").toLowerCase();
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+  ).map(([name, value], i) => ({
+    name: name.toUpperCase(),
+    value,
+    color: ["#2563eb", "#16a34a", "#7c3aed", "#d97706", "#0891b2"][i % 5],
+  }));
+
   const TABS = [
     { id: "earning", label: "Earnings Report", icon: "bi-bar-chart-fill", color: "#1a73e8" },
     { id: "trip", label: "Trips Report", icon: "bi-car-front-fill", color: "#16a34a" },
@@ -184,6 +230,66 @@ export default function ReportsPage() {
             </div>
           </div>
 
+          <div className="row g-3 mb-4">
+            <div className="col-xl-8">
+              <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+                <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Earnings Trend</h6>
+                  <div className="text-muted small">Revenue vs admin earnings for selected period</div>
+                </div>
+                <div className="card-body" style={{ height: 280 }}>
+                  {earningsTrend.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={earningsTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="earnRev" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#2563eb" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="earnAdmin" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
+                            <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={50} />
+                        <Tooltip formatter={(v: any) => fmtCur(v)} />
+                        <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2563eb" fill="url(#earnRev)" strokeWidth={2.4} />
+                        <Area type="monotone" dataKey="admin" name="Admin Earning" stroke="#16a34a" fill="url(#earnAdmin)" strokeWidth={2.4} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="col-xl-4">
+              <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+                <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Revenue Composition</h6>
+                  <div className="text-muted small">Commission, GST and insurance</div>
+                </div>
+                <div className="card-body" style={{ height: 280 }}>
+                  {earningsBreakdown.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={earningsBreakdown} dataKey="value" nameKey="name" innerRadius={54} outerRadius={84} paddingAngle={3}>
+                          {earningsBreakdown.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v: any) => fmtCur(v)} />
+                        <Legend iconType="circle" iconSize={8} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
             <div className="card-body p-0">
               <div className="table-responsive">
@@ -251,6 +357,54 @@ export default function ReportsPage() {
               { label: "Cancelled", value: trips.filter((t: any) => t.currentStatus === "cancelled").length, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fee2e2" },
               { label: "Revenue", value: fmtCur(trips.filter((t: any) => t.currentStatus === "completed").reduce((s: any, t: any) => s + parseFloat(t.actualFare || 0), 0)), icon: "bi-currency-rupee", color: "#7c3aed", bg: "#f5f3ff" },
             ].map((c, i) => <div key={i} className="col-6 col-md-3"><SummaryCard {...c} /></div>)}
+          </div>
+          <div className="row g-3 mb-4">
+            <div className="col-xl-6">
+              <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+                <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Trip Status Split</h6>
+                </div>
+                <div className="card-body" style={{ height: 250 }}>
+                  {tripStatusData.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={tripStatusData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={80} paddingAngle={3}>
+                          {tripStatusData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip />
+                        <Legend iconType="circle" iconSize={8} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="col-xl-6">
+              <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
+                <div className="card-header bg-white py-3 px-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Payment Method Distribution</h6>
+                </div>
+                <div className="card-body" style={{ height: 250 }}>
+                  {paymentDistribution.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={paymentDistribution} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={36} />
+                        <Tooltip />
+                        <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                          {paymentDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
           <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
             <div className="card-body p-0">

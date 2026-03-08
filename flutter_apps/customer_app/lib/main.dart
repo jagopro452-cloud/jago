@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
+import 'screens/booking/voice_booking_screen.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
@@ -41,8 +44,69 @@ void main() async {
   runApp(const JagoApp());
 }
 
-class JagoApp extends StatelessWidget {
+class JagoApp extends StatefulWidget {
   const JagoApp({super.key});
+
+  @override
+  State<JagoApp> createState() => _JagoAppState();
+}
+
+class _JagoAppState extends State<JagoApp> {
+  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+  StreamSubscription<Uri>? _linkSub;
+  bool _voiceRouteOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  bool _isVoiceBookingUri(Uri uri) {
+    final u = uri.toString().toLowerCase();
+    return u.startsWith('jago://voice/booking') ||
+        (uri.scheme == 'https' && uri.host == 'jagopro.org' && uri.path.startsWith('/voice-booking'));
+  }
+
+  Future<void> _openVoiceBookingIfAllowed() async {
+    if (_voiceRouteOpen) return;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    if (token == null || token.isEmpty) return;
+
+    final nav = _navKey.currentState;
+    if (nav == null) return;
+    _voiceRouteOpen = true;
+    nav.push(MaterialPageRoute(builder: (_) => const VoiceBookingScreen())).whenComplete(() {
+      _voiceRouteOpen = false;
+    });
+  }
+
+  Future<void> _handleIncomingUri(Uri? uri, {bool coldStart = false}) async {
+    if (uri == null || !_isVoiceBookingUri(uri)) return;
+    if (coldStart) {
+      await Future.delayed(const Duration(milliseconds: 3600));
+    }
+    await _openVoiceBookingIfAllowed();
+  }
+
+  Future<void> _initDeepLinks() async {
+    final appLinks = AppLinks();
+    try {
+      final initial = await appLinks.getInitialAppLink();
+      await _handleIncomingUri(initial, coldStart: true);
+    } catch (_) {}
+
+    _linkSub = appLinks.uriLinkStream.listen((uri) {
+      _handleIncomingUri(uri);
+    }, onError: (_) {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +127,7 @@ class JagoApp extends StatelessWidget {
             return MaterialApp(
               title: 'JAGO',
               debugShowCheckedModeBanner: false,
+              navigatorKey: _navKey,
               themeMode: mode,
               theme: _lightTheme(),
               darkTheme: _darkTheme(),
@@ -115,6 +180,11 @@ class JagoApp extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: Color(0xFFEEEEEE))),
         ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Color(0xFF111827)),
+          bodyMedium: TextStyle(color: Color(0xFF374151)),
+          bodySmall: TextStyle(color: Color(0xFF6B7280)),
+        ),
         useMaterial3: true,
       );
 
@@ -153,6 +223,11 @@ class JagoApp extends StatelessWidget {
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none),
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Color(0xFFE5E7EB)),
+          bodySmall: TextStyle(color: Color(0xFF9CA3AF)),
         ),
         useMaterial3: true,
       );

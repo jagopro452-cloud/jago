@@ -117,14 +117,14 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _blue.withOpacity(0.07),
+              color: _blue.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _blue.withOpacity(0.2)),
+              border: Border.all(color: _blue.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _blue.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: _blue.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: const Icon(Icons.support_agent, color: _blue, size: 28),
               ),
               const SizedBox(width: 12),
@@ -223,7 +223,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
                     bottomLeft: Radius.circular(isUser ? 18 : 4),
                     bottomRight: Radius.circular(isUser ? 4 : 18),
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
                 ),
                 child: Text(
                   msg['message'] ?? '',
