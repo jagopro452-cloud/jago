@@ -370,12 +370,12 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  /* Colour tokens — always dark/professional */
-  const bg = "#080c14";
-  const surface = "#0d1117";
-  const card = "#111827";
-  const border = "rgba(255,255,255,0.07)";
-  const text = "#f1f5f9";
+  /* Colour tokens — theme-aware */
+  const bg = isDark ? "#080c14" : "#f8fafc";
+  const surface = isDark ? "#0d1117" : "#ffffff";
+  const card = isDark ? "#111827" : "#f1f5f9";
+  const border = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
+  const text = isDark ? "#f1f5f9" : "#0f172a";
   const muted = "#64748b";
   const blue = "#1E6DE5";
   const blueBright = "#3b82f6";
@@ -389,7 +389,7 @@ export default function LandingPage() {
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
         html{scroll-behavior:smooth;}
-        body{font-family:'Inter',sans-serif;background:#080c14;}
+        body{font-family:'Inter',sans-serif;}
 
         @keyframes jago-drive {
           from { left: -90px; }
@@ -462,7 +462,7 @@ export default function LandingPage() {
         <nav style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
           backdropFilter: "blur(16px)",
-          background: scrolled ? "rgba(8,12,20,0.92)" : "rgba(8,12,20,0.7)",
+          background: scrolled ? (isDark ? "rgba(8,12,20,0.92)" : "rgba(248,250,252,0.92)") : (isDark ? "rgba(8,12,20,0.7)" : "rgba(248,250,252,0.7)"),
           borderBottom: scrolled ? `1px solid ${border}` : "1px solid transparent",
           transition: "all 0.3s",
         }}>
@@ -497,6 +497,12 @@ export default function LandingPage() {
           <div className="container" style={{ width: "100%", display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 48, alignItems: "center", padding: "60px 24px 80px" }}>
             {/* LEFT */}
             <div style={{ animation: "jago-fade-up 0.9s ease forwards" }}>
+              {/* JAGO Logo mark in hero */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg,${blue},${blueBright})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, boxShadow: `0 6px 20px rgba(30,109,229,0.4)` }}>🏍️</div>
+                <span style={{ fontSize: 28, fontWeight: 800, background: `linear-gradient(135deg,${blue},${violet})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontFamily: "Space Grotesk,sans-serif", letterSpacing: -0.5 }}>JAGO</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: green, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 20, padding: "3px 10px", fontFamily: "Space Grotesk,sans-serif" }}>v2.0</span>
+              </div>
               {/* Eyebrow badge */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(30,109,229,0.12)", border: "1px solid rgba(30,109,229,0.3)", borderRadius: 30, padding: "6px 14px", marginBottom: 28 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: green, animation: "jago-badge 1.6s infinite" }} />
@@ -553,9 +559,6 @@ export default function LandingPage() {
 
         {/* ======= MARQUEE ======= */}
         <Marquee />
-
-        {/* ======= ANIMATED ROAD ======= */}
-        <AnimatedRoad />
 
         {/* ======= SERVICES ======= */}
         <section id="services" className="sec" style={{ background: surface }}>
