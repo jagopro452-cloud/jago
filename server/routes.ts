@@ -280,7 +280,7 @@ function requireOpsKey(req: Request, res: Response, next: NextFunction) {
 
 async function ensureAdminExists() {
   try {
-    const adminEmail = (process.env.ADMIN_EMAIL || "admin@admin.com").trim().toLowerCase();
+    const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
     const adminName = (process.env.ADMIN_NAME || "Admin").trim() || "Admin";
     // Bootstrap essentials for environments where migrations/extensions were not fully applied.
     await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
