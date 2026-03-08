@@ -384,6 +384,13 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS onboard_date TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS free_period_end TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS launch_free_active BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS completed_rides_count INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS ride_full_fare NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS user_discount NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS user_payable NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_wallet_credit NUMERIC(23,3) DEFAULT 0;
 
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS logo_url TEXT;
       ALTER TABLE vehicle_brands ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'two_wheeler';
@@ -556,9 +563,23 @@ async function ensureOperationalSchema() {
         ('driver_commission_pct','20'),
         ('auto_lock_threshold','-100'),
         ('subscription_enabled','true'),
-        ('launch_campaign_enabled','true')
+        ('launch_campaign_enabled','true'),
+        ('ride_gst_rate','5')
       ON CONFLICT (key_name) DO NOTHING;
     `);
+
+    // ── Company GST wallet (single-row ledger) ─────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS company_gst_wallet (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        balance NUMERIC(15,3) NOT NULL DEFAULT 0,
+        total_collected NUMERIC(15,3) NOT NULL DEFAULT 0,
+        total_trips INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO company_gst_wallet (id, balance, total_collected, total_trips)
+      VALUES (1, 0, 0, 0) ON CONFLICT (id) DO NOTHING;
+    `).catch(() => {});
 
     // ── Seed default vehicle categories if none exist ───────────────────────
     const vcCount = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM vehicle_categories`);
@@ -580,10 +601,28 @@ async function ensureOperationalSchema() {
       INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, fare_per_min, minimum_fare, cancellation_fee, night_charge_multiplier)
       SELECT
         vc.id,
-        CASE vc.type WHEN 'car' THEN 50 WHEN 'cargo' THEN 80 WHEN 'parcel' THEN 35 ELSE 25 END,
-        CASE vc.type WHEN 'car' THEN 16 WHEN 'cargo' THEN 20 WHEN 'parcel' THEN 13 ELSE 10 END,
+        CASE
+          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 60
+          WHEN LOWER(vc.name) LIKE '%auto%' THEN 40
+          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 80
+          WHEN LOWER(vc.name) LIKE '%parcel%' THEN 35
+          ELSE 30
+        END,
+        CASE
+          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 18
+          WHEN LOWER(vc.name) LIKE '%auto%' THEN 15
+          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 20
+          WHEN LOWER(vc.name) LIKE '%parcel%' THEN 13
+          ELSE 12
+        END,
         0,
-        CASE vc.type WHEN 'car' THEN 60 WHEN 'cargo' THEN 100 WHEN 'parcel' THEN 40 ELSE 28 END,
+        CASE
+          WHEN LOWER(vc.name) LIKE '%car%' OR LOWER(vc.name) LIKE '%suv%' THEN 70
+          WHEN LOWER(vc.name) LIKE '%auto%' THEN 50
+          WHEN LOWER(vc.name) LIKE '%cargo%' THEN 100
+          WHEN LOWER(vc.name) LIKE '%parcel%' THEN 40
+          ELSE 40
+        END,
         10,
         1.25
       FROM vehicle_categories vc
@@ -4345,11 +4384,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const fare = parseFloat(actualFare) || parseFloat(tripRow.estimated_fare) || 0;
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
+
+      // ── Pricing: user discount (first 2 rides = 50% off) ─────────────────
+      const customerRow = tripRow.customer_id
+        ? (await rawDb.execute(rawSql`SELECT completed_rides_count FROM users WHERE id=${tripRow.customer_id}::uuid LIMIT 1`).catch(() => ({ rows: [] }))).rows[0] as any
+        : null;
+      const completedRidesCount = parseInt(customerRow?.completed_rides_count ?? '0') || 0;
+      const rideFullFare = fare;
+      const userDiscount = completedRidesCount < 2 ? parseFloat((rideFullFare * 0.50).toFixed(2)) : 0;
+      const userPayable  = parseFloat((rideFullFare - userDiscount).toFixed(2));
+
+      // ── GST: 5% of full ride fare (government tax, always deducted from driver credit) ──
+      const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='ride_gst_rate' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+      const rideGstRate = parseFloat((gstPctR.rows[0] as any)?.value || '5') / 100;
+      const gstAmount = parseFloat((rideFullFare * rideGstRate).toFixed(2));
+
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='completed', ride_ended_at=NOW(),
             actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
-            tips=${parseFloat(tips) || 0}, payment_status='paid'
+            tips=${parseFloat(tips) || 0}, payment_status='paid',
+            ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
+            user_payable=${userPayable}, gst_amount=${gstAmount}
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status = 'on_the_way'
         RETURNING *
@@ -4394,40 +4450,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let breakdown: any = {};
 
       if (launchFreeApplied) {
-        // 🎉 Launch Benefit: no commission, no subscription fee for this trip
-        deductAmount = 0;
-        breakdown = { model: "launch_free", commission: 0, platformFee: 0, gst: 0, insurance: 0, total: 0 };
+        // 🎉 Launch Benefit: no commission, no subscription fee — only GST
+        deductAmount = gstAmount;
+        breakdown = { model: "launch_free", commission: 0, platformFee: 0, gst: gstAmount, insurance: 0, total: gstAmount };
       } else if (activeModel === "commission") {
         const commPct = parseFloat(s.commission_pct || "15") / 100;
-        const gstPct = parseFloat(s.commission_gst_pct || "18") / 100;
         const ins = parseFloat(s.commission_insurance_per_ride || "2");
         const comm = parseFloat((fare * commPct).toFixed(2));
-        const gst = parseFloat((comm * gstPct).toFixed(2));
-        deductAmount = parseFloat((comm + gst + ins).toFixed(2));
-        breakdown = { model: "commission", commission: comm, gst, insurance: ins, total: deductAmount };
+        deductAmount = parseFloat((comm + gstAmount + ins).toFixed(2));
+        breakdown = { model: "commission", commission: comm, gst: gstAmount, insurance: ins, total: deductAmount };
       } else if (activeModel === "subscription") {
-        // Subscription model: per-ride platform fee + GST + insurance (subscription itself is paid upfront)
+        // Subscription model: per-ride platform fee + GST + insurance
         const platFee = parseFloat(s.sub_platform_fee_per_ride || "5");
-        const gstPct = parseFloat(s.sub_gst_pct || "18") / 100;
         const ins = parseFloat(s.commission_insurance_per_ride || "2");
-        const gst = parseFloat((platFee * gstPct).toFixed(2));
-        deductAmount = parseFloat((platFee + gst + ins).toFixed(2));
-        breakdown = { model: "subscription", platformFee: platFee, gst, insurance: ins, total: deductAmount };
+        deductAmount = parseFloat((platFee + gstAmount + ins).toFixed(2));
+        breakdown = { model: "subscription", platformFee: platFee, gst: gstAmount, insurance: ins, total: deductAmount };
       } else if (activeModel === "hybrid") {
         // Hybrid model: reduced commission + base platform fee + GST + insurance
         const commPct = parseFloat(s.hybrid_commission_pct || s.commission_pct || "10") / 100;
         const platFee = parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5");
-        const gstPct = parseFloat(s.hybrid_gst_pct || s.commission_gst_pct || "18") / 100;
         const ins = parseFloat(s.hybrid_insurance_per_ride || s.commission_insurance_per_ride || "2");
         const comm = parseFloat((fare * commPct).toFixed(2));
-        const taxable = parseFloat((comm + platFee).toFixed(2));
-        const gst = parseFloat((taxable * gstPct).toFixed(2));
-        deductAmount = parseFloat((comm + platFee + gst + ins).toFixed(2));
-        breakdown = { model: "hybrid", commission: comm, platformFee: platFee, gst, insurance: ins, total: deductAmount };
+        deductAmount = parseFloat((comm + platFee + gstAmount + ins).toFixed(2));
+        breakdown = { model: "hybrid", commission: comm, platformFee: platFee, gst: gstAmount, insurance: ins, total: deductAmount };
       }
 
-      // Save commission_amount to trip record for reporting accuracy
-      await rawDb.execute(rawSql`UPDATE trip_requests SET commission_amount=${deductAmount} WHERE id=${tripId}::uuid`);
+      // driverWalletCredit = what driver actually keeps
+      const driverWalletCredit = parseFloat((fare - deductAmount).toFixed(2));
+
+      // Save all pricing fields: commission_amount + driver_wallet_credit
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests
+        SET commission_amount=${deductAmount}, driver_wallet_credit=${driverWalletCredit}
+        WHERE id=${tripId}::uuid
+      `);
+
+      // ── GST: credit to company GST wallet ──────────────────────────────────
+      if (gstAmount > 0) {
+        await rawDb.execute(rawSql`
+          UPDATE company_gst_wallet
+          SET balance = balance + ${gstAmount},
+              total_collected = total_collected + ${gstAmount},
+              total_trips = total_trips + 1,
+              updated_at = NOW()
+          WHERE id = 1
+        `).catch(() => {});
+      }
 
       if (deductAmount > 0) {
         const threshold = parseFloat(s.auto_lock_threshold || "-100");
@@ -4446,38 +4514,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
         }
         // Record driver deduction
+        const deductDesc = launchFreeApplied
+          ? `Government GST ₹${gstAmount} for trip ${tripId.slice(0,8)}… (launch period)`
+          : `Platform fee (${activeModel}) ₹${deductAmount} for trip ${tripId.slice(0,8)}…`;
         await rawDb.execute(rawSql`
           INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${`Platform fee (${activeModel}) for trip ${tripId.slice(0,8)}...`})
+          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${deductDesc})
         `).catch(() => {});
         // Credit admin revenue
-        const revenueType = activeModel === 'commission'
-          ? 'commission'
-          : activeModel === 'hybrid'
-            ? 'hybrid_fee'
-            : 'subscription_fee';
+        const revenueType = launchFreeApplied ? 'gst_only'
+          : activeModel === 'commission' ? 'commission'
+          : activeModel === 'hybrid' ? 'hybrid_fee'
+          : 'subscription_fee';
         await rawDb.execute(rawSql`
           INSERT INTO admin_revenue (driver_id, trip_id, amount, revenue_type, breakdown)
           VALUES (${driver.id}::uuid, ${tripId}::uuid, ${deductAmount}, ${revenueType}, ${JSON.stringify(breakdown)}::jsonb)
         `).catch(() => {});
       }
 
-      // Deduct customer wallet if payment_method = 'wallet'
+      // ── Customer wallet deduction: use userPayable (discounted amount) ────
       const tripPaymentMethod = tripRow.payment_method || 'cash';
       const tripCustomerId = tripRow.customer_id;
       if (tripPaymentMethod === 'wallet' && tripCustomerId) {
         try {
           const custWalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
           const custBal = parseFloat((custWalRes.rows[0] as any)?.wallet_balance || '0');
-          if (custBal >= fare) {
-            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${fare} WHERE id=${tripCustomerId}::uuid`);
-            const newCustBal = parseFloat((custBal - fare).toFixed(2));
+          if (custBal >= userPayable) {
+            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${userPayable} WHERE id=${tripCustomerId}::uuid`);
+            const newCustBal = parseFloat((custBal - userPayable).toFixed(2));
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${fare}, ${newCustBal}, ${'ride_payment'}, ${tripId})
+              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
             `).catch(() => {});
           } else {
-            // Insufficient balance — mark as pending payment
             await rawDb.execute(rawSql`UPDATE trip_requests SET payment_status='pending_payment' WHERE id=${tripId}::uuid`).catch(() => {});
           }
         } catch (_) {}
@@ -4490,9 +4559,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const custBal2 = parseFloat((custWalRes2.rows[0] as any)?.wallet_balance || '0');
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-            VALUES (${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${fare}, ${custBal2}, ${'ride_payment'}, ${tripId})
+            VALUES (${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${userPayable}, ${custBal2}, ${'ride_payment'}, ${tripId})
           `).catch(() => {});
         } catch (_) {}
+      }
+
+      // ── Increment customer's completed_rides_count ──────────────────────
+      if (tripCustomerId) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET completed_rides_count = completed_rides_count + 1 WHERE id=${tripCustomerId}::uuid
+        `).catch(() => {});
       }
 
       // ✅ Clear driver's current trip — driver is now free for the next ride
@@ -4504,19 +4580,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const completedTrip = camelize(r.rows[0]) as any;
       await appendTripStatus(tripId, 'trip_completed', 'driver', 'Trip completed by driver');
-      await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', {
-        fare,
-        actualDistance,
-      });
+      await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', { fare, actualDistance });
 
-      // 🔌 Socket: notify customer — trip completed, show fare
+      // 🔌 Socket: notify customer — enriched with discount/GST breakdown
       if (io && completedTrip.customerId) {
         io.to(`user:${completedTrip.customerId}`).emit("trip:completed", {
           tripId,
-          fare,
+          fare: rideFullFare,
+          userDiscount,
+          userPayable,
+          gstAmount,
+          driverWalletCredit,
           actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
           paymentMethod: tripRow.payment_method || 'cash',
           platformDeduction: deductAmount,
+          launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
         });
       }
@@ -4524,13 +4602,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 🔔 FCM: notify customer
       const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
       const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
-      notifyCustomerTripCompleted({
-        fcmToken: custFcmComp,
-        fare,
-        tripId,
-      }).catch(() => {});
+      notifyCustomerTripCompleted({ fcmToken: custFcmComp, fare: userPayable, tripId }).catch(() => {});
 
-      res.json({ success: true, trip: completedTrip, platformDeduction: deductAmount });
+      res.json({
+        success: true,
+        trip: completedTrip,
+        pricing: {
+          rideFare: rideFullFare,
+          userDiscount,
+          userPayable,
+          gstAmount,
+          driverWalletCredit,
+          platformDeduction: deductAmount,
+          launchOfferApplied: userDiscount > 0,
+          launchDriverFree: launchFreeApplied,
+          breakdown,
+        },
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5259,6 +5347,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destLat: _destLat, destLng: _destLng,
         destinationLat, destinationLng,
         vehicleCategoryId, distanceKm, durationMin = 0,
+        userId, // optional — if provided, include launch offer info
       } = req.body;
       const destLat = _destLat ?? destinationLat;
       const destLng = _destLng ?? destinationLng;
@@ -5293,17 +5382,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY f.vehicle_category_id, vc.name
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
-        // Vehicle-name-specific defaults: Bike ₹25+₹10/km, Auto ₹35+₹13/km, Car ₹50+₹16/km
-        // (parse FIRST, then apply fallback — DB returns "0" as a truthy string so
-        //  parseFloat("0" || 30) = 0 (wrong); parseFloat("0") || 30 = 30 (correct))
+        // Vehicle-name-specific defaults: Bike ₹30+₹12/km, Auto ₹40+₹15/km, Car ₹60+₹18/km
         const vn = (f.vehicleName || '').toLowerCase();
         const isCar    = vn.includes('car') || vn.includes('suv');
         const isAuto   = !isCar && (vn.includes('auto') || vn.includes('rickshaw'));
         const isCargo  = vn.includes('cargo');
         const isParcel = !isCargo && vn.includes('parcel');
-        const defaultBase  = isCar ? 50 : isAuto ? 35 : isCargo ? 80 : isParcel ? 35 : 25;
-        const defaultPerKm = isCar ? 16 : isAuto ? 13 : isCargo ? 20 : isParcel ? 13 : 10;
-        const defaultMin   = isCar ? 60 : isAuto ? 40 : isCargo ? 100 : isParcel ? 40 : 28;
+        const defaultBase  = isCar ? 60 : isAuto ? 40 : isCargo ? 80 : isParcel ? 35 : 30;
+        const defaultPerKm = isCar ? 18 : isAuto ? 15 : isCargo ? 20 : isParcel ? 13 : 12;
+        const defaultMin   = isCar ? 70 : isAuto ? 50 : isCargo ? 100 : isParcel ? 40 : 40;
 
         const base           = parseFloat(f.baseFare)           || defaultBase;
         const perKm          = parseFloat(f.farePerKm)          || defaultPerKm;
@@ -5323,6 +5410,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         let subtotal = base + distanceFare + timeFare;
         if (isNight) subtotal = +(subtotal * nightMultiplier).toFixed(2);
         const total = Math.max(subtotal, minFare);
+        // GST 5% on full fare (government tax)
         const gst = +(total * 0.05).toFixed(2);
         const grandTotal = +(total + gst).toFixed(2);
         // ±5% range shown in UI: "₹85 – ₹95"
@@ -5353,7 +5441,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           estimatedTime: estTime + " min",
         };
       });
-      res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight });
+
+      // ── User launch offer: first 2 rides 50% discount ─────────────────────
+      let launchOffer: any = null;
+      if (userId) {
+        const userR = await rawDb.execute(rawSql`SELECT completed_rides_count FROM users WHERE id=${userId}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+        const completedCount = parseInt((userR.rows[0] as any)?.completed_rides_count ?? '0') || 0;
+        if (completedCount < 2) {
+          launchOffer = {
+            active: true,
+            discountPct: 50,
+            ridesRemaining: 2 - completedCount,
+            message: `🎉 Launch Offer: 50% off your first 2 rides! (${2 - completedCount} ride(s) remaining)`,
+          };
+        }
+      }
+
+      res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -6249,6 +6353,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!['dark', 'light'].includes(theme)) return res.status(400).json({ message: "Invalid theme" });
       await rawDb.execute(rawSql`UPDATE users SET theme_preference=${theme} WHERE id=${driver.id}::uuid`);
       res.json({ success: true, theme });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: GST Wallet ────────────────────────────────────────────────────
+  app.get("/api/admin/gst-wallet", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
+    try {
+      const walletR = await rawDb.execute(rawSql`SELECT * FROM company_gst_wallet WHERE id=1`);
+      const recentR = await rawDb.execute(rawSql`
+        SELECT tr.ref_id, tr.gst_amount, tr.ride_full_fare, tr.user_payable, tr.created_at,
+               d.full_name AS driver_name, c.full_name AS customer_name
+        FROM trip_requests tr
+        LEFT JOIN users d ON d.id = tr.driver_id
+        LEFT JOIN users c ON c.id = tr.customer_id
+        WHERE tr.gst_amount > 0 AND tr.current_status = 'completed'
+        ORDER BY tr.created_at DESC
+        LIMIT 50
+      `);
+      res.json({ wallet: camelize(walletR.rows[0] ?? {}), recentCollections: camelize(recentR.rows) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

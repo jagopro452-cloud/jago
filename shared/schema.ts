@@ -102,6 +102,12 @@ export const tripRequests = pgTable("trip_requests", {
   currentStatus: varchar("current_status", { length: 50 }).default("pending"),
   isScheduled: boolean("is_scheduled").default(false),
   scheduledAt: timestamp("scheduled_at"),
+  // Pricing & launch offer fields
+  rideFullFare: numeric("ride_full_fare", { precision: 23, scale: 3 }).default("0"),
+  userDiscount: numeric("user_discount", { precision: 23, scale: 3 }).default("0"),
+  userPayable: numeric("user_payable", { precision: 23, scale: 3 }).default("0"),
+  gstAmount: numeric("gst_amount", { precision: 23, scale: 3 }).default("0"),
+  driverWalletCredit: numeric("driver_wallet_credit", { precision: 23, scale: 3 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
