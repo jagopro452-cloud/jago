@@ -42,7 +42,7 @@ services:
       - key: ADMIN_2FA_REQUIRED
         value: "false"
       - key: ENABLE_DEV_OTP_RESPONSES
-        value: "false"
+        value: "true"
       - key: GOOGLE_MAPS_API_KEY
         value: "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
         type: SECRET

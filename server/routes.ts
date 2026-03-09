@@ -4856,28 +4856,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Send real SMS via Twilio
       const smsResult = await sendOtpSms(phoneStr, otp);
 
-      if (smsResult.provider === "none") {
-        // No SMS provider configured
-        console.log(`[OTP-DEV] ${phoneStr} → ${otp}`);
-        if (process.env.NODE_ENV === "production") {
-          return res.status(503).json({ message: "SMS service unavailable. Please contact support." });
-        }
+      if (smsResult.provider === "none" || !smsResult.success) {
+        // No SMS provider configured or SMS failed — return OTP in response if ENABLE_DEV_OTP_RESPONSES=true
+        console.log(`[OTP] ${phoneStr} → ${otp} (SMS provider: ${smsResult.provider}, success: ${smsResult.success})`);
         if (isDevOtpResponseEnabled) {
-          return res.json({ success: true, message: "OTP sent (dev mode — check console)", otp, dev: true });
+          return res.json({ success: true, message: "OTP generated. Enter it to continue.", otp });
         }
-        return res.json({ success: true, message: "OTP generated. Use SMS provider configuration for delivery." });
-      }
-
-      if (!smsResult.success) {
-        // SMS failed
-        console.error(`[OTP-ERROR] SMS failed for ${phoneStr}: ${smsResult.error}`);
-        if (process.env.NODE_ENV === "production") {
-          return res.status(500).json({ message: "Failed to send OTP. Please try again." });
-        }
-        if (isDevOtpResponseEnabled) {
-          return res.json({ success: true, message: "OTP sent (SMS failed — check console)", otp, dev: true });
-        }
-        return res.status(503).json({ message: "Failed to send OTP. Please try again." });
+        // SMS provider not configured and dev mode not enabled
+        return res.status(503).json({ message: "SMS service not configured. Set FAST2SMS_API_KEY or ENABLE_DEV_OTP_RESPONSES=true." });
       }
 
       // SMS sent successfully
@@ -5097,7 +5083,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try { const r = await sendOtpSms(phoneStr, otp); smsSent = r.success; } catch (_) {}
       if (!smsSent) {
         console.log("[RESET OTP] Phone: " + phoneStr + " OTP: " + otp);
-        if (!isProd && isDevOtpResponseEnabled) return res.json({ success: true, message: "Reset OTP generated", otp });
+        if (isDevOtpResponseEnabled) return res.json({ success: true, message: "Reset OTP generated. Enter it to continue.", otp });
         return res.json({ success: true, message: "Reset OTP sent to your mobile number" });
       }
       res.json({ success: true, message: "Reset OTP sent to your mobile number" });
