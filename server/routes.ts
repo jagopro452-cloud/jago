@@ -8574,6 +8574,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Driver support chat (aliases customer endpoints — same user table) ───
+  app.get('/api/app/driver/support-chat', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM support_messages WHERE user_id=${user.id}::uuid ORDER BY created_at ASC LIMIT 100
+      `);
+      await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${user.id}::uuid AND sender='admin'`);
+      res.json({ messages: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post('/api/app/driver/support-chat/send', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { message } = req.body;
+      if (!message) return res.status(400).json({ message: 'message required' });
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO support_messages (user_id, sender, message) VALUES (${user.id}::uuid, 'user', ${message}) RETURNING *
+      `);
+      res.json({ success: true, data: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── TRIP SHARING: Generate share link ────────────────────────────────────
   app.post("/api/app/trip-share", authApp, async (req, res) => {
     try {
@@ -8891,6 +8915,67 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${user.id}::uuid, ${-coins}, 'redeem', 'Redeemed ${coins} coins for ₹${discount} discount')
       `);
       res.json({ success: true, coinsUsed: coins, discountAmount: discount, message: `₹${discount} discount applied to next ride!` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Daily Spin Wheel (customer-facing) ───────────────────────────────────
+  app.get("/api/app/customer/spin-wheel", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const [itemsR, playedR] = await Promise.all([
+        rawDb.execute(rawSql`SELECT id, label, reward_amount, reward_type, probability FROM spin_wheel_items WHERE is_active=true ORDER BY RANDOM()`),
+        rawDb.execute(rawSql`
+          SELECT id FROM spin_wheel_plays
+          WHERE user_id=${user.id}::uuid AND played_at > NOW() - INTERVAL '24 hours'
+          LIMIT 1
+        `),
+      ]);
+      const canSpin = playedR.rows.length === 0;
+      res.json({ items: itemsR.rows.map(camelize), canSpin });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/app/customer/spin-wheel/play", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      // Check 24h cooldown
+      const played = await rawDb.execute(rawSql`
+        SELECT id FROM spin_wheel_plays
+        WHERE user_id=${user.id}::uuid AND played_at > NOW() - INTERVAL '24 hours'
+        LIMIT 1
+      `);
+      if (played.rows.length > 0) return res.status(429).json({ message: 'Already spun today! Come back in 24 hours.' });
+
+      // Pick a weighted random item
+      const itemsR = await rawDb.execute(rawSql`
+        SELECT id, label, reward_amount, reward_type, probability FROM spin_wheel_items WHERE is_active=true
+      `);
+      if (itemsR.rows.length === 0) return res.status(404).json({ message: 'Spin wheel not configured' });
+
+      const items = itemsR.rows as any[];
+      const totalWeight = items.reduce((s: number, i: any) => s + parseFloat(i.probability || 1), 0);
+      let rand = Math.random() * totalWeight;
+      let chosen = items[0];
+      for (const it of items) {
+        rand -= parseFloat(it.probability || 1);
+        if (rand <= 0) { chosen = it; break; }
+      }
+
+      // Record play
+      await rawDb.execute(rawSql`
+        INSERT INTO spin_wheel_plays (user_id, item_id, reward_type, reward_amount)
+        VALUES (${user.id}::uuid, ${chosen.id}::uuid, ${chosen.reward_type}, ${chosen.reward_amount})
+      `);
+
+      // Award reward
+      if (chosen.reward_type === 'coins' && parseFloat(chosen.reward_amount) > 0) {
+        await rawDb.execute(rawSql`UPDATE users SET jago_coins = COALESCE(jago_coins,0) + ${parseInt(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
+        await rawDb.execute(rawSql`INSERT INTO coins_ledger (user_id, amount, type, description) VALUES (${user.id}::uuid, ${parseInt(chosen.reward_amount)}, 'spin_wheel', 'Daily spin reward: ${chosen.label}')`).catch(() => {});
+      } else if (chosen.reward_type === 'wallet' && parseFloat(chosen.reward_amount) > 0) {
+        await rawDb.execute(rawSql`UPDATE users SET wallet_balance = COALESCE(wallet_balance,0) + ${parseFloat(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
+      }
+
+      res.json({ success: true, item: camelize(chosen), canSpin: false });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

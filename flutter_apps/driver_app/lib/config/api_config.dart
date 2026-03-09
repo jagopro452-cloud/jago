@@ -69,8 +69,8 @@ class ApiConfig {
   static String get weeklyEarnings => '$baseUrl/api/app/driver/weekly-earnings';
 
   // ── Support Chat ─────────────────────────────────────────────────────
-  static String get supportChat => '$baseUrl/api/app/customer/support-chat';
-  static String get supportChatSend => '$baseUrl/api/app/customer/support-chat/send';
+  static String get supportChat => '$baseUrl/api/app/driver/support-chat';
+  static String get supportChatSend => '$baseUrl/api/app/driver/support-chat/send';
 
   // ── Unique Features ─────────────────────────────────────────────────
   static String get breakMode => '$baseUrl/api/app/driver/break';

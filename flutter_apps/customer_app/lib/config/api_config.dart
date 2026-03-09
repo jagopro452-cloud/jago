@@ -77,6 +77,8 @@ class ApiConfig {
   // ── Unique Features ─────────────────────────────────────────────────
   static String get coins => '$baseUrl/api/app/customer/coins';
   static String get redeemCoins => '$baseUrl/api/app/customer/redeem-coins';
+  static String get spinWheel => '$baseUrl/api/app/customer/spin-wheel';
+  static String get spinWheelPlay => '$baseUrl/api/app/customer/spin-wheel/play';
   static String get monthlyPass => '$baseUrl/api/app/customer/monthly-pass';
   static String get buyMonthlyPass => '$baseUrl/api/app/customer/monthly-pass/buy';
   static String get preferences => '$baseUrl/api/app/customer/preferences';
