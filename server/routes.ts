@@ -1134,6 +1134,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ── Force re-run full DB bootstrap + admin seed ───────────────────────────
+  // GET  /api/ops/init-db?key=ADMIN_RESET_KEY
+  // Useful when the live server has a missing schema (e.g. fresh DB or failed migration).
+  app.get("/api/ops/init-db", async (req, res) => {
+    const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
+    const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
+    if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
+    try {
+      await ensureOperationalSchema();
+      await ensureAdminExists();
+      const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
+      const r = await rawDb.execute(rawSql`SELECT id, email, is_active FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
+      const adminRow: any = r.rows[0];
+      res.json({
+        success: true,
+        message: "DB schema bootstrapped and admin account synced.",
+        admin: adminRow ? { id: adminRow.id, email: adminRow.email, is_active: adminRow.is_active } : null,
+        ts: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
   app.get("/api/ops/metrics", requireOpsKey, async (_req, res) => {
     try {
       const [activeTrips, onlineDrivers, openComplaints] = await Promise.all([
