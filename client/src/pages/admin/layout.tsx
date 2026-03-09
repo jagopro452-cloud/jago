@@ -324,18 +324,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             href="/admin/dashboard"
             className="logo"
             onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
-            style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}
+            style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
           >
             <div style={{
-              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: "linear-gradient(135deg,#1e6de5,#0ea5e9)",
+              width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+              background: "rgba(255,255,255,0.25)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 3px 10px rgba(30,109,229,0.45)",
-              fontSize: "0.85rem", fontWeight: 900, color: "#fff", letterSpacing: 0,
+              fontSize: "0.82rem", fontWeight: 900, color: "#fff", letterSpacing: 0,
             }}>J</div>
             <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-              <span className="logo-text" style={{ fontSize: "1.1rem", letterSpacing: 2 }}>JAGO</span>
-              <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "rgba(30,109,229,0.72)", letterSpacing: 3, marginTop: 1 }}>ADMIN PANEL</span>
+              <span className="logo-text" style={{ fontSize: "0.95rem", letterSpacing: 2 }}>JAGO</span>
+              <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: 2.5, marginTop: 1 }}>ADMIN PANEL</span>
             </div>
           </a>
           <button
@@ -400,7 +399,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </ul>
 
             {/* Sidebar Logout */}
-            <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.15)", marginTop: 8 }}>
+            <div style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,0.12)", marginTop: 6 }}>
               <button
                 onClick={handleLogout}
                 data-testid="btn-logout"
@@ -408,19 +407,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   width: "100%",
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  background: "rgba(239,68,68,0.07)",
-                  color: "#ef4444",
+                  gap: 7,
+                  padding: "7px 10px",
+                  borderRadius: 7,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(255,255,255,0.1)",
+                  color: "#fff",
                   fontWeight: 600,
-                  fontSize: 13.5,
+                  fontSize: 12,
                   cursor: "pointer",
-                  transition: "all .18s",
+                  transition: "all .15s",
                 }}
               >
-                <i className="bi bi-box-arrow-right" style={{ fontSize: 16 }}></i>
+                <i className="bi bi-box-arrow-right" style={{ fontSize: 13 }}></i>
                 <span>Sign Out</span>
               </button>
             </div>
