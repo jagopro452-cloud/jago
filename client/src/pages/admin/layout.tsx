@@ -454,15 +454,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {/* Live clock */}
                 <li className="d-none d-lg-block">
                   <div style={{
-                    background: isDark
-                      ? "linear-gradient(135deg, rgba(30,64,175,0.25), rgba(56,189,248,0.16))"
-                      : "linear-gradient(135deg, #f0f6ff, #e8f0fe)",
-                    border: isDark ? "1px solid rgba(147,197,253,0.4)" : "1px solid #dbeafe",
+                    background: "linear-gradient(135deg, #EFF6FF, #DBEAFE)",
+                    border: "1px solid #BFDBFE",
                     borderRadius: 10,
                     padding: "5px 12px",
                     fontSize: 12,
                     fontWeight: 700,
-                    color: isDark ? "#bfdbfe" : "#1e40af",
+                    color: "#1E40AF",
                     display: "flex",
                     alignItems: "center",
                     gap: 6

@@ -2874,7 +2874,7 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 .jl-brand {
   flex: 0 0 48%;
   max-width: 48%;
-  background: linear-gradient(145deg, #080e1f 0%, #0d1b3e 30%, #1a3a8f 65%, #2F80ED 100%);
+  background: linear-gradient(150deg, #0B1739 0%, #0D1E47 25%, #1338A8 60%, #1D4ED8 85%, #2563EB 100%);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -2922,54 +2922,61 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 }
 
 /* ===============================================
-   SUPERADMIN DEMO THEME OVERRIDES (2026-03-07)
+   JAGO Admin — Professional UI Theme (2026)
    =============================================== */
 .admin-shell .aside {
-  background: linear-gradient(180deg, #041025 0%, #071a3a 50%, #0b2454 100%) !important;
-  border-right: 1px solid rgba(96, 165, 250, 0.22) !important;
-  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.42) !important;
+  background: linear-gradient(175deg, #0B1739 0%, #0D1E47 40%, #0F2356 80%, #102767 100%) !important;
+  border-right: 1px solid rgba(59, 130, 246, 0.18) !important;
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.35) !important;
 }
 
 .admin-shell .aside-header {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent) !important;
-  border-bottom: 1px solid rgba(125, 211, 252, 0.18) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.18) !important;
 }
 
 .admin-shell .nav-category {
-  color: rgba(186, 230, 253, 0.62) !important;
+  color: rgba(148, 163, 184, 0.55) !important;
+  font-size: 0.57rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.12em !important;
 }
 
 .admin-shell .main-nav li > a {
-  color: rgba(226, 232, 240, 0.84) !important;
+  color: rgba(203, 213, 225, 0.82) !important;
   border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  transition: all 0.18s ease !important;
 }
 
 .admin-shell .main-nav li > a i {
-  color: rgba(125, 211, 252, 0.85) !important;
+  color: rgba(147, 197, 253, 0.8) !important;
 }
 
 .admin-shell .main-nav li > a:hover {
-  background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(37, 99, 235, 0.08)) !important;
-  border-color: rgba(125, 211, 252, 0.22) !important;
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.22) !important;
+  color: #FFFFFF !important;
 }
 
 .admin-shell .main-nav li.active > a {
-  background: linear-gradient(90deg, rgba(14, 165, 233, 0.32), rgba(59, 130, 246, 0.14)) !important;
-  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.32) inset !important;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.85), rgba(29, 78, 216, 0.6)) !important;
+  border-color: rgba(96, 165, 250, 0.4) !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 3px 14px rgba(37, 99, 235, 0.4) !important;
 }
 
 .admin-shell .header {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.85) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  box-shadow: 0 1px 12px rgba(0, 0, 0, 0.05) !important;
 }
 
 .admin-shell .main-area {
-  background:
-    radial-gradient(900px 350px at 100% -5%, rgba(47,128,237,0.07), transparent 60%),
-    radial-gradient(800px 300px at 0% 105%, rgba(14,165,233,0.06), transparent 60%),
-    #f1f5f9 !important;
+  background: #F4F7FB !important;
 }
 
 .admin-dashboard-page .jd-banner {
@@ -3220,7 +3227,7 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 /* ── Right Form Panel ── */
 .jl-form-panel {
   flex: 1;
-  background: #fafbfc;
+  background: #F4F7FB;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3231,12 +3238,12 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 
 .jl-form-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 430px;
   background: #fff;
-  border-radius: 24px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 40px rgba(0,0,0,0.06);
-  padding: 2.5rem;
+  border-radius: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
+  padding: 2.25rem 2.5rem;
   animation: pageFadeIn 0.35s ease;
 }
 
@@ -3246,16 +3253,18 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   align-items: center;
   gap: 0.875rem;
   margin-bottom: 1.75rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #F1F5F9;
 }
 .jl-form-logo-circle {
-  width: 44px; height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #3b82f6, #2F80ED);
+  width: 46px; height: 46px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; color: #fff;
-  box-shadow: 0 4px 14px rgba(47,128,237,0.35);
+  font-size: 1.15rem; color: #fff;
+  box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+  flex-shrink: 0;
+}
   flex-shrink: 0;
 }
 .jl-form-logo-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
@@ -3310,20 +3319,20 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 .jl-input {
   width: 100%;
-  padding: 0.825rem 2.75rem;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 12px;
+  padding: 0.85rem 2.75rem;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 10px;
   font-size: 0.9rem;
   font-family: "Inter", sans-serif;
   color: #1e293b;
-  background: #f8fafc;
+  background: #F8FAFC;
   outline: none;
   transition: all 0.2s ease;
 }
 .jl-input:focus {
-  border-color: #2F80ED;
+  border-color: #2563EB;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(47,128,237,0.09);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
 }
 .jl-eye-btn {
   position: absolute;
@@ -4072,21 +4081,19 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 
 /* ============================================================
-   Superadmin Mock-Style Theme Upgrade
+   JAGO Admin — Clean Professional Theme (Final)
    ============================================================ */
 .admin-shell {
-  --sa-bg: radial-gradient(1000px 700px at 100% -20%, rgba(59, 130, 246, 0.18), transparent 60%), radial-gradient(900px 600px at -10% 120%, rgba(20, 184, 166, 0.16), transparent 60%), #050a18;
-  --sa-card: rgba(10, 18, 37, 0.82);
-  --sa-card-strong: rgba(14, 24, 46, 0.92);
-  --sa-border: rgba(147, 197, 253, 0.16);
-  --sa-text: #e5eeff;
-  --sa-soft: #9cb2d7;
-  --sa-accent: #5fa8ff;
-  --sa-accent-2: #2dd4bf;
+  --sa-card: #FFFFFF;
+  --sa-border: rgba(226, 232, 240, 0.85);
+  --sa-text: #0F172A;
+  --sa-soft: #64748B;
+  --sa-accent: #2563EB;
+  --sa-accent-2: #10B981;
 }
 
 .admin-shell .main-area {
-  background: var(--sa-bg) !important;
+  background: #F4F7FB !important;
 }
 
 .admin-shell .header {
@@ -4100,116 +4107,130 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   border-right: 1px solid var(--sa-border) !important;
 }
 
-.admin-shell .header,
-.admin-shell .aside,
-.admin-shell .header .dropdown-menu,
+/* ── Cards ── */
 .admin-shell .admin-dashboard-page .card,
 .admin-shell .card {
-  box-shadow: 0 20px 44px rgba(2, 6, 23, 0.35);
+  background: #FFFFFF !important;
+  border: 1px solid rgba(226, 232, 240, 0.85) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 6px 20px rgba(0,0,0,0.04) !important;
+  transition: box-shadow 0.22s ease, transform 0.22s ease !important;
 }
 
-.admin-shell .admin-dashboard-page .card,
-.admin-shell .card {
-  background: var(--sa-card) !important;
-  border: 1px solid var(--sa-border) !important;
+.admin-shell .admin-dashboard-page .card:hover,
+.admin-shell .card:hover {
+  box-shadow: 0 4px 24px rgba(37, 99, 235, 0.11), 0 1px 6px rgba(0,0,0,0.05) !important;
+  transform: translateY(-2px) !important;
 }
 
 .admin-shell .admin-dashboard-page .card-header,
 .admin-shell .card-header,
 .admin-shell .card-header.bg-white {
-  background: transparent !important;
-  border-bottom: 1px solid var(--sa-border) !important;
+  background: #FFFFFF !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7) !important;
 }
 
 .admin-shell .admin-dashboard-page .card-body,
-.admin-shell .card-body,
-.admin-shell .admin-main-inner,
-.admin-shell .main-nav li > a .link-title,
-.admin-shell .nav-category,
-.admin-shell .user-profile .card-title,
-.admin-shell .user-profile .card-text,
-.admin-shell .text-muted,
-.admin-shell .table tbody td,
-.admin-shell .table thead th,
-.admin-shell h1,
-.admin-shell h2,
-.admin-shell h3,
-.admin-shell h4,
-.admin-shell h5,
-.admin-shell h6,
-.admin-shell p,
-.admin-shell span,
-.admin-shell label {
-  color: var(--sa-text) !important;
+.admin-shell .card-body {
+  background: #FFFFFF !important;
 }
 
-.admin-shell .text-muted,
-.admin-shell .table thead th,
-.admin-shell .nav-category,
-.admin-shell .card-text {
-  color: var(--sa-soft) !important;
+/* ── Typography (on light bg) ── */
+.admin-shell h1, .admin-shell h2, .admin-shell h3,
+.admin-shell h4, .admin-shell h5, .admin-shell h6 {
+  color: #0F172A !important;
 }
 
-.admin-shell .main-nav li > a {
-  border: 1px solid transparent;
-  background: transparent !important;
+.admin-shell .text-muted {
+  color: #64748B !important;
 }
 
-.admin-shell .main-nav li > a:hover {
-  border-color: rgba(96, 165, 250, 0.22);
-  background: rgba(15, 23, 42, 0.58) !important;
+/* ── Tables ── */
+.admin-shell .table thead th {
+  background: #F8FAFC !important;
+  color: #475569 !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.07em !important;
 }
 
-.admin-shell .main-nav li.active > a,
-.admin-shell .main-nav li.open > a {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(20, 184, 166, 0.18)) !important;
-  border-color: rgba(96, 165, 250, 0.32);
-}
-
-.admin-shell .header-icon-btn,
-.admin-shell .btn,
-.admin-shell .btn.btn-sm {
-  border-color: var(--sa-border) !important;
-  background: rgba(15, 23, 42, 0.45) !important;
-  color: var(--sa-text) !important;
-}
-
-.admin-shell .header-icon-btn:hover,
-.admin-shell .btn:hover {
-  border-color: rgba(96, 165, 250, 0.4) !important;
-  background: rgba(37, 99, 235, 0.25) !important;
-}
-
-.admin-shell .btn-primary,
-.admin-shell .btn-outline-primary {
-  background: linear-gradient(135deg, var(--sa-accent), var(--sa-accent-2)) !important;
-  border-color: transparent !important;
-  color: #041124 !important;
-  font-weight: 700;
-}
-
-.admin-shell .theme-input-style,
-.admin-shell .admin-form-control,
-.admin-shell select.theme-input-style,
-.admin-shell textarea.theme-input-style,
-.admin-shell .search-form__input_group {
-  background: rgba(10, 18, 37, 0.82) !important;
-  border-color: var(--sa-border) !important;
-  color: var(--sa-text) !important;
-}
-
-.admin-shell .search-form__input::placeholder,
-.admin-shell input::placeholder,
-.admin-shell textarea::placeholder {
-  color: #8aa3cc !important;
+.admin-shell .table tbody td {
+  color: #334155 !important;
+  border-color: rgba(241, 245, 249, 0.9) !important;
 }
 
 .admin-shell .table tbody tr:hover td {
-  background: rgba(37, 99, 235, 0.1) !important;
+  background: #EFF6FF !important;
 }
 
-/* ── Modal / popup overrides: restore dark text on white background ── */
-.admin-shell .modal-jago,
+/* ── Form inputs ── */
+.admin-shell .theme-input-style,
+.admin-shell .admin-form-control,
+.admin-shell select.theme-input-style,
+.admin-shell textarea.theme-input-style {
+  background: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #1E293B !important;
+}
+
+.admin-shell .search-form__input_group {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder,
+.admin-shell .search-form__input::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* ── Buttons ── */
+.admin-shell .header-icon-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748B !important;
+}
+
+.admin-shell .header-icon-btn:hover {
+  background: #F1F5F9 !important;
+  border-color: #E2E8F0 !important;
+  color: #1E293B !important;
+}
+
+.admin-shell .btn,
+.admin-shell .btn.btn-sm {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #334155 !important;
+}
+
+.admin-shell .btn:hover {
+  background: #F8FAFC !important;
+  border-color: #CBD5E1 !important;
+}
+
+.admin-shell .btn-primary {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+  border-color: transparent !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.28) !important;
+}
+
+.admin-shell .btn-primary:hover {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.38) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Modal ── */
+.admin-shell .modal-jago {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
 .admin-shell .modal-jago label,
 .admin-shell .modal-jago .form-label-jago,
 .admin-shell .modal-jago h4,
@@ -4219,46 +4240,53 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 .admin-shell .modal-jago span:not(.badge):not(.text-danger):not(.text-success):not(.text-warning):not(.text-muted),
 .admin-shell .modal-jago .input-group-text,
 .admin-shell .modal-jago .modal-jago-title {
-  color: #1e293b !important;
+  color: #1E293B !important;
 }
+
 .admin-shell .modal-jago .text-muted,
 .admin-shell .modal-jago small {
-  color: #64748b !important;
+  color: #64748B !important;
 }
-.admin-shell .modal-jago .text-danger  { color: #dc2626 !important; }
-.admin-shell .modal-jago .text-success { color: #16a34a !important; }
-.admin-shell .modal-jago .text-warning { color: #d97706 !important; }
+
+.admin-shell .modal-jago .text-danger  { color: #DC2626 !important; }
+.admin-shell .modal-jago .text-success { color: #16A34A !important; }
+.admin-shell .modal-jago .text-warning { color: #D97706 !important; }
+
 .admin-shell .modal-jago .admin-form-control,
 .admin-shell .modal-jago .theme-input-style {
-  background: #f8fafc !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  background: #F8FAFC !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
 }
+
 .admin-shell .modal-jago .admin-form-control::placeholder,
 .admin-shell .modal-jago .theme-input-style::placeholder {
-  color: #94a3b8 !important;
+  color: #94A3B8 !important;
 }
+
 .admin-shell .modal-jago .input-group-text {
-  background: #f1f5f9 !important;
-  border-color: #cbd5e1 !important;
+  background: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+  color: #475569 !important;
 }
 
+/* ── Dashboard Banner ── */
 .admin-shell .jd-banner {
-  background: linear-gradient(135deg, rgba(8, 27, 60, 0.95), rgba(10, 60, 85, 0.92)) !important;
-  border: 1px solid rgba(125, 211, 252, 0.25) !important;
+  background: linear-gradient(135deg, #1E3A8A 0%, #1E40AF 45%, #2563EB 80%, #3B82F6 100%) !important;
+  border: none !important;
+  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.32) !important;
 }
 
-.admin-shell .jd-banner .jd-date-badge,
-.admin-shell .jd-banner .jd-kpi,
 .admin-shell .jd-stat-card {
-  background: rgba(8, 17, 38, 0.6) !important;
-  border: 1px solid rgba(125, 211, 252, 0.18) !important;
+  background: #FFFFFF !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04) !important;
 }
 
-/* ── Services overview cards dark mode ── */
+/* ── Services cards ── */
 .admin-shell .svc-overview-card {
-  background: rgba(8, 17, 38, 0.6) !important;
-  border-color: rgba(125, 211, 252, 0.14) !important;
+  background: #FFFFFF !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
 }
 
 /* ── Admin table mobile scrolling ── */
