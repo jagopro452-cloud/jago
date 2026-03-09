@@ -510,6 +510,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS break_until TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) NOT NULL DEFAULT 5.0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS total_ratings INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP;
 
       -- Fix: missing trip_requests columns for parcel/person-booking flow
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(120);
@@ -4867,10 +4868,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
       }
 
-      // Generate secure auth token
+      // Generate secure auth token (30-day expiry)
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
+      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       // Store auth token in users.auth_token (NOT in fcm_token — that's for Firebase)
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
 
       // If driver, get wallet info
       let walletBalance = 0;
@@ -4946,7 +4948,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
 
       let walletBalance = 0;
       let isLocked = false;
@@ -4993,7 +4996,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
       res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5011,7 +5015,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const match = await bcrypt.compare(password, user.passwordHash);
       if (!match) return res.status(401).json({ message: "Incorrect password. Please try again." });
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token} WHERE id=${user.id}::uuid`);
+      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
       const walletBalance = parseFloat(user.walletBalance || 0);
       res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: parseFloat(user.rating || "5.0"), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -5068,9 +5073,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parts = token.split(":");
       if (parts.length < 2) return res.status(401).json({ message: "Invalid token format" });
       const userId = parts[0];
-      // Validate full token against stored auth_token in DB
+      // Validate full token against stored auth_token in DB and check expiry
       const userR = await rawDb.execute(rawSql`
-        SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true AND auth_token=${token} LIMIT 1
+        SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true AND auth_token=${token}
+          AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW()) LIMIT 1
       `);
       if (!userR.rows.length) return res.status(401).json({ message: "Session expired or invalid. Please login again." });
       (req as any).currentUser = camelize(userR.rows[0]);
