@@ -487,6 +487,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_gst_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS total_pending_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_threshold NUMERIC(10,2) NOT NULL DEFAULT 200;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_payment_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
 
       -- Parcel / delivery fields on trip_requests
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(12,2) DEFAULT 0;
@@ -504,6 +505,27 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS prefer_female_driver BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(120);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(30);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS jago_coins INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS break_until TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) NOT NULL DEFAULT 5.0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS total_ratings INTEGER NOT NULL DEFAULT 0;
+
+      -- Fix: missing trip_requests columns for parcel/person-booking flow
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(120);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS receiver_phone VARCHAR(20);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS is_for_someone_else BOOLEAN DEFAULT false;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS passenger_name VARCHAR(120);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS passenger_phone VARCHAR(20);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS tip_amount NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_rating NUMERIC(3,1);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS customer_rating NUMERIC(3,1);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_note TEXT;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS tips NUMERIC(10,2) DEFAULT 0;
+
+      -- Fix: reviews table column name mismatch (code uses review_type and comment)
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50);
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS comment TEXT;
 
       -- Fix: safety_alerts missing columns (table may exist as older schema version)
       ALTER TABLE safety_alerts ADD COLUMN IF NOT EXISTS user_id UUID;
@@ -1007,6 +1029,47 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_customer ON parcel_orders(customer_id);
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_driver  ON parcel_orders(driver_id);
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_status  ON parcel_orders(current_status);
+    `).catch(() => {});
+
+    // ── FCM device registry: stores one push token per user ──────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS user_devices (
+        user_id UUID PRIMARY KEY,
+        fcm_token TEXT NOT NULL,
+        device_type VARCHAR(20) DEFAULT 'android',
+        app_version VARCHAR(30) DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_devices_fcm ON user_devices(fcm_token);
+    `).catch(() => {});
+
+    // ── Driver payment ledger: records every commission debt/payment ──────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS driver_payments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID NOT NULL,
+        amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        payment_type VARCHAR(60) NOT NULL DEFAULT 'commission_debit',
+        razorpay_order_id VARCHAR(120),
+        razorpay_payment_id VARCHAR(120),
+        status VARCHAR(30) NOT NULL DEFAULT 'pending',
+        description TEXT,
+        verified_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_payments_driver ON driver_payments(driver_id);
+      CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
+    `).catch(() => {});
+
+    // ── Performance indexes for high-traffic queries ──────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE INDEX IF NOT EXISTS idx_trip_requests_customer_status ON trip_requests(customer_id, current_status);
+      CREATE INDEX IF NOT EXISTS idx_trip_requests_driver_status   ON trip_requests(driver_id, current_status);
+      CREATE INDEX IF NOT EXISTS idx_trip_requests_status_created  ON trip_requests(current_status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_users_phone                   ON users(phone);
+      CREATE INDEX IF NOT EXISTS idx_users_user_type               ON users(user_type);
+      CREATE INDEX IF NOT EXISTS idx_driver_locations_lat_lng      ON driver_locations(lat, lng) WHERE is_online = true;
     `).catch(() => {});
 
   } catch (e: any) {
@@ -3150,7 +3213,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Customer Wallet top-up / deduct
+  // Customer Wallet top-up / deduct (admin operation — adjusts users.wallet_balance)
   app.post("/api/customer-wallet/topup", requireAdminAuth, async (req, res) => {
     try {
       const { userId, amount, type } = req.body;
@@ -3158,22 +3221,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsedAmount = Number(amount);
       if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ message: "amount must be a positive number" });
       const r = await rawDb.execute(rawSql`
-        UPDATE wallets
-        SET balance = GREATEST(0, balance + ${type === "deduct" ? -parsedAmount : parsedAmount}),
+        UPDATE users
+        SET wallet_balance = GREATEST(0, wallet_balance + ${type === "deduct" ? -parsedAmount : parsedAmount}),
             updated_at = NOW()
-        WHERE user_id = ${userId}::uuid
-        RETURNING balance
+        WHERE id = ${userId}::uuid
+        RETURNING wallet_balance
       `);
-      if (!(r.rows as any[]).length) {
-        // Wallet row missing — create it with the initial balance
-        const initBalance = type === "deduct" ? 0 : parsedAmount;
-        await rawDb.execute(rawSql`
-          INSERT INTO wallets (user_id, balance) VALUES (${userId}::uuid, ${initBalance})
-          ON CONFLICT (user_id) DO UPDATE SET balance = GREATEST(0, wallets.balance + ${type === "deduct" ? -parsedAmount : parsedAmount}), updated_at = NOW()
-        `);
-        return res.json({ success: true, newBalance: initBalance, type });
-      }
-      const newBalance = parseFloat((r.rows as any[])[0].balance);
+      if (!(r.rows as any[]).length) return res.status(404).json({ message: "User not found" });
+      const newBalance = parseFloat((r.rows as any[])[0].wallet_balance);
       res.json({ success: true, newBalance, type });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -9456,8 +9511,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Credit driver wallet
         const driverEarnings = Math.round(order.total_fare * 0.85);
         await rawDb.execute(rawSql`
-          UPDATE wallets SET balance = balance + ${driverEarnings}, updated_at=NOW()
-          WHERE user_id = ${order.driver_id}::uuid
+          UPDATE users SET wallet_balance = wallet_balance + ${driverEarnings}
+          WHERE id = ${order.driver_id}::uuid
         `).catch(() => {});
         if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
       }
