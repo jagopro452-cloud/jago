@@ -495,6 +495,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS weight_rate NUMERIC(10,2) DEFAULT 0;
 
       -- Fix: missing users columns referenced by many routes
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_reason TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS prefer_female_driver BOOLEAN DEFAULT false;
@@ -8725,7 +8726,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS share_token VARCHAR(64)`);
         await rawDb.execute(rawSql`UPDATE trip_requests SET share_token=${shareToken} WHERE id=${tripId}::uuid`);
       });
-      const shareLink = `https://jagopro.org/track/${shareToken}`;
+      const shareLink = `${process.env.APP_BASE_URL || 'https://oyster-app-9e9cd.ondigitalocean.app'}/track/${shareToken}`;
       res.json({ success: true, shareLink, shareToken });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
