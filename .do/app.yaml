@@ -8,7 +8,7 @@ services:
       branch: master
       deploy_on_push: true
     build_command: npm ci && npm run build
-    run_command: node dist/index.js
+    run_command: npx drizzle-kit migrate --config=drizzle.config.ts; node dist/index.js
     http_port: 8080
     instance_count: 1
     instance_size_slug: basic-s
@@ -25,7 +25,7 @@ services:
       - key: PORT
         value: "8080"
       - key: DATABASE_URL
-        value: "postgresql://neondb_owner:npg_oPQsCwRY7x8T@ep-little-hill-ahsezffk-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        value: "postgresql://neondb_owner:npg_oPQsCwRY7x8T@ep-little-hill-ahsezffk-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
         type: SECRET
       - key: ADMIN_EMAIL
         value: "kiranatmakuri518@gmail.com"

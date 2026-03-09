@@ -90,13 +90,17 @@ app.use((req, res, next) => {
 
 (async () => {
   // Run Drizzle migrations at startup — this creates ALL tables including admins
-  // This is the definitive fix: schema is always in sync with the migration files
   try {
     const migrationsFolder = path.join(process.cwd(), "migrations");
+    log(`[db] Running migrations from: ${migrationsFolder}`);
     await migrate(drizzleDb, { migrationsFolder });
-    log("[db] Migrations applied OK");
+    log("[db] Migrations applied OK — all tables ready");
   } catch (e: any) {
-    log(`[db] Migration warning (non-fatal): ${e.message}`);
+    console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
+    console.error("[db] Full error:", e.stack || e);
+    // Do NOT continue silently — crash so DigitalOcean restarts the container
+    // (better to restart than serve with missing tables)
+    process.exit(1);
   }
 
   // Initialize Socket.IO for real-time driver-customer communication
