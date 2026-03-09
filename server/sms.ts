@@ -1,4 +1,4 @@
-mport twilio from "twilio";
+import twilio from "twilio";
 import { getConf } from "./config-db";
 
 type SmsResult = { success: boolean; provider: string; error?: string };

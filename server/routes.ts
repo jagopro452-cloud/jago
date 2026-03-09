@@ -4953,22 +4953,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { firebaseIdToken, phone, userType = "customer" } = req.body;
       if (!firebaseIdToken) return res.status(400).json({ message: "Firebase ID token required" });
 
+      let phoneStr = "";
+
+      // Try Firebase Admin SDK first (needs service account key)
       const { getFirebaseAdmin } = await import("./fcm.js");
       const adminInst = getFirebaseAdmin();
-      if (!adminInst) {
-        return res.status(503).json({ success: false, message: "Firebase not configured. Use server OTP instead." });
+      if (adminInst) {
+        const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
+        const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
+        const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
+        phoneStr = firebasePhone || clientPhone;
+        if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
+          return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
+        }
+      } else {
+        // Fallback: verify token via Firebase REST API (only needs Web API key — no service account needed)
+        const webApiKey = process.env.FIREBASE_WEB_API_KEY || "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8";
+        const lookupRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: firebaseIdToken }) }
+        );
+        if (!lookupRes.ok) {
+          return res.status(401).json({ message: "Invalid or expired Firebase token. Please retry." });
+        }
+        const lookupData = (await lookupRes.json()) as any;
+        const firebaseUser = lookupData.users?.[0];
+        if (!firebaseUser) return res.status(401).json({ message: "Invalid Firebase token." });
+        const firebasePhone = (firebaseUser.phoneNumber || "").replace(/\D/g, "").slice(-10);
+        const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
+        phoneStr = firebasePhone || clientPhone;
+        if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
+          return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
+        }
       }
 
-      // Verify the Firebase ID token
-      const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
-      const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
-      const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
-      const phoneStr = firebasePhone || clientPhone;
       if (!phoneStr || phoneStr.length < 10) {
         return res.status(400).json({ message: "Could not determine phone number from token" });
-      }
-      if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
-        return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
       }
 
       // Find or create user
