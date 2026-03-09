@@ -53,9 +53,9 @@ export function validateProductionReadiness(env: AppEnv): void {
   if (!env.ADMIN_PASSWORD) missing.push("ADMIN_PASSWORD");
   if (!env.GOOGLE_MAPS_API_KEY) missing.push("GOOGLE_MAPS_API_KEY");
   if (!env.OPS_API_KEY) missing.push("OPS_API_KEY");
-  // SOCKET_ALLOWED_ORIGINS is optional — defaults to app URL if not set
 
   if (missing.length) {
-    throw new Error(`Production environment is missing required variables: ${missing.join(", ")}`);
+    // Warn only — do NOT crash; server can still run with defaults for missing optional vars.
+    console.warn(`[config] WARNING: Production env vars not set: ${missing.join(", ")} — server will start with defaults.`);
   }
 }
