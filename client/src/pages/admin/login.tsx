@@ -59,8 +59,8 @@ export default function AdminLogin() {
   const [forgotError, setForgotError] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   useEffect(() => {
-    fetch("/api/dashboard/stats").then(r => r.json()).then(d => {
-      setStats({ drivers: d.totalDrivers || 0, trips: d.totalTrips || 0, zones: d.totalZones || 0 });
+    fetch("/api/health").then(r => r.json()).then(d => {
+      if (d.status === "ok") setStats({ drivers: 0, trips: 0, zones: 0 });
     }).catch(() => {});
   }, []);
   useEffect(() => {

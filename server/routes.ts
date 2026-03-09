@@ -278,6 +278,26 @@ function requireOpsKey(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Standalone admin auth for routes NOT under /api/admin/ prefix (which has global middleware).
+// Use on every legacy admin route that handles sensitive data or write operations.
+async function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+  const token = extractBearerToken(req);
+  if (!token) return res.status(401).json({ message: "Admin authorization required" });
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT id, name, email, role, is_active FROM admins
+      WHERE auth_token=${token} AND is_active=true
+        AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+      LIMIT 1
+    `);
+    if (!r.rows.length) return res.status(401).json({ message: "Admin session expired. Please login again." });
+    (req as any).adminUser = camelize(r.rows[0]);
+    next();
+  } catch (_e: any) {
+    res.status(401).json({ message: "Admin authentication failed" });
+  }
+}
+
 async function ensureAdminExists() {
   const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
   const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
@@ -1084,7 +1104,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Heat Map & Fleet View points
-  app.get("/api/heatmap-points", async (_req, res) => {
+  app.get("/api/heatmap-points", requireAdminAuth, async (_req, res) => {
     try {
       const { db: hDb } = await import("./db");
       const { sql: hSql } = await import("drizzle-orm");
@@ -1098,7 +1118,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Live vehicle tracking — use actual driver telemetry instead of synthetic positions
-  app.get("/api/live-tracking", async (_req, res) => {
+  app.get("/api/live-tracking", requireAdminAuth, async (_req, res) => {
     try {
       const { db: ltDb } = await import("./db");
       const { sql: ltSql } = await import("drizzle-orm");
@@ -1174,7 +1194,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.get("/api/fleet-drivers", async (_req, res) => {
+  app.get("/api/fleet-drivers", requireAdminAuth, async (_req, res) => {
     try {
       const drivers = await storage.getUsers('driver');
       const result = drivers.data
@@ -1192,7 +1212,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Dashboard
-  app.get("/api/dashboard/stats", async (req, res) => {
+  app.get("/api/dashboard/stats", requireAdminAuth, async (req, res) => {
     try {
       const stats = await storage.getDashboardStats();
       res.json(stats);
@@ -1344,7 +1364,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
 
 
-  app.get("/api/dashboard/chart", async (req, res) => {
+  app.get("/api/dashboard/chart", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT
@@ -3088,7 +3108,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Newsletter subscribers (from existing users table)
-  app.get("/api/newsletter", async (_req, res) => {
+  app.get("/api/newsletter", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT id, full_name, email, phone, created_at FROM users WHERE user_type='customer' ORDER BY created_at DESC`);
       res.json(r.rows);
@@ -3096,7 +3116,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Parcel Refunds (derived from cancelled parcel trips)
-  app.get("/api/parcel-refunds", async (req, res) => {
+  app.get("/api/parcel-refunds", requireAdminAuth, async (req, res) => {
     try {
       const status = req.query.status as string || "all";
       const { data } = await storage.getTrips(undefined, undefined, 1, 500);
@@ -3112,7 +3132,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/parcel-refunds/:id/status", async (req, res) => {
+  app.patch("/api/parcel-refunds/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { refundStatus } = req.body;
       const payMap: Record<string, string> = {
@@ -3120,27 +3140,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         denied: "refund_denied",
         refunded: "refunded",
       };
-      await storage.updateTripStatus(req.params.id, "cancelled");
-      res.json({ success: true, refundStatus });
+      const paymentStatus = payMap[refundStatus];
+      if (!paymentStatus) return res.status(400).json({ message: "Invalid refundStatus" });
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests SET payment_status=${paymentStatus}, updated_at=NOW()
+        WHERE id=${req.params.id}::uuid
+      `);
+      res.json({ success: true, refundStatus, paymentStatus });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // Customer Wallet top-up / deduct
-  app.post("/api/customer-wallet/topup", async (req, res) => {
+  app.post("/api/customer-wallet/topup", requireAdminAuth, async (req, res) => {
     try {
       const { userId, amount, type } = req.body;
       if (!userId || !amount) return res.status(400).json({ message: "userId and amount required" });
-      const user = await storage.getUserById(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const current = Number(user.loyaltyPoints || 0);
-      const newBalance = type === "deduct" ? Math.max(0, current - Number(amount)) : current + Number(amount);
-      await storage.updateUserStatus(userId, user.isActive);
-      res.json({ success: true, previousBalance: current, newBalance, type });
+      const parsedAmount = Number(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ message: "amount must be a positive number" });
+      const r = await rawDb.execute(rawSql`
+        UPDATE wallets
+        SET balance = GREATEST(0, balance + ${type === "deduct" ? -parsedAmount : parsedAmount}),
+            updated_at = NOW()
+        WHERE user_id = ${userId}::uuid
+        RETURNING balance
+      `);
+      if (!(r.rows as any[]).length) {
+        // Wallet row missing — create it with the initial balance
+        const initBalance = type === "deduct" ? 0 : parsedAmount;
+        await rawDb.execute(rawSql`
+          INSERT INTO wallets (user_id, balance) VALUES (${userId}::uuid, ${initBalance})
+          ON CONFLICT (user_id) DO UPDATE SET balance = GREATEST(0, wallets.balance + ${type === "deduct" ? -parsedAmount : parsedAmount}), updated_at = NOW()
+        `);
+        return res.json({ success: true, newBalance: initBalance, type });
+      }
+      const newBalance = parseFloat((r.rows as any[])[0].balance);
+      res.json({ success: true, newBalance, type });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // Notifications send (stub - log only)
-  app.post("/api/notifications/send", async (req, res) => {
+  app.post("/api/notifications/send", requireAdminAuth, async (req, res) => {
     try {
       const { title, message, target = "all", userType = "all" } = req.body;
       if (!title || !message) return res.status(400).json({ message: "title and message required" });
@@ -3161,7 +3200,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─── Car Sharing APIs ────────────────────────────────────────────────────────
 
   // Stats
-  app.get("/api/car-sharing/stats", async (req, res) => {
+  app.get("/api/car-sharing/stats", requireAdminAuth, async (req, res) => {
     try {
       const rides = await rawDb.execute(rawSql`SELECT status, COUNT(*) as cnt FROM car_sharing_rides GROUP BY status`);
       const bookings = await rawDb.execute(rawSql`SELECT COUNT(*) as total, COALESCE(SUM(total_fare),0) as revenue FROM car_sharing_bookings WHERE status != 'cancelled'`);
@@ -3184,7 +3223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Rides list
-  app.get("/api/car-sharing/rides", async (req, res) => {
+  app.get("/api/car-sharing/rides", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT cs.*, 
@@ -3203,7 +3242,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Update ride status
-  app.patch("/api/car-sharing/rides/:id/status", async (req, res) => {
+  app.patch("/api/car-sharing/rides/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { status } = req.body;
@@ -3213,7 +3252,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Bookings list
-  app.get("/api/car-sharing/bookings", async (req, res) => {
+  app.get("/api/car-sharing/bookings", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT b.*,
@@ -3243,7 +3282,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Settings save
-  app.put("/api/car-sharing/settings", async (req, res) => {
+  app.put("/api/car-sharing/settings", requireAdminAuth, async (req, res) => {
     try {
       const entries = Object.entries(req.body) as [string, string][];
       for (const [key, val] of entries) {
@@ -3267,7 +3306,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.put("/api/revenue-model", async (req, res) => {
+  app.put("/api/revenue-model", requireAdminAuth, async (req, res) => {
     try {
       const entries = Object.entries(req.body) as [string, string][];
       for (const [key, val] of entries) {
@@ -3281,7 +3320,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Admin Revenue Stats ─────────────────────────────────────────────────────
-  app.get("/api/admin-revenue", async (req, res) => {
+  app.get("/api/admin-revenue", requireAdminAuth, async (req, res) => {
     try {
       const { from, to, revenueType, page = 1, limit = 50 } = req.query;
       const offset = (Number(page) - 1) * Number(limit);
@@ -5972,15 +6011,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── DRIVER: Rate customer ─────────────────────────────────────────────────
   app.post("/api/app/driver/rate-customer", authApp, async (req, res) => {
     try {
+      const driver = (req as any).currentUser;
       const { tripId, rating, note } = req.body;
-      const tripR = await rawDb.execute(rawSql`SELECT customer_id FROM trip_requests WHERE id=${tripId}::uuid`);
-      if (!tripR.rows.length) return res.status(404).json({ message: "Trip not found" });
+      const parsedRating = parseFloat(rating);
+      if (!tripId || isNaN(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+        return res.status(400).json({ message: "tripId required and rating must be 1-5" });
+      }
+      const tripR = await rawDb.execute(rawSql`
+        SELECT customer_id FROM trip_requests
+        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid AND current_status='completed'
+      `);
+      if (!tripR.rows.length) return res.status(404).json({ message: "Completed trip not found" });
       const customerId = (tripR.rows[0] as any).customer_id;
-      await rawDb.execute(rawSql`UPDATE trip_requests SET customer_rating=${rating}, driver_note=${note||''} WHERE id=${tripId}::uuid`);
+      await rawDb.execute(rawSql`UPDATE trip_requests SET customer_rating=${parsedRating}, driver_note=${note||''} WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
       // Update customer rating average
       await rawDb.execute(rawSql`
         UPDATE users SET
-          rating = (rating * total_ratings + ${rating}) / (total_ratings + 1),
+          rating = (rating * total_ratings + ${parsedRating}) / (total_ratings + 1),
           total_ratings = total_ratings + 1
         WHERE id=${customerId}::uuid
       `);
@@ -6822,22 +6869,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── CUSTOMER: Rate driver ─────────────────────────────────────────────────
   app.post("/api/app/customer/rate-driver", authApp, async (req, res) => {
     try {
+      const customer = (req as any).currentUser;
       const { tripId, rating, review } = req.body;
-      const tripR = await rawDb.execute(rawSql`SELECT driver_id FROM trip_requests WHERE id=${tripId}::uuid`);
-      if (!tripR.rows.length) return res.status(404).json({ message: "Trip not found" });
+      const parsedRating = parseFloat(rating);
+      if (!tripId || isNaN(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+        return res.status(400).json({ message: "tripId required and rating must be 1-5" });
+      }
+      const tripR = await rawDb.execute(rawSql`
+        SELECT driver_id FROM trip_requests
+        WHERE id=${tripId}::uuid AND customer_id=${customer.id}::uuid AND current_status='completed'
+      `);
+      if (!tripR.rows.length) return res.status(404).json({ message: "Completed trip not found" });
       const driverId = (tripR.rows[0] as any).driver_id;
-      await rawDb.execute(rawSql`UPDATE trip_requests SET driver_rating=${rating} WHERE id=${tripId}::uuid`);
+      await rawDb.execute(rawSql`UPDATE trip_requests SET driver_rating=${parsedRating} WHERE id=${tripId}::uuid AND customer_id=${customer.id}::uuid`);
       if (driverId) {
         await rawDb.execute(rawSql`
           UPDATE users SET
-            rating = (rating * total_ratings + ${rating}) / (total_ratings + 1),
+            rating = (rating * total_ratings + ${parsedRating}) / (total_ratings + 1),
             total_ratings = total_ratings + 1
           WHERE id=${driverId}::uuid
         `);
         // Also insert into reviews table
         await rawDb.execute(rawSql`
           INSERT INTO reviews (trip_id, reviewer_id, reviewee_id, rating, comment, review_type)
-          VALUES (${tripId}::uuid, ${(req as any).currentUser.id}::uuid, ${driverId}::uuid, ${rating}, ${review||''}, 'customer_to_driver')
+          VALUES (${tripId}::uuid, ${customer.id}::uuid, ${driverId}::uuid, ${parsedRating}, ${review||''}, 'customer_to_driver')
           ON CONFLICT DO NOTHING
         `).catch(() => {});
       }
