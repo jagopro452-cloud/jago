@@ -1,5 +1,4 @@
-// Allow self-signed DB certificates in development / Replit environment only.
-// In production, proper CA-signed certificates should be used.
+// Allow self-signed DB certificates in development only (not in production).
 if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
