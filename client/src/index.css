@@ -345,7 +345,7 @@ a:hover { color: var(--bs-primary); }
    03.3: ASIDE (SIDEBAR)
    ======================== */
 .aside {
-  width: 170px;
+  width: 220px;
   position: fixed;
   left: 0;
   top: 0;
@@ -655,7 +655,7 @@ body.aside-folded .main-nav li > a i {
   position: fixed;
   top: 0;
   right: 0;
-  left: 170px;
+  left: 220px;
   height: 64px;
   z-index: 1030;
   background-color: rgba(255,255,255,0.96);
@@ -886,7 +886,7 @@ body.aside-folded .aside { width: 60px; }
    03.4: MAIN AREA
    ======================== */
 .main-area {
-  margin-left: 170px;
+  margin-left: 220px;
   padding-top: 64px;
   min-height: 100vh;
   background-color: var(--bs-body-bg);
@@ -2446,7 +2446,7 @@ html, body {
   background: linear-gradient(175deg, #1664D8 0%, #1558C4 50%, #1248B0 100%) !important;
   border-right: none !important;
   box-shadow: 3px 0 20px rgba(21,88,196,0.25) !important;
-  width: 170px !important;
+  width: 220px !important;
 }
 
 .aside-header {
@@ -2551,7 +2551,7 @@ body.aside-folded .main-nav li.active > a i { color: #1558C4 !important; }
   -webkit-backdrop-filter: none !important;
   border-bottom: 1px solid #E8EDF4 !important;
   box-shadow: 0 1px 0 #E8EDF4 !important;
-  left: 170px !important;
+  left: 220px !important;
 }
 body.aside-folded .header { left: 60px !important; }
 
@@ -2577,7 +2577,7 @@ body.aside-folded .header { left: 60px !important; }
 
 /* ── Main Area ── */
 .main-area {
-  margin-left: 170px !important;
+  margin-left: 220px !important;
   background: #F3F6FB !important;
   min-height: 100vh;
   transition: margin-left 150ms ease !important;
