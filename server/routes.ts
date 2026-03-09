@@ -1049,6 +1049,45 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_user_devices_fcm ON user_devices(fcm_token);
     `).catch(() => {});
 
+    // ── Call logs: records in-app masked calls ────────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS call_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        trip_id UUID,
+        caller_id UUID,
+        caller_name VARCHAR(100),
+        caller_phone VARCHAR(20),
+        caller_type VARCHAR(20) DEFAULT 'customer',
+        callee_id UUID,
+        callee_name VARCHAR(100),
+        callee_phone VARCHAR(20),
+        callee_type VARCHAR(20) DEFAULT 'driver',
+        call_type VARCHAR(30) DEFAULT 'customer_to_driver',
+        status VARCHAR(20) DEFAULT 'answered',
+        duration_seconds INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_call_logs_trip ON call_logs(trip_id);
+      CREATE INDEX IF NOT EXISTS idx_call_logs_created ON call_logs(created_at DESC);
+    `).catch(() => {});
+
+
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS notification_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title VARCHAR(200) NOT NULL,
+        message TEXT NOT NULL,
+        target VARCHAR(30) DEFAULT 'all',
+        user_type VARCHAR(30) DEFAULT 'all',
+        recipient_count INTEGER DEFAULT 0,
+        delivered_count INTEGER DEFAULT 0,
+        status VARCHAR(30) DEFAULT 'sent',
+        sent_at TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_logs_sent_at ON notification_logs(sent_at DESC);
+    `).catch(() => {});
+
     // ── Driver payment ledger: records every commission debt/payment ──────────
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS driver_payments (
@@ -3299,22 +3338,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Notifications send (stub - log only)
+  // Notifications send — broadcasts real FCM push to all matching user devices
   app.post("/api/notifications/send", requireAdminAuth, async (req, res) => {
     try {
       const { title, message, target = "all", userType = "all" } = req.body;
       if (!title || !message) return res.status(400).json({ message: "title and message required" });
-      let recipientCount = 0;
+
+      // Fetch FCM tokens for matching active users
+      let fcmRows: any[] = [];
       if (target === "all") {
-        const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as c FROM users WHERE is_active = true AND (${userType} = 'all' OR user_type = ${userType})`);
-        recipientCount = Number((cnt.rows[0] as any).c);
+        const devRes = await rawDb.execute(rawSql`
+          SELECT ud.fcm_token FROM user_devices ud
+          INNER JOIN users u ON u.id = ud.user_id
+          WHERE u.is_active = true
+            AND (${userType} = 'all' OR u.user_type = ${userType})
+        `);
+        fcmRows = devRes.rows;
       }
+
+      const recipientCount = fcmRows.length;
+
+      // Fire FCM pushes (non-blocking — best effort)
+      let deliveredCount = 0;
+      if (fcmRows.length > 0) {
+        const pushPromises = fcmRows.map(async (r: any) => {
+          if (!r.fcm_token) return;
+          const ok = await sendFcmNotification({
+            fcmToken: r.fcm_token,
+            title,
+            body: message,
+            data: { type: "broadcast", target, userType },
+            channelId: "general_alerts",
+            sound: "default",
+          });
+          if (ok) deliveredCount++;
+        });
+        await Promise.allSettled(pushPromises);
+      }
+
       await rawDb.execute(rawSql`
-        INSERT INTO notification_logs (title, message, target, user_type, recipient_count, status, sent_at)
-        VALUES (${title}, ${message}, ${target}, ${userType}, ${recipientCount}, 'sent', NOW())
+        INSERT INTO notification_logs (title, message, target, user_type, recipient_count, delivered_count, status, sent_at)
+        VALUES (${title}, ${message}, ${target}, ${userType}, ${recipientCount}, ${deliveredCount}, 'sent', NOW())
       `);
-      console.log(`[Notification] To=${target}/${userType} Title=${title} Recipients=${recipientCount}`);
-      res.json({ success: true, message: "Notification sent", recipientCount });
+      console.log(`[Notification] To=${target}/${userType} Title=${title} Recipients=${recipientCount} Delivered=${deliveredCount}`);
+      res.json({ success: true, message: "Notification sent", recipientCount, deliveredCount });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4119,46 +4186,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Call Logs (stub - return empty list)
+  // Call Logs — real data from call_logs table
   app.get("/api/call-logs", async (req, res) => {
     try {
       const status = (req.query.status as string) || "all";
+      const page  = Math.max(1, Number(req.query.page)  || 1);
+      const limit = Math.min(100, Number(req.query.limit) || 50);
+      const offset = (page - 1) * limit;
+
       const r = await rawDb.execute(rawSql`
-        SELECT
-          tr.id, tr.ref_id, tr.created_at,
-          cu.full_name as customer_name, cu.phone as customer_phone,
-          du.full_name as driver_name, du.phone as driver_phone,
-          tr.current_status as trip_status, tr.trip_type
-        FROM trip_requests tr
-        LEFT JOIN users cu ON cu.id = tr.customer_id
-        LEFT JOIN users du ON du.id = tr.driver_id
-        ORDER BY tr.created_at DESC
-        LIMIT 50
+        SELECT cl.*,
+          tr.ref_id, tr.trip_type, tr.current_status as trip_status
+        FROM call_logs cl
+        LEFT JOIN trip_requests tr ON tr.id = cl.trip_id
+        ${status !== "all" ? rawSql`WHERE cl.status = ${status}` : rawSql``}
+        ORDER BY cl.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
       `);
-      const callTypes = ["customer_to_driver","driver_to_customer","support","customer_to_driver","driver_to_customer"];
-      const statuses = ["answered","answered","missed","answered","missed","answered","answered","answered","missed","answered"];
-      const durations = [45,120,0,238,0,67,185,0,0,310,88,0,145,220,0];
-      const logs = r.rows.map((row: any, i: number) => {
-        const st = statuses[i % statuses.length];
-        const callType = callTypes[i % callTypes.length];
-        const isCustomerCaller = callType === "customer_to_driver";
-        return {
-          id: row.id,
-          refId: row.ref_id,
-          from: isCustomerCaller ? (row.customer_name || "Customer") : (row.driver_name || "Driver"),
-          fromPhone: isCustomerCaller ? (row.customer_phone || "+91-9876543210") : (row.driver_phone || "+91-9876543211"),
-          to: isCustomerCaller ? (row.driver_name || "Driver") : (row.customer_name || "Customer"),
-          toPhone: isCustomerCaller ? (row.driver_phone || "+91-9876543211") : (row.customer_phone || "+91-9876543210"),
-          callType,
-          status: st,
-          duration: st === "answered" ? durations[i % durations.length] : 0,
-          tripStatus: row.trip_status,
-          tripType: row.trip_type,
-          createdAt: new Date(row.created_at).getTime() - (i * 3600000),
-        };
-      });
-      const filtered = status === "all" ? logs : logs.filter((l: any) => l.status === status);
-      res.json({ data: filtered, total: filtered.length });
+      const countR = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as total FROM call_logs
+        ${status !== "all" ? rawSql`WHERE status = ${status}` : rawSql``}
+      `);
+      res.json({ data: r.rows.map(camelize), total: Number((countR.rows[0] as any).total) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Record a call log entry (called by mobile app when a call is placed)
+  app.post("/api/call-logs", async (req, res) => {
+    try {
+      const { tripId, callerId, callerName, callerPhone, callerType, calleeId, calleeName, calleePhone, calleeType, callType, status, durationSeconds } = req.body;
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO call_logs (trip_id, caller_id, caller_name, caller_phone, caller_type, callee_id, callee_name, callee_phone, callee_type, call_type, status, duration_seconds)
+        VALUES (${tripId || null}, ${callerId || null}, ${callerName || ''}, ${callerPhone || ''}, ${callerType || 'customer'}, ${calleeId || null}, ${calleeName || ''}, ${calleePhone || ''}, ${calleeType || 'driver'}, ${callType || 'customer_to_driver'}, ${status || 'answered'}, ${durationSeconds || 0})
+        RETURNING *
+      `);
+      res.json({ success: true, data: camelize(r.rows[0]) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
