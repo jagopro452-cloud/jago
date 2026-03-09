@@ -9473,7 +9473,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Driver: accept a parcel order
   app.post("/api/driver/parcel/:id/accept", authApp, async (req, res) => {
     try {
-      const driverId = (req as any).currentUser?.id || (req as any).userId || req.body.driverId;
+      const driverId = (req as any).currentUser?.id;
       const r = await rawDb.execute(rawSql`
         UPDATE parcel_orders
         SET driver_id=${driverId}::uuid, current_status='driver_assigned', updated_at=NOW()
