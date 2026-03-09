@@ -7520,7 +7520,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
       const signature = req.headers['x-razorpay-signature'] as string;
 
-      if (webhookSecret && signature) {
+      if (webhookSecret) {
+        // Secret is configured — signature MUST be present and valid
+        if (!signature) {
+          return res.status(400).json({ message: "Missing webhook signature header" });
+        }
         const rawBody = (req as any).rawBody;
         const body = rawBody ? rawBody.toString() : JSON.stringify(req.body);
         const expectedSig = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");

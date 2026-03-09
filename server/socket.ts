@@ -48,6 +48,25 @@ async function persistSafetyAlert(alert: any, driverId: string) {
   }
 }
 
+// Verify socket handshake token — prevents room spoofing (connecting as another user).
+// Returns the verified userId from DB, or null if the token is invalid/missing.
+async function verifySocketToken(token: string | undefined, claimedUserId: string | undefined): Promise<string | null> {
+  if (!token || !claimedUserId) return null;
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT id FROM users
+      WHERE id = ${claimedUserId}::uuid
+        AND auth_token = ${token}
+        AND is_active = true
+        AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+      LIMIT 1
+    `);
+    return r.rows.length ? (r.rows[0] as any).id as string : null;
+  } catch {
+    return null;
+  }
+}
+
 export function setupSocket(httpServer: HttpServer) {
   const env = parseEnv();
   const socketAllowedOrigins = (env.SOCKET_ALLOWED_ORIGINS || "*")
@@ -63,14 +82,25 @@ export function setupSocket(httpServer: HttpServer) {
     transports: ["websocket", "polling"],
   });
 
-  io.on("connection", (socket: Socket) => {
-    const userId = socket.handshake.query.userId as string;
+  io.on("connection", async (socket: Socket) => {
+    const claimedUserId = socket.handshake.query.userId as string;
+    const token = (socket.handshake.query.token || socket.handshake.auth?.token) as string | undefined;
     const userType = socket.handshake.query.userType as string; // 'driver' | 'customer'
 
-    if (!userId) {
+    if (!claimedUserId) {
       socket.disconnect();
       return;
     }
+
+    // Verify the token matches the claimed userId (prevents room spoofing)
+    const verifiedUserId = await verifySocketToken(token, claimedUserId);
+    if (!verifiedUserId) {
+      console.warn(`[SOCKET] Auth failed for userId=${claimedUserId} — disconnecting`);
+      socket.emit("auth:error", { message: "Invalid or expired token. Please reconnect with a valid token." });
+      socket.disconnect();
+      return;
+    }
+    const userId = verifiedUserId;
 
     // Join personal room
     socket.join(`user:${userId}`);
