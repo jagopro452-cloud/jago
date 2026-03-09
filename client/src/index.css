@@ -2855,7 +2855,7 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 
 /* ── Responsive tweaks ── */
 @media (max-width: 767px) {
-  .aside { width: 272px !important; transform: translateX(-100%); transition: transform 0.25s cubic-bezier(.4,0,.2,1) !important; }
+  .aside { width: 200px !important; transform: translateX(-100%); transition: transform 0.25s cubic-bezier(.4,0,.2,1) !important; }
   body.aside-open .aside { transform: translateX(0) !important; }
   .header { left: 0 !important; }
   .main-area { margin-left: 0 !important; }
