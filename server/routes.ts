@@ -5220,6 +5220,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
 
+      // ── Subscription gate: bike_ride uses subscription model ──────────────
+      // Check if a bike_ride service is active + uses subscription model
+      const svcR = await rawDb.execute(rawSql`
+        SELECT revenue_model FROM platform_services
+        WHERE service_key = 'bike_ride' AND service_status = 'active' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (svcR.rows.length) {
+        const model = (svcR.rows[0] as any).revenue_model;
+        if (model === 'subscription') {
+          // Driver must have an active, non-expired subscription
+          const subR = await rawDb.execute(rawSql`
+            SELECT id FROM driver_subscriptions
+            WHERE driver_id = ${driver.id}::uuid
+              AND is_active = true
+              AND end_date > NOW()
+            LIMIT 1
+          `);
+          if (!subR.rows.length) {
+            return res.status(403).json({
+              message: "Active subscription required to accept rides. Please subscribe to continue.",
+              code: "SUBSCRIPTION_REQUIRED",
+            });
+          }
+        }
+      }
+
+      // ── Account lock check ────────────────────────────────────────────────
+      if (driver.is_locked || driver.isLocked) {
+        return res.status(403).json({
+          message: driver.lock_reason || driver.lockReason || "Account locked. Please clear pending dues to accept rides.",
+          code: "ACCOUNT_LOCKED",
+        });
+      }
+
       // Check driver doesn't already have an active trip (include driver_assigned = pre-dispatched)
       const driverBusy = await rawDb.execute(rawSql`SELECT id FROM trip_requests WHERE driver_id=${driver.id}::uuid AND current_status IN ('driver_assigned','accepted','arrived','on_the_way')`);
       if (driverBusy.rows.length) return res.status(400).json({ message: "You already have an active trip" });
@@ -5957,6 +5991,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         date: p.createdAt,
         amount: parseFloat(p.amount || 0),
       }));
+      // ── Subscription status ───────────────────────────────────────────────
+      const subR = await rawDb.execute(rawSql`
+        SELECT ds.id, ds.is_active, ds.end_date, ds.payment_status, sp.name as plan_name, sp.price
+        FROM driver_subscriptions ds
+        LEFT JOIN subscription_plans sp ON sp.id = ds.plan_id
+        WHERE ds.driver_id = ${driver.id}::uuid
+        ORDER BY ds.created_at DESC LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const subRow: any = subR.rows[0] || null;
+      const hasActiveSub = subRow && subRow.is_active && new Date(subRow.end_date) > new Date();
+
       res.json({
         walletBalance: bal,
         balance: bal,
@@ -5970,6 +6015,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         history: historyRows,
         transactions: historyRows,
         withdrawRequests: wdReqs.rows.map(camelize),
+        subscription: subRow ? {
+          planName: subRow.plan_name || 'Unknown Plan',
+          price: parseFloat(subRow.price ?? 0),
+          endDate: subRow.end_date,
+          isActive: !!hasActiveSub,
+          paymentStatus: subRow.payment_status,
+          daysLeft: hasActiveSub
+            ? Math.max(0, Math.ceil((new Date(subRow.end_date).getTime() - Date.now()) / 86400000))
+            : 0,
+        } : null,
+        subscriptionRequired: true,
+        canAcceptRides: !!hasActiveSub && !(d?.is_locked),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -6350,6 +6407,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalDestLng = destinationLng || destLng || 0;
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
+
+      // ── Service activation gate ───────────────────────────────────────────
+      const rideGate = await rawDb.execute(rawSql`
+        SELECT service_status FROM platform_services WHERE service_key = 'bike_ride' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      // Only block if the record explicitly says inactive (if table missing, allow through)
+      if (rideGate.rows.length && (rideGate.rows[0] as any).service_status !== 'active') {
+        return res.status(503).json({ message: "Bike Ride service is currently unavailable. Please try again later.", code: "SERVICE_INACTIVE" });
+      }
 
       // ── Server-side fare calculation (fallback when client sends 0 or missing) ──
       let computedFare = Number(estimatedFare) || 0;
@@ -9124,6 +9190,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/parcel/book", authApp, async (req, res) => {
     try {
       const customerId = (req as any).userId;
+
+      // ── Service activation gate ───────────────────────────────────────────
+      const parcelGate = await rawDb.execute(rawSql`
+        SELECT service_status FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (parcelGate.rows.length && (parcelGate.rows[0] as any).service_status !== 'active') {
+        return res.status(503).json({ message: "Parcel Delivery service is currently unavailable.", code: "SERVICE_INACTIVE" });
+      }
+
       const {
         vehicleCategory = 'bike_parcel',
         pickupAddress, pickupLat, pickupLng,
@@ -9226,7 +9301,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: get pending parcel requests nearby
-  app.get("/api/driver/parcel/pending", async (req, res) => {
+  app.get("/api/driver/parcel/pending", authApp, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT * FROM parcel_orders
@@ -9239,9 +9314,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: accept a parcel order
-  app.post("/api/driver/parcel/:id/accept", async (req, res) => {
+  app.post("/api/driver/parcel/:id/accept", authApp, async (req, res) => {
     try {
-      const driverId = (req as any).userId || req.body.driverId;
+      const driverId = (req as any).currentUser?.id || (req as any).userId || req.body.driverId;
       const r = await rawDb.execute(rawSql`
         UPDATE parcel_orders
         SET driver_id=${driverId}::uuid, current_status='driver_assigned', updated_at=NOW()
@@ -9257,7 +9332,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: verify pickup OTP → start delivery
-  app.post("/api/driver/parcel/:id/pickup-otp", async (req, res) => {
+  app.post("/api/driver/parcel/:id/pickup-otp", authApp, async (req, res) => {
     try {
       const { otp } = req.body;
       const r = await rawDb.execute(rawSql`
@@ -9276,7 +9351,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: verify delivery OTP for a specific drop stop
-  app.post("/api/driver/parcel/:id/drop-otp", async (req, res) => {
+  app.post("/api/driver/parcel/:id/drop-otp", authApp, async (req, res) => {
     try {
       const { dropIndex, otp } = req.body;
       const r = await rawDb.execute(rawSql`
@@ -9749,6 +9824,83 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error("[CLEANUP] Error:", e.message);
     }
   }, 2 * 60 * 1000);
+
+  // ── SYSTEM HEALTH CHECK ───────────────────────────────────────────────────
+  app.get("/api/admin/system-health", async (_req, res) => {
+    try {
+      const [services, tripStats, parcelStats, driverStats, gstWallet] = await Promise.all([
+        rawDb.execute(rawSql`SELECT service_key, service_name, service_status, revenue_model, commission_rate FROM platform_services ORDER BY sort_order ASC`)
+          .catch(() => ({ rows: [] })),
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE current_status IN ('searching','accepted','arrived','on_the_way'))::int AS active,
+            COUNT(*) FILTER (WHERE current_status = 'completed' AND created_at > NOW() - INTERVAL '24h')::int AS completed_today,
+            COUNT(*) FILTER (WHERE current_status = 'cancelled' AND created_at > NOW() - INTERVAL '24h')::int AS cancelled_today,
+            COUNT(*) FILTER (WHERE current_status = 'searching' AND created_at < NOW() - INTERVAL '5 minutes')::int AS stale_searching
+          FROM trip_requests
+        `).catch(() => ({ rows: [{}] })),
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE current_status IN ('searching','driver_assigned','in_transit'))::int AS active,
+            COUNT(*) FILTER (WHERE current_status = 'completed' AND created_at > NOW() - INTERVAL '24h')::int AS completed_today,
+            COALESCE(SUM(commission_amt) FILTER (WHERE current_status = 'completed' AND created_at > NOW() - INTERVAL '24h'), 0)::numeric AS commission_today
+          FROM parcel_orders
+        `).catch(() => ({ rows: [{}] })),
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE is_online = true)::int AS online,
+            COUNT(*) FILTER (WHERE is_locked = true)::int AS locked,
+            COUNT(*) FILTER (WHERE current_trip_id IS NOT NULL)::int AS on_trip
+          FROM users WHERE role = 'driver'
+        `).catch(() => ({ rows: [{}] })),
+        rawDb.execute(rawSql`SELECT balance, total_collected, total_trips FROM company_gst_wallet WHERE id = 1`)
+          .catch(() => ({ rows: [{}] })),
+      ]);
+
+      const t = (tripStats.rows[0] as any) || {};
+      const p = (parcelStats.rows[0] as any) || {};
+      const d = (driverStats.rows[0] as any) || {};
+      const g = (gstWallet.rows[0] as any) || {};
+
+      // Subscription check: how many drivers have active subscriptions
+      const subStats = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*) FILTER (WHERE is_active = true AND end_date > NOW())::int AS active_subs,
+          COUNT(DISTINCT driver_id) FILTER (WHERE is_active = true AND end_date > NOW())::int AS subscribed_drivers
+        FROM driver_subscriptions
+      `).catch(() => ({ rows: [{}] }));
+      const sub = (subStats.rows[0] as any) || {};
+
+      res.json({
+        timestamp: new Date().toISOString(),
+        services: services.rows,
+        trips: {
+          active: parseInt(t.active ?? 0),
+          completedToday: parseInt(t.completed_today ?? 0),
+          cancelledToday: parseInt(t.cancelled_today ?? 0),
+          staleSearching: parseInt(t.stale_searching ?? 0),
+        },
+        parcels: {
+          active: parseInt(p.active ?? 0),
+          completedToday: parseInt(p.completed_today ?? 0),
+          commissionToday: parseFloat(p.commission_today ?? 0),
+        },
+        drivers: {
+          online: parseInt(d.online ?? 0),
+          locked: parseInt(d.locked ?? 0),
+          onTrip: parseInt(d.on_trip ?? 0),
+          activeSubscriptions: parseInt(sub.active_subs ?? 0),
+          subscribedDrivers: parseInt(sub.subscribed_drivers ?? 0),
+        },
+        gstWallet: {
+          balance: parseFloat(g.balance ?? 0),
+          totalCollected: parseFloat(g.total_collected ?? 0),
+          totalTrips: parseInt(g.total_trips ?? 0),
+        },
+        status: 'ok',
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message, status: 'error' }); }
+  });
 
   return httpServer;
 }

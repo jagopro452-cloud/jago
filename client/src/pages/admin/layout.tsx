@@ -68,6 +68,7 @@ const navSections: NavSection[] = [
     category: "Dashboard",
     items: [
       { label: "Dashboard", icon: "bi-grid-fill", href: "/admin/dashboard" },
+      { label: "System Health", icon: "bi-activity", href: "/admin/system-health" },
       { label: "Service Management", icon: "bi-toggles", href: "/admin/service-management" },
       { label: "Heat Map", icon: "bi-pin-map", href: "/admin/heat-map" },
       { label: "Fleet View", icon: "bi-map-fill", href: "/admin/fleet-view" },
@@ -123,6 +124,7 @@ const navSections: NavSection[] = [
   {
     category: "Parcel Management",
     items: [
+      { label: "Parcel Orders", icon: "bi-box-seam-fill", href: "/admin/parcel-orders" },
       { label: "Parcel Attributes", icon: "bi-patch-plus", href: "/admin/parcel-attributes" },
     ],
   },
