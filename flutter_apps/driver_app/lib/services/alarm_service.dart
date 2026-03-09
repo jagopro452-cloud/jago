@@ -28,7 +28,7 @@ class AlarmService {
 
       // Use ALARM usage type so Android routes through alarm volume channel
       // and keeps playing even when screen is off.
-      await _player!.setAudioContext(const AudioContext(
+      await _player!.setAudioContext(AudioContext(
         android: AudioContextAndroid(
           isSpeakerphoneOn: false,
           stayAwake: true,
