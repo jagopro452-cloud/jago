@@ -59,24 +59,24 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${i * 18}%`, height: 1, background: "rgba(30,109,229,0.08)" }} />)}
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${i * 18}%`, width: 1, background: "rgba(30,109,229,0.08)" }} />)}
         <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.95)", borderRadius: 8, padding: "3px 9px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 5 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
-          <span style={{ fontSize: 9, fontWeight: 800, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 1 }}>JAGO</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1558C4" }} />
+          <span style={{ fontSize: 9, fontWeight: 800, color: "#1558C4", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 1 }}>JAGO</span>
         </div>
         <div style={{ position: "absolute", left: "48%", top: "45%", transform: "translate(-50%,-50%)" }}>
-          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#2F80ED", border: "3px solid #fff", boxShadow: "0 0 0 7px rgba(47,128,237,0.18)" }} />
+          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#1558C4", border: "3px solid #fff", boxShadow: "0 0 0 7px rgba(21,88,196,0.18)" }} />
         </div>
       </div>
       <div style={{ background: "#fff", padding: "12px 12px 10px", boxShadow: "0 -4px 20px rgba(0,0,0,0.07)" }}>
         <p style={{ fontSize: 10, color: "#64748b", margin: "0 0 7px", fontFamily: "Space Grotesk,sans-serif" }}>Good morning, Rahul ??</p>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0f5ff", borderRadius: 10, padding: "8px 10px", marginBottom: 9, border: "1px solid rgba(47,128,237,0.1)" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED", flexShrink: 0 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0f5ff", borderRadius: 10, padding: "8px 10px", marginBottom: 9, border: "1px solid rgba(21,88,196,0.1)" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1558C4", flexShrink: 0 }} />
           <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>Where do you want to go?</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-around" }}>
           {["Bike","Auto","Car","Parcel"].map((s, si) => (
             <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#f0f5ff", border: "1px solid rgba(47,128,237,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2" strokeLinecap="round">
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#f0f5ff", border: "1px solid rgba(21,88,196,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1558C4" strokeWidth="2.2" strokeLinecap="round">
                   {si === 0 && <><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></>}
                   {si === 1 && <><circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M10 18h4M7 15V9l3.5-3H18l2 4v5H10"/></>}
                   {si === 2 && <><path d="M5 17H3a1 1 0 01-1-1v-3l3-5h13l3 5v3a1 1 0 01-1 1h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></>}
@@ -94,15 +94,15 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
   if (screen === "route") return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
       <StatusBar />
-      <div style={{ background: "#2F80ED", padding: "14px 12px 18px" }}>
+      <div style={{ background: "#1558C4", padding: "14px 12px 18px" }}>
         <p style={{ fontSize: 9, color: "rgba(255,255,255,0.65)", margin: "0 0 8px", fontFamily: "Space Grotesk,sans-serif", textTransform: "uppercase", letterSpacing: 1 }}>Set destination</p>
         <div style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.12)", borderRadius: 8, padding: "7px 9px", marginBottom: 5 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.9)" }} />
           <span style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", fontFamily: "Space Grotesk,sans-serif" }}>Current Location</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#fff", borderRadius: 8, padding: "7px 9px" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
-          <span style={{ fontSize: 10, color: "#2F80ED", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>Hitech City Metro</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1558C4" }} />
+          <span style={{ fontSize: 10, color: "#1558C4", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>Hitech City Metro</span>
         </div>
       </div>
       <div style={{ padding: "10px 12px" }}>
@@ -110,7 +110,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         {[{ p: "Hitech City Metro", d: "3.2 km" }, { p: "Apollo Hospital", d: "5.8 km" }, { p: "Inorbit Mall", d: "2.1 km" }].map((x, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ width: 28, height: 28, borderRadius: 7, background: "#f0f5ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1558C4" strokeWidth="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
             </div>
             <div>
               <p style={{ margin: 0, fontSize: 10.5, fontWeight: 600, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.p}</p>
@@ -120,7 +120,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
         ))}
       </div>
       <div style={{ position: "absolute", bottom: 14, left: 12, right: 12 }}>
-        <div style={{ background: "#2F80ED", borderRadius: 12, padding: "11px", textAlign: "center" }}>
+        <div style={{ background: "#1558C4", borderRadius: 12, padding: "11px", textAlign: "center" }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", fontFamily: "Space Grotesk,sans-serif" }}>Confirm Route ?</span>
         </div>
       </div>
@@ -132,25 +132,25 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <StatusBar />
       <div style={{ flex: 1, background: "linear-gradient(140deg,#dbeafe,#e0e7ff)", position: "relative", overflow: "hidden" }}>
         <svg style={{ position: "absolute", inset: "0" as any, width: "100%", height: "100%" }} viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M28 75 Q50 52 72 30" stroke="#2F80ED" strokeWidth="2.5" fill="none" strokeDasharray="5 3" opacity="0.6" />
-          <circle cx="28" cy="75" r="3.5" fill="#fff" stroke="#2F80ED" strokeWidth="1.5" />
-          <circle cx="72" cy="30" r="3.5" fill="#2F80ED" />
+          <path d="M28 75 Q50 52 72 30" stroke="#1558C4" strokeWidth="2.5" fill="none" strokeDasharray="5 3" opacity="0.6" />
+          <circle cx="28" cy="75" r="3.5" fill="#fff" stroke="#1558C4" strokeWidth="1.5" />
+          <circle cx="72" cy="30" r="3.5" fill="#1558C4" />
         </svg>
         <div style={{ position: "absolute", right: 10, top: 10, background: "#fff", borderRadius: 7, padding: "3px 8px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
-          <span style={{ fontSize: 9.5, fontWeight: 700, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>3.2 km</span>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: "#1558C4", fontFamily: "Space Grotesk,sans-serif" }}>3.2 km</span>
         </div>
       </div>
       <div style={{ background: "#fff", padding: "12px", boxShadow: "0 -4px 16px rgba(0,0,0,0.07)" }}>
         <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
           {[{ t: "Bike", f: "?45", e: "2m", a: true }, { t: "Auto", f: "?75", e: "4m", a: false }, { t: "Car", f: "?130", e: "5m", a: false }].map(o => (
-            <div key={o.t} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: `1.5px solid ${o.a ? "#2F80ED" : "#e2e8f0"}`, background: o.a ? "#f0f5ff" : "#fff", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: 9.5, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", color: o.a ? "#2F80ED" : "#334155" }}>{o.t}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 12, fontWeight: 800, color: o.a ? "#2F80ED" : "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>{o.f}</p>
+            <div key={o.t} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: `1.5px solid ${o.a ? "#1558C4" : "#e2e8f0"}`, background: o.a ? "#f0f5ff" : "#fff", textAlign: "center" }}>
+              <p style={{ margin: 0, fontSize: 9.5, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", color: o.a ? "#1558C4" : "#334155" }}>{o.t}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, fontWeight: 800, color: o.a ? "#1558C4" : "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>{o.f}</p>
               <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>{o.e}</p>
             </div>
           ))}
         </div>
-        <div style={{ background: "linear-gradient(90deg,#2F80ED,#2563eb)", borderRadius: 10, padding: "11px", textAlign: "center" }}>
+        <div style={{ background: "linear-gradient(90deg,#1558C4,#2563eb)", borderRadius: 10, padding: "11px", textAlign: "center" }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", fontFamily: "Space Grotesk,sans-serif" }}>Confirm Booking</span>
         </div>
       </div>
@@ -160,7 +160,7 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
   if (screen === "pilot") return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
       <StatusBar />
-      <div style={{ background: "linear-gradient(135deg,#0A0F2E,#2F80ED)", padding: "20px 12px 26px", textAlign: "center" }}>
+      <div style={{ background: "linear-gradient(135deg,#0A0F2E,#1558C4)", padding: "20px 12px 26px", textAlign: "center" }}>
         <div style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,0.15)", margin: "0 auto 8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
@@ -170,30 +170,30 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <div style={{ flex: 1, padding: "12px", background: "#f8f9ff" }}>
         <div style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.07)", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#0A0F2E,#2F80ED)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#fff", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>R</div>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#0A0F2E,#1558C4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#fff", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>R</div>
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Ravi Kumar</p>
               <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                <span style={{ fontSize: 10, color: "#2F80ED" }}>?</span>
+                <span style={{ fontSize: 10, color: "#1558C4" }}>?</span>
                 <span style={{ fontSize: 9.5, color: "#475569", fontFamily: "Space Grotesk,sans-serif" }}>4.8 � 1,240 rides</span>
               </div>
             </div>
-            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#f0f5ff", border: "1px solid rgba(47,128,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.08 1.2 2 2 0 012.07 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92z"/></svg>
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#f0f5ff", border: "1px solid rgba(21,88,196,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1558C4" strokeWidth="2.2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.08 1.2 2 2 0 012.07 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92z"/></svg>
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
             {[{ l: "Vehicle", v: "Activa" }, { l: "Plate", v: "TS09AB1234" }, { l: "OTP", v: "7482" }].map(x => (
               <div key={x.l} style={{ textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 7.5, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>{x.l}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 10, fontWeight: 700, color: x.l === "OTP" ? "#2F80ED" : "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.v}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10, fontWeight: 700, color: x.l === "OTP" ? "#1558C4" : "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>{x.v}</p>
               </div>
             ))}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#f0f5ff", borderRadius: 9, padding: "9px 10px", border: "1px solid rgba(47,128,237,0.12)" }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2F80ED" strokeWidth="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-          <span style={{ fontSize: 9.5, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600 }}>Share OTP with pilot only</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, background: "#f0f5ff", borderRadius: 9, padding: "9px 10px", border: "1px solid rgba(21,88,196,0.12)" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1558C4" strokeWidth="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span style={{ fontSize: 9.5, color: "#1558C4", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600 }}>Share OTP with pilot only</span>
         </div>
       </div>
     </div>
@@ -205,14 +205,14 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <StatusBar />
       <div style={{ flex: 1, background: "linear-gradient(140deg,#dbeafe,#e0e7ff)", position: "relative" }}>
         <svg style={{ position: "absolute", inset: "0" as any, width: "100%", height: "100%" }} viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M28 68 Q48 50 68 30" stroke="#2F80ED" strokeWidth="2.5" fill="none" opacity="0.3" />
-          <circle cx="28" cy="68" r="3" fill="#fff" stroke="#2F80ED" strokeWidth="1.5" />
-          <circle cx="68" cy="30" r="3" fill="#2F80ED" />
-          <circle cx="45" cy="52" r="4.5" fill="#2F80ED" />
-          <circle cx="45" cy="52" r="8" fill="rgba(47,128,237,0.15)" />
+          <path d="M28 68 Q48 50 68 30" stroke="#1558C4" strokeWidth="2.5" fill="none" opacity="0.3" />
+          <circle cx="28" cy="68" r="3" fill="#fff" stroke="#1558C4" strokeWidth="1.5" />
+          <circle cx="68" cy="30" r="3" fill="#1558C4" />
+          <circle cx="45" cy="52" r="4.5" fill="#1558C4" />
+          <circle cx="45" cy="52" r="8" fill="rgba(21,88,196,0.15)" />
         </svg>
         <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 18, padding: "5px 13px", boxShadow: "0 2px 12px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F80ED" }} />
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#1558C4" }} />
           <span style={{ fontSize: 9.5, fontWeight: 700, color: "#1e293b", fontFamily: "Space Grotesk,sans-serif" }}>Pilot arriving in {eta} min</span>
         </div>
       </div>
@@ -223,14 +223,14 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
             <p style={{ margin: "2px 0 0", fontSize: 8.5, color: "#94a3b8", fontFamily: "Space Grotesk,sans-serif" }}>TS09AB1234</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>?45</p>
+            <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#1558C4", fontFamily: "Space Grotesk,sans-serif" }}>?45</p>
             <p style={{ margin: 0, fontSize: 8.5, color: "#64748b", fontFamily: "Space Grotesk,sans-serif" }}>Cash</p>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {[{ l: "Call" }, { l: "Cancel" }, { l: "Chat" }].map((a, ai) => (
-            <div key={a.l} style={{ flex: 1, background: ai === 1 ? "#fff1f2" : "#f0f5ff", borderRadius: 9, padding: "7px 4px", textAlign: "center", border: `1px solid ${ai === 1 ? "#fecdd3" : "rgba(47,128,237,0.12)"}` }}>
-              <span style={{ fontSize: 9.5, fontWeight: 600, color: ai === 1 ? "#e11d48" : "#2F80ED", fontFamily: "Space Grotesk,sans-serif" }}>{a.l}</span>
+            <div key={a.l} style={{ flex: 1, background: ai === 1 ? "#fff1f2" : "#f0f5ff", borderRadius: 9, padding: "7px 4px", textAlign: "center", border: `1px solid ${ai === 1 ? "#fecdd3" : "rgba(21,88,196,0.12)"}` }}>
+              <span style={{ fontSize: 9.5, fontWeight: 600, color: ai === 1 ? "#e11d48" : "#1558C4", fontFamily: "Space Grotesk,sans-serif" }}>{a.l}</span>
             </div>
           ))}
         </div>
@@ -250,7 +250,7 @@ function PhoneDemo() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
       <div style={{ position: "relative", width: 240, height: 494, animation: "jago-float 4s ease-in-out infinite" }}>
-        <div style={{ position: "absolute", inset: -28, borderRadius: 60, background: "radial-gradient(ellipse, rgba(47,128,237,0.35) 0%, transparent 70%)", filter: "blur(28px)" }} />
+        <div style={{ position: "absolute", inset: -28, borderRadius: 60, background: "radial-gradient(ellipse, rgba(21,88,196,0.35) 0%, transparent 70%)", filter: "blur(28px)" }} />
         <div style={{ position: "absolute", inset: 0, borderRadius: 42, background: "#0A0F2E", boxShadow: "0 48px 96px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 2px #161C3D", overflow: "hidden" }}>
           <div style={{ position: "absolute", left: -3, top: 96, width: 3, height: 24, background: "#161C3D", borderRadius: "2px 0 0 2px" }} />
           <div style={{ position: "absolute", left: -3, top: 132, width: 3, height: 24, background: "#161C3D", borderRadius: "2px 0 0 2px" }} />
@@ -283,7 +283,7 @@ function Marquee() {
       <div style={{ display: "flex", gap: 40, animation: "jago-marquee 28s linear infinite", width: "max-content" }}>
         {items.map((item, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
-            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#2F80ED" }} />
+            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#1558C4" }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.45)", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 0.5 }}>{item}</span>
           </div>
         ))}
@@ -319,7 +319,7 @@ export default function LandingPage() {
   const N800 = "#0A0F2E";
   const N700 = "#0D1340";
   const N600 = "#111A52";
-  const N500 = "#2F80ED";
+  const N500 = "#1558C4";
   const W    = "#FFFFFF";
   const W70  = "rgba(255,255,255,0.70)";
   const W40  = "rgba(255,255,255,0.40)";
@@ -345,12 +345,12 @@ export default function LandingPage() {
         @keyframes jago-fade-up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
         @keyframes jago-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
         @keyframes jago-screen-in{from{opacity:0;transform:translateX(24px) scale(.97)}to{opacity:1;transform:translateX(0) scale(1)}}
-        @keyframes jago-pulse{0%,100%{box-shadow:0 0 0 0 rgba(47,128,237,.55)}50%{box-shadow:0 0 0 14px rgba(47,128,237,0)}}
+        @keyframes jago-pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,88,196,.55)}50%{box-shadow:0 0 0 14px rgba(21,88,196,0)}}
 
         .reveal{opacity:0;transform:translateY(36px);transition:opacity .8s ease,transform .8s ease}
         .reveal.vis{opacity:1;transform:translateY(0)}
         .svc-card{transition:transform .25s,box-shadow .25s,background .25s;cursor:pointer}
-        .svc-card:hover{transform:translateY(-6px);background:${N600} !important;box-shadow:0 24px 60px rgba(47,128,237,.22)!important}
+        .svc-card:hover{transform:translateY(-6px);background:${N600} !important;box-shadow:0 24px 60px rgba(21,88,196,.22)!important}
         .feat-card{transition:background .2s}
         .feat-card:hover{background:${N600} !important}
         .city-card{transition:transform .2s}
@@ -386,14 +386,14 @@ export default function LandingPage() {
                 <a key={href} href={href} className="nav-link">{label}</a>
               ))}
             </div>
-            <a href="#download" className="dl-btn" style={{ padding: "9px 20px", borderRadius: 10, background: N500, color: W, fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", animation: "jago-pulse 2.8s infinite" }}>Get App</a>
+            <a href="#download" className="dl-btn" style={{ padding: "9px 20px", borderRadius: 10, background: N500, color: W, fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Get App</a>
           </div>
         </nav>
 
         {/* HERO */}
         <section style={{ minHeight: "100vh", display: "flex", alignItems: "center", position: "relative", overflow: "hidden", paddingTop: 64 }}>
-          <div style={{ position: "absolute", top: "5%", right: "-5%", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle,rgba(47,128,237,0.14) 0%,transparent 70%)", animation: "jago-glow 16s ease-in-out infinite", pointerEvents: "none" }} />
-          <div style={{ position: "absolute", bottom: "5%", left: "-8%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(47,128,237,0.09) 0%,transparent 70%)", animation: "jago-glow 20s ease-in-out infinite reverse", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: "5%", right: "-5%", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle,rgba(21,88,196,0.14) 0%,transparent 70%)", animation: "jago-glow 16s ease-in-out infinite", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: "5%", left: "-8%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(21,88,196,0.09) 0%,transparent 70%)", animation: "jago-glow 20s ease-in-out infinite reverse", pointerEvents: "none" }} />
           <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${BORDER} 1px,transparent 1px),linear-gradient(90deg,${BORDER} 1px,transparent 1px)`, backgroundSize: "72px 72px", pointerEvents: "none" }} />
 
           <div className="container hero-grid" style={{ width: "100%", display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 56, alignItems: "center", padding: "72px 24px 96px" }}>
@@ -468,7 +468,7 @@ export default function LandingPage() {
                   { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><path d="M15 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>, title: "Goods Transport", desc: "Move furniture, appliances, and freight with trucks." },
                 ].map((s, i) => (
                   <div key={i} className="svc-card" style={{ background: N700, borderRadius: 20, padding: "28px 24px", border: `1px solid ${BORDER}` }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 24px rgba(47,128,237,0.4)" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 24px rgba(21,88,196,0.4)" }}>
                       {s.icon}
                     </div>
                     <h3 style={{ fontSize: 16.5, fontWeight: 700, marginBottom: 9, fontFamily: "Space Grotesk,sans-serif", color: W }}>{s.title}</h3>
@@ -583,7 +583,7 @@ export default function LandingPage() {
 
         {/* DRIVER EARNINGS */}
         <section id="earnings" className="sec" style={{ background: N900, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(circle at 70% 50%, rgba(47,128,237,0.12) 0%, transparent 60%)`, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(circle at 70% 50%, rgba(21,88,196,0.12) 0%, transparent 60%)`, pointerEvents: "none" }} />
           <div className="container" style={{ position: "relative" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }} className="hero-grid">
               <div>
@@ -597,13 +597,13 @@ export default function LandingPage() {
                     { val: "₹500", label: "Weekly performance bonus" },
                     { val: "24h", label: "Daily payout cycle" },
                   ].map((e, i) => (
-                    <div key={i} style={{ background: `rgba(47,128,237,0.08)`, borderRadius: 16, padding: "20px 18px", border: `1px solid rgba(47,128,237,0.2)` }}>
+                    <div key={i} style={{ background: `rgba(21,88,196,0.08)`, borderRadius: 16, padding: "20px 18px", border: `1px solid rgba(21,88,196,0.2)` }}>
                       <p style={{ fontSize: 26, fontWeight: 800, color: N500, fontFamily: "Space Grotesk,sans-serif", margin: "0 0 4px", lineHeight: 1.1 }}>{e.val}</p>
                       <p style={{ fontSize: 12, color: W40, margin: 0, lineHeight: 1.5 }}>{e.label}</p>
                     </div>
                   ))}
                 </div>
-                <a href="/auth" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 26px", borderRadius: 12, background: `linear-gradient(135deg, #4A90E2, #2F80ED)`, color: W, textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 4px 20px rgba(47,128,237,0.35)" }}>
+                <a href="/auth" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 26px", borderRadius: 12, background: N500, color: W, textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 4px 20px rgba(21,88,196,0.35)" }}>
                   Become a Pilot <ArrowR />
                 </a>
               </div>
