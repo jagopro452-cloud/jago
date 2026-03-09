@@ -240,10 +240,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const originalFetch = window.fetch.bind(window);
     window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (!url.startsWith("/api/admin")) return originalFetch(input as any, init);
+        // Inject admin token on all /api/ requests except mobile-app and public endpoints
+        const isAdminApiUrl = url.startsWith("/api/") &&
+          !url.startsWith("/api/app/") &&
+          !url.startsWith("/api/driver/") &&
+          !url.startsWith("/api/webhook") &&
+          url !== "/api/health";
+        if (!isAdminApiUrl) return originalFetch(input as any, init);
 
-      const saved = JSON.parse(localStorage.getItem("jago-admin") || "{}");
-      const token = saved?.token;
+        const saved = JSON.parse(localStorage.getItem("jago-admin") || "{}");
+        const token = saved?.token;
       const headers = new Headers(init?.headers || {});
       if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);

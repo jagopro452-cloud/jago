@@ -1760,6 +1760,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Catch-all protection for legacy /api/ admin routes ──────────────────
+  // All /api/ routes that are NOT explicitly excluded below are admin-only.
+  // This complements the /api/admin/* global middleware and per-route requireAdminAuth.
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    const p = req.path;
+    // Skip paths handled by their own auth mechanism or that are truly public
+    if (
+      p === "/health"           ||  // public health check
+      p.startsWith("/ops/")     ||  // requireOpsKey
+      p.startsWith("/app/")     ||  // mobile app routes — each has authApp
+      p.startsWith("/admin/")   ||  // global admin middleware at line 1101
+      p.startsWith("/driver/")  ||  // mobile driver routes — each has authApp
+      p.startsWith("/webhook")       // payment callbacks (Razorpay, etc.)
+    ) return next();
+    // Everything else is a legacy admin route → require admin auth
+    return requireAdminAuth(req, res, next);
+  });
+
   // Users
   app.get("/api/users", async (req, res) => {
     try {
@@ -9324,7 +9342,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Customer: book a multi-drop parcel order
   app.post("/api/app/parcel/book", authApp, async (req, res) => {
     try {
-      const customerId = (req as any).userId;
+      const customerId = (req as any).currentUser?.id;
 
       // ── Service activation gate ───────────────────────────────────────────
       const parcelGate = await rawDb.execute(rawSql`
@@ -9405,7 +9423,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Customer: get active/recent parcel orders
   app.get("/api/app/parcel/orders", authApp, async (req, res) => {
     try {
-      const customerId = (req as any).userId;
+      const customerId = (req as any).currentUser?.id;
       const r = await rawDb.execute(rawSql`
         SELECT po.*, u.full_name as driver_name, u.phone as driver_phone
         FROM parcel_orders po
@@ -9421,7 +9439,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Customer: cancel parcel order
   app.post("/api/app/parcel/:id/cancel", authApp, async (req, res) => {
     try {
-      const customerId = (req as any).userId;
+      const customerId = (req as any).currentUser?.id;
       const { reason = 'Customer cancelled' } = req.body;
       const r = await rawDb.execute(rawSql`
         UPDATE parcel_orders
