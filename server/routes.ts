@@ -18,6 +18,7 @@ import { parcelAttributes, admins } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 const rawSql = sql;
 import bcrypt from "bcryptjs";
+import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
   initAiTables,
@@ -3592,10 +3593,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { id } = req.params;
       const { amount } = req.body;
-      const keyId = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
+      const keySecret = await getConf("RAZORPAY_KEY_SECRET", "razorpay_key_secret");
       if (!keyId || !keySecret) {
-        return res.status(503).json({ message: "Payment gateway not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET." });
+        return res.status(503).json({ message: "Payment gateway not configured. Add Razorpay keys in Admin → Configuration." });
       }
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
@@ -7278,9 +7279,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let pickupGeo: any = null;
       let destGeo: any = null;
 
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      const apiKey = await getConf("GOOGLE_MAPS_API_KEY", "google_maps_key");
       if (!apiKey) {
-        return res.status(503).json({ message: "Maps service unavailable. Configure GOOGLE_MAPS_API_KEY." });
+        return res.status(503).json({ message: "Maps service unavailable. Add Google Maps API Key in Admin → Configuration." });
       }
       const geocode = async (place: string) => {
         const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(place)}&key=${apiKey}`;

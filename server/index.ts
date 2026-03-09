@@ -98,9 +98,37 @@ app.use((req, res, next) => {
   } catch (e: any) {
     console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
     console.error("[db] Full error:", e.stack || e);
-    // Do NOT continue silently — crash so DigitalOcean restarts the container
-    // (better to restart than serve with missing tables)
     process.exit(1);
+  }
+
+  // Load API keys from business_settings DB into process.env (fills in any missing keys)
+  // This lets admin panel updates work without redeployment.
+  try {
+    const { pool: dbPool } = await import("./db");
+    const settingsRes = await dbPool.query(
+      "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8)",
+      ["razorpay_key_id","razorpay_key_secret","razorpay_webhook_secret","fast2sms_api_key","google_maps_key","twilio_account_sid","twilio_auth_token","twilio_phone_number"]
+    );
+    const ENV_MAP: Record<string, string> = {
+      razorpay_key_id:        "RAZORPAY_KEY_ID",
+      razorpay_key_secret:    "RAZORPAY_KEY_SECRET",
+      razorpay_webhook_secret:"RAZORPAY_WEBHOOK_SECRET",
+      fast2sms_api_key:       "FAST2SMS_API_KEY",
+      google_maps_key:        "GOOGLE_MAPS_API_KEY",
+      twilio_account_sid:     "TWILIO_ACCOUNT_SID",
+      twilio_auth_token:      "TWILIO_AUTH_TOKEN",
+      twilio_phone_number:    "TWILIO_PHONE_NUMBER",
+    };
+    for (const row of settingsRes.rows as any[]) {
+      const envKey = ENV_MAP[row.key_name];
+      if (envKey && !process.env[envKey] && row.value?.trim()) {
+        process.env[envKey] = row.value.trim();
+        log(`[config] Loaded ${envKey} from DB settings`);
+      }
+    }
+    log("[config] DB settings loaded into runtime config");
+  } catch (e: any) {
+    log(`[config] Could not load DB settings (non-fatal): ${e.message}`);
   }
 
   // Initialize Socket.IO for real-time driver-customer communication
