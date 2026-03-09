@@ -2546,24 +2546,25 @@ body.aside-folded .main-nav li.active > a i { color: #1558C4 !important; }
 
 /* ── Header ── */
 .header {
-  background: #FFFFFF !important;
+  background: linear-gradient(90deg, #1558C4 0%, #1664D8 100%) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  border-bottom: 1px solid #E8EDF4 !important;
-  box-shadow: 0 1px 0 #E8EDF4 !important;
+  border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+  box-shadow: 0 2px 12px rgba(21,88,196,0.3) !important;
   left: 220px !important;
 }
 body.aside-folded .header { left: 60px !important; }
 
 .header-icon-btn {
-  background: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
+  background: rgba(255,255,255,0.15) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
   border-radius: 10px !important;
   width: 38px !important;
   height: 38px !important;
+  color: #fff !important;
   transition: all 0.15s !important;
 }
-.header-icon-btn:hover { background: #eff6ff !important; border-color: #3b82f6 !important; color: #3b82f6 !important; }
+.header-icon-btn:hover { background: rgba(255,255,255,0.25) !important; border-color: rgba(255,255,255,0.4) !important; color: #fff !important; }
 
 .header-avatar-btn {
   background: linear-gradient(135deg, #3b82f6, #2F80ED) !important;
@@ -2979,11 +2980,11 @@ h4.fw-bold { font-weight: 800 !important; letter-spacing: -0.02em !important; co
 }
 
 .admin-shell .header {
-  background: #FFFFFF !important;
-  border-bottom: 1px solid #E8EDF4 !important;
+  background: linear-gradient(90deg, #1558C4 0%, #1664D8 100%) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.12) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: 0 1px 0 #E8EDF4, 0 2px 8px rgba(21,88,196,0.04) !important;
+  box-shadow: 0 2px 12px rgba(21,88,196,0.3) !important;
 }
 
 .admin-shell .main-area {
@@ -4106,14 +4107,41 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 
 .admin-shell .header {
-  background: rgba(6, 12, 26, 0.76) !important;
-  border-bottom: 1px solid var(--sa-border) !important;
-  backdrop-filter: blur(14px);
+  background: linear-gradient(90deg, #1558C4 0%, #1664D8 100%) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+  backdrop-filter: none !important;
 }
 
-.admin-shell .aside {
-  background: linear-gradient(170deg, rgba(8, 15, 32, 0.98) 0%, rgba(6, 11, 25, 0.98) 100%) !important;
-  border-right: 1px solid var(--sa-border) !important;
+/* Header elements: white-on-blue */
+.admin-shell .header .header-page-title,
+.admin-shell .header .breadcrumb,
+.admin-shell .header .breadcrumb a,
+.admin-shell .header .breadcrumb-item,
+.admin-shell .header .breadcrumb-item.active {
+  color: rgba(255,255,255,0.9) !important;
+}
+.admin-shell .header .breadcrumb-item + .breadcrumb-item::before {
+  color: rgba(255,255,255,0.5) !important;
+}
+.admin-shell .header .header-search input {
+  background: rgba(255,255,255,0.15) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+  color: #fff !important;
+}
+.admin-shell .header .header-search input::placeholder { color: rgba(255,255,255,0.6) !important; }
+.admin-shell .header .header-search i { color: rgba(255,255,255,0.7) !important; }
+.admin-shell .header .header-icon-btn {
+  background: rgba(255,255,255,0.15) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+  color: #fff !important;
+}
+.admin-shell .header .header-icon-btn:hover {
+  background: rgba(255,255,255,0.28) !important;
+  border-color: rgba(255,255,255,0.4) !important;
+}
+.admin-shell .header .header-avatar-btn {
+  background: rgba(255,255,255,0.2) !important;
+  border: 1px solid rgba(255,255,255,0.3) !important;
 }
 
 /* ── Cards ── */
