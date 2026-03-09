@@ -377,17 +377,11 @@ async function ensureAdminExists() {
         console.log(`[admin] Admin created: ${adminEmail}`);
       }
     } else {
-      // Admin exists — sync password from env var if explicitly set
-      if (process.env.ADMIN_PASSWORD) {
-        const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
-        await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true WHERE email=${adminEmail}`);
-        console.log("[admin] Password synced from ADMIN_PASSWORD env var");
-      } else {
-        if (!existingRow.is_active) {
-          await rawDb.execute(rawSql`UPDATE admins SET is_active=true WHERE email=${adminEmail}`);
-        }
-        console.log("[admin] Admin account OK");
-      }
+      // Admin exists — always sync password from configured value (env or default).
+      // This ensures the admin can always login after a server restart with the configured password.
+      const hash = await bcrypt.hash(adminPassword, 10);
+      await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
+      console.log(`[admin] Password synced for ${adminEmail} (restart sync)`);
     }
   } catch (e: any) {
     console.error("[admin] ensureAdminExists error:", formatDbError(e));
@@ -1099,7 +1093,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Protect admin APIs except auth recovery routes.
   app.use("/api/admin", async (req, res, next) => {
-    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password"]);
+    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password", "/emergency-reset"]);
     if (publicPaths.has(req.path)) return next();
     const token = extractBearerToken(req);
     if (!token) return res.status(401).json({ message: "Admin authorization required" });
@@ -1757,6 +1751,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await rawDb.execute(rawSql`UPDATE admins SET password=${hashedPassword} WHERE email=${email}`);
       res.json({ success: true, message: "Password reset successfully. You can now login with your new password." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Emergency password reset (protected by ADMIN_RESET_KEY) ────────
+  // Call: POST /api/admin/emergency-reset  { key: "...", email: "...", password: "..." }
+  // Only works if ADMIN_RESET_KEY env var is set on the server.
+  app.post("/api/admin/emergency-reset", async (req, res) => {
+    const resetKey = process.env.ADMIN_RESET_KEY;
+    if (!resetKey) return res.status(404).json({ message: "Not found" }); // disabled if env not set
+    const { key, email, password } = req.body;
+    if (!key || key !== resetKey) return res.status(403).json({ message: "Invalid reset key" });
+    if (!email || !password || password.length < 6) return res.status(400).json({ message: "email and password (min 6 chars) required" });
+    try {
+      const hash = await bcrypt.hash(password, 12);
+      const r = await rawDb.execute(rawSql`
+        UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL
+        WHERE LOWER(email)=${email.trim().toLowerCase()}
+      `);
+      res.json({ success: true, message: "Admin password reset successfully. You can now login." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
