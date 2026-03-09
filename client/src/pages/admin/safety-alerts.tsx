@@ -39,13 +39,14 @@ export default function SafetyAlertsPage() {
 
   const { data: alerts = [], isLoading: alertsLoading } = useQuery<any[]>({
     queryKey: ["/api/safety-alerts", filter, triggeredBy],
-    queryFn: () => fetch(`/api/safety-alerts?status=${filter}&triggered_by=${triggeredBy}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/safety-alerts?status=${filter}&triggered_by=${triggeredBy}`)
+      .then(r => r.json()).then(d => Array.isArray(d) ? d : []),
     refetchInterval: 15000,
   });
 
   const { data: stats } = useQuery<any>({
     queryKey: ["/api/safety-alerts/stats"],
-    queryFn: () => fetch("/api/safety-alerts/stats").then(r => r.json()),
+    queryFn: () => fetch("/api/safety-alerts/stats").then(r => r.json()).then(d => d && !d.message ? d : {}),
     refetchInterval: 15000,
   });
 
@@ -74,6 +75,7 @@ export default function SafetyAlertsPage() {
   const { data: stations = [], isLoading: stationsLoading } = useQuery<any[]>({
     queryKey: ["/api/police-stations"],
     enabled: activeTab === "police",
+    queryFn: () => fetch("/api/police-stations").then(r => r.json()).then(d => Array.isArray(d) ? d : []),
   });
   const { data: zones = [] } = useQuery<any[]>({ queryKey: ["/api/zones"] });
 
@@ -101,7 +103,7 @@ export default function SafetyAlertsPage() {
   const { data: matchingData } = useQuery<any>({
     queryKey: ["/api/matching/stats"],
     enabled: activeTab === "matching",
-    queryFn: () => fetch("/api/matching/stats").then(r => r.json()),
+    queryFn: () => fetch("/api/matching/stats").then(r => r.json()).then(d => (d && !d.message) ? d : { stats: {}, settings: {} }),
   });
 
   const saveSetting = useMutation({

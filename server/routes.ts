@@ -691,6 +691,15 @@ async function ensureOperationalSchema() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS business_settings (
+        key_name VARCHAR(191) PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT '',
+        settings_type VARCHAR(80) DEFAULT 'general',
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      ALTER TABLE police_stations ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
       -- Commission settlements: records every driver payment toward pending balance
       CREATE TABLE IF NOT EXISTS commission_settlements (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
