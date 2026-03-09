@@ -301,6 +301,13 @@ async function ensureAdminExists() {
     `);
   } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); }
 
+  // ── Self-heal: add missing columns that may not exist on older deployments ──
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin'`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`).catch(() => {});
+
   try {
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS admin_login_otp (
@@ -1562,11 +1569,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(202).json(response);
       }
 
-      const { sessionToken, expiresAt } = await issueAdminSession(admin.id);
+      let session: { sessionToken: string; expiresAt: Date };
+      try {
+        session = await issueAdminSession(admin.id);
+      } catch (sessionErr: any) {
+        // Self-heal if auth_token_expires_at or other columns were added after table was first created
+        if (String(sessionErr.message).toLowerCase().includes("does not exist")) {
+          console.warn("[admin-login] Missing column — running schema self-heal then retrying...");
+          await ensureAdminExists();
+          session = await issueAdminSession(admin.id);
+        } else {
+          throw sessionErr;
+        }
+      }
       res.json({
         admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
-        token: sessionToken,
-        expiresAt: expiresAt.toISOString(),
+        token: session.sessionToken,
+        expiresAt: session.expiresAt.toISOString(),
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
