@@ -3276,8 +3276,6 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   box-shadow: 0 4px 16px rgba(37,99,235,0.35);
   flex-shrink: 0;
 }
-  flex-shrink: 0;
-}
 .jl-form-logo-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
 .jl-form-logo-sub { font-size: 0.72rem; color: #94a3b8; }
 
