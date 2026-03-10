@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "159758556140",
+    "project_id": "jago-rides",
+    "storage_bucket": "jago-rides.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:159758556140:android:3a5ec7d5a21e9eb72b3ec9",
+        "android_client_info": {
+          "package_name": "com.mindwhile.jago_pilot"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

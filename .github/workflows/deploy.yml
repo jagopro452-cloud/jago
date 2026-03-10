@@ -1,0 +1,41 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+            echo "=== Pulling latest code ==="
+            cd /var/www/jago
+            git pull origin master
+
+            echo "=== Installing dependencies ==="
+            npm ci --prefer-offline
+
+            echo "=== Building production bundle ==="
+            npm run build
+
+            echo "=== Restarting server ==="
+            pm2 restart jago --update-env || pm2 start dist/index.js --name jago --max-memory-restart 512M
+
+            echo "=== Health check ==="
+            sleep 3
+            curl -sf http://localhost:5000/api/health && echo "Server OK" || echo "WARNING: health check failed"
+
+            pm2 save
+            echo "=== Deploy complete ==="

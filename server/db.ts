@@ -1,0 +1,40 @@
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+}
+
+// Disable TLS cert chain verification for cloud DBs (Neon, Supabase, etc.)
+// These providers use intermediate CAs that can trigger "self-signed cert in chain" errors
+const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
+if (!isLocalDb) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false, checkServerIdentity: () => undefined },
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  allowExitOnIdle: false,
+});
+
+pool.on("error", (err) => {
+  console.error("[DB] Unexpected pool error:", err.message);
+});
+
+export const db = drizzle(pool, { schema });
+
+const gracefulShutdown = async (signal: string) => {
+  console.log(`[DB] ${signal} received — draining pool...`);
+  try { await pool.end(); } catch (e) { /* ignore */ }
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

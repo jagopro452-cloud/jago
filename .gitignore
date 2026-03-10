@@ -1,0 +1,40 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# Flutter & Android build SDKs (large, not needed in repo)
+.flutter-sdk/
+.android-sdk/
+.pub-cache/
+.gradle-cache/
+.gradle/
+**/android/.gradle/
+**/local.properties
+.build-tmp/
+
+# Build outputs
+*.apk
+flutter_apps/customer_app/build/
+flutter_apps/driver_app/build/
+flutter_apps/customer_app/.dart_tool/
+flutter_apps/driver_app/.dart_tool/
+flutter_apps/customer_app/.flutter-plugins
+flutter_apps/customer_app/.flutter-plugins-dependencies
+flutter_apps/driver_app/.flutter-plugins
+flutter_apps/driver_app/.flutter-plugins-dependencies
+
+# Logs
+build_output.log
+
+# Environment
+.env
+.env.*
+
+# Sensitive artifacts and prompt dumps
+attached_assets/
+
+# Local development PostgreSQL cluster (generated at runtime)
+.local-postgres/

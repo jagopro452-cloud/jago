@@ -1,0 +1,18 @@
+{
+  "name": "jago-microservices",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "gateway-service",
+    "matching-service",
+    "trip-service",
+    "location-service",
+    "ai-assistant-service",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run -ws build",
+    "dev": "npm run -ws dev",
+    "check": "npm run -ws check"
+  }
+}
