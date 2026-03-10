@@ -6159,10 +6159,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(() => {});
       }
 
-      // ── Commission Settlement: add pending commission + GST to driver balance ──
-      // Driver collects full fare from user directly (cash/UPI).
-      // Platform's commission + GST are tracked as pending amounts the driver owes.
-      // (commission-only part without GST for separate column tracking)
+      // ── Commission Settlement: CASH vs ONLINE payment logic ─────────────────
+      // CASH:   Driver collects full fare → platform dues go NEGATIVE in driver wallet
+      //         Auto-lock when wallet < -₹200 or pending dues >= ₹200
+      // ONLINE: Platform already collected fare → credit driver net amount (positive)
+      //         No negative wallet, no auto-lock for this ride
+      const paymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
+      const isOnlinePayment = ['online', 'wallet', 'upi', 'razorpay', 'card', 'prepaid'].includes(paymentMethod);
       const commissionOwed = parseFloat((deductAmount - gstAmount).toFixed(2));
       const lockThresholdVal = parseFloat(s.commission_lock_threshold || "200");
 
@@ -6177,41 +6180,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const prevGst        = parseFloat(balBefore.pending_gst_balance ?? '0') || 0;
         const prevTotal      = parseFloat(balBefore.total_pending_balance ?? '0') || 0;
 
-        // Add new ride debits to pending balances
-        const newCommission = parseFloat((prevCommission + commissionOwed).toFixed(2));
-        const newGst        = parseFloat((prevGst + gstAmount).toFixed(2));
-        const newTotal      = parseFloat((prevTotal + deductAmount).toFixed(2));
+        let wUpd: any;
+        let newWalletBalance = 0;
+        let newTotal = prevTotal;
 
-        // Also deduct from wallet_balance (negative balance system) + update pending fields
-        const wUpd = await rawDb.execute(rawSql`
-          UPDATE users
-          SET wallet_balance            = wallet_balance - ${deductAmount},
-              pending_commission_balance = ${newCommission},
-              pending_gst_balance        = ${newGst},
-              total_pending_balance      = ${newTotal}
-          WHERE id=${driver.id}::uuid
-          RETURNING wallet_balance, is_locked, total_pending_balance
-        `);
-        const wRow: any = wUpd.rows[0] || {};
-        const newWalletBalance = parseFloat(wRow.wallet_balance ?? 0);
-
-        // Auto-lock: if total_pending_balance exceeds lock threshold → lock rides
-        const lockMsg = `Pending balance ₹${newTotal.toFixed(2)} exceeds ₹${lockThresholdVal} limit. Pay to unlock ride access.`;
-        if (newTotal >= lockThresholdVal && !wRow.is_locked) {
-          await rawDb.execute(rawSql`
-            UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW()
+        if (isOnlinePayment) {
+          // ── ONLINE PAYMENT (Uber/Ola style) ──────────────────────────────
+          // Platform collected full fare from customer.
+          // Credit driver with net amount (fare - commission - GST). Wallet goes UP.
+          // Pending balances do NOT increase (platform already has the commission).
+          wUpd = await rawDb.execute(rawSql`
+            UPDATE users
+            SET wallet_balance = wallet_balance + ${driverWalletCredit},
+                completed_rides_count = COALESCE(completed_rides_count, 0) + 1
             WHERE id=${driver.id}::uuid
+            RETURNING wallet_balance, is_locked, total_pending_balance
+          `);
+          newTotal = prevTotal; // no new pending dues
+        } else {
+          // ── CASH PAYMENT (Rapido/local style) ─────────────────────────────
+          // Driver collected full fare in cash from customer.
+          // Platform's share (commission + GST) tracked as debt — wallet goes NEGATIVE.
+          const newCommission = parseFloat((prevCommission + commissionOwed).toFixed(2));
+          const newGst        = parseFloat((prevGst + gstAmount).toFixed(2));
+          newTotal            = parseFloat((prevTotal + deductAmount).toFixed(2));
+          wUpd = await rawDb.execute(rawSql`
+            UPDATE users
+            SET wallet_balance             = wallet_balance - ${deductAmount},
+                pending_commission_balance  = ${newCommission},
+                pending_gst_balance         = ${newGst},
+                total_pending_balance       = ${newTotal},
+                completed_rides_count       = COALESCE(completed_rides_count, 0) + 1
+            WHERE id=${driver.id}::uuid
+            RETURNING wallet_balance, is_locked, total_pending_balance
           `);
         }
-        // Also apply legacy wallet threshold lock
-        const legacyThreshold = parseFloat(s.auto_lock_threshold || "-100");
-        if (newWalletBalance < legacyThreshold && !wRow.is_locked) {
-          await rawDb.execute(rawSql`
-            UPDATE users SET is_locked=true,
-              lock_reason=${'Wallet balance ₹' + newWalletBalance.toFixed(2) + ' below minimum. Pay ₹' + Math.abs(newWalletBalance).toFixed(2) + ' to unlock.'},
-              locked_at=NOW()
-            WHERE id=${driver.id}::uuid
-          `);
+
+        const wRow: any = wUpd?.rows[0] || {};
+        newWalletBalance = parseFloat(wRow.wallet_balance ?? 0);
+
+        // Auto-lock only for CASH rides (online rides don't create debt)
+        if (!isOnlinePayment) {
+          const lockMsg = `Pending balance ₹${newTotal.toFixed(2)} exceeds ₹${lockThresholdVal} limit. Pay to unlock ride access.`;
+          if (newTotal >= lockThresholdVal && !wRow.is_locked) {
+            await rawDb.execute(rawSql`
+              UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW()
+              WHERE id=${driver.id}::uuid
+            `);
+          }
+          const legacyThreshold = parseFloat(s.auto_lock_threshold || "-200");
+          if (newWalletBalance < legacyThreshold && !wRow.is_locked) {
+            await rawDb.execute(rawSql`
+              UPDATE users SET is_locked=true,
+                lock_reason=${'Wallet balance ₹' + newWalletBalance.toFixed(2) + '. Pay ₹' + Math.abs(newWalletBalance).toFixed(2) + ' to unlock ride access.'},
+                locked_at=NOW()
+              WHERE id=${driver.id}::uuid
+            `);
+          }
         }
 
         // Record in commission_settlements (split: commission + GST as separate lines)
