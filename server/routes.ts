@@ -1355,11 +1355,82 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // ── 5. Revenue model settings (upsert correct values) ────────────────────
+      const revenueSettings: Record<string, string> = {
+        // GST
+        ride_gst_rate:               '5',    // 5% GST on every ride
+        parcel_gst_rate:             '18',   // 18% GST on parcel
+        // Commission model
+        commission_rate:             '15',   // 15% commission per ride
+        commission_pct:              '15',
+        driver_commission_pct:       '15',
+        commission_insurance_per_ride: '2',  // ₹2 insurance per ride (optional, can set 0)
+        commission_mode:             'on',
+        // Subscription model (like Rapido)
+        subscription_mode:           'on',
+        sub_platform_fee_per_ride:   '5',    // ₹5 platform fee per ride for subscription drivers
+        subscription_enabled:        'true',
+        // Hybrid model
+        hybrid_commission_pct:       '10',   // 10% commission in hybrid
+        hybrid_platform_fee_per_ride: '5',
+        hybrid_insurance_per_ride:   '2',
+        // Auto-lock thresholds
+        auto_lock_threshold:         '-200', // Lock when wallet < -₹200
+        commission_lock_threshold:   '200',  // Lock when pending dues >= ₹200
+        // Per-service models (admin can change these)
+        rides_model:                 'subscription', // default: subscription for rides
+        parcels_model:               'commission',   // default: commission for parcel
+        cargo_model:                 'commission',
+        intercity_model:             'commission',
+        // Launch campaign
+        launch_campaign_enabled:     'false', // Turn off free rides
+      };
+      for (const [key, value] of Object.entries(revenueSettings)) {
+        await rawDb.execute(rawSql`
+          INSERT INTO revenue_model_settings (key_name, value)
+          VALUES (${key}, ${value})
+          ON CONFLICT (key_name) DO UPDATE SET value=${value}
+        `).catch(() => {});
+      }
+
+      // ── 6. Subscription plans (like Rapido) ──────────────────────────────────
+      const plans = [
+        { name: "Daily Pass",    price: 29,  duration_days: 1,  max_rides: 10,  plan_type: "driver",
+          features: "10 rides/day • ₹5 platform fee/ride • No commission" },
+        { name: "Weekly Pass",   price: 149, duration_days: 7,  max_rides: 70,  plan_type: "driver",
+          features: "70 rides/week • ₹5 platform fee/ride • No commission • Save 27%" },
+        { name: "Monthly Pass",  price: 499, duration_days: 30, max_rides: 300, plan_type: "driver",
+          features: "300 rides/month • ₹5 platform fee/ride • No commission • Save 43%" },
+        { name: "Pro Monthly",   price: 799, duration_days: 30, max_rides: 500, plan_type: "driver",
+          features: "500 rides/month • ₹3 platform fee/ride • Priority dispatch • Save 55%" },
+      ];
+      const insertedPlans: any[] = [];
+      for (const p of plans) {
+        const ex = await rawDb.execute(rawSql`SELECT id FROM subscription_plans WHERE name=${p.name} LIMIT 1`);
+        if (!ex.rows.length) {
+          const ins = await rawDb.execute(rawSql`
+            INSERT INTO subscription_plans (name, price, duration_days, max_rides, plan_type, features, is_active)
+            VALUES (${p.name}, ${p.price}, ${p.duration_days}, ${p.max_rides}, ${p.plan_type}, ${p.features}, true)
+            RETURNING id, name, price
+          `).catch(() => ({ rows: [] as any[] }));
+          if (ins.rows.length) insertedPlans.push(ins.rows[0]);
+        } else {
+          await rawDb.execute(rawSql`
+            UPDATE subscription_plans SET price=${p.price}, duration_days=${p.duration_days},
+              max_rides=${p.max_rides}, features=${p.features}, is_active=true
+            WHERE name=${p.name}
+          `).catch(() => {});
+          insertedPlans.push({ name: p.name, updated: true });
+        }
+      }
+
       res.json({
         success: true,
-        message: "Platform seeded: vehicles, fares, brands, services, surge pricing.",
+        message: "Platform seeded: vehicles, fares, brands, services, surge pricing, revenue settings, subscription plans.",
         vehicles: insertedVehicles,
         brandsCount: brands.length,
+        subscriptionPlans: insertedPlans,
+        revenueSettingsUpdated: Object.keys(revenueSettings).length,
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
