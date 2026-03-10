@@ -1195,12 +1195,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await ensureOperationalSchema();
       await ensureAdminExists();
       const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
-      const r = await rawDb.execute(rawSql`SELECT id, email, is_active FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
+      const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,7) as pw_prefix FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
       const adminRow: any = r.rows[0];
+      const adminPwdEnv = process.env.ADMIN_PASSWORD || "";
       res.json({
         success: true,
         message: "DB schema bootstrapped and admin account synced.",
-        admin: adminRow ? { id: adminRow.id, email: adminRow.email, is_active: adminRow.is_active } : null,
+        admin: adminRow ? { id: adminRow.id, email: adminRow.email, is_active: adminRow.is_active, pw_is_bcrypt: (adminRow.pw_prefix || "").startsWith("$2") } : null,
+        env: { adminEmail, adminPasswordSet: !!adminPwdEnv, adminPasswordLength: adminPwdEnv.length },
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
