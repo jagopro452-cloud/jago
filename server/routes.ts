@@ -1231,12 +1231,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { name: "SUV / XL", type: "car", vehicle_type: "suv", icon: "/vehicles/suv.svg",
           base_fare: 120, fare_per_km: 20, minimum_fare: 170, waiting_charge_per_min: 2.5 },
         // LOCAL POOL services
-        { name: "Bike Pool", type: "motor_bike", vehicle_type: "pool_bike", icon: "/vehicles/pool_bike.svg",
-          base_fare: 20, fare_per_km: 5, minimum_fare: 25, waiting_charge_per_min: 0.5, total_seats: 2, is_carpool: true,
-          description: "2 riders · Split fare · Cheapest option" },
-        { name: "Auto Pool", type: "auto", vehicle_type: "pool_auto", icon: "/vehicles/pool_auto.svg",
-          base_fare: 20, fare_per_km: 8, minimum_fare: 30, waiting_charge_per_min: 0.5, total_seats: 3, is_carpool: true,
-          description: "Upto 3 riders · Shared auto · Save 40%" },
         { name: "Mini Pool", type: "car", vehicle_type: "pool_mini", icon: "/vehicles/pool_mini.svg",
           base_fare: 40, fare_per_km: 9, minimum_fare: 55, waiting_charge_per_min: 1, total_seats: 3, is_carpool: true,
           description: "Upto 3 riders · Shared mini cab · Save 35%" },
