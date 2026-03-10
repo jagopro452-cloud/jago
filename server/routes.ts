@@ -1210,6 +1210,136 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ── Seed all vehicle categories, fares, brands & platform services ──────────
+  // GET /api/ops/seed-platform?key=ADMIN_RESET_KEY
+  app.get("/api/ops/seed-platform", async (req, res) => {
+    const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
+    const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
+    if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
+    try {
+      // ── 1. Vehicle categories (upsert by name) ──────────────────────────────
+      const vehicles = [
+        // RIDE services
+        { name: "Bike", type: "motor_bike", vehicle_type: "bike", icon: "/vehicles/bike.svg",
+          base_fare: 30, fare_per_km: 7, minimum_fare: 30, waiting_charge_per_min: 0.5 },
+        { name: "Auto", type: "auto", vehicle_type: "auto", icon: "/vehicles/auto.svg",
+          base_fare: 30, fare_per_km: 12, minimum_fare: 45, waiting_charge_per_min: 1 },
+        { name: "Mini Car", type: "car", vehicle_type: "mini_car", icon: "/vehicles/mini_car.svg",
+          base_fare: 70, fare_per_km: 14, minimum_fare: 90, waiting_charge_per_min: 1.5 },
+        { name: "Sedan", type: "car", vehicle_type: "sedan", icon: "/vehicles/sedan.svg",
+          base_fare: 90, fare_per_km: 16, minimum_fare: 130, waiting_charge_per_min: 2 },
+        { name: "SUV / XL", type: "car", vehicle_type: "suv", icon: "/vehicles/suv.svg",
+          base_fare: 120, fare_per_km: 20, minimum_fare: 170, waiting_charge_per_min: 2.5 },
+        { name: "Car Pool", type: "car", vehicle_type: "carpool", icon: "/vehicles/carpool.svg",
+          base_fare: 40, fare_per_km: 8, minimum_fare: 60, waiting_charge_per_min: 1, total_seats: 4 },
+        // PARCEL services
+        { name: "Bike Parcel", type: "motor_bike", vehicle_type: "bike_parcel", icon: "/vehicles/parcel_bike.svg",
+          base_fare: 30, fare_per_km: 8, minimum_fare: 40, waiting_charge_per_min: 0.5, service_type: "parcel" },
+        { name: "Auto Parcel", type: "auto", vehicle_type: "auto_parcel", icon: "/vehicles/parcel_auto.svg",
+          base_fare: 40, fare_per_km: 12, minimum_fare: 60, waiting_charge_per_min: 1, service_type: "parcel" },
+        { name: "Cargo Van", type: "car", vehicle_type: "cargo_van", icon: "/vehicles/parcel_van.svg",
+          base_fare: 100, fare_per_km: 20, minimum_fare: 150, waiting_charge_per_min: 2, service_type: "parcel" },
+      ];
+
+      const insertedVehicles: any[] = [];
+      for (const v of vehicles) {
+        const existing = await rawDb.execute(rawSql`SELECT id FROM vehicle_categories WHERE name=${v.name} LIMIT 1`);
+        let vid: string;
+        if (existing.rows.length > 0) {
+          vid = (existing.rows[0] as any).id;
+          await rawDb.execute(rawSql`
+            UPDATE vehicle_categories SET
+              type=${v.type}, icon=${v.icon},
+              base_fare=${v.base_fare}, fare_per_km=${v.fare_per_km},
+              minimum_fare=${v.minimum_fare}, waiting_charge_per_min=${v.waiting_charge_per_min},
+              is_active=true
+            WHERE id=${vid}::uuid
+          `);
+        } else {
+          const ins = await rawDb.execute(rawSql`
+            INSERT INTO vehicle_categories (name, type, vehicle_type, icon, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, is_active)
+            VALUES (${v.name}, ${v.type}, ${v.vehicle_type || v.type}, ${v.icon}, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, true)
+            RETURNING id
+          `);
+          vid = (ins.rows[0] as any).id;
+        }
+        insertedVehicles.push({ name: v.name, id: vid });
+
+        // Upsert trip_fares
+        const fareExists = await rawDb.execute(rawSql`SELECT id FROM trip_fares WHERE vehicle_category_id=${vid}::uuid AND zone_id IS NULL LIMIT 1`);
+        if (fareExists.rows.length > 0) {
+          await rawDb.execute(rawSql`
+            UPDATE trip_fares SET base_fare=${v.base_fare}, fare_per_km=${v.fare_per_km}, minimum_fare=${v.minimum_fare},
+              waiting_charge_per_min=${v.waiting_charge_per_min}, cancellation_fee=30, night_charge_multiplier=1.15
+            WHERE vehicle_category_id=${vid}::uuid AND zone_id IS NULL
+          `);
+        } else {
+          await rawDb.execute(rawSql`
+            INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, cancellation_fee, night_charge_multiplier)
+            VALUES (${vid}::uuid, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, 30, 1.15)
+          `).catch(() => {});
+        }
+      }
+
+      // ── 2. Vehicle brands ────────────────────────────────────────────────────
+      const brands = [
+        // Bikes
+        { name: "Hero", category: "two_wheeler" }, { name: "Honda", category: "two_wheeler" },
+        { name: "Bajaj", category: "two_wheeler" }, { name: "TVS", category: "two_wheeler" },
+        { name: "Royal Enfield", category: "two_wheeler" }, { name: "Yamaha", category: "two_wheeler" },
+        { name: "Suzuki", category: "two_wheeler" }, { name: "KTM", category: "two_wheeler" },
+        // Cars
+        { name: "Maruti Suzuki", category: "four_wheeler" }, { name: "Hyundai", category: "four_wheeler" },
+        { name: "Tata", category: "four_wheeler" }, { name: "Mahindra", category: "four_wheeler" },
+        { name: "Toyota", category: "four_wheeler" }, { name: "Honda Cars", category: "four_wheeler" },
+        { name: "Kia", category: "four_wheeler" }, { name: "Renault", category: "four_wheeler" },
+        { name: "Ford", category: "four_wheeler" }, { name: "Volkswagen", category: "four_wheeler" },
+        { name: "MG", category: "four_wheeler" }, { name: "Skoda", category: "four_wheeler" },
+        // Autos
+        { name: "Bajaj RE", category: "three_wheeler" }, { name: "TVS King", category: "three_wheeler" },
+        { name: "Mahindra Alfa", category: "three_wheeler" }, { name: "Piaggio Ape", category: "three_wheeler" },
+      ];
+      for (const b of brands) {
+        await rawDb.execute(rawSql`
+          INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})
+          ON CONFLICT (name) DO UPDATE SET category=${b.category}
+        `).catch(() => {
+          rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})`).catch(() => {});
+        });
+      }
+
+      // ── 3. Activate all platform services ────────────────────────────────────
+      await rawDb.execute(rawSql`UPDATE platform_services SET status='active' WHERE status='inactive'`).catch(() => {});
+
+      // ── 4. Surge pricing rules (peak hours) ─────────────────────────────────
+      const surges = [
+        { reason: "Morning Peak", start_time: "07:00", end_time: "10:00", multiplier: 1.3 },
+        { reason: "Evening Peak", start_time: "17:00", end_time: "21:00", multiplier: 1.4 },
+        { reason: "Night Ride",   start_time: "23:00", end_time: "05:00", multiplier: 1.2 },
+        { reason: "Weekend",      start_time: "10:00", end_time: "23:00", multiplier: 1.15 },
+      ];
+      for (const s of surges) {
+        const ex = await rawDb.execute(rawSql`SELECT id FROM surge_pricing WHERE reason=${s.reason} LIMIT 1`);
+        if (!ex.rows.length) {
+          await rawDb.execute(rawSql`
+            INSERT INTO surge_pricing (reason, start_time, end_time, multiplier, is_active)
+            VALUES (${s.reason}, ${s.start_time}, ${s.end_time}, ${s.multiplier}, true)
+          `).catch(() => {});
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Platform seeded: vehicles, fares, brands, services, surge pricing.",
+        vehicles: insertedVehicles,
+        brandsCount: brands.length,
+        ts: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
   app.get("/api/ops/metrics", requireOpsKey, async (_req, res) => {
     try {
       const [activeTrips, onlineDrivers, openComplaints] = await Promise.all([
