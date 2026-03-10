@@ -31,10 +31,11 @@ jobs:
             npm run build
 
             echo "=== Restarting server ==="
+            set -a && source /var/www/jago/.env && set +a
             pm2 restart jago --update-env || pm2 start dist/index.js --name jago --max-memory-restart 512M
 
             echo "=== Health check ==="
-            sleep 3
+            sleep 5
             curl -sf http://localhost:5000/api/health && echo "Server OK" || echo "WARNING: health check failed"
 
             pm2 save

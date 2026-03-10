@@ -144,7 +144,9 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl enable nginx && systemctl reload nginx
 log "Nginx configured OK"
 
-# PM2 start
+mkdir -p /var/log/jago
+set -a && source /var/www/jago/.env && set +a
+# PM2 start (env vars inherited from shell)
 pm2 describe jago > /dev/null 2>&1 && \
   pm2 restart jago --update-env || \
   pm2 start /var/www/jago/dist/index.js --name jago --max-memory-restart 512M
