@@ -43,20 +43,47 @@ export interface ParsedVoiceIntent {
 }
 
 const INTENT_PATTERNS: Array<{ pattern: RegExp; intent: ParsedVoiceIntent["intent"]; confidence: number }> = [
-  { pattern: /\b(book|ride|go|take me|drop me|need a ride|get me a|cab|taxi|travel)\b/i, intent: "book_ride", confidence: 0.85 },
+  // English
+  { pattern: /\b(book|ride|go|take me|drop me|need a ride|get me a|cab|taxi|travel|i want a|i need a)\b/i, intent: "book_ride", confidence: 0.85 },
   { pattern: /\b(send|parcel|deliver|package|courier|dispatch|ship)\b/i, intent: "send_parcel", confidence: 0.9 },
   { pattern: /\b(find|nearby|available|drivers|pilots|who is near|show drivers)\b/i, intent: "find_drivers", confidence: 0.85 },
   { pattern: /\b(status|where is|track|eta|how long|when will)\b/i, intent: "check_status", confidence: 0.8 },
   { pattern: /\b(cancel|stop|abort|end ride|don't want)\b/i, intent: "cancel_ride", confidence: 0.9 },
+  // Telugu (transliterated)
+  { pattern: /\b(book\s*cheyyi|vellaali|vellu|ride\s*kavali|cab\s*kavali|taxi\s*kavali|auto\s*kavali|veyyi)\b/i, intent: "book_ride", confidence: 0.9 },
+  { pattern: /\b(parcel\s*pampinchu|courier\s*pampinchu|send\s*cheyyi|deliver\s*cheyyi)\b/i, intent: "send_parcel", confidence: 0.9 },
+  { pattern: /\b(cancel\s*cheyyi|vaddhu|aapandi|venda)\b/i, intent: "cancel_ride", confidence: 0.9 },
+  // Hindi (transliterated)
+  { pattern: /\b(book\s*karo|jana\s*hai|mujhe\s*jana|cab\s*chahiye|ride\s*chahiye|auto\s*bulao)\b/i, intent: "book_ride", confidence: 0.9 },
+  { pattern: /\b(parcel\s*bhejo|deliver\s*karo|saman\s*bhejo)\b/i, intent: "send_parcel", confidence: 0.9 },
+  { pattern: /\b(cancel\s*karo|nahi\s*chahiye|band\s*karo)\b/i, intent: "cancel_ride", confidence: 0.9 },
 ];
 
 const VEHICLE_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
-  { pattern: /\b(suv|innova|ertiga)\b/i, type: "SUV" },
-  { pattern: /\b(car|sedan|swift|dzire)\b/i, type: "Car" },
-  { pattern: /\b(auto|rickshaw|three wheeler|tuk)\b/i, type: "Mini Auto" },
-  { pattern: /\b(bike|two wheeler|motorcycle|scooty)\b/i, type: "Bike" },
-  { pattern: /\b(parcel|package|courier|delivery)\b/i, type: "Bike Parcel" },
-  { pattern: /\b(cargo|truck|lorry|goods|mini truck|tata ace)\b/i, type: "Cargo Truck" },
+  // SUV — matches our "SUV / XL" category
+  { pattern: /\b(suv|xl|innova|ertiga|fortuner|big\s*car|large\s*car)\b/i, type: "SUV" },
+  // Sedan — matches our "Sedan" category
+  { pattern: /\b(sedan|swift|dzire|ciaz|city|verna|prime\s*car)\b/i, type: "Sedan" },
+  // Mini Car — matches our "Mini Car" category
+  { pattern: /\b(mini\s*car|micro|go|mini|hatchback|economy|small\s*car|mini\s*cab)\b/i, type: "Mini Car" },
+  // Auto
+  { pattern: /\b(auto|rickshaw|three\s*wheeler|tuk|tuk\s*tuk|auto\s*rickshaw)\b/i, type: "Auto" },
+  // Bike — matches our "Bike" category
+  { pattern: /\b(bike|two\s*wheeler|motorcycle|scooty|moto|rapido|bike\s*ride)\b/i, type: "Bike" },
+  // Parcel/Delivery — matches "Bike Delivery"
+  { pattern: /\b(parcel|package|courier|delivery|send\s*parcel)\b/i, type: "Bike Delivery" },
+  // Cargo
+  { pattern: /\b(cargo|truck|lorry|goods|tata\s*ace|tempo|bolero|mini\s*truck)\b/i, type: "Tata Ace" },
+  // Pool
+  { pattern: /\b(pool|share|shared\s*ride|carpool|split)\b/i, type: "Mini Pool" },
+  // Telugu vehicle names
+  { pattern: /\b(auto\s*kavali|auto\s*veyyi|riksha)\b/i, type: "Auto" },
+  { pattern: /\b(bike\s*kavali|bike\s*veyyi|two\s*wheeler\s*kavali)\b/i, type: "Bike" },
+  { pattern: /\b(car\s*kavali|cab\s*kavali|taxi\s*kavali)\b/i, type: "Sedan" },
+  // Hindi vehicle names
+  { pattern: /\b(auto\s*bulao|rickshaw\s*bulao|tuk\s*bulao)\b/i, type: "Auto" },
+  { pattern: /\b(bike\s*bulao|motorcycle\s*bulao)\b/i, type: "Bike" },
+  { pattern: /\b(car\s*bulao|cab\s*bulao|taxi\s*bulao|gaadi\s*bulao)\b/i, type: "Sedan" },
 ];
 
 const LOCATION_PREPOSITIONS = /\b(from|at|near|in)\s+/i;
