@@ -8344,7 +8344,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const msg = action === 'approve'
           ? "Your KYC documents have been approved! You can now start accepting rides."
           : `Your KYC documents were rejected. ${note ? 'Reason: ' + note : 'Please re-upload correct documents.'}`;
-        sendFcmNotification(fcmToken, "KYC Update", msg, {}).catch(() => {});
+        sendFcmNotification({ fcmToken, title: "KYC Update", body: msg }).catch(() => {});
       }
 
       res.json({ success: true, action, driverId });
@@ -10362,13 +10362,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pickupLat, pickupLng, stops = [] } = req.body;
       if (!stops.length) return res.json({ stops: [] });
 
-      function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+      const haversineKm2 = (lat1: number, lng1: number, lat2: number, lng2: number) => {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLng = (lng2 - lng1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      }
+      };
 
       // Nearest-neighbor greedy algorithm
       let currentLat = parseFloat(pickupLat) || 0;
@@ -10381,7 +10381,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         let minDist = Infinity;
         let minIdx = 0;
         for (let i = 0; i < remaining.length; i++) {
-          const d = haversineKm(currentLat, currentLng, parseFloat(remaining[i].lat) || 0, parseFloat(remaining[i].lng) || 0);
+          const d = haversineKm2(currentLat, currentLng, parseFloat(remaining[i].lat) || 0, parseFloat(remaining[i].lng) || 0);
           if (d < minDist) { minDist = d; minIdx = i; }
         }
         const next = remaining.splice(minIdx, 1)[0];
