@@ -227,8 +227,107 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12, fontFamily: 'monospace')),
             ]),
           ],
+          if (status == 'completed') ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _fetchAndShowReceipt(t['id']?.toString() ?? t['tripId']?.toString() ?? '');
+                },
+                icon: const Icon(Icons.receipt_long, size: 16),
+                label: const Text('View Receipt', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+              ),
+            ),
+          ],
         ]),
       ),
+    );
+  }
+
+  Future<void> _fetchAndShowReceipt(String tripId) async {
+    if (tripId.isEmpty) return;
+    final token = await AuthService.getToken();
+    try {
+      final res = await http.get(Uri.parse(ApiConfig.tripReceipt(tripId)),
+        headers: {'Authorization': 'Bearer $token'});
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final receipt = jsonDecode(res.body)['receipt'] as Map<String, dynamic>;
+        _showReceiptSheet(receipt);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Receipt not available'), backgroundColor: Colors.red));
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load receipt'), backgroundColor: Colors.red));
+    }
+  }
+
+  void _showReceiptSheet(Map<String, dynamic> r) {
+    final fare = r['fare'] as Map? ?? {};
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0D1B3E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 28),
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          const Text('Earnings Receipt', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(r['receiptNo'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+          const SizedBox(height: 16),
+          _receiptLine('Pickup', r['pickup']?['address'] ?? '—'),
+          _receiptLine('Drop', r['destination']?['address'] ?? '—'),
+          _receiptLine('Distance', '${r['distanceKm'] ?? 0} km'),
+          const Divider(color: Colors.white12, height: 24),
+          _receiptLine('Total Fare', '₹${fare['total'] ?? 0}'),
+          _receiptLine('GST (5%)', '₹${fare['gst'] ?? 0}', highlight: Colors.orange),
+          _receiptLine('Commission', '₹${fare['commission'] ?? 0}', highlight: Colors.red[300]),
+          const Divider(color: Colors.white12, height: 24),
+          _receiptLine('Your Earning', '₹${fare['driverEarning'] ?? 0}', highlight: _green, bold: true),
+          _receiptLine('Payment', (fare['paymentMethod'] ?? 'Cash').toUpperCase()),
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _blue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 13)),
+              child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            )),
+        ])),
+      ),
+    );
+  }
+
+  Widget _receiptLine(String label, String value, {Color? highlight, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
+        Text(value, style: TextStyle(
+          color: highlight ?? Colors.white,
+          fontSize: bold ? 15 : 13,
+          fontWeight: bold ? FontWeight.bold : FontWeight.w500)),
+      ]),
     );
   }
 

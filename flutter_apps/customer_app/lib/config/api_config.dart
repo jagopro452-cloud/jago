@@ -89,4 +89,22 @@ class ApiConfig {
   static String get fcmToken => '$baseUrl/api/app/fcm-token';
   static String get referral => '$baseUrl/api/app/referral';
   static String get deleteAccount => '$baseUrl/api/app/customer/account';
+
+  // ── Trip Receipt ─────────────────────────────────────────────────────
+  static String tripReceipt(String tripId) => '$baseUrl/api/app/customer/trip-receipt/$tripId';
+
+  // ── Parcel ───────────────────────────────────────────────────────────
+  static String get parcelBook => '$baseUrl/api/app/parcel/book';
+  static String get parcelOrders => '$baseUrl/api/app/parcel/orders';
+  static String get parcelOptimizeRoute => '$baseUrl/api/app/parcel/optimize-route';
+  static String parcelTrack(String id) => '$baseUrl/api/app/parcel/$id/track';
+  static String parcelReceipt(String id) => '$baseUrl/api/app/parcel/$id/receipt';
+  static String parcelCancel(String id) => '$baseUrl/api/app/parcel/$id/cancel';
+
+  // ── B2B ──────────────────────────────────────────────────────────────
+  static String get b2bRegister => '$baseUrl/api/app/b2b/register';
+  static String get b2bDashboard => '$baseUrl/api/app/b2b/dashboard';
+
+  // ── Voice Booking ────────────────────────────────────────────────────
+  static String get voiceBookingParse => '$baseUrl/api/app/voice-booking/parse';
 }

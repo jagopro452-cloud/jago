@@ -81,4 +81,18 @@ class ApiConfig {
   static String get deleteAccount => '$baseUrl/api/app/driver/account';
   static String get verifyDeliveryOtp => '$baseUrl/api/app/driver/verify-delivery-otp';
   static String get tripPhoto => '$baseUrl/api/app/driver/trip-photo';
+
+  // ── KYC ──────────────────────────────────────────────────────────────
+  static String get kycUpload => '$baseUrl/api/app/driver/kyc/upload';
+  static String get kycStatus => '$baseUrl/api/app/driver/kyc/status';
+
+  // ── Trip Receipt ─────────────────────────────────────────────────────
+  static String tripReceipt(String tripId) => '$baseUrl/api/app/driver/trip-receipt/$tripId';
+
+  // ── Subscription Plans ───────────────────────────────────────────────
+  static String get subscriptionPlans => '$baseUrl/api/app/driver/subscription/plans';
+  static String get subscriptionCreateOrder => '$baseUrl/api/app/driver/subscription/create-order';
+  static String get subscriptionVerify => '$baseUrl/api/app/driver/subscription/verify-payment';
+  static String get walletCreateOrder => '$baseUrl/api/app/driver/wallet/create-order';
+  static String get walletVerifyPayment => '$baseUrl/api/app/driver/wallet/verify-payment';
 }
