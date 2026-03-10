@@ -1260,6 +1260,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           description: "Upto 2500 kg • 20 CBM • Large loads, factory goods, full shifting" },
       ];
 
+      // ── 0. Ensure auxiliary tables exist ─────────────────────────────────────
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS call_logs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          caller_id UUID NOT NULL,
+          receiver_id UUID NOT NULL,
+          trip_id UUID,
+          status VARCHAR(20) DEFAULT 'initiated',
+          duration_sec INT DEFAULT 0,
+          initiated_at TIMESTAMPTZ DEFAULT NOW(),
+          ended_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS driver_kyc_documents (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          driver_id UUID NOT NULL,
+          document_type VARCHAR(50) NOT NULL,
+          document_number VARCHAR(100),
+          file_url TEXT,
+          status VARCHAR(20) DEFAULT 'pending',
+          admin_note TEXT,
+          reviewed_by UUID,
+          reviewed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS parcel_stops (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          parcel_order_id UUID NOT NULL,
+          stop_sequence INT NOT NULL,
+          address TEXT NOT NULL,
+          lat NUMERIC(10,7),
+          lng NUMERIC(10,7),
+          receiver_name VARCHAR(255),
+          receiver_phone VARCHAR(20),
+          status VARCHAR(20) DEFAULT 'pending',
+          arrived_at TIMESTAMPTZ,
+          delivered_at TIMESTAMPTZ,
+          otp VARCHAR(10),
+          notes TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
+
       // Add extra columns if not exists
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(() => {});
@@ -7372,6 +7420,140 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── CUSTOMER: Trip receipt ─────────────────────────────────────────────────
+  app.get("/api/app/customer/trip-receipt/:tripId", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { tripId } = req.params;
+      const r = await rawDb.execute(rawSql`
+        SELECT t.*,
+          d.full_name as driver_name, d.phone as driver_phone,
+          d.profile_photo as driver_photo, d.rating as driver_rating,
+          vc.name as vehicle_name, vc.type as vehicle_type, vc.icon as vehicle_icon,
+          dd.vehicle_number, dd.vehicle_model, dd.vehicle_color
+        FROM trip_requests t
+        LEFT JOIN users d ON d.id = t.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
+        WHERE t.id = ${tripId}::uuid
+          AND t.customer_id = ${customer.id}::uuid
+          AND t.current_status = 'completed'
+        LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Receipt not found" });
+      const t = camelize(r.rows[0]) as any;
+
+      const fare = parseFloat(t.actualFare || t.estimatedFare || 0);
+      const gst  = parseFloat(t.gstAmount || (fare * 0.05).toFixed(2));
+      const dist = parseFloat(t.actualDistance || t.estimatedDistance || 0);
+      const payable = parseFloat(t.customerFare || fare);
+      const discount = parseFloat(t.discountAmount || 0);
+
+      // Build receipt number: REC-<date>-<shortId>
+      const dateStr = new Date(t.completedAt || t.createdAt).toISOString().slice(0,10).replace(/-/g,'');
+      const receiptNo = `REC-${dateStr}-${(t.refId || t.id?.slice(0,8) || '').toUpperCase()}`;
+
+      const receipt = {
+        receiptNo,
+        tripId: t.id,
+        refId: t.refId,
+        status: 'completed',
+        createdAt: t.createdAt,
+        completedAt: t.completedAt,
+        // Route
+        pickup: { address: t.pickupAddress, lat: t.pickupLat, lng: t.pickupLng },
+        destination: { address: t.destinationAddress, lat: t.destinationLat, lng: t.destinationLng },
+        distanceKm: dist,
+        durationMin: t.durationMin || 0,
+        // Fare breakdown
+        fare: {
+          baseFare: parseFloat(t.baseFare || 0),
+          distanceFare: parseFloat(t.distanceFare || (fare - parseFloat(t.baseFare || 0)).toFixed(2)),
+          waitingCharge: parseFloat(t.waitingCharge || 0),
+          gst,
+          discount,
+          total: fare,
+          payable,
+          paymentMethod: t.paymentMethod || 'cash',
+          paymentStatus: t.paymentStatus || 'paid',
+          currency: 'INR',
+        },
+        // Vehicle & driver
+        vehicle: {
+          name: t.vehicleName,
+          type: t.vehicleType,
+          icon: t.vehicleIcon,
+          number: t.vehicleNumber,
+          model: t.vehicleModel,
+          color: t.vehicleColor,
+        },
+        driver: {
+          name: t.driverName,
+          rating: parseFloat(t.driverRating || 0),
+          photo: t.driverPhoto,
+        },
+        tripType: t.tripType,
+        cancelReason: t.cancelReason,
+      };
+      res.json({ receipt });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Trip receipt ────────────────────────────────────────────────────
+  app.get("/api/app/driver/trip-receipt/:tripId", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { tripId } = req.params;
+      const r = await rawDb.execute(rawSql`
+        SELECT t.*,
+          c.full_name as customer_name,
+          vc.name as vehicle_name, vc.type as vehicle_type
+        FROM trip_requests t
+        LEFT JOIN users c ON c.id = t.customer_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.id = ${tripId}::uuid
+          AND t.driver_id = ${driver.id}::uuid
+          AND t.current_status = 'completed'
+        LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Receipt not found" });
+      const t = camelize(r.rows[0]) as any;
+
+      const fare = parseFloat(t.actualFare || t.estimatedFare || 0);
+      const gst  = parseFloat(t.gstAmount || (fare * 0.05).toFixed(2));
+      const commission = parseFloat(t.commissionAmount || 0);
+      const driverCredit = parseFloat(t.driverWalletCredit || t.driverFare || (fare - commission).toFixed(2));
+      const dist = parseFloat(t.actualDistance || t.estimatedDistance || 0);
+
+      const dateStr = new Date(t.completedAt || t.createdAt).toISOString().slice(0,10).replace(/-/g,'');
+      const receiptNo = `REC-${dateStr}-${(t.refId || t.id?.slice(0,8) || '').toUpperCase()}`;
+
+      const receipt = {
+        receiptNo,
+        tripId: t.id,
+        refId: t.refId,
+        status: 'completed',
+        createdAt: t.createdAt,
+        completedAt: t.completedAt,
+        pickup: { address: t.pickupAddress },
+        destination: { address: t.destinationAddress },
+        distanceKm: dist,
+        fare: {
+          total: fare,
+          gst,
+          commission,
+          driverEarning: driverCredit,
+          paymentMethod: t.paymentMethod || 'cash',
+          currency: 'INR',
+        },
+        customer: { name: t.customerName },
+        vehicle: { name: t.vehicleName, type: t.vehicleType },
+        tripType: t.tripType,
+      };
+      res.json({ receipt });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── CUSTOMER: Fare estimate ────────────────────────────────────────────────
   app.post("/api/app/customer/estimate-fare", async (req, res) => {
     try {
@@ -7999,6 +8181,173 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
       res.json({ success: true, message: "Profile updated" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Upload KYC document ───────────────────────────────────────────
+  // POST /api/app/driver/kyc/upload
+  // Body: { documentType: 'aadhar'|'license'|'rc'|'insurance'|'photo', documentNumber?, fileUrl }
+  app.post("/api/app/driver/kyc/upload", authApp, upload.single("file"), async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const documentType = req.body.documentType || req.body.document_type;
+      const documentNumber = req.body.documentNumber || req.body.document_number || null;
+      if (!documentType) return res.status(400).json({ message: "documentType is required" });
+
+      // If file uploaded via multipart, build URL; otherwise accept fileUrl in body
+      let fileUrl: string | null = null;
+      if (req.file) {
+        fileUrl = `/uploads/${req.file.filename}`;
+      } else if (req.body.fileUrl) {
+        fileUrl = req.body.fileUrl;
+      }
+
+      // Upsert: one row per driver+documentType
+      const existing = await rawDb.execute(rawSql`
+        SELECT id FROM driver_kyc_documents
+        WHERE driver_id=${driver.id}::uuid AND document_type=${documentType} LIMIT 1
+      `);
+      if (existing.rows.length) {
+        await rawDb.execute(rawSql`
+          UPDATE driver_kyc_documents
+          SET document_number=${documentNumber}, file_url=${fileUrl}, status='pending',
+              admin_note=NULL, updated_at=NOW()
+          WHERE driver_id=${driver.id}::uuid AND document_type=${documentType}
+        `);
+      } else {
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_kyc_documents (driver_id, document_type, document_number, file_url, status)
+          VALUES (${driver.id}::uuid, ${documentType}, ${documentNumber}, ${fileUrl}, 'pending')
+        `);
+      }
+
+      // Check if all required docs are uploaded → set verification_status to 'under_review'
+      const requiredDocs = ['aadhar', 'license', 'rc'];
+      const uploaded = await rawDb.execute(rawSql`
+        SELECT document_type FROM driver_kyc_documents
+        WHERE driver_id=${driver.id}::uuid AND status IN ('pending','approved')
+      `);
+      const uploadedTypes = uploaded.rows.map((r: any) => r.document_type);
+      const allUploaded = requiredDocs.every(d => uploadedTypes.includes(d));
+      if (allUploaded) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET verification_status='under_review' WHERE id=${driver.id}::uuid
+        `).catch(() => {});
+      }
+
+      res.json({ success: true, message: "Document uploaded. Under admin review.", allRequiredUploaded: allUploaded });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Get KYC status ────────────────────────────────────────────────
+  app.get("/api/app/driver/kyc/status", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const docs = await rawDb.execute(rawSql`
+        SELECT document_type, document_number, file_url, status, admin_note, updated_at
+        FROM driver_kyc_documents WHERE driver_id=${driver.id}::uuid
+        ORDER BY created_at ASC
+      `);
+      const verR = await rawDb.execute(rawSql`
+        SELECT verification_status FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `);
+      const verStatus = (verR.rows[0] as any)?.verification_status || 'pending';
+      res.json({
+        verificationStatus: verStatus,
+        documents: camelize(docs.rows),
+        requiredDocs: ['aadhar', 'license', 'rc'],
+        optionalDocs: ['insurance', 'photo', 'bank'],
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: List pending KYC reviews ──────────────────────────────────────
+  app.get("/api/admin/kyc/pending", requireAdminAuth, async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT u.id as driver_id, u.full_name, u.phone, u.verification_status,
+          json_agg(json_build_object(
+            'id', k.id,
+            'documentType', k.document_type,
+            'documentNumber', k.document_number,
+            'fileUrl', k.file_url,
+            'status', k.status,
+            'adminNote', k.admin_note,
+            'updatedAt', k.updated_at
+          ) ORDER BY k.created_at ASC) as documents
+        FROM users u
+        JOIN driver_kyc_documents k ON k.driver_id = u.id
+        WHERE u.user_type = 'driver' AND u.verification_status IN ('under_review', 'pending')
+        GROUP BY u.id, u.full_name, u.phone, u.verification_status
+        ORDER BY MAX(k.created_at) DESC
+        LIMIT 50
+      `);
+      res.json({ drivers: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Approve/Reject KYC ─────────────────────────────────────────────
+  // POST /api/admin/kyc/:driverId/review
+  // Body: { action: 'approve'|'reject', documentType?, note? }
+  app.post("/api/admin/kyc/:driverId/review", requireAdminAuth, async (req, res) => {
+    try {
+      const { driverId } = req.params;
+      const { action, documentType, note } = req.body;
+      if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: "action must be approve or reject" });
+
+      const newDocStatus = action === 'approve' ? 'approved' : 'rejected';
+
+      if (documentType) {
+        // Review a specific document
+        await rawDb.execute(rawSql`
+          UPDATE driver_kyc_documents
+          SET status=${newDocStatus}, admin_note=${note || null}, updated_at=NOW()
+          WHERE driver_id=${driverId}::uuid AND document_type=${documentType}
+        `);
+      } else {
+        // Review all documents at once
+        await rawDb.execute(rawSql`
+          UPDATE driver_kyc_documents
+          SET status=${newDocStatus}, admin_note=${note || null}, updated_at=NOW()
+          WHERE driver_id=${driverId}::uuid AND status='pending'
+        `);
+      }
+
+      // If approving all → mark driver as approved and activate
+      if (action === 'approve') {
+        // Check if all required docs are approved
+        const approvedDocs = await rawDb.execute(rawSql`
+          SELECT document_type FROM driver_kyc_documents
+          WHERE driver_id=${driverId}::uuid AND status='approved'
+        `);
+        const approvedTypes = approvedDocs.rows.map((r: any) => r.document_type);
+        const requiredDocs = ['aadhar', 'license', 'rc'];
+        const allApproved = requiredDocs.every(d => approvedTypes.includes(d));
+        if (allApproved || !documentType) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET verification_status='approved', is_active=true WHERE id=${driverId}::uuid
+          `);
+        }
+      } else {
+        // Reject → mark driver as rejected
+        await rawDb.execute(rawSql`
+          UPDATE users SET verification_status='rejected' WHERE id=${driverId}::uuid
+        `);
+      }
+
+      // Notify driver via FCM (best-effort)
+      const fcmR = await rawDb.execute(rawSql`
+        SELECT fcm_token FROM user_devices WHERE user_id=${driverId}::uuid AND fcm_token IS NOT NULL LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const fcmToken = (fcmR.rows[0] as any)?.fcm_token;
+      if (fcmToken) {
+        const msg = action === 'approve'
+          ? "Your KYC documents have been approved! You can now start accepting rides."
+          : `Your KYC documents were rejected. ${note ? 'Reason: ' + note : 'Please re-upload correct documents.'}`;
+        sendFcmNotification(fcmToken, "KYC Update", msg, {}).catch(() => {});
+      }
+
+      res.json({ success: true, action, driverId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -10001,6 +10350,232 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
       }
       res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PARCEL: Multi-stop route optimization (nearest-neighbor) ─────────────
+  // POST /api/app/parcel/optimize-route
+  // Body: { pickupLat, pickupLng, stops: [{ address, lat, lng, ... }] }
+  // Returns stops reordered by nearest-neighbor from pickup point
+  app.post("/api/app/parcel/optimize-route", authApp, async (req, res) => {
+    try {
+      const { pickupLat, pickupLng, stops = [] } = req.body;
+      if (!stops.length) return res.json({ stops: [] });
+
+      function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      // Nearest-neighbor greedy algorithm
+      let currentLat = parseFloat(pickupLat) || 0;
+      let currentLng = parseFloat(pickupLng) || 0;
+      const remaining = [...stops];
+      const ordered: any[] = [];
+      let totalDistKm = 0;
+
+      while (remaining.length) {
+        let minDist = Infinity;
+        let minIdx = 0;
+        for (let i = 0; i < remaining.length; i++) {
+          const d = haversineKm(currentLat, currentLng, parseFloat(remaining[i].lat) || 0, parseFloat(remaining[i].lng) || 0);
+          if (d < minDist) { minDist = d; minIdx = i; }
+        }
+        const next = remaining.splice(minIdx, 1)[0];
+        totalDistKm += minDist;
+        currentLat = parseFloat(next.lat) || currentLat;
+        currentLng = parseFloat(next.lng) || currentLng;
+        ordered.push({ ...next, stopSequence: ordered.length + 1, distFromPrevKm: parseFloat(minDist.toFixed(2)) });
+      }
+
+      res.json({ stops: ordered, totalDistKm: parseFloat(totalDistKm.toFixed(2)), optimized: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PARCEL: Track order with all stop details ─────────────────────────────
+  app.get("/api/app/parcel/:id/track", authApp, async (req, res) => {
+    try {
+      const userId = (req as any).currentUser?.id;
+      const r = await rawDb.execute(rawSql`
+        SELECT po.*,
+          cu.full_name as customer_name, cu.phone as customer_phone,
+          dr.full_name as driver_name, dr.phone as driver_phone
+        FROM parcel_orders po
+        LEFT JOIN users cu ON cu.id = po.customer_id
+        LEFT JOIN users dr ON dr.id = po.driver_id
+        WHERE po.id = ${req.params.id}::uuid
+          AND (po.customer_id = ${userId}::uuid OR po.driver_id = ${userId}::uuid)
+        LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Order not found" });
+      const order = camelize(r.rows[0]) as any;
+
+      // Parse drop_locations
+      const drops: any[] = typeof order.dropLocations === 'string'
+        ? JSON.parse(order.dropLocations) : (order.dropLocations || []);
+
+      const currentIdx = parseInt(order.currentDropIndex ?? 0);
+      const currentStop = drops[currentIdx] || null;
+      const totalStops = drops.length;
+      const completedStops = drops.filter((d: any) => d.delivered_at).length;
+
+      res.json({
+        order: {
+          ...order,
+          drops,
+          progress: { currentStopIndex: currentIdx, currentStop, completedStops, totalStops },
+          // Mask driver phone in transit (no direct contact number exposed)
+          driverPhone: order.driverPhone ? order.driverPhone.replace(/(\d{2})\d{6}(\d{2})/, '$1XXXXXX$2') : null,
+        }
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── PARCEL: Receipt after delivery ────────────────────────────────────────
+  app.get("/api/app/parcel/:id/receipt", authApp, async (req, res) => {
+    try {
+      const userId = (req as any).currentUser?.id;
+      const r = await rawDb.execute(rawSql`
+        SELECT po.*,
+          cu.full_name as customer_name,
+          dr.full_name as driver_name
+        FROM parcel_orders po
+        LEFT JOIN users cu ON cu.id = po.customer_id
+        LEFT JOIN users dr ON dr.id = po.driver_id
+        WHERE po.id = ${req.params.id}::uuid
+          AND (po.customer_id = ${userId}::uuid OR po.driver_id = ${userId}::uuid)
+          AND po.current_status = 'completed'
+        LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Parcel receipt not found" });
+      const o = camelize(r.rows[0]) as any;
+      const drops: any[] = typeof o.dropLocations === 'string' ? JSON.parse(o.dropLocations) : (o.dropLocations || []);
+      const dateStr = new Date(o.updatedAt || o.createdAt).toISOString().slice(0,10).replace(/-/g,'');
+      const receiptNo = `PCL-${dateStr}-${(o.id || '').slice(0,8).toUpperCase()}`;
+
+      res.json({
+        receipt: {
+          receiptNo,
+          orderId: o.id,
+          status: 'completed',
+          createdAt: o.createdAt,
+          completedAt: o.updatedAt,
+          customer: { name: o.customerName },
+          driver: { name: o.driverName },
+          pickup: { address: o.pickupAddress },
+          stops: drops.map((d: any, i: number) => ({
+            stopNo: i + 1,
+            address: d.address || d.dropAddress,
+            receiverName: d.receiverName,
+            deliveredAt: d.delivered_at,
+          })),
+          fare: {
+            baseFare: parseFloat(o.baseFare || 0),
+            distanceFare: parseFloat(o.distanceFare || 0),
+            weightFare: parseFloat(o.weightFare || 0),
+            total: parseFloat(o.totalFare || 0),
+            paymentMethod: o.paymentMethod || 'cash',
+            currency: 'INR',
+          },
+          distanceKm: parseFloat(o.totalDistanceKm || 0),
+          weightKg: parseFloat(o.weightKg || 0),
+          vehicleCategory: o.vehicleCategory,
+        }
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── B2B: Company registration ─────────────────────────────────────────────
+  app.post("/api/app/b2b/register", authApp, async (req, res) => {
+    try {
+      const userId = (req as any).currentUser?.id;
+      const { companyName, gstNumber, address, contactName, contactPhone, deliveryPlan = 'pay_per_delivery' } = req.body;
+      if (!companyName) return res.status(400).json({ message: "companyName required" });
+
+      // Ensure b2b_companies table exists
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS b2b_companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          owner_id UUID NOT NULL,
+          company_name VARCHAR(255) NOT NULL,
+          gst_number VARCHAR(50),
+          address TEXT,
+          contact_name VARCHAR(255),
+          contact_phone VARCHAR(20),
+          delivery_plan VARCHAR(50) DEFAULT 'pay_per_delivery',
+          credit_limit NUMERIC(10,2) DEFAULT 0,
+          is_active BOOLEAN DEFAULT true,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
+
+      const existing = await rawDb.execute(rawSql`
+        SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1
+      `);
+      if (existing.rows.length) {
+        await rawDb.execute(rawSql`
+          UPDATE b2b_companies SET company_name=${companyName}, gst_number=${gstNumber || null},
+            address=${address || null}, contact_name=${contactName || null},
+            contact_phone=${contactPhone || null}, delivery_plan=${deliveryPlan}, updated_at=NOW()
+          WHERE owner_id=${userId}::uuid
+        `);
+        return res.json({ success: true, message: "B2B profile updated", companyId: (existing.rows[0] as any).id });
+      }
+      const ins = await rawDb.execute(rawSql`
+        INSERT INTO b2b_companies (owner_id, company_name, gst_number, address, contact_name, contact_phone, delivery_plan)
+        VALUES (${userId}::uuid, ${companyName}, ${gstNumber || null}, ${address || null},
+                ${contactName || null}, ${contactPhone || null}, ${deliveryPlan})
+        RETURNING id
+      `);
+      res.json({ success: true, message: "B2B company registered", companyId: (ins.rows[0] as any).id });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── B2B: Get delivery stats + order history ───────────────────────────────
+  app.get("/api/app/b2b/dashboard", authApp, async (req, res) => {
+    try {
+      const userId = (req as any).currentUser?.id;
+      const compR = await rawDb.execute(rawSql`
+        SELECT * FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (!compR.rows.length) return res.status(404).json({ message: "No B2B account found" });
+      const company = camelize(compR.rows[0]) as any;
+
+      const statsR = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*)::int as total_orders,
+          COUNT(*) FILTER (WHERE current_status='completed')::int as completed,
+          COUNT(*) FILTER (WHERE current_status='cancelled')::int as cancelled,
+          COUNT(*) FILTER (WHERE current_status IN ('searching','driver_assigned','in_transit'))::int as active,
+          COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_spent
+        FROM parcel_orders WHERE is_b2b=true AND b2b_company_id=${company.id}::uuid
+      `).catch(() => ({ rows: [{}] as any[] }));
+      const stats = camelize(statsR.rows[0]) as any;
+
+      const recentR = await rawDb.execute(rawSql`
+        SELECT po.id, po.pickup_address, po.current_status, po.total_fare, po.created_at,
+          dr.full_name as driver_name
+        FROM parcel_orders po
+        LEFT JOIN users dr ON dr.id = po.driver_id
+        WHERE po.is_b2b=true AND po.b2b_company_id=${company.id}::uuid
+        ORDER BY po.created_at DESC LIMIT 10
+      `).catch(() => ({ rows: [] as any[] }));
+
+      res.json({
+        company,
+        stats: {
+          totalOrders: parseInt(stats.totalOrders || 0),
+          completedOrders: parseInt(stats.completed || 0),
+          cancelledOrders: parseInt(stats.cancelled || 0),
+          activeOrders: parseInt(stats.active || 0),
+          totalSpent: parseFloat(stats.totalSpent || 0),
+        },
+        recentOrders: camelize(recentR.rows),
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -454,14 +454,18 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     // ── In-app call signaling (WebRTC relay) ──────────────────────────────────
-    // Validates that an active trip exists between caller and target before relaying
+    // Only allowed during active trip: accepted → arrived → on_the_way
+    // Phone numbers are MASKED — real numbers never exposed over socket
+
+    // Track active call sessions: tripId → { callerId, targetId, startedAt }
+    const activeCallSessions = new Map<string, { callerId: string; targetId: string; startedAt: number }>();
 
     socket.on("call:initiate", async (data: { targetUserId: string; tripId: string; callerName: string }) => {
       try {
         const { targetUserId, tripId, callerName } = data;
-        // Verify active trip between the two users
+        // Verify active trip between the two users — ONLY during booking window
         const tripR = await rawDb.execute(rawSql`
-          SELECT id FROM trip_requests
+          SELECT id, customer_id, driver_id FROM trip_requests
           WHERE id=${tripId}::uuid
             AND current_status IN ('accepted','arrived','on_the_way')
             AND (customer_id=${userId}::uuid OR driver_id=${userId}::uuid)
@@ -469,13 +473,27 @@ export function setupSocket(httpServer: HttpServer) {
           LIMIT 1
         `);
         if (!tripR.rows.length) {
-          socket.emit("call:error", { message: "No active trip. Calling not allowed." });
+          socket.emit("call:error", { message: "Calling is only available during an active booking." });
           return;
         }
+
+        // Log call initiation in call_logs table (best-effort)
+        await rawDb.execute(rawSql`
+          INSERT INTO call_logs (caller_id, receiver_id, trip_id, status, initiated_at)
+          VALUES (${userId}::uuid, ${targetUserId}::uuid, ${tripId}::uuid, 'initiated', NOW())
+          ON CONFLICT DO NOTHING
+        `).catch(() => {});
+
+        activeCallSessions.set(tripId, { callerId: userId, targetId: targetUserId, startedAt: Date.now() });
+
         io.to(`user:${targetUserId}`).emit("call:incoming", {
-          callerId: userId, callerName, tripId,
+          callerId: userId,
+          callerName,
+          tripId,
+          // Phone masking: never expose real phone numbers
+          maskedPhone: null,
         });
-        console.log(`[CALL] ${userId} calling ${targetUserId} for trip ${tripId}`);
+        console.log(`[CALL] ${userId} → ${targetUserId} for trip ${tripId}`);
       } catch (e: any) {
         socket.emit("call:error", { message: "Call initiation failed" });
       }
@@ -493,13 +511,30 @@ export function setupSocket(httpServer: HttpServer) {
       io.to(`user:${data.targetUserId}`).emit("call:ice", { from: userId, candidate: data.candidate });
     });
 
-    socket.on("call:end", (data: { targetUserId: string }) => {
-      io.to(`user:${data.targetUserId}`).emit("call:ended", { by: userId });
-      console.log(`[CALL] Call ended by ${userId}`);
+    socket.on("call:end", async (data: { targetUserId: string; tripId?: string; durationSec?: number }) => {
+      const { targetUserId, tripId, durationSec } = data;
+      io.to(`user:${targetUserId}`).emit("call:ended", { by: userId });
+      // Update call log with duration
+      if (tripId) {
+        activeCallSessions.delete(tripId);
+        await rawDb.execute(rawSql`
+          UPDATE call_logs SET status='completed', ended_at=NOW(), duration_sec=${durationSec || 0}
+          WHERE caller_id=${userId}::uuid AND trip_id=${tripId}::uuid AND status='initiated'
+        `).catch(() => {});
+      }
+      console.log(`[CALL] Call ended by ${userId}${durationSec ? ` (${durationSec}s)` : ''}`);
     });
 
-    socket.on("call:reject", (data: { targetUserId: string }) => {
-      io.to(`user:${data.targetUserId}`).emit("call:rejected", { by: userId });
+    socket.on("call:reject", async (data: { targetUserId: string; tripId?: string }) => {
+      const { targetUserId, tripId } = data;
+      io.to(`user:${targetUserId}`).emit("call:rejected", { by: userId });
+      if (tripId) {
+        activeCallSessions.delete(tripId);
+        await rawDb.execute(rawSql`
+          UPDATE call_logs SET status='rejected', ended_at=NOW()
+          WHERE caller_id=${userId}::uuid AND trip_id=${tripId}::uuid AND status='initiated'
+        `).catch(() => {});
+      }
     });
 
     socket.on("disconnect", () => {
