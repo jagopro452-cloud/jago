@@ -12,6 +12,11 @@ function useLiveClock() {
 }
 
 function useAdminBootstrap() {
+  const [cssReady, setCssReady] = useState(() => {
+    // If Bootstrap is already loaded (e.g. cached from previous nav), skip wait
+    return !!document.getElementById("admin-bootstrap-css");
+  });
+
   useEffect(() => {
     const cssFiles = [
       { id: "admin-bootstrap-icons-css", href: "/admin-module/css/bootstrap-icons.min.css" },
@@ -19,6 +24,11 @@ function useAdminBootstrap() {
       { id: "admin-icon-set-css", href: "/admin-module/plugins/icon-set/style.css" },
     ];
     const added: HTMLLinkElement[] = [];
+    let loadedCount = 0;
+    const total = cssFiles.filter(({ id }) => !document.getElementById(id)).length;
+
+    if (total === 0) { setCssReady(true); return; }
+
     cssFiles.forEach(({ id, href }) => {
       let link = document.getElementById(id) as HTMLLinkElement | null;
       if (!link) {
@@ -26,18 +36,33 @@ function useAdminBootstrap() {
         link.rel = "stylesheet";
         link.href = href;
         link.id = id;
+        link.onload = () => {
+          loadedCount++;
+          if (loadedCount >= total) setCssReady(true);
+        };
+        link.onerror = () => {
+          loadedCount++;
+          if (loadedCount >= total) setCssReady(true);
+        };
         document.head.appendChild(link);
         added.push(link);
       }
     });
+
+    // Fallback: if CSS takes > 1.5s, show anyway
+    const fallback = setTimeout(() => setCssReady(true), 1500);
     return () => {
+      clearTimeout(fallback);
       added.forEach(el => el.remove());
       cssFiles.forEach(({ id }) => {
         const el = document.getElementById(id);
         if (el) el.remove();
       });
+      setCssReady(false);
     };
   }, []);
+
+  return cssReady;
 }
 
 interface NavItem {
@@ -200,7 +225,7 @@ const navSections: NavSection[] = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  useAdminBootstrap();
+  const cssReady = useAdminBootstrap();
   const [location, setLocation] = useLocation();
   const clock = useLiveClock();
   const { theme, setTheme } = useTheme();
@@ -216,7 +241,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
     return { label: "Dashboard", section: "Overview" };
   })();
-  const [sidebarFolded, setSidebarFolded] = useState(false);
+
+  // Persist sidebar fold state across page refreshes
+  const [sidebarFolded, setSidebarFolded] = useState(() => {
+    try { return localStorage.getItem("jago-sidebar-folded") === "true"; }
+    catch { return false; }
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -268,6 +298,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     } else {
       document.body.classList.remove("aside-folded");
     }
+    try { localStorage.setItem("jago-sidebar-folded", sidebarFolded ? "true" : "false"); }
+    catch (_) {}
   }, [sidebarFolded]);
 
   useEffect(() => {
@@ -307,6 +339,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setUserMenuOpen(false);
     window.location.href = "/admin/login";
   };
+
+  // Wait for Bootstrap CSS before rendering — prevents flash of broken layout on refresh
+  if (!cssReady) {
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "#f8fafc", flexDirection: "column", gap: 12
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 10,
+          background: "linear-gradient(135deg,#2563eb,#7c3aed)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20, fontWeight: 900, color: "#fff"
+        }}>J</div>
+        <div style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Loading JAGO Admin…</div>
+        <div style={{
+          width: 40, height: 3, borderRadius: 2, background: "#e2e8f0", overflow: "hidden"
+        }}>
+          <div style={{
+            width: "60%", height: "100%", background: "#2563eb",
+            animation: "pulse 1s ease-in-out infinite alternate"
+          }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-wrapper admin-shell">
