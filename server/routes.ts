@@ -1230,6 +1230,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           base_fare: 90, fare_per_km: 16, minimum_fare: 130, waiting_charge_per_min: 2 },
         { name: "SUV / XL", type: "car", vehicle_type: "suv", icon: "/vehicles/suv.svg",
           base_fare: 120, fare_per_km: 20, minimum_fare: 170, waiting_charge_per_min: 2.5 },
+        // LOCAL POOL services
+        { name: "Bike Pool", type: "motor_bike", vehicle_type: "pool_bike", icon: "/vehicles/pool_bike.svg",
+          base_fare: 20, fare_per_km: 5, minimum_fare: 25, waiting_charge_per_min: 0.5, total_seats: 2, is_carpool: true,
+          description: "2 riders · Split fare · Cheapest option" },
+        { name: "Auto Pool", type: "auto", vehicle_type: "pool_auto", icon: "/vehicles/pool_auto.svg",
+          base_fare: 20, fare_per_km: 8, minimum_fare: 30, waiting_charge_per_min: 0.5, total_seats: 3, is_carpool: true,
+          description: "Upto 3 riders · Shared auto · Save 40%" },
+        { name: "Mini Pool", type: "car", vehicle_type: "pool_mini", icon: "/vehicles/pool_mini.svg",
+          base_fare: 40, fare_per_km: 9, minimum_fare: 55, waiting_charge_per_min: 1, total_seats: 3, is_carpool: true,
+          description: "Upto 3 riders · Shared mini cab · Save 35%" },
+        { name: "Sedan Pool", type: "car", vehicle_type: "pool_sedan", icon: "/vehicles/pool_sedan.svg",
+          base_fare: 50, fare_per_km: 10, minimum_fare: 70, waiting_charge_per_min: 1, total_seats: 4, is_carpool: true,
+          description: "Upto 4 riders · Shared sedan · Save 35%" },
+        { name: "SUV Pool", type: "car", vehicle_type: "pool_suv", icon: "/vehicles/pool_suv.svg",
+          base_fare: 60, fare_per_km: 12, minimum_fare: 80, waiting_charge_per_min: 1.5, total_seats: 6, is_carpool: true,
+          description: "Upto 6 riders · Shared SUV · Save 30%" },
         { name: "Car Pool", type: "car", vehicle_type: "carpool", icon: "/vehicles/carpool.svg",
           base_fare: 40, fare_per_km: 8, minimum_fare: 60, waiting_charge_per_min: 1, total_seats: 4 },
         // PARCEL / PORTER-style services
@@ -1250,7 +1266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           description: "Upto 2500 kg • 20 CBM • Large loads, factory goods, full shifting" },
       ];
 
-      // Add description column if not exists (Porter-style capacity info)
+      // Add extra columns if not exists
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(() => {});
 
@@ -1258,6 +1274,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const v of vehicles) {
         const desc = (v as any).description || null;
         const svcType = (v as any).service_type || "ride";
+        const isCarpool = (v as any).is_carpool || false;
+        const totalSeats = (v as any).total_seats || 0;
         const existing = await rawDb.execute(rawSql`SELECT id FROM vehicle_categories WHERE name=${v.name} LIMIT 1`);
         let vid: string;
         if (existing.rows.length > 0) {
@@ -1267,13 +1285,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               type=${v.type}, icon=${v.icon}, service_type=${svcType}, description=${desc},
               base_fare=${v.base_fare}, fare_per_km=${v.fare_per_km},
               minimum_fare=${v.minimum_fare}, waiting_charge_per_min=${v.waiting_charge_per_min},
-              is_active=true
+              is_carpool=${isCarpool}, total_seats=${totalSeats}, is_active=true
             WHERE id=${vid}::uuid
           `);
         } else {
           const ins = await rawDb.execute(rawSql`
-            INSERT INTO vehicle_categories (name, type, vehicle_type, icon, service_type, description, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, is_active)
-            VALUES (${v.name}, ${v.type}, ${v.vehicle_type || v.type}, ${v.icon}, ${svcType}, ${desc}, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, true)
+            INSERT INTO vehicle_categories (name, type, vehicle_type, icon, service_type, description, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, is_carpool, total_seats, is_active)
+            VALUES (${v.name}, ${v.type}, ${v.vehicle_type || v.type}, ${v.icon}, ${svcType}, ${desc}, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, ${isCarpool}, ${totalSeats}, true)
             RETURNING id
           `);
           vid = (ins.rows[0] as any).id;
