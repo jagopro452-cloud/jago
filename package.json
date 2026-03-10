@@ -1,0 +1,10 @@
+{
+  "name": "jago-workspace-runner",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix ./jago-main run dev",
+    "build": "npm --prefix ./jago-main run build",
+    "start": "npm --prefix ./jago-main run start",
+    "check": "npm --prefix ./jago-main run check"
+  }
+}
