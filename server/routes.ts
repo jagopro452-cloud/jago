@@ -1232,24 +1232,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           base_fare: 120, fare_per_km: 20, minimum_fare: 170, waiting_charge_per_min: 2.5 },
         { name: "Car Pool", type: "car", vehicle_type: "carpool", icon: "/vehicles/carpool.svg",
           base_fare: 40, fare_per_km: 8, minimum_fare: 60, waiting_charge_per_min: 1, total_seats: 4 },
-        // PARCEL services
-        { name: "Bike Parcel", type: "motor_bike", vehicle_type: "bike_parcel", icon: "/vehicles/parcel_bike.svg",
-          base_fare: 30, fare_per_km: 8, minimum_fare: 40, waiting_charge_per_min: 0.5, service_type: "parcel" },
-        { name: "Auto Parcel", type: "auto", vehicle_type: "auto_parcel", icon: "/vehicles/parcel_auto.svg",
-          base_fare: 40, fare_per_km: 12, minimum_fare: 60, waiting_charge_per_min: 1, service_type: "parcel" },
-        { name: "Cargo Van", type: "car", vehicle_type: "cargo_van", icon: "/vehicles/parcel_van.svg",
-          base_fare: 100, fare_per_km: 20, minimum_fare: 150, waiting_charge_per_min: 2, service_type: "parcel" },
+        // PARCEL / PORTER-style services
+        { name: "Bike Delivery", type: "motor_bike", vehicle_type: "bike_parcel", icon: "/vehicles/parcel_bike.svg",
+          base_fare: 70, fare_per_km: 8, minimum_fare: 70, waiting_charge_per_min: 0.5, service_type: "parcel",
+          description: "Upto 10 kg • 0.3 CBM • Small packages, documents" },
+        { name: "3-Wheeler / Auto", type: "auto", vehicle_type: "auto_parcel", icon: "/vehicles/parcel_auto.svg",
+          base_fare: 140, fare_per_km: 12, minimum_fare: 140, waiting_charge_per_min: 1, service_type: "parcel",
+          description: "Upto 150 kg • 1.5 CBM • Medium goods, household items" },
+        { name: "Tata Ace", type: "car", vehicle_type: "tata_ace", icon: "/vehicles/tata_ace.svg",
+          base_fare: 350, fare_per_km: 18, minimum_fare: 350, waiting_charge_per_min: 2, service_type: "parcel",
+          description: "Upto 750 kg • 6 CBM • Furniture, appliances, bulk goods" },
+        { name: "Bolero Pickup", type: "car", vehicle_type: "bolero_pickup", icon: "/vehicles/bolero.svg",
+          base_fare: 500, fare_per_km: 22, minimum_fare: 500, waiting_charge_per_min: 2.5, service_type: "parcel",
+          description: "Upto 1500 kg • 10 CBM • Heavy goods, office shifting" },
+        { name: "Tata 407 / Tempo", type: "car", vehicle_type: "tempo_407", icon: "/vehicles/tempo_407.svg",
+          base_fare: 800, fare_per_km: 28, minimum_fare: 800, waiting_charge_per_min: 3, service_type: "parcel",
+          description: "Upto 2500 kg • 20 CBM • Large loads, factory goods, full shifting" },
       ];
+
+      // Add description column if not exists (Porter-style capacity info)
+      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(() => {});
 
       const insertedVehicles: any[] = [];
       for (const v of vehicles) {
+        const desc = (v as any).description || null;
+        const svcType = (v as any).service_type || "ride";
         const existing = await rawDb.execute(rawSql`SELECT id FROM vehicle_categories WHERE name=${v.name} LIMIT 1`);
         let vid: string;
         if (existing.rows.length > 0) {
           vid = (existing.rows[0] as any).id;
           await rawDb.execute(rawSql`
             UPDATE vehicle_categories SET
-              type=${v.type}, icon=${v.icon},
+              type=${v.type}, icon=${v.icon}, service_type=${svcType}, description=${desc},
               base_fare=${v.base_fare}, fare_per_km=${v.fare_per_km},
               minimum_fare=${v.minimum_fare}, waiting_charge_per_min=${v.waiting_charge_per_min},
               is_active=true
@@ -1257,8 +1272,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           `);
         } else {
           const ins = await rawDb.execute(rawSql`
-            INSERT INTO vehicle_categories (name, type, vehicle_type, icon, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, is_active)
-            VALUES (${v.name}, ${v.type}, ${v.vehicle_type || v.type}, ${v.icon}, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, true)
+            INSERT INTO vehicle_categories (name, type, vehicle_type, icon, service_type, description, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, is_active)
+            VALUES (${v.name}, ${v.type}, ${v.vehicle_type || v.type}, ${v.icon}, ${svcType}, ${desc}, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, true)
             RETURNING id
           `);
           vid = (ins.rows[0] as any).id;
