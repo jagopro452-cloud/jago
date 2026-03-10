@@ -1,13 +1,4 @@
 {
-<<<<<<< HEAD
-  "name": "jago-workspace-runner",
-  "private": true,
-  "scripts": {
-    "dev": "npm --prefix ./jago-main run dev",
-    "build": "npm --prefix ./jago-main run build",
-    "start": "npm --prefix ./jago-main run start",
-    "check": "npm --prefix ./jago-main run check"
-=======
   "name": "rest-express",
   "version": "1.0.0",
   "type": "module",
@@ -19,7 +10,7 @@
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "dev:with-db": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-with-db.ps1",
     "build": "tsx script/build.ts",
-    "start": "NODE_ENV=production node dist/index.js",
+    "start": "set NODE_ENV=production&& node dist/index.js",
     "check": "tsc",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
@@ -138,6 +129,5 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
->>>>>>> 0b1bd211f2a51bfe3c93139851d67a8d51fe3073
   }
 }
