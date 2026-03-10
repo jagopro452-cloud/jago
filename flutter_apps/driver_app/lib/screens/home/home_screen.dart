@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _earningsToday = 0;
   int _unreadNotifCount = 0;
   Map<String, dynamic>? _incomingTrip;
+  Map<String, dynamic>? _incomingParcel;
   String _vehicleCategory = '';
   String _vehicleNumber = '';
   String _vehicleModel = '';
@@ -210,6 +211,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _subs.add(_socket.onNoDrivers.listen((_) {
       // This event is for customer; driver app just ensures alarm is stopped
       AlarmService().stopAlarm();
+    }));
+
+    // Incoming parcel delivery request
+    _subs.add(_socket.onNewParcel.listen((parcel) {
+      if (!mounted) return;
+      if (!_isOnline) return; // ignore if offline
+      if (_incomingTrip != null || _incomingParcel != null) return; // busy
+      setState(() => _incomingParcel = parcel);
+      AlarmService().startAlarm();
+      _showIncomingParcel();
     }));
   }
 
@@ -399,6 +410,110 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  void _showIncomingParcel() {
+    final parcel = _incomingParcel;
+    if (parcel == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0D1B3E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+              child: const Text('📦', style: TextStyle(fontSize: 28)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('New Parcel Request', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('${parcel['dropCount'] ?? 1} stop${(parcel['dropCount'] ?? 1) > 1 ? 's' : ''}',
+                style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 13)),
+            ])),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: const Color(0xFF1E6DE5).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+              child: Text('₹${parcel['totalFare'] ?? 0}',
+                style: const TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.bold, fontSize: 18)),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          if ((parcel['pickupAddress'] ?? '').toString().isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                const Icon(Icons.location_on, color: Color(0xFF22C55E), size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(parcel['pickupAddress'] ?? '',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13), maxLines: 2)),
+              ]),
+            ),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                AlarmService().stopAlarm();
+                setState(() => _incomingParcel = null);
+              },
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.red),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Pass', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
+            )),
+            const SizedBox(width: 12),
+            Expanded(flex: 2, child: ElevatedButton(
+              onPressed: () async {
+                final orderId = parcel['orderId']?.toString() ?? '';
+                if (orderId.isEmpty) return;
+                Navigator.pop(context);
+                AlarmService().stopAlarm();
+                setState(() => _incomingParcel = null);
+                try {
+                  final token = await AuthService.getToken();
+                  final r = await http.post(
+                    Uri.parse(ApiConfig.driverParcelAccept(orderId)),
+                    headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                  );
+                  if (r.statusCode == 200) {
+                    _showSnack('Parcel order accepted! Check pending orders.');
+                  } else {
+                    _showSnack('Already taken by another driver', error: true);
+                  }
+                } catch (_) {
+                  _showSnack('Network error, try again', error: true);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFF59E0B),
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Accept Delivery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            )),
+          ]),
+        ]),
+      ),
+    ).whenComplete(() {
+      AlarmService().stopAlarm();
+      if (mounted) setState(() => _incomingParcel = null);
+    });
   }
 
   void _showSnack(String msg, {bool error = false}) {

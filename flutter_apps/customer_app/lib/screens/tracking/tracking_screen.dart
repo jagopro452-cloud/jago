@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/alarm_service.dart';
 import '../home/home_screen.dart';
 import '../tip/tip_driver_screen.dart';
 
@@ -80,6 +81,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           }
         });
         _announceStatus(newStatus);
+        if (newStatus == 'completed') AlarmService().playChime();
         if (newStatus == 'completed' || newStatus == 'cancelled') {
           _pollTimer?.cancel();
           _pollStatus(); // fetch final state
@@ -90,6 +92,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       _subs.add(_socket.onDriverAssigned.listen((data) {
         if (!mounted) return;
         setState(() => _status = 'driver_assigned');
+        AlarmService().playChime(); // play ding-dong sound
         _announceStatus('driver_assigned');
         _pollStatus();
       }));

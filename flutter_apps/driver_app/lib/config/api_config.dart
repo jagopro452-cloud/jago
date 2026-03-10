@@ -95,4 +95,10 @@ class ApiConfig {
   static String get subscriptionVerify => '$baseUrl/api/app/driver/subscription/verify-payment';
   static String get walletCreateOrder => '$baseUrl/api/app/driver/wallet/create-order';
   static String get walletVerifyPayment => '$baseUrl/api/app/driver/wallet/verify-payment';
+
+  // ── Parcel Delivery ───────────────────────────────────────────────────
+  static String get driverParcelPending => '$baseUrl/api/app/driver/parcel/pending';
+  static String driverParcelAccept(String id) => '$baseUrl/api/app/driver/parcel/$id/accept';
+  static String driverParcelPickupOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/pickup-otp';
+  static String driverParcelDropOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/drop-otp';
 }

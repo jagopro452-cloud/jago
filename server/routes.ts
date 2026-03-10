@@ -1486,6 +1486,95 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/ops/seed-test-accounts?key=... — creates 4 customers + 10 drivers for testing
+  app.get("/api/ops/seed-test-accounts", async (req, res) => {
+    const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
+    const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
+    if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
+    try {
+      const pwHash = await bcrypt.hash("Test@123", 10);
+      // Fetch vehicle categories for driver assignment
+      const vcRes = await rawDb.execute(rawSql`SELECT id, name FROM vehicle_categories ORDER BY created_at ASC`);
+      const vcRows = vcRes.rows as any[];
+      const bikeVc = vcRows.find((v: any) => v.name?.toLowerCase() === 'bike') || vcRows[0];
+      const autoVc = vcRows.find((v: any) => v.name?.toLowerCase().includes('auto')) || vcRows[1] || bikeVc;
+      const cabVc = vcRows.find((v: any) => v.name?.toLowerCase().includes('cab') || v.name?.toLowerCase().includes('sedan')) || vcRows[2] || bikeVc;
+      const parcelVc = vcRows.find((v: any) => v.name?.toLowerCase().includes('bike delivery') || v.name?.toLowerCase().includes('bike_parcel')) || bikeVc;
+
+      const customers = [
+        { name: 'Test Customer 1', phone: '9000000001' },
+        { name: 'Test Customer 2', phone: '9000000002' },
+        { name: 'Test Customer 3', phone: '9000000003' },
+        { name: 'Test Customer 4', phone: '9000000004' },
+      ];
+      const drivers = [
+        { name: 'Test Driver 1 (Bike)', phone: '9100000001', vc: bikeVc, vNum: 'TS01AB1001', vModel: 'Hero Splendor' },
+        { name: 'Test Driver 2 (Bike)', phone: '9100000002', vc: bikeVc, vNum: 'TS01AB1002', vModel: 'Honda Shine' },
+        { name: 'Test Driver 3 (Bike)', phone: '9100000003', vc: bikeVc, vNum: 'TS01AB1003', vModel: 'Bajaj Pulsar' },
+        { name: 'Test Driver 4 (Bike)', phone: '9100000004', vc: bikeVc, vNum: 'TS01AB1004', vModel: 'TVS Apache' },
+        { name: 'Test Driver 5 (Auto)', phone: '9100000005', vc: autoVc, vNum: 'TS09AC5001', vModel: 'Bajaj RE' },
+        { name: 'Test Driver 6 (Auto)', phone: '9100000006', vc: autoVc, vNum: 'TS09AC5002', vModel: 'Piaggio Ape' },
+        { name: 'Test Driver 7 (Auto)', phone: '9100000007', vc: autoVc, vNum: 'TS09AC5003', vModel: 'TVS King' },
+        { name: 'Test Driver 8 (Cab)', phone: '9100000008', vc: cabVc, vNum: 'TS07CD8001', vModel: 'Swift Dzire' },
+        { name: 'Test Driver 9 (Cab)', phone: '9100000009', vc: cabVc, vNum: 'TS07CD8002', vModel: 'Maruti WagonR' },
+        { name: 'Test Driver 10 (Parcel)', phone: '9100000010', vc: parcelVc, vNum: 'TS01AB1010', vModel: 'Hero Splendor' },
+      ];
+
+      const createdCustomers: any[] = [];
+      for (const c of customers) {
+        const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${c.phone} AND user_type='customer' LIMIT 1`);
+        if (existing.rows.length) {
+          await rawDb.execute(rawSql`UPDATE users SET password_hash=${pwHash}, is_active=true WHERE phone=${c.phone} AND user_type='customer'`);
+          createdCustomers.push({ ...c, status: 'updated' });
+        } else {
+          await rawDb.execute(rawSql`
+            INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance, password_hash)
+            VALUES (${c.name}, ${c.phone}, 'customer', true, 100, ${pwHash})
+          `);
+          createdCustomers.push({ ...c, status: 'created' });
+        }
+      }
+
+      const createdDrivers: any[] = [];
+      for (const d of drivers) {
+        const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${d.phone} AND user_type='driver' LIMIT 1`);
+        let driverId: string;
+        if (existing.rows.length) {
+          driverId = (existing.rows[0] as any).id;
+          await rawDb.execute(rawSql`UPDATE users SET password_hash=${pwHash}, is_active=true, verification_status='verified', vehicle_number=${d.vNum}, vehicle_model=${d.vModel} WHERE id=${driverId}::uuid`);
+          createdDrivers.push({ ...d, vc: d.vc?.name, status: 'updated' });
+        } else {
+          const ins = await rawDb.execute(rawSql`
+            INSERT INTO users (full_name, phone, user_type, is_active, verification_status, wallet_balance, password_hash, vehicle_number, vehicle_model)
+            VALUES (${d.name}, ${d.phone}, 'driver', true, 'verified', 0, ${pwHash}, ${d.vNum}, ${d.vModel})
+            RETURNING id
+          `);
+          driverId = (ins.rows[0] as any).id;
+          createdDrivers.push({ ...d, vc: d.vc?.name, status: 'created' });
+        }
+        if (d.vc?.id) {
+          await rawDb.execute(rawSql`
+            INSERT INTO driver_details (user_id, vehicle_category_id, availability_status, avg_rating, total_trips)
+            VALUES (${driverId}::uuid, ${d.vc.id}::uuid, 'offline', 5.0, 0)
+            ON CONFLICT (user_id) DO UPDATE SET vehicle_category_id=${d.vc.id}::uuid, availability_status='offline'
+          `).catch(() => {});
+          await rawDb.execute(rawSql`
+            INSERT INTO driver_locations (user_id, lat, lng, is_online)
+            VALUES (${driverId}::uuid, 17.3850, 78.4867, false)
+            ON CONFLICT (user_id) DO NOTHING
+          `).catch(() => {});
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Test accounts ready. Login with phone + password Test@123",
+        customers: createdCustomers.map(c => ({ name: c.name, phone: c.phone, password: 'Test@123', status: c.status })),
+        drivers: createdDrivers.map(d => ({ name: d.name, phone: d.phone, password: 'Test@123', vehicle: d.vc, vNum: d.vNum, status: d.status })),
+      });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
   app.get("/api/ops/metrics", requireOpsKey, async (_req, res) => {
     try {
       const [activeTrips, onlineDrivers, openComplaints] = await Promise.all([
@@ -10263,7 +10352,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: get pending parcel requests nearby
-  app.get("/api/driver/parcel/pending", authApp, async (req, res) => {
+  app.get("/api/app/driver/parcel/pending", authApp, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT * FROM parcel_orders
@@ -10276,7 +10365,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: accept a parcel order
-  app.post("/api/driver/parcel/:id/accept", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/accept", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
       const r = await rawDb.execute(rawSql`
@@ -10294,7 +10383,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: verify pickup OTP → start delivery
-  app.post("/api/driver/parcel/:id/pickup-otp", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/pickup-otp", authApp, async (req, res) => {
     try {
       const { otp } = req.body;
       const r = await rawDb.execute(rawSql`
@@ -10313,7 +10402,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Driver: verify delivery OTP for a specific drop stop
-  app.post("/api/driver/parcel/:id/drop-otp", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/drop-otp", authApp, async (req, res) => {
     try {
       const { dropIndex, otp } = req.body;
       const r = await rawDb.execute(rawSql`

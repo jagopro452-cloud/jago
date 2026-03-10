@@ -19,6 +19,7 @@ class SocketService {
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
+  final _newParcelController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
@@ -29,6 +30,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
+  Stream<Map<String, dynamic>> get onNewParcel => _newParcelController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -95,6 +97,11 @@ class SocketService {
     // No available drivers found within all reassignment rounds
     _socket!.on('trip:no_drivers', (data) {
       _noDriversController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Parcel delivery request
+    _socket!.on('parcel:new_request', (data) {
+      _newParcelController.add(Map<String, dynamic>.from(data));
     });
 
     _socket!.connect();
@@ -176,5 +183,6 @@ class SocketService {
     _tripTimeoutController.close();
     _chatMessageController.close();
     _messageHistoryController.close();
+    _newParcelController.close();
   }
 }
