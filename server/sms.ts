@@ -48,7 +48,7 @@ export async function sendOtpSms(phone: string, otp: string): Promise<SmsResult>
   if (fast2smsKey) { const r = await sendViaFast2Sms(phone, otp); if (r.success) return r; }
   const twilioSid = await getConf("TWILIO_ACCOUNT_SID", "twilio_account_sid");
   if (twilioSid) { const r = await sendViaTwilio(phone, otp); if (r.success) return r; }
-  console.warn(`[SMS-NONE] No SMS provider configured. OTP for ${phone}: ${otp}`);
+  console.warn(`[SMS-NONE] No SMS provider configured. OTP not delivered to ${phone.slice(-4).padStart(phone.length, '*')} — set FAST2SMS_API_KEY or TWILIO credentials in admin settings.`);
   return { success: false, provider: "none", error: "No SMS provider configured" };
 }
 

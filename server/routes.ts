@@ -302,7 +302,11 @@ async function requireAdminAuth(req: Request, res: Response, next: NextFunction)
 async function ensureAdminExists() {
   const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
   const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
-  const adminPassword = process.env.ADMIN_PASSWORD || "JagoAdmin@2026!";
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error("[SECURITY] ADMIN_PASSWORD env var not set — skipping admin password sync. Set ADMIN_PASSWORD in .do/app.yaml or .env");
+    return;
+  }
 
   // ── Step 1: Guarantee the tables exist using rawDb (same path as ensureOperationalSchema)
   try {
@@ -2086,7 +2090,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO admin_login_otp (admin_id, otp, expires_at)
           VALUES (${admin.id}::uuid, ${otp}, ${expiresAt.toISOString()})
         `);
-        console.log(`[ADMIN-2FA] ${admin.email} OTP: ${otp}`);
+        console.log(`[ADMIN-2FA] OTP generated for ${admin.email} — sent via admin channel`);
         const response: any = {
           requiresTwoFactor: true,
           admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
@@ -2179,7 +2183,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE admin_otp_resets SET is_used=true WHERE email=${email} AND is_used=false`);
       await rawDb.execute(rawSql`INSERT INTO admin_otp_resets (email, otp, expires_at) VALUES (${email}, ${otp}, ${expiresAt.toISOString()})`);
       // In production: send via email. For now, log it and return in dev mode.
-      console.log(`[ADMIN-FORGOT-PWD] ${email} → OTP: ${otp}`);
+      console.log(`[ADMIN-FORGOT-PWD] OTP generated for ${email}`);
       if (process.env.NODE_ENV === 'production' || !isDevOtpResponseEnabled) {
         res.json({ success: true, message: "Password reset OTP sent to your email." });
       } else {
@@ -2269,7 +2273,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/users", async (req, res) => {
+  app.post("/api/users", requireAdminAuth, async (req, res) => {
     try {
       const { fullName, phone, email, userType = "customer", vehicleNumber, vehicleModel, licenseNumber } = req.body;
       if (!fullName || !phone) return res.status(400).json({ message: "Name and phone are required" });
@@ -2285,7 +2289,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/users/:id", async (req, res) => {
+  app.delete("/api/users/:id", requireAdminAuth, async (req, res) => {
     try {
       const { db: xDb, sql: xSql } = await import("./db").then(async m => ({ db: m.db, sql: (await import("drizzle-orm")).sql }));
       await xDb.execute(xSql`DELETE FROM users WHERE id::text = ${req.params.id}`);
@@ -2295,7 +2299,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/users/:id/status", async (req, res) => {
+  app.patch("/api/users/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const user = await storage.updateUserStatus(req.params.id, isActive);
@@ -2351,7 +2355,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/vehicle-categories", async (req, res) => {
+  app.post("/api/vehicle-categories", requireAdminAuth, async (req, res) => {
     try {
       const cat = await storage.createVehicleCategory(req.body);
       res.status(201).json(cat);
@@ -2360,7 +2364,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/vehicle-categories/:id", async (req, res) => {
+  app.put("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
       const cat = await storage.updateVehicleCategory(req.params.id, req.body);
       res.json(cat);
@@ -2369,7 +2373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/vehicle-categories/:id", async (req, res) => {
+  app.patch("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
@@ -2377,7 +2381,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.delete("/api/vehicle-categories/:id", async (req, res) => {
+  app.delete("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteVehicleCategory(req.params.id);
       res.status(204).end();
@@ -2396,8 +2400,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  function validateZoneCoordinates(coordinates: any): boolean {
+    if (!coordinates) return true; // optional field
+    try {
+      const geo = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
+      if (geo.type !== 'Polygon' && geo.type !== 'MultiPolygon') return false;
+      if (!Array.isArray(geo.coordinates)) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   app.post("/api/zones", requireAdminAuth, async (req, res) => {
     try {
+      if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
+        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+      }
       const zone = await storage.createZone(req.body);
       res.status(201).json(zone);
     } catch (e: any) {
@@ -2407,6 +2426,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
+      if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
+        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+      }
       const zone = await storage.updateZone(req.params.id, req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
@@ -2417,6 +2439,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
+      if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
+        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+      }
       const zone = await storage.updateZone(req.params.id, req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
@@ -2444,7 +2469,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/fares", async (req, res) => {
+  app.post("/api/fares", requireAdminAuth, async (req, res) => {
     try {
       const fare = await storage.upsertTripFare(req.body);
       res.status(201).json(fare);
@@ -2453,7 +2478,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/fares/:id", async (req, res) => {
+  app.put("/api/fares/:id", requireAdminAuth, async (req, res) => {
     try {
       const fare = await storage.updateTripFare(req.params.id, req.body);
       res.json(fare);
@@ -2462,7 +2487,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/fares/:id", async (req, res) => {
+  app.delete("/api/fares/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteTripFare(req.params.id);
       res.status(204).end();
@@ -2878,7 +2903,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/coupons", async (req, res) => {
+  app.post("/api/coupons", requireAdminAuth, async (req, res) => {
     try {
       const coupon = await storage.createCoupon(req.body);
       res.status(201).json(coupon);
@@ -2887,7 +2912,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/coupons/:id", async (req, res) => {
+  app.put("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
       const coupon = await storage.updateCoupon(req.params.id, req.body);
       res.json(coupon);
@@ -2896,7 +2921,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/coupons/:id", async (req, res) => {
+  app.patch("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE coupon_setups SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
@@ -2904,7 +2929,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.delete("/api/coupons/:id", async (req, res) => {
+  app.delete("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteCoupon(req.params.id);
       res.status(204).end();
@@ -2934,7 +2959,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/settings", async (req, res) => {
+  app.post("/api/settings", requireAdminAuth, async (req, res) => {
     try {
       // Support both bulk format { settings: {key: val, ...} } and single { keyName, value, settingsType }
       if (req.body.settings && typeof req.body.settings === 'object') {
@@ -2988,7 +3013,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/blogs", async (req, res) => {
+  app.post("/api/blogs", requireAdminAuth, async (req, res) => {
     try {
       const blog = await storage.createBlog(req.body);
       res.status(201).json(blog);
@@ -2997,7 +3022,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/blogs/:id", async (req, res) => {
+  app.put("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
       const blog = await storage.updateBlog(req.params.id, req.body);
       res.json(blog);
@@ -3006,7 +3031,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/blogs/:id", async (req, res) => {
+  app.patch("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const updated = await storage.updateBlog(req.params.id, { isActive } as any);
@@ -3015,7 +3040,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(500).json({ message: e.message });
     }
   });
-  app.delete("/api/blogs/:id", async (req, res) => {
+  app.delete("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteBlog(req.params.id);
       res.status(204).end();
@@ -3040,7 +3065,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/withdrawals/:id/status", async (req, res) => {
+  app.patch("/api/withdrawals/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { status } = req.body;
       const validStatuses = ["pending", "approved", "rejected", "paid"];
@@ -3082,7 +3107,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/cancellation-reasons", async (req, res) => {
+  app.post("/api/cancellation-reasons", requireAdminAuth, async (req, res) => {
     try {
       const reason = await storage.createCancellationReason(req.body);
       res.status(201).json(reason);
@@ -3091,7 +3116,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/cancellation-reasons/:id", async (req, res) => {
+  app.put("/api/cancellation-reasons/:id", requireAdminAuth, async (req, res) => {
     try {
       const { reason, userType, isActive } = req.body;
       const [updated] = await db.update(cancellationReasons as any)
@@ -3105,7 +3130,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/cancellation-reasons/:id", async (req, res) => {
+  app.patch("/api/cancellation-reasons/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const [updated] = await db.update(cancellationReasons as any)
@@ -3119,7 +3144,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/cancellation-reasons/:id", async (req, res) => {
+  app.delete("/api/cancellation-reasons/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteCancellationReason(req.params.id);
       res.status(204).end();
@@ -3140,14 +3165,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/banners", async (req, res) => {
+  app.post("/api/banners", requireAdminAuth, async (req, res) => {
     try {
       const { title, image_url, redirect_url, zone, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO banners (title, image_url, redirect_url, zone, is_active) VALUES (${title}, ${image_url}, ${redirect_url}, ${zone}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/banners/:id", async (req, res) => {
+  app.patch("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
@@ -3165,7 +3190,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // PUT is same as PATCH for banners (frontend uses PUT for full update + toggle)
-  app.put("/api/banners/:id", async (req, res) => {
+  app.put("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
@@ -3182,7 +3207,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/banners/:id", async (req, res) => {
+  app.delete("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM banners WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3196,20 +3221,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/discounts", async (req, res) => {
+  app.post("/api/discounts", requireAdminAuth, async (req, res) => {
     try {
       const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO discounts (name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active) VALUES (${name}, ${discount_amount}, ${discount_type}, ${min_order_amount}, ${max_discount_amount}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/discounts/:id", async (req, res) => {
+  app.delete("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM discounts WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/discounts/:id", async (req, res) => {
+  app.patch("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive, is_active } = req.body;
       const active = isActive ?? is_active;
@@ -3217,7 +3242,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/discounts/:id", async (req, res) => {
+  app.put("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active, isActive } = req.body;
       const active = is_active ?? isActive;
@@ -3242,27 +3267,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/spin-wheel", async (req, res) => {
+  app.post("/api/spin-wheel", requireAdminAuth, async (req, res) => {
     try {
       const { label, reward_amount, reward_type, probability, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${reward_amount}, ${reward_type}, ${probability}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/spin-wheel/:id", async (req, res) => {
+  app.delete("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM spin_wheel_items WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/spin-wheel/:id", async (req, res) => {
+  app.patch("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/spin-wheel/:id", async (req, res) => {
+  app.put("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
       const { label, reward_amount, rewardAmount, reward_type, rewardType, probability, is_active, isActive } = req.body;
       const lbl = label; const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType; const prob = probability; const active = is_active ?? isActive;
@@ -3278,21 +3303,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/driver-levels", async (req, res) => {
+  app.post("/api/driver-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'driver', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/driver-levels/:id", async (req, res) => {
+  app.put("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/driver-levels/:id", async (req, res) => {
+  app.delete("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3304,34 +3329,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/customer-levels", async (req, res) => {
+  app.post("/api/customer-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'customer', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/customer-levels/:id", async (req, res) => {
+  app.put("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/customer-levels/:id", async (req, res) => {
+  app.delete("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/user-levels", async (req, res) => {
+  app.post("/api/user-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, user_type, min_points, max_points, reward, reward_type, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, ${user_type}, ${min_points}, ${max_points}, ${reward}, ${reward_type}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/user-levels/:id", async (req, res) => {
+  app.delete("/api/user-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3348,7 +3373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/employees", async (req, res) => {
+  app.post("/api/employees", requireAdminAuth, async (req, res) => {
     try {
       const { name, email, phone, role, zoneId, isActive } = req.body;
       const r = zoneId
@@ -3357,7 +3382,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/employees/:id", async (req, res) => {
+  app.put("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, email, phone, role, zoneId, isActive } = req.body;
       const r = zoneId
@@ -3366,7 +3391,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/employees/:id", async (req, res) => {
+  app.patch("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
       const updates: string[] = [];
       if (req.body.isActive !== undefined) updates.push(`is_active=${req.body.isActive}`);
@@ -3376,7 +3401,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/employees/:id", async (req, res) => {
+  app.delete("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM employees WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3393,21 +3418,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/b2b-companies", async (req, res) => {
+  app.post("/api/b2b-companies", requireAdminAuth, async (req, res) => {
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO b2b_companies (company_name, contact_person, phone, email, gst_number, address, city, status, commission_pct) VALUES (${companyName}, ${contactPerson}, ${phone}, ${email}, ${gstNumber}, ${address}, ${city}, ${status ?? 'active'}, ${commissionPct ?? 10}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/b2b-companies/:id", async (req, res) => {
+  app.put("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE b2b_companies SET company_name=${companyName}, contact_person=${contactPerson}, phone=${phone}, email=${email}, gst_number=${gstNumber}, address=${address}, city=${city}, status=${status}, commission_pct=${commissionPct} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/b2b-companies/:id/wallet", async (req, res) => {
+  app.patch("/api/b2b-companies/:id/wallet", requireAdminAuth, async (req, res) => {
     try {
       const { amount, type } = req.body;
       const r = type === "deduct"
@@ -3416,7 +3441,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/b2b-companies/:id", async (req, res) => {
+  app.delete("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM b2b_companies WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3500,14 +3525,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/vehicle-models", async (req, res) => {
+  app.post("/api/vehicle-models", requireAdminAuth, async (req, res) => {
     try {
       const { name, brand_id, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id}::uuid, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/vehicle-models/:id", async (req, res) => {
+  app.put("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, brand_id, is_active, isActive } = req.body;
       const active = is_active ?? isActive;
@@ -3520,7 +3545,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/vehicle-models/:id", async (req, res) => {
+  app.delete("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM vehicle_models WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3534,21 +3559,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/parcel-fares", async (req, res) => {
+  app.post("/api/parcel-fares", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zoneId}::uuid, ${baseFare}, ${farePerKm}, ${farePerKg}, ${minimumFare}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/parcel-fares/:id", async (req, res) => {
+  app.put("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare}, fare_per_km=${farePerKm}, fare_per_kg=${farePerKg}, minimum_fare=${minimumFare} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/parcel-fares/:id", async (req, res) => {
+  app.delete("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM parcel_fares WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3562,7 +3587,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/surge-pricing", async (req, res) => {
+  app.post("/api/surge-pricing", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, zone_id, startTime, start_time, endTime, end_time, multiplier, reason, isActive, is_active } = req.body;
       const zid = zoneId || zone_id || null;
@@ -3573,7 +3598,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/surge-pricing/:id", async (req, res) => {
+  app.put("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, zone_id, startTime, start_time, endTime, end_time, multiplier, reason, isActive, is_active } = req.body;
       const zid = zoneId || zone_id || null;
@@ -3585,7 +3610,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/surge-pricing/:id", async (req, res) => {
+  app.delete("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM surge_pricing WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3602,14 +3627,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/vehicle-requests/:id/status", async (req, res) => {
+  app.patch("/api/vehicle-requests/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { status } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/vehicle-requests/:id", async (req, res) => {
+  app.patch("/api/vehicle-requests/:id", requireAdminAuth, async (req, res) => {
     try {
       const { status } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
@@ -3624,14 +3649,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/wallet-bonus", async (req, res) => {
+  app.post("/api/wallet-bonus", requireAdminAuth, async (req, res) => {
     try {
       const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/wallet-bonus/:id", async (req, res) => {
+  app.put("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`
@@ -3647,7 +3672,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/wallet-bonus/:id", async (req, res) => {
+  app.delete("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM wallet_bonuses WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3661,28 +3686,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/subscription-plans", async (req, res) => {
+  app.post("/api/subscription-plans", requireAdminAuth, async (req, res) => {
     try {
       const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO subscription_plans (name, price, duration_days, features, is_active, plan_type, max_rides, max_parcels) VALUES (${name}, ${price}, ${durationDays||30}, ${features||''}, ${isActive ?? true}, ${planType||'both'}, ${maxRides||0}, ${maxParcels||0}) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/subscription-plans/:id", async (req, res) => {
+  app.put("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET name=${name}, price=${price}, duration_days=${durationDays}, features=${features}, is_active=${isActive}, plan_type=${planType || 'both'}, max_rides=${maxRides || 0}, max_parcels=${maxParcels || 0}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/subscription-plans/:id", async (req, res) => {
+  app.patch("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET is_active=${isActive}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/subscription-plans/:id", async (req, res) => {
+  app.delete("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM subscription_plans WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3700,7 +3725,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/intercity-routes", async (req, res) => {
+  app.post("/api/intercity-routes", requireAdminAuth, async (req, res) => {
     try {
       const { fromCity, toCity, estimatedKm, baseFare, farePerKm, tollCharges, vehicleCategoryId, isActive } = req.body;
       let r;
@@ -3712,7 +3737,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/intercity-routes/:id", async (req, res) => {
+  app.put("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
       const { fromCity, toCity, estimatedKm, baseFare, farePerKm, tollCharges, vehicleCategoryId, isActive } = req.body;
       let r;
@@ -3724,14 +3749,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/intercity-routes/:id", async (req, res) => {
+  app.patch("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE intercity_routes SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/intercity-routes/:id", async (req, res) => {
+  app.delete("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM intercity_routes WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -3739,7 +3764,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Business settings — bulk update
-  app.put("/api/business-settings", async (req, res) => {
+  app.put("/api/business-settings", requireAdminAuth, async (req, res) => {
     try {
       const settings = req.body as Record<string, string>;
       for (const [key, value] of Object.entries(settings)) {
@@ -4201,16 +4226,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Razorpay: Verify payment + reduce pending balance (partial payment supported)
-  app.post("/api/driver-wallet/:id/verify-payment", async (req, res) => {
+  app.post("/api/driver-wallet/:id/verify-payment", authApp, async (req, res) => {
     try {
       const { id } = req.params;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret) {
-        const body = razorpayOrderId + "|" + razorpayPaymentId;
-        const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
+      if (!keySecret) return res.status(503).json({ message: "Payment verification not configured — contact support" });
+      const body = razorpayOrderId + "|" + razorpayPaymentId;
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
+      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
 
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
@@ -4800,7 +4824,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── Driver verification ─────────────────────────────────────────────────────
-  app.patch("/api/drivers/:id/verify", async (req, res) => {
+  app.patch("/api/drivers/:id/verify", requireAdminAuth, async (req, res) => {
     try {
       const { status, note, licenseNumber, vehicleNumber, vehicleModel } = req.body;
       const updateData: any = { verificationStatus: status };
@@ -4814,7 +4838,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/drivers/:id/documents", async (req, res) => {
+  app.patch("/api/drivers/:id/documents", authApp, async (req, res) => {
     try {
       const { licenseImage, vehicleImage, profileImage, licenseNumber, vehicleNumber, vehicleModel } = req.body;
       const updateData: any = {};
@@ -4851,21 +4875,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return clean;
   }
 
-  app.post("/api/parcel-attributes", async (req, res) => {
+  app.post("/api/parcel-attributes", requireAdminAuth, async (req, res) => {
     try {
       const [row] = await db.insert(parcelAttributes).values(sanitizeAttr(req.body) as any).returning();
       res.status(201).json(row);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.put("/api/parcel-attributes/:id", async (req, res) => {
+  app.put("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
       const [row] = await db.update(parcelAttributes).set(sanitizeAttr(req.body) as any).where(eq(parcelAttributes.id, req.params.id)).returning();
       res.json(row);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.delete("/api/parcel-attributes/:id", async (req, res) => {
+  app.delete("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
       await db.delete(parcelAttributes).where(eq(parcelAttributes.id, req.params.id));
       res.status(204).end();
@@ -4879,28 +4903,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/insurance-plans", async (req, res) => {
+  app.post("/api/insurance-plans", requireAdminAuth, async (req, res) => {
     try {
       const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO insurance_plans (name, plan_type, premium_daily, premium_monthly, coverage_amount, features, is_active) VALUES (${name}, ${planType||'vehicle'}, ${premiumDaily||0}, ${premiumMonthly||0}, ${coverageAmount||0}, ${features||''}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.put("/api/insurance-plans/:id", async (req, res) => {
+  app.put("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET name=${name}, plan_type=${planType||'vehicle'}, premium_daily=${premiumDaily||0}, premium_monthly=${premiumMonthly||0}, coverage_amount=${coverageAmount||0}, features=${features||''}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.patch("/api/insurance-plans/:id", async (req, res) => {
+  app.patch("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.delete("/api/insurance-plans/:id", async (req, res) => {
+  app.delete("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM insurance_plans WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -5398,7 +5422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/referrals/:id/pay", async (req, res) => {
+  app.patch("/api/referrals/:id/pay", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         UPDATE referrals SET status = 'paid' WHERE id = ${req.params.id}::uuid RETURNING *
@@ -5408,7 +5432,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/referrals/:id/expire", async (req, res) => {
+  app.patch("/api/referrals/:id/expire", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         UPDATE referrals SET status = 'expired' WHERE id = ${req.params.id}::uuid RETURNING *
@@ -5452,7 +5476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (smsResult.provider === "none" || !smsResult.success) {
         // No SMS provider configured or SMS failed — return OTP in response if ENABLE_DEV_OTP_RESPONSES=true
-        console.log(`[OTP] ${phoneStr} → ${otp} (SMS provider: ${smsResult.provider}, success: ${smsResult.success})`);
+        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} SMS provider: ${smsResult.provider}, success: ${smsResult.success}`);
         if (isDevOtpResponseEnabled) {
           return res.json({ success: true, message: "OTP generated. Enter it to continue.", otp });
         }
@@ -5713,7 +5737,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let smsSent = false;
       try { const r = await sendOtpSms(phoneStr, otp); smsSent = r.success; } catch (_) {}
       if (!smsSent) {
-        console.log("[RESET OTP] Phone: " + phoneStr + " OTP: " + otp);
+        console.log("[RESET OTP] SMS failed for " + phoneStr.slice(-4).padStart(phoneStr.length, '*') + " — no SMS provider configured");
         if (isDevOtpResponseEnabled) return res.json({ success: true, message: "Reset OTP generated. Enter it to continue.", otp });
         return res.json({ success: true, message: "Reset OTP sent to your mobile number" });
       }
