@@ -61,10 +61,10 @@ services:
         value: ""
         type: SECRET
       - key: RAZORPAY_KEY_ID
-        value: ""
+        value: "rzp_live_RgM7ylDDU7moQj"
         type: SECRET
       - key: RAZORPAY_KEY_SECRET
-        value: ""
+        value: "NoLQoxlCg8SPnKHSX0ciIDjJ"
         type: SECRET
       - key: RAZORPAY_WEBHOOK_SECRET
         value: ""
