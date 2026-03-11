@@ -3113,8 +3113,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/banners/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, image_url, redirect_url, zone, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`UPDATE banners SET title=${title}, image_url=${image_url}, redirect_url=${redirect_url}, zone=${zone}, is_active=${is_active} WHERE id=${id}::uuid RETURNING *`);
+      const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
+      const active = is_active ?? isActive;
+      const r = await rawDb.execute(rawSql`
+        UPDATE banners SET
+          title=COALESCE(${title ?? null}, title),
+          image_url=COALESCE(${image_url ?? null}, image_url),
+          redirect_url=COALESCE(${redirect_url ?? null}, redirect_url),
+          zone=COALESCE(${zone ?? null}, zone),
+          is_active=COALESCE(${active ?? null}, is_active)
+        WHERE id=${id}::uuid RETURNING *
+      `);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  // PUT is same as PATCH for banners (frontend uses PUT for full update + toggle)
+  app.put("/api/banners/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
+      const active = is_active ?? isActive;
+      const r = await rawDb.execute(rawSql`
+        UPDATE banners SET
+          title=COALESCE(${title ?? null}, title),
+          image_url=COALESCE(${image_url ?? null}, image_url),
+          redirect_url=COALESCE(${redirect_url ?? null}, redirect_url),
+          zone=COALESCE(${zone ?? null}, zone),
+          is_active=COALESCE(${active ?? null}, is_active)
+        WHERE id=${id}::uuid RETURNING *
+      `);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3147,8 +3174,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/discounts/:id", async (req, res) => {
     try {
-      const { isActive } = req.body;
-      const r = await rawDb.execute(rawSql`UPDATE discounts SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
+      const { isActive, is_active } = req.body;
+      const active = isActive ?? is_active;
+      const r = await rawDb.execute(rawSql`UPDATE discounts SET is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/discounts/:id", async (req, res) => {
+    try {
+      const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active, isActive } = req.body;
+      const active = is_active ?? isActive;
+      const r = await rawDb.execute(rawSql`
+        UPDATE discounts SET
+          name=COALESCE(${name ?? null}, name),
+          discount_amount=COALESCE(${discount_amount ?? null}, discount_amount),
+          discount_type=COALESCE(${discount_type ?? null}, discount_type),
+          min_order_amount=COALESCE(${min_order_amount ?? null}, min_order_amount),
+          max_discount_amount=COALESCE(${max_discount_amount ?? null}, max_discount_amount),
+          is_active=COALESCE(${active ?? null}, is_active)
+        WHERE id=${req.params.id}::uuid RETURNING *
+      `);
       res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3533,6 +3578,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/wallet-bonus/:id", async (req, res) => {
+    try {
+      const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
+      const r = await rawDb.execute(rawSql`
+        UPDATE wallet_bonuses SET
+          name=COALESCE(${name ?? null}, name),
+          bonus_amount=COALESCE(${bonus_amount ?? null}, bonus_amount),
+          bonus_type=COALESCE(${bonus_type ?? null}, bonus_type),
+          minimum_add_amount=COALESCE(${minimum_add_amount ?? null}, minimum_add_amount),
+          max_bonus_amount=COALESCE(${max_bonus_amount ?? null}, max_bonus_amount),
+          is_active=COALESCE(${is_active ?? null}, is_active)
+        WHERE id=${req.params.id}::uuid RETURNING *
+      `);
+      res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/wallet-bonus/:id", async (req, res) => {
