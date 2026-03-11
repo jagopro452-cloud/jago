@@ -37,8 +37,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
         final data = jsonDecode(res.body);
         setState(() {
           _code = data['referralCode']?.toString() ?? '';
-          _totalReferrals = int.tryParse(data['stats']?['total']?.toString() ?? '0') ?? 0;
-          _totalEarned = double.tryParse(data['stats']?['total_earned']?.toString() ?? '0') ?? 0;
+          _totalReferrals = int.tryParse(data['totalReferrals']?.toString() ?? '0') ?? 0;
+          _totalEarned = double.tryParse(data['totalEarned']?.toString() ?? '0') ?? 0;
           _referrals = List<dynamic>.from(data['referrals'] ?? []);
           _loading = false;
         });
