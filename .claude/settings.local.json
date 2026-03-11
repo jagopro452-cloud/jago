@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const p=require\\(''./package.json''\\); const deps=Object.keys\\({...p.dependencies,...p.devDependencies}\\); const used=[''nanoid'',''node-fetch'']; used.forEach\\(u=>{if\\(!deps.includes\\(u\\)\\) console.log\\(''MISSING:'',u\\); else console.log\\(''OK:'',u\\)}\\);\")",
+      "Bash(node -e \"const p=require\\(''./package.json''\\); const all=Object.keys\\(Object.assign\\({},p.dependencies,p.devDependencies\\)\\); console.log\\(all.includes\\(''nanoid''\\) ? ''nanoid: OK'' : ''nanoid: MISSING''\\);\")",
+      "Bash(node -e \":*)",
+      "WebFetch(domain:cloud.digitalocean.com)",
+      "Bash(grep -r \"BASE_URL\\\\|API_URL\\\\|jagopro\\\\|localhost\\\\|10.0.2.2\\\\|baseUrl\\\\|apiUrl\" c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/customer_app/lib/ --include=*.dart -l)",
+      "Bash(grep -r \"BASE_URL\\\\|baseUrl\\\\|apiUrl\\\\|jagopro\\\\|localhost\" c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/driver_app/lib/ --include=*.dart -l)",
+      "Bash(sed -i \"s|static const String _prodUrl = ''https://oyster-app-9e9cd.ondigitalocean.app'';|static const String _prodUrl = ''https://jagopro.org'';|g\" \"c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/customer_app/lib/config/api_config.dart\")",
+      "Bash(sed -i \"s|static const String _prodUrl = ''https://oyster-app-9e9cd.ondigitalocean.app'';|static const String _prodUrl = ''https://jagopro.org'';|g\" \"c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/driver_app/lib/config/api_config.dart\")",
+      "Bash(flutter pub:*)",
+      "Bash(flutter build:*)"
+    ]
+  }
+}
