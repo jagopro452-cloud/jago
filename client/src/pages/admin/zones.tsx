@@ -78,6 +78,9 @@ function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
 
   useEffect(() => { setForm(initialForm); }, [JSON.stringify(initialForm)]);
 
+  // Reset draw mode to pan when modal opens
+  useEffect(() => { if (open) setDrawMode("pan"); }, [open]);
+
   // Load initial points from existing coordinates
   useEffect(() => {
     if (!open) return;
@@ -180,22 +183,19 @@ function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
     const onClick = (e: any) => {
       if (drawMode !== "draw" || closed) return;
       const { lat, lng } = e.latlng;
-      const newPt: [number, number] = [lat, lng];
 
       setPoints(prev => {
         if (prev.length >= 2) {
-          // Check proximity to first point
-          const first = prev[0];
-          const dx = (first[1] - lng) * Math.cos(first[0] * Math.PI / 180) * 111320;
-          const dy = (first[0] - lat) * 111320;
-          const distPx = Math.sqrt(dx*dx + dy*dy);
-          const zoomScale = 111320 / Math.pow(2, map.getZoom()) * 256 / map.getContainer().offsetWidth;
-          if (distPx < 400) {
+          // Pixel-based snap: close polygon if click is within 20px of first point
+          const firstPx = map.latLngToContainerPoint(L.latLng(prev[0][0], prev[0][1]));
+          const clickPx = e.containerPoint;
+          const pixelDist = Math.sqrt((firstPx.x - clickPx.x) ** 2 + (firstPx.y - clickPx.y) ** 2);
+          if (pixelDist < 20) {
             setClosed(true);
             return prev;
           }
         }
-        return [...prev, newPt];
+        return [...prev, [lat, lng] as [number, number]];
       });
     };
 
@@ -364,6 +364,22 @@ function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
               </div>
             )}
 
+            {/* Surge warning */}
+            {form.surgeFactor > 1 && (
+              <div style={{ background: "#fefce8", border: "1px solid #fde047", borderRadius: 10, padding: "10px 12px", fontSize: 12, color: "#92400e" }}>
+                <i className="bi bi-lightning-fill me-1" style={{ color: "#d97706" }}></i>
+                <b>Surge ×{Number(form.surgeFactor).toFixed(1)}</b> — rides starting inside this zone will be charged {Math.round((form.surgeFactor - 1) * 100)}% extra
+              </div>
+            )}
+
+            {/* No boundary warning */}
+            {!closed && points.length === 0 && (
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", fontSize: 11.5, color: "#64748b" }}>
+                <i className="bi bi-info-circle me-1"></i>
+                No boundary drawn — zone will cover all areas. Draw a polygon to restrict the service area.
+              </div>
+            )}
+
             {/* Save button */}
             <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               <button className="btn btn-primary w-100" disabled={!form.name || saving} onClick={handleSave}
@@ -476,6 +492,7 @@ export default function Zones() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/zones/${id}`, { isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/zones"] }),
+    onError: (e: any) => toast({ title: "Failed to update zone", description: e.message, variant: "destructive" }),
   });
 
   const openEdit = (zone: any) => {
@@ -600,8 +617,9 @@ export default function Zones() {
                             </div>
                             <div>
                               <div className="fw-semibold" style={{ fontSize: 13 }}>{zone.name}</div>
-                              <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
-                                {zone.coordinates ? "📍 Boundary set" : "No boundary drawn"}
+                              <div style={{ fontSize: 10.5, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                                {zone.coordinates ? "📍 Boundary set" : "⚠️ No boundary"}
+                                {surge > 1 && <span style={{ background: "#fef08a", color: "#92400e", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>⚡ SURGE ACTIVE</span>}
                               </div>
                             </div>
                           </div>

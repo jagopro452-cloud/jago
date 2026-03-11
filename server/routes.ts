@@ -2396,7 +2396,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/zones", async (req, res) => {
+  app.post("/api/zones", requireAdminAuth, async (req, res) => {
     try {
       const zone = await storage.createZone(req.body);
       res.status(201).json(zone);
@@ -2405,25 +2405,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.put("/api/zones/:id", async (req, res) => {
+  app.put("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
       const zone = await storage.updateZone(req.params.id, req.body);
+      if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  app.patch("/api/zones/:id", async (req, res) => {
+  app.patch("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
       const zone = await storage.updateZone(req.params.id, req.body);
+      if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  app.delete("/api/zones/:id", async (req, res) => {
+  app.delete("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
       await storage.deleteZone(req.params.id);
       res.status(204).end();
@@ -7703,6 +7705,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hr = nowHr >= 24 ? nowHr - 24 : nowHr;
       const isNight = hr >= 22 || hr < 6;
 
+      // Zone surge factor: check if pickup is inside any active zone
+      let zoneSurge = 1.0;
+      let activeZoneName = '';
+      if (pickupLat && pickupLng) {
+        try {
+          const zoneRows = await rawDb.execute(rawSql`SELECT name, coordinates, surge_factor FROM zones WHERE is_active = true AND surge_factor > 1 AND coordinates IS NOT NULL`);
+          const pLat = parseFloat(pickupLat), pLng = parseFloat(pickupLng);
+          for (const zr of zoneRows.rows as any[]) {
+            try {
+              const geo = JSON.parse(zr.coordinates);
+              if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
+                const ring: number[][] = geo.coordinates[0];
+                // Ray-casting point-in-polygon
+                let inside = false;
+                for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                  const xi = ring[i][0], yi = ring[i][1];
+                  const xj = ring[j][0], yj = ring[j][1];
+                  if (((yi > pLat) !== (yj > pLat)) && (pLng < ((xj - xi) * (pLat - yi) / (yj - yi) + xi))) inside = !inside;
+                }
+                if (inside) { zoneSurge = parseFloat(zr.surge_factor) || 1.0; activeZoneName = zr.name; break; }
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+
       // DISTINCT ON ensures exactly one row per vehicle category, avoiding zone duplicates
       const fareR = await rawDb.execute(rawSql`
         SELECT DISTINCT ON (f.vehicle_category_id)
@@ -7756,6 +7784,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         let subtotal = base + distanceFare + timeFare;
         if (isNight) subtotal = +(subtotal * nightMultiplier).toFixed(2);
+        if (zoneSurge > 1) subtotal = +(subtotal * zoneSurge).toFixed(2);
         const total = Math.max(subtotal, minFare);
         // GST 5% on full fare (government tax)
         const gst = +(total * 0.05).toFixed(2);
@@ -7795,6 +7824,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           totalSeats: isCarpool ? totalSeats : undefined,
           seatPrice: isCarpool ? seatPrice : undefined,
           seatPriceDisplay: isCarpool ? `₹${seatPrice}/seat` : undefined,
+          zoneSurge: zoneSurge > 1 ? zoneSurge : undefined,
+          zoneName: zoneSurge > 1 ? activeZoneName : undefined,
         };
       });
 
