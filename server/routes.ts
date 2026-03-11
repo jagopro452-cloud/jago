@@ -5350,10 +5350,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isNew = true;
         const fullName = name || `User_${phone.slice(-4)}`;
         const newUser = await rawDb.execute(rawSql`
-          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance, referral_code)
-          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0, ${'JAGO' + phoneStr.slice(-6)})
+          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance)
+          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -5449,10 +5450,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isNew = true;
         const fullName = `User_${phoneStr.slice(-4)}`;
         const newUser = await rawDb.execute(rawSql`
-          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance, referral_code)
-          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0, ${'JAGO' + phoneStr.slice(-6)})
+          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance)
+          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -5502,10 +5504,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
       const passwordHash = await bcrypt.hash(password, 10);
       const insertRes = await rawDb.execute(rawSql`
-        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash, referral_code)
-        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash}, ${'JAGO' + phone.slice(-6)})
+        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
+        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
         RETURNING *
       `);
+      // Set referral_code separately (handles DB where column may not exist yet)
+      const refCode = 'JAGO' + phone.slice(-6);
+      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(() => {});
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
