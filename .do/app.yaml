@@ -58,7 +58,7 @@ services:
       - key: SOCKET_ALLOWED_ORIGINS
         value: "https://jagopro.org"
       - key: FAST2SMS_API_KEY
-        value: ""
+        value: "kXNtCTsAWh92LupzHQOZv7YxG4cn0riB6eMPoVIUS5y3gaJfmEkYlGuem7Tzq8KwMHRfvrtyahoUALWp"
         type: SECRET
       - key: RAZORPAY_KEY_ID
         value: "rzp_live_RgM7ylDDU7moQj"
