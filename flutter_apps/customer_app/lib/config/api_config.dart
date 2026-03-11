@@ -2,8 +2,8 @@ class ApiConfig {
   // Override at compile time:  --dart-define=API_BASE_URL=https://yourdomain.com
   static const String compileTimeBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
-  // Production server URL (update when custom domain jagopro.org is configured)
-  static const String _prodUrl = 'https://oyster-app-9e9cd.ondigitalocean.app';
+  // Production server URL
+  static const String _prodUrl = 'https://jagopro.org';
 
   // LAN IP for local testing only
   static const String _lanDevUrl = 'http://192.168.1.11:5000';

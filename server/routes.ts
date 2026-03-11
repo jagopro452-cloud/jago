@@ -9643,15 +9643,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="card">
   <div class="logo">JAGO</div>
   <div class="sub">Ride. Deliver. Earn.</div>
-  <a class="btn btn-blue" href="/apks/jago-customer-v1.0.29.apk" download>
+  <a class="btn btn-blue" href="/apks/jago-customer-v1.0.30.apk" download>
     📱 Download Customer App
   </a>
-  <span class="badge">v1.0.29 • ARM64 • 24 MB</span>
+  <span class="badge">v1.0.30 • ARM64 • 24 MB</span>
   <br><br>
-  <a class="btn btn-green" href="/apks/jago-driver-v1.0.29.apk" download>
+  <a class="btn btn-green" href="/apks/jago-driver-v1.0.30.apk" download>
     🚗 Download Driver / Pilot App
   </a>
-  <span class="badge">v1.0.29 • ARM64 • 25 MB</span>
+  <span class="badge">v1.0.30 • ARM64 • 25 MB</span>
   <div class="version">Android 6.0+ required • Free Download</div>
 </div>
 </body></html>`);
