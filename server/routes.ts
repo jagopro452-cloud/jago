@@ -9126,7 +9126,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
       const plan = camelize(planR.rows[0] as any) as any;
       // Check if Razorpay credentials exist
-      const Razorpay = require('razorpay');
+      const Razorpay = _require('razorpay');
       const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
       const amountPaise = Math.round(parseFloat(plan.price) * 100);
       const order = await razorpay.orders.create({ amount: amountPaise, currency: 'INR', receipt: `sub_${driver.id}_${planId}` });
