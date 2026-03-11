@@ -147,10 +147,10 @@ async function logAdminAction(action: string, entityType: string, entityId?: str
 }
 
 
-// Login rate limiter — max 20 attempts per 15 minutes per IP
+// Login rate limiter — max 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 5,
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1304,6 +1304,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           delivered_at TIMESTAMPTZ,
           otp VARCHAR(10),
           notes TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS referrals (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          referrer_id UUID NOT NULL,
+          referred_id UUID,
+          referral_type VARCHAR(20) DEFAULT 'customer',
+          status VARCHAR(20) DEFAULT 'pending',
+          reward_amount DECIMAL(10,2) DEFAULT 50,
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
       `).catch(() => {});
@@ -5339,8 +5350,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isNew = true;
         const fullName = name || `User_${phone.slice(-4)}`;
         const newUser = await rawDb.execute(rawSql`
-          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance)
-          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
+          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance, referral_code)
+          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0, ${'JAGO' + phoneStr.slice(-6)})
           RETURNING *
         `);
         user = camelize(newUser.rows[0]);
@@ -5438,8 +5449,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isNew = true;
         const fullName = `User_${phoneStr.slice(-4)}`;
         const newUser = await rawDb.execute(rawSql`
-          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance)
-          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
+          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance, referral_code)
+          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0, ${'JAGO' + phoneStr.slice(-6)})
           RETURNING *
         `);
         user = camelize(newUser.rows[0]);
@@ -5491,14 +5502,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
       const passwordHash = await bcrypt.hash(password, 10);
       const insertRes = await rawDb.execute(rawSql`
-        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
-        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
+        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash, referral_code)
+        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash}, ${'JAGO' + phone.slice(-6)})
         RETURNING *
       `);
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
+      // Handle referral code if provided
+      if (req.body.referralCode) {
+        try {
+          const referrer = await rawDb.execute(rawSql`SELECT id FROM users WHERE referral_code=${req.body.referralCode} LIMIT 1`);
+          if (referrer.rows.length) {
+            await rawDb.execute(rawSql`
+              INSERT INTO referrals (referrer_id, referred_id, referral_type, status, reward_amount)
+              VALUES (${(referrer.rows[0] as any).id}::uuid, ${user.id}::uuid, ${userType}, 'pending', 50)
+            `).catch(() => {});
+          }
+        } catch (_) {}
+      }
       res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8672,7 +8695,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const summary = camelize(countRes.rows[0]) as any;
       res.json({
-        referralCode: user.phone,
+        referralCode: user.referral_code || ('JAGO' + user.phone.slice(-6)),
         totalReferrals: parseInt(summary.total || "0"),
         totalEarned: parseFloat(summary.totalEarned || "0"),
         referrals: r.rows.map(camelize),
