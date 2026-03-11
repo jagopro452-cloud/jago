@@ -9617,6 +9617,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ========== FLUTTER SDK FILES DOWNLOAD ==========
   app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 
+  // ========== APK DOWNLOADS ==========
+  app.use("/apks", express.static(path.join(process.cwd(), "public", "apks")));
+
+  // Download page — jagopro.org/download
+  app.get("/download", (_req, res) => {
+    const base = process.env.APP_BASE_URL || "https://oyster-app-9e9cd.ondigitalocean.app";
+    res.send(`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Download JAGO App</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#1e293b;border-radius:24px;padding:40px;max-width:480px;width:90%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.4)}
+.logo{font-size:48px;font-weight:900;color:#1e6de5;letter-spacing:-2px;margin-bottom:8px}
+.sub{color:#94a3b8;margin-bottom:36px;font-size:15px}
+.btn{display:block;padding:16px 24px;border-radius:14px;text-decoration:none;font-weight:700;font-size:16px;margin-bottom:14px;transition:.2s}
+.btn-blue{background:#1e6de5;color:#fff}
+.btn-blue:hover{background:#1558c0}
+.btn-green{background:#16a34a;color:#fff}
+.btn-green:hover{background:#15803d}
+.badge{background:#0f172a;border-radius:8px;padding:6px 12px;font-size:12px;color:#64748b;margin-top:8px;display:inline-block}
+.version{color:#475569;font-size:12px;margin-top:20px}
+</style></head><body>
+<div class="card">
+  <div class="logo">JAGO</div>
+  <div class="sub">Ride. Deliver. Earn.</div>
+  <a class="btn btn-blue" href="/apks/jago-customer-v1.0.29.apk" download>
+    📱 Download Customer App
+  </a>
+  <span class="badge">v1.0.29 • ARM64 • 24 MB</span>
+  <br><br>
+  <a class="btn btn-green" href="/apks/jago-driver-v1.0.29.apk" download>
+    🚗 Download Driver / Pilot App
+  </a>
+  <span class="badge">v1.0.29 • ARM64 • 25 MB</span>
+  <div class="version">Android 6.0+ required • Free Download</div>
+</div>
+</body></html>`);
+  });
+
   // ========== NOTIFICATION LOGS (update send to persist) ==========
   app.get("/api/notifications", async (req, res) => {
     try {
