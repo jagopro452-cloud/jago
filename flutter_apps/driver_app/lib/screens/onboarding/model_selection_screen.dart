@@ -18,8 +18,8 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
   bool _isLoading = false;
 
   final Color _darkBg = const Color(0xFF060D1E);
-  final Color _primary = const Color(0xFF1E6DE5);
-  final Color _surface = const Color(0xFF0D1B3E);
+  final Color _primary = const Color(0xFFFF6200);
+  final Color _surface = const Color(0xFF1C1C1E);
   final Color _gold = const Color(0xFFFFD700);
 
   Future<void> _continue() async {
@@ -174,7 +174,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                     height: 56,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_primary, const Color(0xFF4A8FEF)],
+                        colors: [_primary, const Color(0xFFFF8C42)],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
@@ -335,7 +335,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                 right: 0,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: Color(0xFF1E6DE5),
+                    color: Color(0xFFFF6200),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check, color: Colors.white, size: 20),

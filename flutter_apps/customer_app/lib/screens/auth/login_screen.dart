@@ -36,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
-  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _blue = Color(0xFFFF6200);
 
   @override
   void initState() {
@@ -233,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
       ),
       const SizedBox(height: 12),
-      const Text('JAGO', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF1E6DE5), letterSpacing: 3)),
+      const Text('JAGO', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFFFF6200), letterSpacing: 3)),
       const SizedBox(height: 4),
       Text('Your ride, your way', style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w500)),
     ]);
@@ -382,7 +382,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 12, color: Color(0xFF1E6DE5)),
+        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 12, color: Color(0xFFFF6200)),
         decoration: InputDecoration(hintText: '• • • • • •', hintStyle: TextStyle(fontSize: 20, color: Colors.grey[300], letterSpacing: 8), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 16)),
       ),
     );

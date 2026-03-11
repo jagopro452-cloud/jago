@@ -80,13 +80,13 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
         ],
       ),
       body: _loading 
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E6DE5)))
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                Center(child: Image.asset('assets/images/pilot_logo.png', height: 80, errorBuilder: (_, __, ___) => const Icon(Icons.verified_user, size: 80, color: Color(0xFF1E6DE5)))),
+                Center(child: Image.asset('assets/images/pilot_logo.png', height: 80, errorBuilder: (_, __, ___) => const Icon(Icons.verified_user, size: 80, color: Color(0xFFFF6200)))),
                 const SizedBox(height: 32),
                 Text(
                   status == 'approved' ? 'Account Approved!' : (status == 'rejected' ? 'Verification Rejected' : 'Account Under Review'),
@@ -174,7 +174,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: const Color(0xFF0D1B3E), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: const Color(0xFF1C1C1E), borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(Icons.description, color: statusColor),
         title: Text(labels[type] ?? type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),

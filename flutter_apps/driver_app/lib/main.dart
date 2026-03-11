@@ -73,10 +73,10 @@ class JagoPilotApp extends StatelessWidget {
   ThemeData _lightTheme() => ThemeData(
         brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E6DE5),
-          primary: const Color(0xFF1E6DE5),
+          seedColor: const Color(0xFFFF6200),
+          primary: const Color(0xFFFF6200),
         ),
-        primaryColor: const Color(0xFF1E6DE5),
+        primaryColor: const Color(0xFFFF6200),
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
         fontFamily: 'Roboto',
         cardColor: Colors.white,
@@ -88,7 +88,7 @@ class JagoPilotApp extends StatelessWidget {
               color: Color(0xFF1A1A2E),
               fontSize: 17,
               fontWeight: FontWeight.w600),
-          iconTheme: IconThemeData(color: Color(0xFF1E6DE5)),
+          iconTheme: IconThemeData(color: Color(0xFFFF6200)),
         ),
         textTheme: const TextTheme(
           bodyLarge: TextStyle(color: Color(0xFF1A1A2E)),
@@ -96,7 +96,7 @@ class JagoPilotApp extends StatelessWidget {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1E6DE5),
+            backgroundColor: const Color(0xFFFF6200),
             foregroundColor: Colors.white,
             elevation: 0,
             shape:
@@ -109,17 +109,17 @@ class JagoPilotApp extends StatelessWidget {
   ThemeData _darkTheme() => ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E6DE5),
+          seedColor: const Color(0xFFFF6200),
           brightness: Brightness.dark,
-          primary: const Color(0xFF1E6DE5),
+          primary: const Color(0xFFFF6200),
         ),
-        primaryColor: const Color(0xFF1E6DE5),
+        primaryColor: const Color(0xFFFF6200),
         scaffoldBackgroundColor: const Color(0xFF060D1E),
         fontFamily: 'Roboto',
-        cardColor: const Color(0xFF0D1B3E),
+        cardColor: const Color(0xFF1C1C1E),
         dividerColor: Colors.white12,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0D1B3E),
+          backgroundColor: Color(0xFF1C1C1E),
           elevation: 0,
           titleTextStyle: TextStyle(
               color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
@@ -131,7 +131,7 @@ class JagoPilotApp extends StatelessWidget {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1E6DE5),
+            backgroundColor: const Color(0xFFFF6200),
             foregroundColor: Colors.white,
             elevation: 0,
             shape:

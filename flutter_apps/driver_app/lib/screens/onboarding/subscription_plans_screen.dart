@@ -26,8 +26,8 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
   dynamic _selectedPlan;
 
   final Color _darkBg = const Color(0xFF060D1E);
-  final Color _primary = const Color(0xFF1E6DE5);
-  final Color _surface = const Color(0xFF0D1B3E);
+  final Color _primary = const Color(0xFFFF6200);
+  final Color _surface = const Color(0xFF1C1C1E);
   final Color _gold = const Color(0xFFFFD700);
 
   @override
@@ -231,7 +231,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E6DE5)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
           : Column(
               children: [
                 const SizedBox(height: 10),
@@ -413,7 +413,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         width: double.infinity,
         height: 56,
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [_primary, const Color(0xFF4A8FEF)]),
+          gradient: LinearGradient(colors: [_primary, const Color(0xFFFF8C42)]),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [BoxShadow(color: _primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
         ),

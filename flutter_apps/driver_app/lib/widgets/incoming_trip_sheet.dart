@@ -31,7 +31,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
 
   static const Color _blue = Color(0xFF2563EB);
   static const Color _bg = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF0D1B3E);
+  static const Color _surface = Color(0xFF1C1C1E);
 
   @override
   void initState() {

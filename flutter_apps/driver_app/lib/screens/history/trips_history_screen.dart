@@ -26,7 +26,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   int _cancelledCount = 0;
 
   static const Color _bg = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF0D1B3E);
+  static const Color _surface = Color(0xFF1C1C1E);
   static const Color _blue = Color(0xFF2563EB);
   static const Color _green = Color(0xFF16A34A);
   static const Color _red = Color(0xFFDC2626);
@@ -148,7 +148,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       isScrollControlled: true,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0D1B3E),
+          color: Color(0xFF1C1C1E),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
@@ -279,7 +279,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       isScrollControlled: true,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0D1B3E),
+          color: Color(0xFF1C1C1E),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: EdgeInsets.only(
@@ -384,7 +384,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF0D1B3E), Color(0xFF060D1E)],
+                    colors: [Color(0xFF1C1C1E), Color(0xFF060D1E)],
                     begin: Alignment.topCenter, end: Alignment.bottomCenter,
                   ),
                 ),

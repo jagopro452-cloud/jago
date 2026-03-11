@@ -21,7 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
-  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _blue = Color(0xFFFF6200);
 
   @override
   void initState() {

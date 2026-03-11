@@ -36,7 +36,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   final FlutterTts _tts = FlutterTts();
   String _lastAnnouncedStatus = '';
 
-  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _blue = Color(0xFFFF6200);
   static const Color _green = Color(0xFF16A34A);
 
   @override
@@ -474,12 +474,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E6DE5).withValues(alpha: 0.1),
+                color: const Color(0xFFFF6200).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.share_rounded, color: Color(0xFF1E6DE5), size: 15),
+                const Icon(Icons.share_rounded, color: Color(0xFFFF6200), size: 15),
                 const SizedBox(width: 4),
-                const Text('Share', style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 11, fontWeight: FontWeight.w700)),
+                const Text('Share', style: TextStyle(color: Color(0xFFFF6200), fontSize: 11, fontWeight: FontWeight.w700)),
               ]),
             ),
           ),
@@ -496,7 +496,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-            ? [const Color(0xFF0D1B3E), const Color(0xFF111F4A)]
+            ? [const Color(0xFF1C1C1E), const Color(0xFF111F4A)]
             : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
@@ -635,7 +635,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     } else {
       await Clipboard.setData(ClipboardData(text: shareText));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Share text copied! Paste in WhatsApp'), backgroundColor: Color(0xFF1E6DE5)));
+        const SnackBar(content: Text('Share text copied! Paste in WhatsApp'), backgroundColor: Color(0xFFFF6200)));
     }
   }
 
@@ -795,7 +795,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           ] else ...[
             const SizedBox(height: 12),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.favorite_rounded, color: Color(0xFF1E6DE5), size: 16),
+              const Icon(Icons.favorite_rounded, color: Color(0xFFFF6200), size: 16),
               const SizedBox(width: 6),
               Text('Thanks for your rating! 🙏',
                 style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w500)),

@@ -60,9 +60,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final List<StreamSubscription> _subs = [];
   int _navIndex = 0;
 
-  static const Color _jagoPrimary = Color(0xFF1E6DE5);
-  static const Color _bg = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF0D1B3E);
+  static const Color _jagoPrimary = Color(0xFFFF6200);
+  static const Color _bg = Color(0xFF1A0A00);
+  static const Color _surface = Color(0xFF2D1200);
   static const Color _green = Color(0xFF16A34A);
 
   String _getTimeGreeting() {
@@ -423,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0D1B3E),
+          color: Color(0xFF1C1C1E),
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -444,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ])),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: const Color(0xFF1E6DE5).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: const Color(0xFFFF6200).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
               child: Text('₹${parcel['totalFare'] ?? 0}',
                 style: const TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.bold, fontSize: 18)),
             ),
@@ -534,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0D1B3E),
+        backgroundColor: const Color(0xFF1C1C1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
@@ -704,7 +704,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const KycDocumentsScreen()));
                   },
-                  child: const Text('Update Documents', style: TextStyle(color: Color(0xFF1E6DE5), fontWeight: FontWeight.bold)),
+                  child: const Text('Update Documents', style: TextStyle(color: Color(0xFFFF6200), fontWeight: FontWeight.bold)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -796,14 +796,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [const Color(0xFF1E6DE5).withValues(alpha: 0.18), const Color(0xFF1E6DE5).withValues(alpha: 0.06)],
+                      colors: [const Color(0xFFFF6200).withValues(alpha: 0.18), const Color(0xFFFF6200).withValues(alpha: 0.06)],
                       begin: Alignment.topLeft, end: Alignment.bottomRight),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF1E6DE5).withValues(alpha: 0.35), width: 1),
+                    border: Border.all(color: const Color(0xFFFF6200).withValues(alpha: 0.35), width: 1),
                   ),
                   child: const Text(
                     'JAGO Pilot',
-                    style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                    style: TextStyle(color: Color(0xFFFF6200), fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: -0.2),
                   ),
                 ),
                 // Socket status badge on the pill
@@ -920,11 +920,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFF1E6DE5).withValues(alpha: isDark ? 0.38 : 0.25),
+          color: const Color(0xFFFF6200).withValues(alpha: isDark ? 0.38 : 0.25),
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1E6DE5).withValues(alpha: isDark ? 0.28 : 0.12),
+            color: const Color(0xFFFF6200).withValues(alpha: isDark ? 0.28 : 0.12),
             blurRadius: 16,
             offset: const Offset(0, 5),
           ),
@@ -1074,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 width: 50, height: 50,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF1E6DE5), Color(0xFF4A8FEF)],
+                    colors: [Color(0xFFFF6200), Color(0xFFFF8C42)],
                     begin: Alignment.topLeft, end: Alignment.bottomRight),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0,4))],
@@ -1231,7 +1231,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             width: 42, height: 42,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [_jagoPrimary, const Color(0xFF4A8FEF)],
+                colors: [_jagoPrimary, const Color(0xFFFF8C42)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight),
               borderRadius: BorderRadius.circular(12),
               boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0,3))],
@@ -1350,7 +1350,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             width: 4, height: 16,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF1E6DE5), Color(0xFF4A8FEF)],
+                colors: [Color(0xFFFF6200), Color(0xFFFF8C42)],
                 begin: Alignment.topCenter, end: Alignment.bottomCenter),
               borderRadius: BorderRadius.circular(2)),
           ),
@@ -1605,15 +1605,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [const Color(0xFF1E6DE5).withValues(alpha: 0.28), const Color(0xFF1E6DE5).withValues(alpha: 0.1)],
+                  colors: [const Color(0xFFFF6200).withValues(alpha: 0.28), const Color(0xFFFF6200).withValues(alpha: 0.1)],
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF1E6DE5).withValues(alpha: 0.25), width: 1),
+                border: Border.all(color: const Color(0xFFFF6200).withValues(alpha: 0.25), width: 1),
               ),
               child: Row(children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: const Color(0xFF1E6DE5),
+                  backgroundColor: const Color(0xFFFF6200),
                   child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
                     style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
                 ),
@@ -1629,7 +1629,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E6DE5).withValues(alpha: 0.3),
+                        color: const Color(0xFFFF6200).withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(6)),
                       child: const Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.verified_rounded, color: Colors.white, size: 12),

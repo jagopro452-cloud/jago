@@ -14,7 +14,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loading = true;
   List<dynamic> _notifications = [];
 
-  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _blue = Color(0xFFFF6200);
 
   @override
   void initState() {
@@ -111,7 +111,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E6DE5)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
           : _notifications.isEmpty
               ? Center(
                   child: Column(
@@ -165,7 +165,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           trailing: !isRead
                               ? Container(width: 8, height: 8,
-                                  decoration: const BoxDecoration(color: Color(0xFF1E6DE5), shape: BoxShape.circle))
+                                  decoration: const BoxDecoration(color: Color(0xFFFF6200), shape: BoxShape.circle))
                               : null,
                         ),
                       );

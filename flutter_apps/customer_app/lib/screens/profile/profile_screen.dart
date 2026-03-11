@@ -77,7 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Profile updated successfully'),
-          backgroundColor: Color(0xFF1E6DE5)));
+          backgroundColor: Color(0xFFFF6200)));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(res['message'] ?? 'Update failed'),
@@ -200,11 +200,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg =
         isDark ? const Color(0xFF060D1E) : const Color(0xFFF5F5F5);
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
     final textColor = isDark ? Colors.white : const Color(0xFF111827);
     final subColor = isDark ? Colors.white54 : const Color(0xFF6B7280);
     final divColor = isDark ? Colors.white10 : const Color(0xFFEEEEEE);
-    final accentColor = const Color(0xFF1E6DE5);
+    final accentColor = const Color(0xFFFF6200);
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -553,10 +553,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: const Color(0xFF1E6DE5).withValues(alpha: 0.1),
+          color: const Color(0xFFFF6200).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 20),
+        child: const Icon(Icons.translate_rounded, color: Color(0xFFFF6200), size: 20),
       ),
       title: Text(L.tr('language_settings'),
         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
@@ -595,7 +595,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(color: subColor.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 16),
                 Row(children: [
-                  const Icon(Icons.translate_rounded, color: Color(0xFF1E6DE5), size: 22),
+                  const Icon(Icons.translate_rounded, color: Color(0xFFFF6200), size: 22),
                   const SizedBox(width: 10),
                   Text(L.tr('choose_language'),
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
@@ -622,11 +622,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
                           color: isSelected
-                            ? const Color(0xFF1E6DE5).withValues(alpha: 0.08)
-                            : const Color(0xFF1E6DE5).withValues(alpha: 0.02),
+                            ? const Color(0xFFFF6200).withValues(alpha: 0.08)
+                            : const Color(0xFFFF6200).withValues(alpha: 0.02),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isSelected ? const Color(0xFF1E6DE5) : subColor.withValues(alpha: 0.15),
+                            color: isSelected ? const Color(0xFFFF6200) : subColor.withValues(alpha: 0.15),
                             width: isSelected ? 1.5 : 1,
                           ),
                         ),
@@ -636,7 +636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(lang['name']!,
                               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
-                                color: isSelected ? const Color(0xFF1E6DE5) : textColor)),
+                                color: isSelected ? const Color(0xFFFF6200) : textColor)),
                             Text(lang['nativeName']!,
                               style: TextStyle(fontSize: 12, color: subColor)),
                           ])),
@@ -644,7 +644,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E6DE5),
+                                color: const Color(0xFFFF6200),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Icon(Icons.check, color: Colors.white, size: 14),

@@ -130,8 +130,8 @@ export default function Dashboard() {
     { label: "Drivers", icon: "bi-person-badge", href: "/admin/drivers", color: "#16a34a" },
     { label: "Withdrawals", icon: "bi-cash-coin", href: "/admin/withdrawals", color: "#d97706" },
     { label: "Reports", icon: "bi-graph-up", href: "/admin/reports", color: "#7c3aed" },
-    { label: "Customer APK", icon: "bi-android2", href: "/apks/jago-customer-v1.0.30.apk", color: "#16a34a", external: true },
-    { label: "Driver APK", icon: "bi-android2", href: "/apks/jago-driver-v1.0.30.apk", color: "#0891b2", external: true },
+    { label: "Customer APK", icon: "bi-android2", href: "/apks/jago-customer-v1.0.31.apk", color: "#16a34a", external: true },
+    { label: "Driver APK", icon: "bi-android2", href: "/apks/jago-driver-v1.0.31.apk", color: "#0891b2", external: true },
   ];
 
   const recentNotifs = Array.isArray(notifs) ? notifs.slice(0, 12) : [];

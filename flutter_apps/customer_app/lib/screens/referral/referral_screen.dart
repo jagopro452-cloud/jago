@@ -18,7 +18,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   double _totalEarned = 0;
   List<dynamic> _referrals = [];
 
-  static const Color _blue = Color(0xFF1E6DE5);
+  static const Color _blue = Color(0xFFFF6200);
 
   @override
   void initState() {
@@ -95,7 +95,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         elevation: 0,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E6DE5)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
           : RefreshIndicator(
               onRefresh: _fetchReferral,
               color: _blue,
@@ -110,7 +110,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       width: double.infinity,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF1E6DE5), Color(0xFF0052CC)],
+                          colors: [Color(0xFFFF6200), Color(0xFF0052CC)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),

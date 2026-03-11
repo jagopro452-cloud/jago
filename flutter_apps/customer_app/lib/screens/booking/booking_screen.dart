@@ -52,7 +52,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
 
-  static const Color _jagoPrimary = Color(0xFF1E6DE5);
+  static const Color _jagoPrimary = Color(0xFFFF6200);
+  static const Color _jagoSecondary = Color(0xFFFF8C42);
 
   static const Color _blue = _jagoPrimary;
   static const Color _green = Color(0xFF16A34A);
@@ -79,6 +80,87 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('suv')) return Icons.directions_car;
     if (n.contains('car')) return Icons.directions_car_filled;
     return Icons.directions_car;
+  }
+
+  static String _emojiForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bike parcel') || n.contains('parcel bike')) return '🛵';
+    if (n.contains('bike')) return '🏍️';
+    if (n.contains('auto')) return '🛺';
+    if (n.contains('cargo truck')) return '🚛';
+    if (n.contains('cargo') || n.contains('tata ace')) return '🚐';
+    if (n.contains('parcel')) return '🛵';
+    if (n.contains('suv')) return '🚙';
+    if (n.contains('car')) return '🚗';
+    return '🚗';
+  }
+
+  static Color _accentForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bike')) return const Color(0xFFFF6200);
+    if (n.contains('auto')) return const Color(0xFF059669);
+    if (n.contains('cargo') || n.contains('truck')) return const Color(0xFF7C3AED);
+    if (n.contains('parcel')) return const Color(0xFFF59E0B);
+    if (n.contains('suv')) return const Color(0xFF0EA5E9);
+    if (n.contains('car')) return const Color(0xFF2563EB);
+    return const Color(0xFFFF6200);
+  }
+
+  Widget _buildVehicleHero() {
+    if (_allFares.isEmpty) return const SizedBox.shrink();
+    final fare = _allFares[_selectedFareIndex];
+    final name = fare['vehicleCategoryName']?.toString() ?? fare['name']?.toString() ?? 'Bike';
+    final emoji = _emojiForVehicle(name);
+    final accent = _accentForVehicle(name);
+    final fareVal = (fare['estimatedFare'] ?? 0).toDouble();
+    final rawMin = (fare['fareMin'] ?? (fareVal * 0.95)).toDouble();
+    final rawMax = (fare['fareMax'] ?? (fareVal * 1.05)).toDouble();
+    final displayMin = (rawMin - _promoDiscount).clamp(0.0, double.infinity);
+    final displayMax = (rawMax - _promoDiscount).clamp(0.0, double.infinity);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      transitionBuilder: (child, anim) => SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0.3, 0), end: Offset.zero).animate(
+          CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: FadeTransition(opacity: anim, child: child),
+      ),
+      child: Container(
+        key: ValueKey('hero_$name'),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [accent, accent.withValues(alpha: 0.75)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 6)),
+          ],
+        ),
+        child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8)),
+              child: Text('SELECTED', style: const TextStyle(
+                color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            ),
+            const SizedBox(height: 8),
+            Text(name, style: const TextStyle(
+              color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+            const SizedBox(height: 4),
+            Text('₹${displayMin.floor()} – ₹${displayMax.ceil()}',
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+            Text('estimated fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
+          ])),
+          Text(emoji, style: const TextStyle(fontSize: 72)),
+        ]),
+      ),
+    );
   }
 
   static String _capacityForVehicle(String name) {
@@ -315,7 +397,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         margin: const EdgeInsets.all(16),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF0D1B3E) : Colors.white,
+          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 30)],
         ),
@@ -338,7 +420,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey[600])),
           const SizedBox(height: 6),
           Text(pickupAddr,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF1E6DE5), fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 13, color: Color(0xFFFF6200), fontWeight: FontWeight.w600),
             maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
           const SizedBox(height: 20),
           Row(children: [
@@ -379,9 +461,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 child: Container(
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF1E6DE5), Color(0xFF1244A2)]),
+                    gradient: const LinearGradient(colors: [Color(0xFFFF6200), Color(0xFF1244A2)]),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: const Color(0xFF1E6DE5).withValues(alpha: 0.35), blurRadius: 12)],
+                    boxShadow: [BoxShadow(color: const Color(0xFFFF6200).withValues(alpha: 0.35), blurRadius: 12)],
                   ),
                   child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
@@ -498,7 +580,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final panelBg = isDark ? const Color(0xFF060D1E) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
     return Scaffold(
@@ -633,7 +715,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   width: double.infinity, height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [_jagoPrimary, Color(0xFF4A8FEF)],
+                      colors: [_jagoPrimary, Color(0xFFFF8C42)],
                       begin: Alignment.centerLeft, end: Alignment.centerRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
@@ -689,7 +771,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: _bookForSomeone ? _blue.withValues(alpha: 0.06) : (isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF)),
+            color: _bookForSomeone ? _blue.withValues(alpha: 0.06) : (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF)),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: _bookForSomeone ? _blue.withValues(alpha: 0.3) : (isDark ? Colors.white12 : const Color(0xFFE8EFFF))),
@@ -805,7 +887,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0D1B3E) : Colors.white,
+        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE8EFFF)),
       ),
@@ -892,7 +974,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             const SizedBox(width: 8),
             const Expanded(child: Text(
               'Secure payment via Razorpay — UPI, Cards, Netbanking accepted',
-              style: TextStyle(fontSize: 12, color: Color(0xFF1E6DE5), fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 12, color: Color(0xFFFF6200), fontWeight: FontWeight.w500),
             )),
           ]),
         ),
@@ -903,7 +985,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   Widget _payBtn(String method, IconData icon, String label, String? subtitle) {
     final selected = _paymentMethod == method;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF);
+    final unselBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
     final unselBorder = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
     final unselText = isDark ? Colors.white70 : const Color(0xFF374151);
     return GestureDetector(
@@ -1054,7 +1136,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildVehicleSelector() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white54 : Colors.grey.shade600;
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
@@ -1091,6 +1173,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _buildVehicleHero(),
       Row(children: [
         const Icon(Icons.directions_rounded, color: _jagoPrimary, size: 18),
         const SizedBox(width: 6),
@@ -1133,7 +1216,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             Flexible(child: Text(widget.pickup.split(',').first,
               style: TextStyle(fontSize: 9, color: textSub.withValues(alpha: 0.65), fontWeight: FontWeight.w500),
               maxLines: 1, overflow: TextOverflow.ellipsis)),
-            const Text(' → ', style: TextStyle(fontSize: 9, color: Color(0xFF1E6DE5))),
+            const Text(' → ', style: TextStyle(fontSize: 9, color: Color(0xFFFF6200))),
             Flexible(child: Text(widget.destination.split(',').first,
               style: TextStyle(fontSize: 9, color: textSub.withValues(alpha: 0.65), fontWeight: FontWeight.w500),
               maxLines: 1, overflow: TextOverflow.ellipsis)),
@@ -1169,31 +1252,35 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: isSelected ? _jagoPrimary.withValues(alpha: 0.08) : cardBg,
+                  color: isSelected ? _accentForVehicle(name).withValues(alpha: 0.06) : cardBg,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected ? _jagoPrimary : borderCol,
+                    color: isSelected ? _accentForVehicle(name) : borderCol,
                     width: isSelected ? 2 : 1),
                   boxShadow: isSelected ? [
-                    BoxShadow(color: _jagoPrimary.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 4))
+                    BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 4))
                   ] : [],
                 ),
                 child: Row(children: [
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: 52, height: 52,
+                    width: 56, height: 56,
                     decoration: BoxDecoration(
-                      color: _jagoPrimary.withValues(alpha: isSelected ? 0.14 : 0.07),
-                      borderRadius: BorderRadius.circular(14),
+                      gradient: isSelected ? LinearGradient(
+                        colors: [_accentForVehicle(name), _accentForVehicle(name).withValues(alpha: 0.7)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+                      color: isSelected ? null : _accentForVehicle(name).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: _jagoPrimary.withValues(alpha: isSelected ? 0.35 : 0.12), width: 1)),
-                    child: Icon(_iconForVehicle(name),
-                      color: isSelected ? _jagoPrimary : _jagoPrimary.withValues(alpha: 0.55), size: 26)),
+                        color: _accentForVehicle(name).withValues(alpha: isSelected ? 0.8 : 0.15), width: isSelected ? 2 : 1),
+                      boxShadow: isSelected ? [BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))] : [],
+                    ),
+                    child: Center(child: Text(_emojiForVehicle(name), style: TextStyle(fontSize: isSelected ? 28 : 24)))),
                   const SizedBox(width: 14),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Flexible(child: Text(name, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15,
-                        color: isSelected ? _jagoPrimary : textMain), overflow: TextOverflow.ellipsis)),
+                        color: isSelected ? _accentForVehicle(name) : textMain), overflow: TextOverflow.ellipsis)),
                       if (tag != null) ...[
                         const SizedBox(width: 8),
                         _vehicleTagBadge(tag),
@@ -1226,7 +1313,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   ])),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Text('₹${displayMin.floor()}–₹${displayMax.ceil()}',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _jagoPrimary)),
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _accentForVehicle(name))),
                     Text('est. fare', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
                     if (isSelected && _promoDiscount > 0)
                       Text('saved ₹${_promoDiscount.toInt()}',
@@ -1255,12 +1342,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   top: 0, right: 0,
                   child: Container(
                     width: 28, height: 28,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_jagoPrimary, Color(0xFF4A8FEF)],
+                        colors: [_accentForVehicle(name), _accentForVehicle(name).withValues(alpha: 0.75)],
                         begin: Alignment.topLeft, end: Alignment.bottomRight),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Color(0x501E6DE5), blurRadius: 8, offset: Offset(0, 2))],
+                      boxShadow: [BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.45), blurRadius: 8, offset: const Offset(0, 2))],
                     ),
                     child: const Icon(Icons.check_rounded, color: Colors.white, size: 17)),
                 ),
@@ -1273,7 +1360,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildFareBreakdown(Map<String, dynamic> fare) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white54 : Colors.grey.shade600;
@@ -1315,12 +1402,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E6DE5).withValues(alpha: 0.12),
+                  color: const Color(0xFFFF6200).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF1E6DE5).withValues(alpha: 0.3)),
+                  border: Border.all(color: const Color(0xFFFF6200).withValues(alpha: 0.3)),
                 ),
                 child: const Text('Min fare', style: TextStyle(
-                  fontSize: 10, color: Color(0xFF1E6DE5), fontWeight: FontWeight.w800)),
+                  fontSize: 10, color: Color(0xFFFF6200), fontWeight: FontWeight.w800)),
               )
             else if (isNight)
               Container(
@@ -1437,7 +1524,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildPromoRow() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     if (_appliedPromo != null) {

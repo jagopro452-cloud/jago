@@ -59,7 +59,7 @@ class _OtpScreenState extends State<OtpScreen> {
           icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1A1A2E)),
           onPressed: () => Navigator.pop(context)),
         actions: [
-          IconButton(icon: const Icon(Icons.help_outline, color: Color(0xFF1E6DE5)),
+          IconButton(icon: const Icon(Icons.help_outline, color: Color(0xFFFF6200)),
             onPressed: () {}),
         ],
       ),
@@ -77,7 +77,7 @@ class _OtpScreenState extends State<OtpScreen> {
             if (ApiConfig.isDev && widget.otp.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text('Dev OTP: ${widget.otp}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF1E6DE5))),
+                style: const TextStyle(fontSize: 12, color: Color(0xFFFF6200))),
             ],
             const SizedBox(height: 36),
             PinCodeTextField(
@@ -93,9 +93,9 @@ class _OtpScreenState extends State<OtpScreen> {
                 activeFillColor: Colors.white,
                 inactiveFillColor: const Color(0xFFF5F7FA),
                 selectedFillColor: Colors.white,
-                activeColor: const Color(0xFF1E6DE5),
+                activeColor: const Color(0xFFFF6200),
                 inactiveColor: const Color(0xFFE0E0E0),
-                selectedColor: const Color(0xFF1E6DE5),
+                selectedColor: const Color(0xFFFF6200),
               ),
               enableActiveFill: true,
               onCompleted: (_) => _verify(),
@@ -107,7 +107,7 @@ class _OtpScreenState extends State<OtpScreen> {
               child: ElevatedButton(
                 onPressed: _loading ? null : _verify,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E6DE5),
+                  backgroundColor: const Color(0xFFFF6200),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
@@ -129,7 +129,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       _startTimer();
                     },
                     child: const Text('Resend OTP',
-                      style: TextStyle(color: Color(0xFF1E6DE5), fontWeight: FontWeight.w600)),
+                      style: TextStyle(color: Color(0xFFFF6200), fontWeight: FontWeight.w600)),
                   ),
             ),
           ],

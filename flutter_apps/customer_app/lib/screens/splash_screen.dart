@@ -15,7 +15,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _logoScale, _logoFade, _pulse;
 
   static const _navy     = Color(0xFF060D1E);
-  static const _navyMid  = Color(0xFF0D1B3E);
+  static const _navyMid  = Color(0xFF1C1C1E);
   static const _navyDeep = Color(0xFF040A14);
 
   @override
@@ -87,7 +87,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   width: size.width * 1.2, height: size.width * 1.2,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF1E6DE5),
+                    color: Color(0xFFFF6200),
                   ),
                 ),
               ),
@@ -116,7 +116,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF1E6DE5).withValues(alpha: 0.06),
+                      const Color(0xFFFF6200).withValues(alpha: 0.06),
                       Colors.transparent,
                     ],
                   ),
@@ -152,7 +152,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                             width: 48, height: 2,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF1E6DE5), Colors.white],
+                                colors: [Color(0xFFFF6200), Colors.white],
                               ),
                               borderRadius: BorderRadius.circular(2),
                             ),
@@ -195,7 +195,7 @@ class _FallbackLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     return RichText(
       text: const TextSpan(children: [
-        TextSpan(text: 'JA', style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: 4)),
+        TextSpan(text: 'JA', style: TextStyle(color: Color(0xFFFF6200), fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: 4)),
         TextSpan(text: 'GO', style: TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: 4)),
       ]),
     );

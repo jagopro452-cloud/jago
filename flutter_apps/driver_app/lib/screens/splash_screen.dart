@@ -16,8 +16,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _logoScale, _logoFade, _pulse, _ringExpand;
 
   static const _bg      = Color(0xFF060D1E);
-  static const _surface = Color(0xFF0D1B3E);
-  static const _primary = Color(0xFF1E6DE5);
+  static const _surface = Color(0xFF1C1C1E);
+  static const _primary = Color(0xFFFF6200);
 
   @override
   void initState() {
@@ -180,7 +180,7 @@ class _FallbackPilotLogo extends StatelessWidget {
       const Text('JAGO', style: TextStyle(color: Colors.white, fontSize: 28,
         fontWeight: FontWeight.w900, letterSpacing: 4)),
       const SizedBox(height: 4),
-      Text('PILOT', style: TextStyle(color: Color(0xFF1E6DE5), fontSize: 14,
+      Text('PILOT', style: TextStyle(color: Color(0xFFFF6200), fontSize: 14,
         fontWeight: FontWeight.w900, letterSpacing: 6)),
     ]);
   }

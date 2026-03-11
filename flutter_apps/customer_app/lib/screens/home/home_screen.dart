@@ -46,10 +46,11 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _driverAssignedSub;
   int _navIndex = 0;
 
-  static const Color _jagoPrimary = Color(0xFF1E6DE5);
-  static const Color _dark = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF0D1B3E);
-  static const Color _lightBg = Color(0xFFF5F5F5);
+  static const Color _jagoPrimary = Color(0xFFFF6200);
+  static const Color _jagoSecondary = Color(0xFFFF8C42);
+  static const Color _dark = Color(0xFF1A0A00);
+  static const Color _surface = Color(0xFF2D1200);
+  static const Color _lightBg = Color(0xFFFFF8F4);
 
   @override
   void initState() {
@@ -403,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final isArrived = status == 'arrived';
     final isInProgress = status == 'in_progress';
-    final bannerColor = isArrived ? const Color(0xFF16A34A) : isInProgress ? const Color(0xFF1E6DE5) : const Color(0xFF1E6DE5);
+    final bannerColor = isArrived ? const Color(0xFF16A34A) : isInProgress ? const Color(0xFFFF6200) : const Color(0xFFFF6200);
 
     return GestureDetector(
       onTap: () => Navigator.pushReplacement(context,
@@ -650,7 +651,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF1E6DE5),
+                      color: Color(0xFFFF6200),
                       letterSpacing: -0.5)),
               TextSpan(
                   text: 'GO',
@@ -754,7 +755,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 36, height: 36,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [_jagoPrimary, Color(0xFF4A8FEF)],
+                    colors: [_jagoPrimary, Color(0xFFFF8C42)],
                     begin: Alignment.topLeft, end: Alignment.bottomRight),
                   shape: BoxShape.circle,
                   boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
@@ -778,7 +779,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       width: 40, height: 40,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [_jagoPrimary, Color(0xFF4A8FEF)],
+                          colors: [_jagoPrimary, Color(0xFFFF8C42)],
                           begin: Alignment.topLeft, end: Alignment.bottomRight),
                         shape: BoxShape.circle,
                         boxShadow: [BoxShadow(color: _jagoPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 3))],
@@ -809,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0D1B3E) : const Color(0xFFFFF4F0),
+              color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFFFF4F0),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: _jagoPrimary.withValues(alpha: 0.2)),
             ),
@@ -1186,7 +1187,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color cardBg,
     required Color textColor,
     bool bigEmoji = false,
-    Color accentColor = const Color(0xFF1E6DE5),
+    Color accentColor = const Color(0xFFFF6200),
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1276,12 +1277,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildExploreSection(bool isDark, Color cardBg, Color textColor) {
     final services = [
-      {'key': 'bike', 'name': 'Bike Ride', 'emoji': '🏍️', 'type': 'ride'},
-      {'key': 'auto', 'name': 'Auto Ride', 'emoji': '🛺', 'type': 'ride'},
-      {'key': 'car', 'name': 'Car Ride', 'emoji': '🚗', 'type': 'ride'},
-      {'key': 'parcel', 'name': 'Parcel', 'emoji': '📦', 'type': 'parcel'},
-      {'key': 'cargo', 'name': 'Cargo', 'emoji': '🚛', 'type': 'cargo'},
-      {'key': 'intercity', 'name': 'Intercity', 'emoji': '🛣️', 'type': 'intercity'},
+      {'key': 'bike', 'name': 'Bike Ride', 'emoji': '🏍️', 'type': 'ride', 'color': const Color(0xFFFF6200)},
+      {'key': 'auto', 'name': 'Auto Ride', 'emoji': '🛺', 'type': 'ride', 'color': const Color(0xFF059669)},
+      {'key': 'car', 'name': 'Car Ride', 'emoji': '🚗', 'type': 'ride', 'color': const Color(0xFF2563EB)},
+      {'key': 'parcel', 'name': 'Parcel', 'emoji': '📦', 'type': 'parcel', 'color': const Color(0xFFF59E0B)},
+      {'key': 'cargo', 'name': 'Cargo', 'emoji': '🚛', 'type': 'cargo', 'color': const Color(0xFF7C3AED)},
+      {'key': 'intercity', 'name': 'Intercity', 'emoji': '🛣️', 'type': 'intercity', 'color': const Color(0xFF0EA5E9)},
     ];
 
     return Padding(
@@ -1315,7 +1316,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _exploreItem(Map<String, dynamic> s, bool isDark, Color textColor) {
-    final isPopular = s['key'] == 'auto';
+    final isPopular = s['key'] == 'bike';
+    final color = (s['color'] as Color?) ?? _jagoPrimary;
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -1330,7 +1332,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       child: Container(
-        width: 76,
+        width: 80,
         margin: const EdgeInsets.only(right: 14),
         child: Column(children: [
           Stack(
@@ -1338,26 +1340,17 @@ class _HomeScreenState extends State<HomeScreen> {
             alignment: Alignment.topCenter,
             children: [
               Container(
-                width: 64, height: 64,
+                width: 68, height: 68,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isDark
-                    ? _jagoPrimary.withValues(alpha: 0.18)
-                    : _jagoPrimary.withValues(alpha: 0.09),
-                  border: Border.all(
-                    color: _jagoPrimary.withValues(alpha: isDark ? 0.35 : 0.2),
-                    width: 1.5,
+                  gradient: LinearGradient(
+                    colors: [color.withValues(alpha: isDark ? 0.25 : 0.12), color.withValues(alpha: isDark ? 0.12 : 0.05)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _jagoPrimary.withValues(alpha: isDark ? 0.18 : 0.10),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  border: Border.all(color: color.withValues(alpha: isDark ? 0.5 : 0.3), width: 2),
+                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.18), blurRadius: 12, offset: const Offset(0, 5))],
                 ),
-                child: Center(child: Text(s['emoji'] as String,
-                  style: const TextStyle(fontSize: 30))),
+                child: Center(child: Text(s['emoji'] as String, style: const TextStyle(fontSize: 32))),
               ),
               if (isPopular)
                 Positioned(
@@ -1365,10 +1358,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: _jagoPrimary,
+                      gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.75)]),
                       borderRadius: BorderRadius.circular(8),
+                      boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6)],
                     ),
-                    child: const Text('HOT', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                    child: const Text('FAST', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
                   ),
                 ),
             ],
@@ -1416,7 +1410,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [_jagoPrimary, Color(0xFF4A8FEF)],
+                      colors: [_jagoPrimary, Color(0xFFFF8C42)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1537,14 +1531,14 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF1E6DE5), Color(0xFF4A8FEF), Color(0xFF6BA3F5)],
+              colors: [Color(0xFFFF6200), Color(0xFFFF8C42), Color(0xFFFFAA70)],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF1E6DE5).withValues(alpha: 0.38), blurRadius: 18, offset: const Offset(0, 6)),
-              BoxShadow(color: const Color(0xFF1E6DE5).withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 12)),
+              BoxShadow(color: const Color(0xFFFF6200).withValues(alpha: 0.38), blurRadius: 18, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFFFF6200).withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 12)),
             ],
           ),
           child: Row(children: [
@@ -1571,9 +1565,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Text('Book Now',
-                      style: TextStyle(color: Color(0xFF1E6DE5), fontWeight: FontWeight.w800, fontSize: 13)),
+                      style: TextStyle(color: Color(0xFFFF6200), fontWeight: FontWeight.w800, fontSize: 13)),
                     const SizedBox(width: 4),
-                    const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF1E6DE5)),
+                    const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFFFF6200)),
                   ]),
                 ),
               ]),
@@ -1679,7 +1673,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: isDark
-                ? [const Color(0xFF0D1B3E), const Color(0xFF152550)]
+                ? [const Color(0xFF1C1C1E), const Color(0xFF152550)]
                 : [const Color(0xFF1A2A5E), const Color(0xFF0F1E48)],
               begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: BorderRadius.circular(20),
@@ -1830,7 +1824,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetBg = isDark ? const Color(0xFF060D1E) : Colors.white;
-    final inputBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF5F5F5);
+    final inputBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF5F5F5);
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
     return Padding(
@@ -1854,7 +1848,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
               decoration: InputDecoration(
                 hintText: 'Search destination...',
                 hintStyle: TextStyle(color: subColor, fontSize: 15),
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF1E6DE5)),
+                prefixIcon: const Icon(Icons.search, color: Color(0xFFFF6200)),
                 suffixIcon: query.isNotEmpty
                   ? IconButton(
                       icon: Icon(Icons.clear, color: subColor),
@@ -1873,7 +1867,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          if (_loading) const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: Color(0xFF1E6DE5))),
+          if (_loading) const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: Color(0xFFFF6200))),
           if (!_loading)
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
@@ -1890,7 +1884,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                   }
                   final item = items[query.length < 3 ? i - 1 : i];
                   return ListTile(
-                    leading: const Icon(Icons.location_on_outlined, color: Color(0xFF1E6DE5)),
+                    leading: const Icon(Icons.location_on_outlined, color: Color(0xFFFF6200)),
                     title: Text(item['name'] as String,
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor),
                       maxLines: 2),
@@ -1947,7 +1941,7 @@ class _AllServicesSheet extends StatelessWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetBg = isDark ? const Color(0xFF060D1E) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF0D1B3E) : const Color(0xFFF5F5F5);
+    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF5F5F5);
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
     return Container(

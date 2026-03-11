@@ -59,10 +59,10 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   late AnimationController _waveCtrl;
 
   static const Color _bg      = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF0D1B3E);
+  static const Color _surface = Color(0xFF1C1C1E);
   static const Color _blue    = Color(0xFF1B4DCC);
   static const Color _yellow  = Color(0xFFFBBC04);
-  static const Color _primary  = Color(0xFF1E6DE5);
+  static const Color _primary  = Color(0xFFFF6200);
 
   // ─── Life-cycle ──────────────────────────────────────────────────────────
 

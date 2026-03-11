@@ -142,12 +142,12 @@ class _JagoAppState extends State<JagoApp> {
   ThemeData _lightTheme() => ThemeData(
         brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E6DE5),
-          primary: const Color(0xFF1E6DE5),
+          seedColor: const Color(0xFFFF6200),
+          primary: const Color(0xFFFF6200),
           secondary: const Color(0xFFFFD700),
           surface: Colors.white,
         ),
-        primaryColor: const Color(0xFF1E6DE5),
+        primaryColor: const Color(0xFFFF6200),
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
         fontFamily: 'Roboto',
         cardColor: Colors.white,
@@ -163,7 +163,7 @@ class _JagoAppState extends State<JagoApp> {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1E6DE5),
+            backgroundColor: const Color(0xFFFF6200),
             foregroundColor: Colors.white,
             elevation: 0,
             shape:
@@ -191,18 +191,18 @@ class _JagoAppState extends State<JagoApp> {
   ThemeData _darkTheme() => ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF1E6DE5),
-            primary: const Color(0xFF1E6DE5),
+            seedColor: const Color(0xFFFF6200),
+            primary: const Color(0xFFFF6200),
             secondary: const Color(0xFFFFD700),
-            surface: const Color(0xFF0D1B3E),
+            surface: const Color(0xFF1C1C1E),
             brightness: Brightness.dark),
-        primaryColor: const Color(0xFF1E6DE5),
+        primaryColor: const Color(0xFFFF6200),
         scaffoldBackgroundColor: const Color(0xFF060D1E),
         fontFamily: 'Roboto',
-        cardColor: const Color(0xFF0D1B3E),
+        cardColor: const Color(0xFF1C1C1E),
         dividerColor: Colors.white10,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0D1B3E),
+          backgroundColor: Color(0xFF1C1C1E),
           elevation: 0,
           titleTextStyle: TextStyle(
               color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
@@ -210,7 +210,7 @@ class _JagoAppState extends State<JagoApp> {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1E6DE5),
+            backgroundColor: const Color(0xFFFF6200),
             foregroundColor: Colors.white,
             elevation: 0,
             shape:
@@ -219,7 +219,7 @@ class _JagoAppState extends State<JagoApp> {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFF0D1B3E),
+          fillColor: const Color(0xFF1C1C1E),
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none),
