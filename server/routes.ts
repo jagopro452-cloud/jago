@@ -2936,6 +2936,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/settings", async (req, res) => {
     try {
+      // Support both bulk format { settings: {key: val, ...} } and single { keyName, value, settingsType }
+      if (req.body.settings && typeof req.body.settings === 'object') {
+        const settingsObj: Record<string, string> = req.body.settings;
+        const keyTypeMap: Record<string, string> = {
+          business_name: 'business', business_email: 'business', business_phone: 'business', business_address: 'business',
+          currency_code: 'currency', currency_symbol: 'currency', country_code: 'currency',
+          max_search_radius: 'trip', driver_cancel_limit: 'trip', customer_cancel_limit: 'trip',
+          razorpay_key_id: 'payment', razorpay_key_secret: 'payment', payment_gateway_mode: 'payment', fast2sms_api_key: 'payment',
+          customer_app_version: 'app', driver_app_version: 'app', force_update: 'app', maintenance_mode: 'app',
+          referral_bonus_driver: 'referral', referral_bonus_customer: 'referral', min_wallet_withdrawal: 'referral', max_wallet_recharge: 'referral',
+        };
+        const results = [];
+        for (const [k, v] of Object.entries(settingsObj)) {
+          const t = keyTypeMap[k] || 'general';
+          const r = await storage.upsertBusinessSetting(k, String(v ?? ''), t);
+          results.push(r);
+        }
+        return res.json({ saved: results.length, settings: results });
+      }
       const { keyName, value, settingsType } = req.body;
       const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
       res.json(setting);
@@ -4564,6 +4583,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
       `);
       res.json({ success: true, outstation_pool_mode: mode });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET all revenue model settings as a flat key-value map
+  app.get("/api/admin/revenue/settings", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings ORDER BY key_name`);
+      const obj: Record<string, string> = {};
+      r.rows.forEach((row: any) => { obj[row.key_name] = row.value; });
+      res.json(obj);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
