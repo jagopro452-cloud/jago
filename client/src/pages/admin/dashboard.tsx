@@ -130,6 +130,8 @@ export default function Dashboard() {
     { label: "Drivers", icon: "bi-person-badge", href: "/admin/drivers", color: "#16a34a" },
     { label: "Withdrawals", icon: "bi-cash-coin", href: "/admin/withdrawals", color: "#d97706" },
     { label: "Reports", icon: "bi-graph-up", href: "/admin/reports", color: "#7c3aed" },
+    { label: "Customer APK", icon: "bi-android2", href: "/apks/jago-customer-v1.0.29.apk", color: "#16a34a", external: true },
+    { label: "Driver APK", icon: "bi-android2", href: "/apks/jago-driver-v1.0.29.apk", color: "#0891b2", external: true },
   ];
 
   const recentNotifs = Array.isArray(notifs) ? notifs.slice(0, 12) : [];
@@ -538,6 +540,25 @@ export default function Dashboard() {
               <div className="row g-2">
                 {quickLinks.map((l, i) => (
                   <div key={i} className="col-6">
+                    {l.external ? (
+                      <a href={l.href} download style={{ textDecoration: "none" }}>
+                        <div style={{
+                          border: `1.5px solid ${l.color}22`,
+                          borderRadius: 10, padding: "10px 12px",
+                          display: "flex", alignItems: "center", gap: 8,
+                          cursor: "pointer", transition: "all 0.18s",
+                          background: "white",
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.background = `${l.color}10`)}
+                          onMouseLeave={e => (e.currentTarget.style.background = "white")}
+                        >
+                          <div style={{ width: 30, height: 30, borderRadius: 8, background: `${l.color}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <i className={`bi ${l.icon}`} style={{ color: l.color, fontSize: 14 }}></i>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{l.label}</span>
+                        </div>
+                      </a>
+                    ) : (
                     <Link href={l.href}>
                       <div style={{
                         border: `1.5px solid ${l.color}22`,
@@ -555,6 +576,7 @@ export default function Dashboard() {
                         <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{l.label}</span>
                       </div>
                     </Link>
+                    )}
                   </div>
                 ))}
               </div>
