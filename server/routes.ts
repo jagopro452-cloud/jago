@@ -14,7 +14,7 @@ import path from "path";
 import fs from "fs";
 import { db } from "./db";
 const rawDb = db;
-import { parcelAttributes, admins } from "@shared/schema";
+import { parcelAttributes, admins, cancellationReasons } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 const rawSql = sql;
 import bcrypt from "bcryptjs";
@@ -3082,6 +3082,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.put("/api/cancellation-reasons/:id", async (req, res) => {
+    try {
+      const { reason, userType, isActive } = req.body;
+      const [updated] = await db.update(cancellationReasons as any)
+        .set({ reason, userType, isActive } as any)
+        .where(eq((cancellationReasons as any).id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.patch("/api/cancellation-reasons/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const [updated] = await db.update(cancellationReasons as any)
+        .set({ isActive } as any)
+        .where(eq((cancellationReasons as any).id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.delete("/api/cancellation-reasons/:id", async (req, res) => {
     try {
       await storage.deleteCancellationReason(req.params.id);
@@ -3445,8 +3473,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.put("/api/vehicle-brands/:id", async (req, res) => {
     try {
-      const { name, logo_url, category, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`UPDATE vehicle_brands SET name=${name}, logo_url=${logo_url||null}, category=${category||'two_wheeler'}, is_active=${is_active??true} WHERE id=${req.params.id}::uuid RETURNING *`);
+      const { name, logo_url, category, is_active, isActive } = req.body;
+      const active = is_active ?? isActive ?? true;
+      const r = await rawDb.execute(rawSql`UPDATE vehicle_brands SET name=${name}, logo_url=${logo_url||null}, category=${category||'two_wheeler'}, is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3467,6 +3496,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { name, brand_id, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id}::uuid, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/vehicle-models/:id", async (req, res) => {
+    try {
+      const { name, brand_id, is_active, isActive } = req.body;
+      const active = is_active ?? isActive;
+      let r;
+      if (brand_id) {
+        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name ?? null}, name), brand_id=${brand_id}::uuid, is_active=COALESCE(${active ?? null}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
+      } else {
+        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name ?? null}, name), is_active=COALESCE(${active ?? null}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
+      }
+      res.json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.delete("/api/vehicle-models/:id", async (req, res) => {
