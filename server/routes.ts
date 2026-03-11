@@ -3006,6 +3006,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/blogs/:id", async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const updated = await storage.updateBlog(req.params.id, { isActive } as any);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
   app.delete("/api/blogs/:id", async (req, res) => {
     try {
       await storage.deleteBlog(req.params.id);
