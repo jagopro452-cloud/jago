@@ -36,7 +36,8 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final res = await http.get(Uri.parse(ApiConfig.intercityRoutes));
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.intercityRoutes), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final routes = (data as List<dynamic>?) ?? [];
@@ -122,10 +123,9 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
     setState(() => _booking = true);
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final res = await http.post(
         Uri.parse(ApiConfig.intercityBook),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'routeId': _selectedRoute!['id'],
           'scheduledAt': scheduledDt.toIso8601String(),

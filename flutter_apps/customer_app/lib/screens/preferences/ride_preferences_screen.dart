@@ -50,10 +50,9 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     setState(() => _saving = true);
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/preferences'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'quietRide': _quietRide,
           'acPreferred': _acPreferred,

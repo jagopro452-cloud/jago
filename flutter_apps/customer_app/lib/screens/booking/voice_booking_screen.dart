@@ -395,7 +395,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/voice-booking/parse'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'text': text}),
       );
       if (res.statusCode == 200) {
@@ -428,7 +428,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       // Do NOT send vehicleCategoryId so server returns ALL vehicle options
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/estimate-fare'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'pickupLat': intent['pickupLat'],
           'pickupLng': intent['pickupLng'],
@@ -533,7 +533,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/book-ride'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'pickupLat': _parsedIntent!['pickupLat'],
           'pickupLng': _parsedIntent!['pickupLng'],

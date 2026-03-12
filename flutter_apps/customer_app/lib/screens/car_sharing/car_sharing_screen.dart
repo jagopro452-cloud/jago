@@ -81,10 +81,9 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
     if (res != true) return;
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final bookRes = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/car-sharing/book'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'rideId': rideId, 'seatsBooked': 1}),
       );
       final d = jsonDecode(bookRes.body);

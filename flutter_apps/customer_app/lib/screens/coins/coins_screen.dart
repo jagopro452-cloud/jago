@@ -35,10 +35,9 @@ class _CoinsScreenState extends State<CoinsScreen> {
     setState(() => _redeeming = true);
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/redeem-coins'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'coins': coins}),
       );
       final body = jsonDecode(res.body);

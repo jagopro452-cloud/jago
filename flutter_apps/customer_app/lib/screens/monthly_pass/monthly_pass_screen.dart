@@ -42,10 +42,9 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
     setState(() => _buying = true);
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/monthly-pass/buy'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'planName': planName}),
       );
       final body = jsonDecode(res.body);

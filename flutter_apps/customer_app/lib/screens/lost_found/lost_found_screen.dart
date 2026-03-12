@@ -47,10 +47,9 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     setState(() => _submitting = true);
     try {
       final headers = await AuthService.getHeaders();
-      headers['Content-Type'] = 'application/json';
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/lost-found'),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'tripId': _selectedTripId,
           'description': _descCtrl.text.trim(),
