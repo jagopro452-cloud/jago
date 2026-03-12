@@ -1073,6 +1073,7 @@ async function ensureOperationalSchema() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_user_devices_fcm ON user_devices(fcm_token);
+      CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id);
     `).catch(() => {});
 
     // ── Call logs: records in-app masked calls ────────────────────────────────
@@ -1644,9 +1645,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { db: hDb } = await import("./db");
       const { sql: hSql } = await import("drizzle-orm");
       const r = await hDb.execute(hSql`
-        SELECT pickup_lat as lat, pickup_lng as lng, 1 as intensity FROM trip_requests WHERE pickup_lat IS NOT NULL
+        SELECT pickup_lat as lat, pickup_lng as lng, 1 as intensity FROM trip_requests WHERE pickup_lat IS NOT NULL ORDER BY created_at DESC LIMIT 5000
         UNION ALL
-        SELECT destination_lat as lat, destination_lng as lng, 0.6 as intensity FROM trip_requests WHERE destination_lat IS NOT NULL
+        SELECT destination_lat as lat, destination_lng as lng, 0.6 as intensity FROM trip_requests WHERE destination_lat IS NOT NULL ORDER BY created_at DESC LIMIT 5000
       `);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
