@@ -319,6 +319,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
         final lat = pos.latitude;
         final lng = pos.longitude;
+        if (!mounted) return;
         setState(() => _center = LatLng(lat, lng));
 
         final reqHeaders = await AuthService.getHeaders();
