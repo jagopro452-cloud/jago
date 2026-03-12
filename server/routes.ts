@@ -203,6 +203,55 @@ const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true";
 
 const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http://localhost:7104").replace(/\/$/, "");
 
+// ── Claude AI voice intent parser ────────────────────────────────────────────
+async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new Anthropic({ apiKey });
+    const msg = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 256,
+      messages: [{
+        role: "user",
+        content: `You are a ride-booking assistant for JAGO app in India. Extract intent from the user's voice input.
+
+User said: "${text}"
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "intent": "book_ride" | "send_parcel" | "cancel_ride" | "check_status" | "unknown",
+  "pickup": "exact location name or null",
+  "destination": "exact location name or null",
+  "vehicleType": "Bike" | "Auto" | "Mini Auto" | "Sedan" | "SUV" | "Bike Parcel" | null,
+  "confidence": 0.0-1.0
+}
+
+Rules:
+- Support Telugu, Hindi, English and mixed speech
+- Extract pickup and destination as place names (not coordinates)
+- If parcel/delivery mentioned → send_parcel intent, Bike Parcel vehicle
+- If no clear pickup/destination → return null for those fields
+- confidence: 0.9 if clear, 0.7 if partial, 0.4 if unclear`
+      }],
+    });
+    const raw = (msg.content[0] as any).text?.trim() || "";
+    const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    return {
+      intent: parsed.intent || "unknown",
+      pickup: parsed.pickup || null,
+      destination: parsed.destination || null,
+      vehicleType: parsed.vehicleType || null,
+      confidence: Number(parsed.confidence) || 0.7,
+      entities: { vehicle: parsed.vehicleType || null },
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 type AssistantVoiceIntent = {
   intent?: string;
   confidence?: number;
@@ -223,44 +272,40 @@ function mapServiceSuggestionToVehicle(serviceSuggestion?: string | null): strin
   return null;
 }
 
-async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any; parserSource: "ai-assistant-service" | "monolith-fallback" }> {
+async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any; parserSource: "claude-ai" | "ai-assistant-service" | "monolith-fallback" }> {
+  // 1. Try external AI microservice
   try {
     const r = await fetch(`${AI_ASSISTANT_SERVICE_URL}/internal/voice/intent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transcript: text }),
+      signal: AbortSignal.timeout(3000),
     });
-
     if (r.ok) {
       const aiPayload = (await r.json()) as AssistantVoiceIntent;
       const intent = (aiPayload.intent || "unknown") as any;
       const pickup = aiPayload.entities?.pickup || null;
       const destination = aiPayload.entities?.destination || null;
       const serviceSuggestion = mapServiceSuggestionToVehicle(aiPayload.entities?.serviceSuggestion);
-
       return {
         parserSource: "ai-assistant-service",
         parsed: {
-          intent,
-          confidence: Number(aiPayload.confidence || 0.7),
-          pickup,
-          destination,
-          vehicleType: serviceSuggestion,
-          entities: {
-            ...(aiPayload.entities || {}),
-            vehicle: serviceSuggestion || aiPayload.entities?.serviceSuggestion || null,
-          },
+          intent, confidence: Number(aiPayload.confidence || 0.7),
+          pickup, destination, vehicleType: serviceSuggestion,
+          entities: { ...(aiPayload.entities || {}), vehicle: serviceSuggestion || aiPayload.entities?.serviceSuggestion || null },
         },
       };
     }
-  } catch (_) {
-    // Fallback to local parser when assistant microservice is unavailable.
+  } catch (_) {}
+
+  // 2. Claude AI (Haiku) — fast, cheap, understands Telugu/Hindi naturally
+  const claudeParsed = await parseVoiceIntentWithClaude(text);
+  if (claudeParsed) {
+    return { parserSource: "claude-ai", parsed: claudeParsed };
   }
 
-  return {
-    parserSource: "monolith-fallback",
-    parsed: parseVoiceIntent(text),
-  };
+  // 3. Local regex fallback
+  return { parserSource: "monolith-fallback", parsed: parseVoiceIntent(text) };
 }
 const runtimeEnv = parseEnv();
 const requireAdminTwoFactor = isTrue(runtimeEnv.ADMIN_2FA_REQUIRED);
