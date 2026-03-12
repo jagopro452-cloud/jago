@@ -37,7 +37,7 @@ export default function RevenueModelPage() {
 
   const { isLoading } = useQuery<any>({
     queryKey: ["/api/revenue-model"],
-    queryFn: () => fetch("/api/revenue-model").then(r => r.json()),
+    queryFn: () => fetch("/api/revenue-model").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
     select: (data: any) => data,
   });
   const { data: settingsData } = useQuery<any>({

@@ -137,7 +137,7 @@ export default function RefundRequestsPage() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/refund-requests", tab],
-    queryFn: () => fetch(`/api/refund-requests${tab !== "all" ? `?status=${tab}` : ""}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/refund-requests${tab !== "all" ? `?status=${tab}` : ""}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
 
   const items: any[] = Array.isArray(data?.data) ? data.data : [];

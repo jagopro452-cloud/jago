@@ -95,18 +95,18 @@ export default function InsurancePage() {
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/insurance-plans"],
-    queryFn: () => fetch("/api/insurance-plans").then(r => r.json()),
+    queryFn: () => fetch("/api/insurance-plans").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const { data: activations = [] } = useQuery<any[]>({
     queryKey: ["/api/driver-insurance"],
-    queryFn: () => fetch("/api/driver-insurance").then(r => r.json()),
+    queryFn: () => fetch("/api/driver-insurance").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: activationsTab,
   });
 
   const { data: drivers = [] } = useQuery<any[]>({
     queryKey: ["/api/users?type=driver"],
-    queryFn: () => fetch("/api/users?type=driver&limit=200").then(r => r.json()).then(d => d.data || []),
+    queryFn: () => fetch("/api/users?type=driver&limit=200").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : [])),
   });
 
   const plans = Array.isArray(data) ? data : [];

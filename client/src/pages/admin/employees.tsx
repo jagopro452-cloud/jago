@@ -42,13 +42,13 @@ export default function EmployeesPage() {
     queryKey: ["/api/employees", zoneFilter],
     queryFn: () => {
       const url = zoneFilter ? `/api/employees?zoneId=${zoneFilter}` : "/api/employees";
-      return fetch(url).then(r => r.json());
+      return fetch(url).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : []));
     },
   });
 
   const { data: zones = [] } = useQuery<any[]>({
     queryKey: ["/api/zones"],
-    queryFn: () => fetch("/api/zones").then(r => r.json()),
+    queryFn: () => fetch("/api/zones").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const employees = Array.isArray(data) ? data : [];

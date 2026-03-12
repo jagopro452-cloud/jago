@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 
 const fmtDuration = (s: number) => s > 0 ? `${Math.floor(s / 60)}m ${s % 60}s` : "—";
@@ -10,7 +11,7 @@ export default function CallLogsPage() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/call-logs", filter],
-    queryFn: () => fetch(`/api/call-logs?status=${filter}`).then(r => r.json()),
+    queryFn: () => apiRequest("GET", `/api/call-logs?status=${filter}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d?.data ? d.data : [])),
   });
 
   const allLogs: any[] = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);

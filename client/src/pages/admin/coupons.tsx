@@ -68,7 +68,7 @@ export default function Coupons() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/coupons", { page }],
-    queryFn: () => fetch(`/api/coupons?page=${page}&limit=15`).then(r => r.json()),
+    queryFn: () => fetch(`/api/coupons?page=${page}&limit=15`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
 
   const save = useMutation({

@@ -22,7 +22,7 @@ function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void })
 
   const { data: histData, isLoading: histLoading } = useQuery<any>({
     queryKey: ["/api/driver-wallet", driver.id, "history"],
-    queryFn: () => fetch(`/api/driver-wallet/${driver.id}/history`).then(r => r.json()),
+    queryFn: () => fetch(`/api/driver-wallet/${driver.id}/history`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [] }),
   });
   const history: any[] = Array.isArray(histData?.data) ? histData.data : [];
 
@@ -170,11 +170,11 @@ export default function DriverWalletPage() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/driver-wallet"],
-    queryFn: () => fetch("/api/driver-wallet").then(r => r.json()),
+    queryFn: () => fetch("/api/driver-wallet").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [] }),
   });
   const { data: modelData } = useQuery<any>({
     queryKey: ["/api/revenue-model"],
-    queryFn: () => fetch("/api/revenue-model").then(r => r.json()),
+    queryFn: () => fetch("/api/revenue-model").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
   });
   const allDrivers: any[] = Array.isArray(data?.data) ? data.data : [];
   const model = modelData || {};

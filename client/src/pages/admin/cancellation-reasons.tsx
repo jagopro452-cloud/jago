@@ -46,7 +46,7 @@ export default function CancellationReasonsPage() {
 
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/cancellation-reasons"],
-    queryFn: () => fetch("/api/cancellation-reasons").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/cancellation-reasons").then(r => r.json()).then(d => Array.isArray(d) ? d : (d?.data ? d.data : [])),
   });
 
   const save = useMutation({

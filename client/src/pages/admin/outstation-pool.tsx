@@ -35,6 +35,10 @@ export default function OutstationPool() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to update pool mode");
+      }
       return res.json();
     },
     onSuccess: () => {

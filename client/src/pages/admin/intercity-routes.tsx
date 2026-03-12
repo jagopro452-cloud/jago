@@ -150,12 +150,12 @@ export default function IntercityRoutesPage() {
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/intercity-routes"],
-    queryFn: () => fetch("/api/intercity-routes").then(r => r.json()),
+    queryFn: () => fetch("/api/intercity-routes").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const { data: vehicles = [] } = useQuery<any[]>({
     queryKey: ["/api/vehicle-categories"],
-    queryFn: () => fetch("/api/vehicle-categories").then(r => r.json()),
+    queryFn: () => fetch("/api/vehicle-categories").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const routes = Array.isArray(data) ? data : [];

@@ -24,7 +24,7 @@ export default function Customers() {
       const params = new URLSearchParams({ userType: "customer", page: String(page), limit: "15" });
       if (search) params.set("search", search);
       if (status !== "all") params.set("isActive", status === "active" ? "true" : "false");
-      return fetch(`/api/users?${params}`).then(r => r.json());
+      return fetch(`/api/users?${params}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
     },
   });
 

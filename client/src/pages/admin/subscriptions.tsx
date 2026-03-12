@@ -108,7 +108,7 @@ export default function SubscriptionsPage() {
 
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/subscription-plans"],
-    queryFn: () => fetch("/api/subscription-plans").then(r => r.json()),
+    queryFn: () => fetch("/api/subscription-plans").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
   const plans = Array.isArray(data) ? data : [];
 

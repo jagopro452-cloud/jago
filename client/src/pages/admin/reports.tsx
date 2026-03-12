@@ -87,25 +87,25 @@ export default function ReportsPage() {
 
   const { data: earnings, isLoading: loadEarnings } = useQuery<any>({
     queryKey: ["/api/reports/earnings", from, to],
-    queryFn: () => fetch(`/api/reports/earnings?from=${from}&to=${to}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/earnings?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
     enabled: tab === "earning",
   });
 
   const { data: trips = [], isLoading: loadTrips } = useQuery<any[]>({
     queryKey: ["/api/reports/trips", from, to],
-    queryFn: () => fetch(`/api/reports/trips?from=${from}&to=${to}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/trips?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "trip",
   });
 
   const { data: driversData = [], isLoading: loadDrivers } = useQuery<any[]>({
     queryKey: ["/api/reports/drivers"],
-    queryFn: () => fetch("/api/reports/drivers").then(r => r.json()),
+    queryFn: () => fetch("/api/reports/drivers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "driver",
   });
 
   const { data: customers = [], isLoading: loadCustomers } = useQuery<any[]>({
     queryKey: ["/api/reports/customers"],
-    queryFn: () => fetch("/api/reports/customers").then(r => r.json()),
+    queryFn: () => fetch("/api/reports/customers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "customer",
   });
 

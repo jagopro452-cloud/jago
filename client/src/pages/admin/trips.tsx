@@ -39,7 +39,7 @@ export default function Trips() {
       if (status !== "all") params.set("status", status);
       if (search) params.set("search", search);
       if (typeFilter !== "all") params.set("type", typeFilter);
-      return fetch(`/api/trips?${params}`).then(r => r.json());
+      return fetch(`/api/trips?${params}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
     },
   });
 

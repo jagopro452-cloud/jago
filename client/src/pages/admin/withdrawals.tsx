@@ -14,7 +14,7 @@ export default function Withdrawals() {
 
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/withdrawals"],
-    queryFn: () => fetch("/api/withdrawals").then(r => r.json()),
+    queryFn: () => fetch("/api/withdrawals").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const update = useMutation({

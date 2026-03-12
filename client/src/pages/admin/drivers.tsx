@@ -222,7 +222,7 @@ export default function Drivers() {
     queryFn: () => {
       const params = new URLSearchParams({ userType: "driver", page: String(page), limit: "50" });
       if (search) params.set("search", search);
-      return fetch(`/api/users?${params}`).then(r => r.json());
+      return fetch(`/api/users?${params}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
     },
   });
 

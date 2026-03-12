@@ -80,7 +80,7 @@ export default function Settings() {
 
   const { data: settings, isLoading } = useQuery<Setting[]>({
     queryKey: ["/api/settings"],
-    queryFn: () => fetch("/api/settings").then(r => r.json()),
+    queryFn: () => fetch("/api/settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   useEffect(() => {

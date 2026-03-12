@@ -51,7 +51,7 @@ export default function BlogsPage() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/blogs", { page }],
-    queryFn: () => fetch(`/api/blogs?page=${page}&limit=10`).then(r => r.json()),
+    queryFn: () => apiRequest("GET", `/api/blogs?page=${page}&limit=10`).then(r => r.json()).then(d => (d && !d.message) ? d : {}),
   });
 
   const save = useMutation({

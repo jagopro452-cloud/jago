@@ -16,7 +16,7 @@ export default function Reviews() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/reviews", { page }],
-    queryFn: () => fetch(`/api/reviews?page=${page}&limit=15`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reviews?page=${page}&limit=15`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
 
   const totalPages = Math.ceil((data?.total || 0) / 15);

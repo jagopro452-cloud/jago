@@ -175,7 +175,7 @@ export default function B2BCompaniesPage() {
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/b2b-companies"],
-    queryFn: () => fetch("/api/b2b-companies").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/b2b-companies").then(r => r.json()).then(d => Array.isArray(d) ? d : (d?.data ? d.data : [])),
   });
 
   const companies = Array.isArray(data) ? data : [];

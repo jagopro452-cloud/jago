@@ -91,7 +91,7 @@ export default function SystemHealthPage() {
     queryFn: () => fetch("/api/admin/system-health").then(r => {
       if (!r.ok) throw new Error("Health check failed");
       return r.json();
-    }),
+    }).then(d => (d && !d.message && !d.error) ? d : (() => { throw new Error("Invalid health data"); })()),
     refetchInterval: autoRefresh ? 15000 : false,
   });
 
