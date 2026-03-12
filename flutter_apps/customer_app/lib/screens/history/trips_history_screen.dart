@@ -19,9 +19,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
   void initState() { super.initState(); _fetchTrips(); }
 
   Future<void> _fetchTrips() async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
-      final res = await http.get(Uri.parse(ApiConfig.trips), headers: {'Authorization': 'Bearer $token'});
+      final res = await http.get(Uri.parse(ApiConfig.trips), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() { _trips = data['trips'] ?? []; _loading = false; });
@@ -35,9 +35,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
     showDialog(context: ctx, barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200))));
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.tripReceipt(tripId)),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (!mounted) return;
       Navigator.pop(ctx); // close loader
       if (res.statusCode == 200) {

@@ -1890,7 +1890,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                       maxLines: 2),
                     onTap: () {
                       Navigator.pop(context);
-                      widget.onPlaceSelected(item['name'] as String, (item['lat'] as num).toDouble(), (item['lng'] as num).toDouble());
+                      widget.onPlaceSelected(item['name'] as String, (item['lat'] as num?)?.toDouble() ?? 0.0, (item['lng'] as num?)?.toDouble() ?? 0.0);
                     },
                   );
                 },

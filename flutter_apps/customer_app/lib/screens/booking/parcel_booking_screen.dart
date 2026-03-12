@@ -923,7 +923,7 @@ class _DestSearchSheetState extends State<_DestSearchSheet> {
           final loc = results[0]['geometry']['location'];
           if (mounted) Navigator.pop(context);
           widget.onSelected(place['description'],
-            (loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
+            (loc['lat'] as num?)?.toDouble() ?? 0.0, (loc['lng'] as num?)?.toDouble() ?? 0.0);
           return;
         }
       }

@@ -86,11 +86,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAccount(bool permanent) async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.delete(
         Uri.parse(ApiConfig.deleteAccount),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'permanent': permanent}),
       );
       if (res.statusCode == 200 && mounted) {

@@ -36,10 +36,10 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _fetchWallet() async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(Uri.parse(ApiConfig.wallet),
-          headers: {'Authorization': 'Bearer $token'});
+          headers: headers);
       if (res.statusCode == 200) {
         setState(() {
           _wallet = jsonDecode(res.body);
@@ -57,14 +57,11 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() => _paying = true);
     _pendingAmount = amount;
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final profileData = await AuthService.getProfile();
       final res = await http.post(
         Uri.parse(ApiConfig.walletCreateOrder),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json'
-        },
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'amount': amount}),
       );
       final body = jsonDecode(res.body);
@@ -110,13 +107,10 @@ class _WalletScreenState extends State<WalletScreen> {
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     setState(() => _paying = false);
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse(ApiConfig.walletVerifyPayment),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json'
-        },
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'razorpayOrderId': response.orderId,
           'razorpayPaymentId': response.paymentId,
