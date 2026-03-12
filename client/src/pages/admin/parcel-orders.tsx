@@ -45,7 +45,7 @@ interface DetailModalProps { order: ParcelOrder; onClose: () => void }
 function DetailModal({ order, onClose }: DetailModalProps) {
   const drops: any[] = Array.isArray(order.drop_locations)
     ? order.drop_locations
-    : (typeof order.drop_locations === "string" ? JSON.parse(order.drop_locations) : []);
+    : (typeof order.drop_locations === "string" ? (() => { try { return JSON.parse(order.drop_locations); } catch { return []; } })() : []);
   const sc = STATUS_CONFIG[order.current_status] ?? { label: order.current_status, bg: "#F3F4F6", color: "#6B7280" };
 
   return (
@@ -71,7 +71,7 @@ function DetailModal({ order, onClose }: DetailModalProps) {
           <div className="col-6">
             <div className="jago-detail-label">Customer</div>
             <div className="jago-detail-value">{order.customer_name || "—"}</div>
-            <div style={{ fontSize: 12, color: "#6B7280" }}>{order.customer_phone}</div>
+            <div style={{ fontSize: 12, color: "#6B7280" }}>{order.customer_phone || "—"}</div>
           </div>
           <div className="col-6">
             <div className="jago-detail-label">Driver</div>
