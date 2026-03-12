@@ -21,7 +21,7 @@ class ApiConfig {
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static const String googleMapsApiKey = 'AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8';
+  static const String googleMapsApiKey = 'AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0';
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
