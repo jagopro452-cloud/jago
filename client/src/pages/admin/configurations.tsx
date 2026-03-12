@@ -479,6 +479,11 @@ export default function ConfigurationsPage() {
                 value={get("firebase_project_id")} onChange={set("firebase_project_id")}
                 placeholder="jago-app-xxxxx" />
 
+              <Field label="Firebase Service Account JSON" id="firebase_service_account"
+                desc='Firebase Console → Project Settings → Service accounts → Generate new private key → JSON content paste cheyyi. Push notifications + phone auth ki required.'
+                value={get("firebase_service_account")} onChange={set("firebase_service_account")}
+                type="password" placeholder='{"type":"service_account","project_id":"..."}' />
+
               <div style={{ height: 24 }} />
               <div style={{ fontSize: 13, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 12 }}>
                 SMS Gateway

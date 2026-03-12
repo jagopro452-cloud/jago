@@ -1,25 +1,40 @@
 import { log } from "./index";
+import { rawDb, rawSql } from "./db";
 
 let admin: any = null;
 let fcmInitialized = false;
 
-// ── Initialize Firebase Admin ────────────────────────────────────────────────
-function initFirebase() {
+// ── Initialize Firebase Admin (env var OR database) ──────────────────────────
+async function initFirebaseAsync() {
   if (fcmInitialized) return;
   fcmInitialized = true;
 
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  // 1. Try env var first
+  let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+
+  // 2. Fallback: read from business_settings (admin panel saves it here)
   if (!serviceAccountJson) {
-    log("[FCM] FIREBASE_SERVICE_ACCOUNT_KEY not set — push notifications disabled", "fcm");
+    try {
+      const r = await rawDb.execute(rawSql`SELECT value FROM business_settings WHERE key_name='firebase_service_account' LIMIT 1`);
+      const val = (r.rows[0] as any)?.value?.trim();
+      if (val && val.startsWith("{")) serviceAccountJson = val;
+    } catch (_) {}
+  }
+
+  if (!serviceAccountJson) {
+    log("[FCM] Firebase service account not configured — push notifications disabled", "fcm");
     return;
   }
 
   try {
     const firebaseAdmin = require("firebase-admin");
-    const serviceAccount = JSON.parse(serviceAccountJson);
-    firebaseAdmin.initializeApp({
-      credential: firebaseAdmin.credential.cert(serviceAccount),
-    });
+    // Avoid re-initializing if already done
+    if (firebaseAdmin.apps.length === 0) {
+      const serviceAccount = JSON.parse(serviceAccountJson);
+      firebaseAdmin.initializeApp({
+        credential: firebaseAdmin.credential.cert(serviceAccount),
+      });
+    }
     admin = firebaseAdmin;
     log("[FCM] Firebase Admin initialized successfully", "fcm");
   } catch (e: any) {
@@ -27,7 +42,19 @@ function initFirebase() {
   }
 }
 
+// Sync wrapper — lazy init on first use
+function initFirebase() {
+  if (!fcmInitialized) {
+    initFirebaseAsync().catch(() => {});
+  }
+}
+
 // ── Get Firebase Admin instance (for token verification) ─────────────────────
+export async function getFirebaseAdminAsync(): Promise<any> {
+  await initFirebaseAsync();
+  return admin;
+}
+
 export function getFirebaseAdmin(): any {
   initFirebase();
   return admin;
@@ -42,7 +69,7 @@ export async function sendFcmNotification(opts: {
   sound?: string;
   channelId?: string;
 }): Promise<boolean> {
-  initFirebase();
+  if (!admin) await initFirebaseAsync();
   if (!admin) return false;
 
   try {

@@ -5646,9 +5646,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       let phoneStr = "";
 
-      // Try Firebase Admin SDK first (needs service account key)
-      const { getFirebaseAdmin } = await import("./fcm.js");
-      const adminInst = getFirebaseAdmin();
+      // Try Firebase Admin SDK first (needs service account key — reads from DB or env)
+      const { getFirebaseAdminAsync } = await import("./fcm.js");
+      const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
         const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
         const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
