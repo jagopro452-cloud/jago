@@ -69,9 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchUnreadCount() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final r = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/notifications?limit=1'),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
         setState(() => _unreadNotifCount = (data['unreadCount'] as int?) ?? 0);
@@ -81,8 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchWalletBalance() async {
     try {
-      final token = await AuthService.getToken();
-      final r = await http.get(Uri.parse(ApiConfig.wallet), headers: {'Authorization': 'Bearer $token'});
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(Uri.parse(ApiConfig.wallet), headers: headers);
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
         setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
@@ -99,10 +99,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadRecentTrips() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final r = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/trips?limit=3&status=completed'),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
         final trips = (data['trips'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
@@ -133,9 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _checkActiveTrip() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final r = await http.get(Uri.parse(ApiConfig.activeTrip),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
         final trip = data['trip'] as Map<String, dynamic>?;
@@ -224,11 +224,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchHome() async {
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final results = await Future.wait([
-        http.get(Uri.parse(ApiConfig.customerHomeData), headers: {'Authorization': 'Bearer $token'}),
-        http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/services'), headers: {'Authorization': 'Bearer $token'}),
+        http.get(Uri.parse(ApiConfig.customerHomeData), headers: headers),
+        http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/services'), headers: headers),
       ]);
       if (results[0].statusCode == 200) {
         final data = jsonDecode(results[0].body) as Map<String, dynamic>;

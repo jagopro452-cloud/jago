@@ -218,10 +218,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Future<void> _fetchWallet() async {
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.wallet),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted) setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
@@ -233,10 +233,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final code = _promoCtrl.text.trim().toUpperCase();
     if (code.isEmpty) return;
     setState(() { _promoLoading = true; _promoError = null; });
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final res = await http.post(Uri.parse(ApiConfig.applyCoupon),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({'code': code, 'fareAmount': (_fare?['estimatedFare'] ?? 0).toDouble()}));
       final data = jsonDecode(res.body);
       if (res.statusCode == 200) {
@@ -255,8 +255,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Future<void> _estimateFare() async {
     setState(() => _estimating = true);
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final body = <String, dynamic>{
         'pickupLat': widget.pickupLat, 'pickupLng': widget.pickupLng,
         'destLat': widget.destLat, 'destLng': widget.destLng,
@@ -264,7 +264,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       };
       if (widget.vehicleCategoryId != null) body['vehicleCategoryId'] = widget.vehicleCategoryId;
       final res = await http.post(Uri.parse(ApiConfig.estimateFare),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode(body));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -331,8 +331,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Future<void> _confirmBooking({String? razorpayPaymentId}) async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final body = <String, dynamic>{
         'pickupAddress': widget.pickup,
         'destinationAddress': widget.destination,
@@ -357,7 +357,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final vcId = _fare?['vehicleCategoryId']?.toString() ?? _fare?['id']?.toString() ?? widget.vehicleCategoryId;
       if (vcId != null && vcId.isNotEmpty) body['vehicleCategoryId'] = vcId;
       final res = await http.post(Uri.parse(ApiConfig.bookRide),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode(body));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -497,11 +497,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Future<void> _startRazorpayRidePayment() async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final fare = _finalFare;
       final res = await http.post(Uri.parse(ApiConfig.rideCreateOrder),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({'amount': fare}));
       if (res.statusCode != 200) {
         setState(() => _loading = false);
@@ -535,10 +535,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   void _handleRazorpaySuccess(PaymentSuccessResponse response) async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final verifyRes = await http.post(Uri.parse(ApiConfig.rideVerifyPayment),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({
           'razorpayOrderId': response.orderId,
           'razorpayPaymentId': response.paymentId,

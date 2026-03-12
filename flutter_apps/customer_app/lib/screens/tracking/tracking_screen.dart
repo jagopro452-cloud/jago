@@ -186,10 +186,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Future<void> _pollStatus() async {
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.activeTrip),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final trip = data['trip'];
@@ -224,10 +224,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     // Cancel via socket first
     _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
     // Also HTTP for persistence
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       await http.post(Uri.parse(ApiConfig.cancelTrip),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
     } catch (_) {}
     if (!mounted) return;
@@ -237,10 +237,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   Future<void> _rateDriver(int stars) async {
     setState(() => _rated = stars);
-    final token = await AuthService.getToken();
     try {
+      final headers = await AuthService.getHeaders();
       await http.post(Uri.parse(ApiConfig.rateDriver),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({
           'tripId': _trip?['id'] ?? widget.tripId,
           'driverId': _trip?['driverId'],

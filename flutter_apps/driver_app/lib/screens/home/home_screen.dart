@@ -99,10 +99,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _checkVerificationStatus() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/verification-status'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -270,8 +270,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
     try {
+      final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.driverDashboard),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
@@ -294,10 +295,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _fetchUnreadCount() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse(ApiConfig.notifications),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -320,12 +321,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = pos.longitude;
         setState(() => _center = LatLng(lat, lng));
 
-        final token = await AuthService.getToken();
+        final reqHeaders = await AuthService.getHeaders();
 
         // Send location via socket (real-time) + always send via REST (reliable)
         _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
         http.post(Uri.parse(ApiConfig.driverLocation),
-          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+          headers: reqHeaders,
           body: jsonEncode({'lat': lat, 'lng': lng})).catchError((_) => http.Response('', 500));
 
         // ── REST poll for incoming trips (works even when socket is down) ──
@@ -333,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           try {
             final resp = await http.get(
               Uri.parse(ApiConfig.driverIncomingTrip),
-              headers: {'Authorization': 'Bearer $token'},
+              headers: reqHeaders,
             ).timeout(const Duration(seconds: 4));
             if (resp.statusCode == 200 && mounted) {
               final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -381,10 +382,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               accepted = await _socket.acceptTrip(tripId);
             }
             if (!accepted) {
-              final token = await AuthService.getToken();
               try {
+                final hdrs = await AuthService.getHeaders();
                 await http.post(Uri.parse(ApiConfig.driverAcceptTrip),
-                  headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                  headers: hdrs,
                   body: jsonEncode({'tripId': tripId}));
               } catch (_) {}
             }
@@ -396,10 +397,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Navigator.pop(context); // Pop the full-screen trip sheet
             setState(() => _incomingTrip = null);
             FcmService().dismissTripNotification();
-            final token = await AuthService.getToken();
             try {
+              final hdrs = await AuthService.getHeaders();
               await http.post(Uri.parse(ApiConfig.driverRejectTrip),
-                headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                headers: hdrs,
                 body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}));
             } catch (_) {}
           },
@@ -485,10 +486,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 AlarmService().stopAlarm();
                 setState(() => _incomingParcel = null);
                 try {
-                  final token = await AuthService.getToken();
+                  final hdrs = await AuthService.getHeaders();
                   final r = await http.post(
                     Uri.parse(ApiConfig.driverParcelAccept(orderId)),
-                    headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                    headers: hdrs,
                   );
                   if (r.statusCode == 200) {
                     _showSnack('Parcel order accepted! Check pending orders.');
@@ -576,10 +577,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Returns true if face verification screen was pushed (caller should return).
   Future<bool> _checkFaceVerificationAndProceed() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse(ApiConfig.checkVerification),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       ).timeout(const Duration(seconds: 5));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -621,9 +622,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         lng: _center.longitude,
       );
 
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.patch(Uri.parse(ApiConfig.driverOnlineStatus),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({'isOnline': newStatus, 'lat': _center.latitude, 'lng': _center.longitude}))
         .timeout(const Duration(seconds: 10));
 

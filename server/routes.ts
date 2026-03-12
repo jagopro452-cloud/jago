@@ -6257,12 +6257,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
+      if (!tripId) return res.status(400).json({ message: "tripId required" });
       const updR = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='arrived'
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status IN ('accepted','driver_assigned')
         RETURNING id, pickup_otp, customer_id
       `);
+      if (!updR.rows.length) {
+        const check = await rawDb.execute(rawSql`SELECT current_status FROM trip_requests WHERE id=${tripId}::uuid`);
+        const st = (check.rows[0] as any)?.current_status;
+        if (!st) return res.status(404).json({ message: "Trip not found" });
+        return res.status(400).json({ message: `Cannot mark arrived in status: ${st}` });
+      }
       // Get pickup OTP + passenger info + customer FCM token
       const r = await rawDb.execute(rawSql`
         SELECT t.pickup_otp, t.customer_id, t.passenger_phone, t.passenger_name,
