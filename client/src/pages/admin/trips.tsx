@@ -135,16 +135,16 @@ export default function Trips() {
                     ))}</tr>
                   ))
                 ) : data?.data?.length ? (
-                  data.data.map((item: any, idx: number) => {
-                    const st = item.trip.currentStatus;
+                  data.data.filter((item: any) => item?.trip).map((item: any, idx: number) => {
+                    const st = item.trip?.currentStatus || "pending";
                     const sc = STATUS_CONFIG[st] || { cls: "bg-secondary", dot: "#64748b" };
-                    const tc = TYPE_CONFIG[item.trip.type] || TYPE_CONFIG["ride"];
+                    const tc = TYPE_CONFIG[item.trip?.type] || TYPE_CONFIG["ride"];
                     const name = item.customer?.fullName || "—";
                     return (
-                      <tr key={item.trip.id} data-testid={`trip-row-${item.trip.id}`}>
+                      <tr key={item.trip?.id || idx} data-testid={`trip-row-${item.trip?.id}`}>
                         <td className="ps-4 text-muted small">{(page - 1) * 15 + idx + 1}</td>
                         <td>
-                          <span className="fw-bold small" style={{ color: "#1a73e8", fontFamily: "monospace" }}>{item.trip.refId}</span>
+                          <span className="fw-bold small" style={{ color: "#1a73e8", fontFamily: "monospace" }}>{item.trip?.refId || "—"}</span>
                         </td>
                         <td>
                           <div className="d-flex align-items-center gap-2">
@@ -157,10 +157,10 @@ export default function Trips() {
                         </td>
                         <td style={{ maxWidth: 200 }}>
                           <div style={{ fontSize: 11, color: "#64748b" }}>
-                            <span style={{ color: "#16a34a" }}>●</span> {item.trip.pickupAddress || "—"}
+                            <span style={{ color: "#16a34a" }}>●</span> {item.trip?.pickupAddress || "—"}
                           </div>
                           <div style={{ fontSize: 11, color: "#64748b" }}>
-                            <span style={{ color: "#dc2626" }}>●</span> {item.trip.destinationAddress || "—"}
+                            <span style={{ color: "#dc2626" }}>●</span> {item.trip?.destinationAddress || "—"}
                           </div>
                         </td>
                         <td className="text-muted small">{item.vehicleCategory?.name || "—"}</td>
@@ -170,28 +170,28 @@ export default function Trips() {
                           </span>
                         </td>
                         <td>
-                          <div className="fw-semibold small">₹{Number(item.trip.actualFare || item.trip.estimatedFare || 0).toFixed(0)}</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{Number(item.trip.estimatedDistance || 0).toFixed(1)} km</div>
+                          <div className="fw-semibold small">₹{Number(item.trip?.actualFare || item.trip?.estimatedFare || 0).toFixed(0)}</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{Number(item.trip?.estimatedDistance || 0).toFixed(1)} km</div>
                         </td>
                         <td>
-                          <span className={`badge ${item.trip.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
-                            {item.trip.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
+                          <span className={`badge ${item.trip?.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
+                            {item.trip?.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
                           </span>
                         </td>
                         <td>
                           <span className={`badge ${sc.cls}`} style={{ fontSize: 10 }}>
-                            {st.charAt(0).toUpperCase() + st.slice(1)}
+                            {st ? st.charAt(0).toUpperCase() + st.slice(1) : "—"}
                           </span>
                         </td>
                         <td className="text-muted" style={{ fontSize: 12 }}>
-                          {new Date(item.trip.createdAt).toLocaleDateString("en-IN")}
+                          {item.trip?.createdAt ? new Date(item.trip.createdAt).toLocaleDateString("en-IN") : "—"}
                         </td>
                         <td className="text-center pe-4">
                           {(st === "pending" || st === "accepted") && (
                             <button className="btn btn-sm btn-outline-danger rounded-pill px-3"
                               style={{ fontSize: 11 }}
-                              onClick={() => updateStatus.mutate({ id: item.trip.id, newStatus: "cancelled" })}
-                              data-testid={`btn-cancel-${item.trip.id}`}>
+                              onClick={() => updateStatus.mutate({ id: item.trip?.id, newStatus: "cancelled" })}
+                              data-testid={`btn-cancel-${item.trip?.id}`}>
                               Cancel
                             </button>
                           )}

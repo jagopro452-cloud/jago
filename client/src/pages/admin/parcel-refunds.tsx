@@ -131,13 +131,13 @@ export default function ParcelRefundsPage() {
                             <div className="d-flex gap-1 justify-content-center">
                               <button className="btn btn-sm btn-outline-success rounded-pill px-2" style={{ fontSize: 11 }}
                                 disabled={updateStatus.isPending}
-                                onClick={() => updateStatus.mutate({ id: item.trip.id, refundStatus: "approved" })}
+                                onClick={() => updateStatus.mutate({ id: item.trip?.id, refundStatus: "approved" })}
                                 data-testid={`btn-approve-${item.trip?.id}`}>
                                 <i className="bi bi-check-lg me-1"></i>Approve
                               </button>
                               <button className="btn btn-sm btn-outline-danger rounded-pill px-2" style={{ fontSize: 11 }}
                                 disabled={updateStatus.isPending}
-                                onClick={() => updateStatus.mutate({ id: item.trip.id, refundStatus: "denied" })}
+                                onClick={() => updateStatus.mutate({ id: item.trip?.id, refundStatus: "denied" })}
                                 data-testid={`btn-deny-${item.trip?.id}`}>
                                 <i className="bi bi-x-lg me-1"></i>Deny
                               </button>

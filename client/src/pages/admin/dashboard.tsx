@@ -432,14 +432,14 @@ export default function Dashboard() {
                         </tr>
                       ))
                     ) : stats?.recentTrips?.length ? (
-                      stats.recentTrips.map((item: any) => {
-                        const st = item.trip.currentStatus;
+                      stats.recentTrips.filter((item: any) => item?.trip).map((item: any) => {
+                        const st = item.trip?.currentStatus || "pending";
                         const badge = STATUS_BADGE[st] || { cls: "badge bg-secondary", label: st };
                         const name = item.customer?.fullName || "—";
                         return (
-                          <tr key={item.trip.id} data-testid={`trip-row-${item.trip.id}`}>
+                          <tr key={item.trip?.id} data-testid={`trip-row-${item.trip?.id}`}>
                             <td className="ps-4">
-                              <span className="fw-bold" style={{ fontSize: 12, color: "#2F80ED", fontFamily: "monospace" }}>{item.trip.refId}</span>
+                              <span className="fw-bold" style={{ fontSize: 12, color: "#2F80ED", fontFamily: "monospace" }}>{item.trip?.refId || "—"}</span>
                             </td>
                             <td>
                               <div className="d-flex align-items-center gap-2">
@@ -453,18 +453,18 @@ export default function Dashboard() {
                             <td className="text-muted" style={{ fontSize: 12 }}>{item.vehicleCategory?.name || "—"}</td>
                             <td>
                               <span className="badge rounded-pill"
-                                style={{ background: item.trip.type === "parcel" ? "#f0fdf4" : "#eff6ff", color: item.trip.type === "parcel" ? "#16a34a" : "#1d4ed8", fontSize: 10, padding: "4px 8px" }}>
-                                {item.trip.type === "parcel" ? "📦 Parcel" : "🚗 Ride"}
+                                style={{ background: item.trip?.type === "parcel" ? "#f0fdf4" : "#eff6ff", color: item.trip?.type === "parcel" ? "#16a34a" : "#1d4ed8", fontSize: 10, padding: "4px 8px" }}>
+                                {item.trip?.type === "parcel" ? "📦 Parcel" : "🚗 Ride"}
                               </span>
                             </td>
-                            <td className="fw-semibold" style={{ fontSize: 13 }}>₹{Number(item.trip.actualFare || item.trip.estimatedFare || 0).toFixed(0)}</td>
+                            <td className="fw-semibold" style={{ fontSize: 13 }}>₹{Number(item.trip?.actualFare || item.trip?.estimatedFare || 0).toFixed(0)}</td>
                             <td>
-                              <span className={`badge ${item.trip.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
-                                {item.trip.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
+                              <span className={`badge ${item.trip?.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
+                                {item.trip?.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
                               </span>
                             </td>
                             <td><span className={badge.cls} style={{ fontSize: 10 }}>{badge.label}</span></td>
-                            <td className="text-muted" style={{ fontSize: 12 }}>{new Date(item.trip.createdAt).toLocaleDateString("en-IN")}</td>
+                            <td className="text-muted" style={{ fontSize: 12 }}>{item.trip?.createdAt ? new Date(item.trip.createdAt).toLocaleDateString("en-IN") : "—"}</td>
                           </tr>
                         );
                       })
