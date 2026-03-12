@@ -44,7 +44,7 @@ services:
       - key: ENABLE_DEV_OTP_RESPONSES
         value: "false"
       - key: GOOGLE_MAPS_API_KEY
-        value: "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8"
+        value: "AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0"
         type: SECRET
       - key: FIREBASE_WEB_API_KEY
         value: "AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI"
@@ -68,4 +68,7 @@ services:
         type: SECRET
       - key: RAZORPAY_WEBHOOK_SECRET
         value: ""
+        type: SECRET
+      - key: ANTHROPIC_API_KEY
+        value: "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"
         type: SECRET
