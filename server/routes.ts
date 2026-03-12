@@ -48,7 +48,18 @@ const diskStorage = multer.diskStorage({
     cb(null, `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`);
   },
 });
-const upload = multer({ storage: diskStorage, limits: { fileSize: 8 * 1024 * 1024 } });
+const ALLOWED_UPLOAD_MIMETYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']);
+const upload = multer({
+  storage: diskStorage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_UPLOAD_MIMETYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, WebP images and PDF files are allowed'));
+    }
+  },
+});
 
 function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
@@ -9172,8 +9183,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/activate-subscription", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { planId, razorpayPaymentId, razorpayOrderId } = req.body;
-      if (!planId || !razorpayPaymentId) return res.status(400).json({ message: "planId and razorpayPaymentId required" });
+      const { planId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
+      if (!planId || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
+        return res.status(400).json({ message: "planId, razorpayPaymentId, razorpayOrderId, and razorpaySignature required" });
+      }
+      // Verify Razorpay payment signature
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
       // Idempotency check
       const existing = await rawDb.execute(rawSql`SELECT id FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND razorpay_payment_id=${razorpayPaymentId}`).catch(() => ({ rows: [] }));
       if ((existing as any).rows?.length) return res.status(409).json({ message: "Payment already activated" });
@@ -9182,17 +9200,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const plan = camelize(planR.rows[0] as any) as any;
       const startDate = new Date();
       const endDate = new Date(startDate.getTime() + plan.durationDays * 86400000);
+      await rawDb.execute(rawSql`ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100)`).catch(() => {});
       await rawDb.execute(rawSql`
-        INSERT INTO driver_subscriptions (id, driver_id, plan_id, start_date, end_date, payment_amount, payment_status, rides_used, is_active, created_at)
-        VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, now())
-      `).catch(async () => {
-        // Add razorpay_payment_id column if missing
-        await rawDb.execute(rawSql`ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100)`);
-        await rawDb.execute(rawSql`
-          INSERT INTO driver_subscriptions (id, driver_id, plan_id, start_date, end_date, payment_amount, payment_status, rides_used, is_active, created_at)
-          VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, now())
-        `);
-      });
+        INSERT INTO driver_subscriptions (id, driver_id, plan_id, start_date, end_date, payment_amount, payment_status, rides_used, is_active, razorpay_payment_id, created_at)
+        VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, ${razorpayPaymentId}, now())
+      `);
       // Keep hybrid if already chosen; otherwise default to subscription after successful payment
       await rawDb.execute(rawSql`
         UPDATE users

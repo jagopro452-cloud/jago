@@ -103,6 +103,8 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         body: jsonEncode({
           'planId': _selectedPlanId,
           'razorpayPaymentId': response.paymentId,
+          'razorpayOrderId': response.orderId,
+          'razorpaySignature': response.signature,
         }),
       );
 

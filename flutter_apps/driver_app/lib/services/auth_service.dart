@@ -41,19 +41,22 @@ class AuthService {
     return token != null && token.isNotEmpty;
   }
 
+  static const Map<String, String> _base = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'JAGO-Driver/1.0 (Android)',
+    'Accept': 'application/json',
+  };
+
   static Future<Map<String, String>> getHeaders() async {
     final token = await getToken();
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
+    return {..._base, if (token != null) 'Authorization': 'Bearer $token'};
   }
 
   static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'driver']) async {
     try {
       final res = await http.post(
         Uri.parse(ApiConfig.sendOtp),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'phone': phone, 'userType': userType}),
       );
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
@@ -69,7 +72,7 @@ class AuthService {
     try {
       final res = await http.post(
         Uri.parse(ApiConfig.verifyOtp),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}),
       );
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
@@ -112,8 +115,11 @@ class AuthService {
   static Future<Map<String, dynamic>> loginWithPassword(String phone, String password) async {
     try {
       final res = await http.post(Uri.parse(ApiConfig.loginPassword),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'phone': phone, 'password': password, 'userType': 'driver'}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
       final data = jsonDecode(res.body);
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
@@ -130,7 +136,7 @@ class AuthService {
   static Future<Map<String, dynamic>> verifyFirebaseToken(String idToken, String phone, [String userType = 'driver']) async {
     try {
       final res = await http.post(Uri.parse(ApiConfig.verifyFirebaseToken),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'firebaseIdToken': idToken, 'phone': phone, 'userType': userType}));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
@@ -151,8 +157,11 @@ class AuthService {
       final body = <String, dynamic>{'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'driver'};
       if (email != null && email.isNotEmpty) body['email'] = email;
       final res = await http.post(Uri.parse(ApiConfig.registerAccount),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode(body));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
       final data = jsonDecode(res.body);
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
@@ -168,8 +177,11 @@ class AuthService {
   static Future<Map<String, dynamic>> forgotPassword(String phone) async {
     try {
       final res = await http.post(Uri.parse(ApiConfig.forgotPassword),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'phone': phone, 'userType': 'driver'}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error. Check connection.'};
@@ -179,8 +191,11 @@ class AuthService {
   static Future<Map<String, dynamic>> resetPassword(String phone, String otp, String newPassword) async {
     try {
       final res = await http.post(Uri.parse(ApiConfig.resetPassword),
-        headers: {'Content-Type': 'application/json'},
+        headers: _base,
         body: jsonEncode({'phone': phone, 'otp': otp, 'newPassword': newPassword, 'userType': 'driver'}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error. Check connection.'};
