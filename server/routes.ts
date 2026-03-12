@@ -6961,10 +6961,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret) {
-        const expectedSig = crypto.createHmac("sha256", keySecret).update(razorpayOrderId + "|" + razorpayPaymentId).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(razorpayOrderId + "|" + razorpayPaymentId).digest("hex");
+      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      // Idempotency: reject if this payment was already processed
+      const dupCheck = await rawDb.execute(rawSql`
+        SELECT id FROM commission_settlements WHERE razorpay_payment_id=${razorpayPaymentId} LIMIT 1
+      `);
+      if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed" });
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
@@ -8378,13 +8382,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/customer/ride/verify-payment", authApp, async (req, res) => {
     try {
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
-      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret && razorpaySignature) {
-        const expectedSig = crypto.createHmac("sha256", keySecret)
-          .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const expectedSig = crypto.createHmac("sha256", keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
       res.json({ success: true, paymentId: razorpayPaymentId, amount: parseFloat(amount) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
