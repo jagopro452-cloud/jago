@@ -89,8 +89,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
         _weights = raw is List ? raw : (raw['data'] ?? []);
       }
       if (results[2].statusCode == 200) {
-        final all = jsonDecode(results[2].body) as List;
-        _allVehicles = _buildParcelVehicleList(all);
+        final raw2 = jsonDecode(results[2].body);
+        final all = raw2 is List ? raw2 : (raw2['data'] ?? []);
+        _allVehicles = _buildParcelVehicleList(List<dynamic>.from(all));
       }
       if (_allVehicles.isEmpty) _allVehicles = _defaultVehicles();
     } catch (_) {

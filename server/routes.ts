@@ -188,6 +188,16 @@ const appLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Nearby-drivers rate limiter — max 30 requests per minute per IP (prevents driver tracking abuse)
+const nearbyDriversLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { message: "Too many location requests. Please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
 const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL_HOURS || 24));
 const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true";
 
@@ -8211,9 +8221,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── SHARED: Nearby drivers (for customer map) ──────────────────────────────
-  app.get("/api/app/nearby-drivers", async (req, res) => {
+  app.get("/api/app/nearby-drivers", nearbyDriversLimiter, async (req, res) => {
     try {
       const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
+      const latNum = Number(lat); const lngNum = Number(lng);
+      if (!lat || !lng || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+        return res.status(400).json({ message: "Valid lat and lng required" });
+      }
       const vcFilter = vehicleCategoryId
         ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid`
         : rawSql``;
@@ -8228,7 +8242,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND u.current_trip_id IS NULL
           AND u.verification_status = 'approved'
           ${vcFilter}
-          AND (dl.lat - ${Number(lat)})*(dl.lat - ${Number(lat)}) + (dl.lng - ${Number(lng)})*(dl.lng - ${Number(lng)}) < ${Number(radius) * Number(radius) / 10000}
+          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${Number(radius) * Number(radius) / 10000}
         LIMIT 20
       `);
       res.json({ drivers: camelize(r.rows) });
@@ -8429,20 +8443,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/webhooks/razorpay", async (req, res) => {
     try {
       const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+      if (!webhookSecret) return res.status(503).json({ message: "Webhook secret not configured" });
       const signature = req.headers['x-razorpay-signature'] as string;
-
-      if (webhookSecret) {
-        // Secret is configured — signature MUST be present and valid
-        if (!signature) {
-          return res.status(400).json({ message: "Missing webhook signature header" });
-        }
-        const rawBody = (req as any).rawBody;
-        const body = rawBody ? rawBody.toString() : JSON.stringify(req.body);
-        const expectedSig = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");
-        if (expectedSig !== signature) {
-          return res.status(400).json({ message: "Invalid webhook signature" });
-        }
-      }
+      if (!signature) return res.status(400).json({ message: "Missing webhook signature header" });
+      const rawBody = (req as any).rawBody;
+      const body = rawBody ? rawBody.toString() : JSON.stringify(req.body);
+      const expectedSig = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");
+      if (expectedSig !== signature) return res.status(400).json({ message: "Invalid webhook signature" });
 
       const event = req.body;
       const eventType: string = event?.event || '';
@@ -10740,8 +10747,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         WHERE id = ${req.params.id}::uuid
       `);
       if (allDelivered) {
-        // Credit driver wallet
-        const driverEarnings = Math.round(order.total_fare * 0.85);
+        // Credit driver wallet — read commission rate from settings (default 15%)
+        const commR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='commission_pct' LIMIT 1`).catch(() => ({ rows: [] }));
+        const commPct = parseFloat((commR.rows[0] as any)?.value || '15');
+        const driverEarnings = Math.round(order.total_fare * (1 - commPct / 100));
         await rawDb.execute(rawSql`
           UPDATE users SET wallet_balance = wallet_balance + ${driverEarnings}
           WHERE id = ${order.driver_id}::uuid

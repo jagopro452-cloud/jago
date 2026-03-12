@@ -512,6 +512,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final data = jsonDecode(res.body);
       final order = data['order'];
       final keyId = data['keyId'];
+      if (order == null || keyId == null) {
+        setState(() => _loading = false);
+        _showSnack('Payment setup failed. Try again.', error: true);
+        return;
+      }
       final profileData = await AuthService.getProfile();
       final options = {
         'key': keyId,
@@ -534,6 +539,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   void _handleRazorpaySuccess(PaymentSuccessResponse response) async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
@@ -548,10 +554,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       if (verifyRes.statusCode == 200) {
         await _confirmBooking(razorpayPaymentId: response.paymentId);
       } else {
+        if (!mounted) return;
         setState(() => _loading = false);
         _showSnack('Payment verification failed. Contact support.', error: true);
       }
     } catch (_) {
+      if (!mounted) return;
       setState(() => _loading = false);
       _showSnack('Payment verification failed.', error: true);
     }
