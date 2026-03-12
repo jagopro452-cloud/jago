@@ -25,7 +25,7 @@ export default function ReferralsPage() {
   const { data: stats } = useQuery<any>({ queryKey: ["/api/referrals/stats"] });
   const { data: referrals = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/referrals", { status: statusFilter, referralType: typeFilter }],
-    queryFn: () => fetch(`/api/referrals?status=${statusFilter}&referralType=${typeFilter}`).then(r => r.json()),
+    queryFn: () => apiRequest("GET", `/api/referrals?status=${statusFilter}&referralType=${typeFilter}`).then(r => r.json()),
   });
 
   const payMutation = useMutation({
