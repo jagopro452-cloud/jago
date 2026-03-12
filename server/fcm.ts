@@ -1,5 +1,8 @@
 import { log } from "./index";
-import { rawDb, rawSql } from "./db";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
+const rawDb = db;
+const rawSql = sql;
 
 let admin: any = null;
 let fcmInitialized = false;
