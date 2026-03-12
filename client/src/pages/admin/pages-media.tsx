@@ -46,7 +46,9 @@ const LANDING_KEYS = [
 function usePageSettings(settingsType: string) {
   return useQuery<any[]>({
     queryKey: ["/api/business-pages", settingsType],
-    queryFn: () => fetch(`/api/business-pages?type=${settingsType}`).then(r => r.json()),
+    queryFn: () => apiRequest("GET", `/api/business-pages?type=${settingsType}`)
+      .then(r => r.json())
+      .then(d => Array.isArray(d) ? d : []),
   });
 }
 

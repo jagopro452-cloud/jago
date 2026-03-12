@@ -84,7 +84,9 @@ export default function ConfigurationsPage() {
 
   const { data: settingsData = [] } = useQuery<any[]>({
     queryKey: ["/api/business-settings"],
-    queryFn: () => fetch("/api/business-settings").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/business-settings")
+      .then(r => r.json())
+      .then(d => Array.isArray(d) ? d : []),
   });
 
   const arr = Array.isArray(settingsData) ? settingsData : [];
