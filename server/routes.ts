@@ -5978,7 +5978,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!subR.rows.length) {
             return res.status(403).json({
               message: "Subscription required. Please purchase or renew your subscription to go online.",
-              requiresSubscription: true, isLocked: false
+              subscriptionExpired: true, requiresSubscription: true, isLocked: false
             });
           }
           const sub = subR.rows[0] as any;

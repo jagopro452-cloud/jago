@@ -121,13 +121,17 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         if (!mounted) return;
         setState(() { _loading = false; });
         if (res['success'] == true) {
+          final devOtp = res['otp']?.toString() ?? '';
           setState(() {
             _usingFirebaseOtp = false;
-            _serverOtp = '';
+            _serverOtp = devOtp;
             _otpSent = true;
           });
+          if (devOtp.isNotEmpty) {
+            _otpCtrl.text = devOtp;
+          }
           _startTimer();
-          _showSnack('OTP sent to +91$phone');
+          _showSnack(devOtp.isNotEmpty ? 'OTP: $devOtp (auto-filled)' : 'OTP sent to +91$phone');
         } else {
           _showSnack(res['message'] ?? 'Failed to send OTP. Try again.', error: true);
         }

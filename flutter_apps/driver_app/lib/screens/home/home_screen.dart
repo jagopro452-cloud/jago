@@ -665,7 +665,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           return;
         }
 
-        if (errBody['subscriptionExpired'] == true || errBody['subscriptionExpired'] == 'true') {
+        if (errBody['subscriptionExpired'] == true || errBody['subscriptionExpired'] == 'true'
+            || errBody['requiresSubscription'] == true || errBody['requiresSubscription'] == 'true') {
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
