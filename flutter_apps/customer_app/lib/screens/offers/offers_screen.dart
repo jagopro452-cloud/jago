@@ -26,9 +26,9 @@ class _OffersScreenState extends State<OffersScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final r = await http.get(Uri.parse(ApiConfig.customerOffers),
-          headers: {'Authorization': 'Bearer $token'});
+          headers: headers);
       if (r.statusCode == 200) {
         setState(() { _offers = jsonDecode(r.body); _loading = false; });
       } else {

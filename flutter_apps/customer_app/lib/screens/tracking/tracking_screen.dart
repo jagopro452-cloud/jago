@@ -655,10 +655,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       ),
     );
     if (confirm != true) return;
-    final token = await AuthService.getToken();
+    final sosHeaders = await AuthService.getHeaders();
     try {
       await http.post(Uri.parse(ApiConfig.sos),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...sosHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'tripId': widget.tripId,
           'lat': _center.latitude,

@@ -27,11 +27,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<void> _fetchReferral() async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(
         Uri.parse(ApiConfig.referral),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
