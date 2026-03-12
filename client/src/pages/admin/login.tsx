@@ -43,7 +43,11 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    new URLSearchParams(window.location.search).get("reason") === "timeout"
+      ? "Session expired due to 20 minutes of inactivity. Please login again."
+      : ""
+  );
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<{drivers: number; trips: number; zones: number} | null>(null);

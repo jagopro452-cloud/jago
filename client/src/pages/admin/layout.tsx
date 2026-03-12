@@ -316,6 +316,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     window.location.href = "/admin/login";
   };
 
+  // Auto-logout after 20 minutes of inactivity
+  useEffect(() => {
+    const TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+    let timer: ReturnType<typeof setTimeout>;
+
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        localStorage.removeItem("jago-admin");
+        window.location.href = "/admin/login?reason=timeout";
+      }, TIMEOUT_MS);
+    };
+
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset(); // start timer immediately
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, []);
+
   // Wait for Bootstrap CSS before rendering — prevents flash of broken layout on refresh
   if (!cssReady) {
     return (
