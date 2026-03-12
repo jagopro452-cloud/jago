@@ -486,7 +486,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Header */}
       <header className="header fixed-top">
-        <div className="header-inner">
+        <div className="header-inner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
           <div className="header-left-col d-flex align-items-center gap-3">
             <button
               className="aside-toggle-mobile border-0 bg-transparent p-0"
@@ -504,7 +504,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span style={{ fontSize: 13, color: isDark ? "#e2e8f0" : "#0f172a", fontWeight: 700 }}>{currentPage.label}</span>
             </div>
           </div>
-          <div className="header-right-col">
+          <div className="header-right-col" style={{ marginLeft: "auto" }}>
             <div className="header-right">
               <ul className="nav justify-content-end align-items-center header-nav-list gap-2">
                 {/* Live clock */}
