@@ -114,9 +114,9 @@ class _TripScreenState extends State<TripScreen> {
       _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
 
       // HTTP fallback — always update DB
-      final token = await AuthService.getToken();
+      final locHeaders = await AuthService.getHeaders();
       http.post(Uri.parse(ApiConfig.driverLocation),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...locHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true})).catchError((_) => http.Response('', 500));
     } catch (_) {}
   }
@@ -142,14 +142,14 @@ class _TripScreenState extends State<TripScreen> {
       return;
     }
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final stepHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
 
     try {
       if (_status == 'accepted') {
         // Mark arrived — HTTP + Socket
         final res = await http.post(Uri.parse(ApiConfig.driverArrived),
-          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+          headers: {...stepHeaders, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId}));
         if (res.statusCode == 200) {
           _socket.updateTripStatus(tripId, 'arrived');
@@ -158,7 +158,7 @@ class _TripScreenState extends State<TripScreen> {
           _showSnack(jsonDecode(res.body)['message'] ?? 'Error', error: true);
         }
       } else if (_status == 'in_progress' || _status == 'on_the_way') {
-        await _completeTrip(token ?? '');
+        await _completeTrip(stepHeaders);
         return;
       }
     } catch (_) {
@@ -168,13 +168,13 @@ class _TripScreenState extends State<TripScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _completeTrip(String token) async {
+  Future<void> _completeTrip(Map<String, String> authHeaders) async {
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     final estimatedFare = _trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? 0.0;
     final estimatedDistance = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? 0.0;
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverCompleteTrip),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...authHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'actualFare': estimatedFare, 'actualDistance': estimatedDistance}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -314,10 +314,10 @@ class _TripScreenState extends State<TripScreen> {
                             GestureDetector(
                               onTap: () async {
                                 setStateDialog(() => _selectedRating = i);
-                                final token = await AuthService.getToken();
+                                final rateHeaders = await AuthService.getHeaders();
                                 try {
                                   await http.post(Uri.parse(ApiConfig.driverRateCustomer),
-                                    headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                                    headers: {...rateHeaders, 'Content-Type': 'application/json'},
                                     body: jsonEncode({'tripId': tripId, 'rating': i}));
                                 } catch (_) {}
                                 setStateDialog(() => _ratingSubmitted = true);
@@ -429,11 +429,11 @@ class _TripScreenState extends State<TripScreen> {
 
   Future<void> _verifyOtpAndStart(String otp) async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final otpHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...otpHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
         // Notify customer trip started via socket
@@ -540,9 +540,9 @@ class _TripScreenState extends State<TripScreen> {
       );
       if (picked == null || !mounted) return;
       _showSnack('Uploading pickup photo…');
-      final token = await AuthService.getToken();
+      final photoHeaders = await AuthService.getHeaders();
       final req = http.MultipartRequest('POST', Uri.parse(ApiConfig.tripPhoto));
-      req.headers['Authorization'] = 'Bearer $token';
+      req.headers.addAll(photoHeaders);
       req.fields['tripId'] = tripId;
       req.files.add(await http.MultipartFile.fromPath('photo', picked.path));
       final response = await req.send();
@@ -595,13 +595,13 @@ class _TripScreenState extends State<TripScreen> {
 
   Future<void> _cancelTrip(String reason) async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final cancelHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     // Notify customer via socket
     _socket.updateTripStatus(tripId, 'cancelled');
     try {
       await http.post(Uri.parse(ApiConfig.driverCancelTrip),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...cancelHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'reason': reason}));
     } catch (_) {}
     _locationTimer?.cancel();
@@ -685,11 +685,11 @@ class _TripScreenState extends State<TripScreen> {
 
   Future<void> _verifyDeliveryOtp(String otp) async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final delivOtpHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       final res = await http.post(Uri.parse(ApiConfig.verifyDeliveryOtp),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...delivOtpHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
         _showSnack('✅ Delivery verified! You can now complete the trip.');
@@ -1188,11 +1188,11 @@ class _TripScreenState extends State<TripScreen> {
       ),
     );
     if (confirm != true) return;
-    final token = await AuthService.getToken();
+    final sosHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       await http.post(Uri.parse(ApiConfig.sos),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...sosHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'lat': _center.latitude, 'lng': _center.longitude, 'message': 'Driver SOS alert during trip'}));
       if (!mounted) return;
       _showSnack('🚨 SOS Alert sent! Help is on the way.');

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -132,7 +133,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         token = await AuthService.getToken();
       }
 
-      final headers = {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'};
+      final authHeaders = await AuthService.getHeaders();
+      final headers = {...authHeaders, 'Content-Type': 'application/json'};
 
       // 1. Update Profile Fields
       final profileRes = await http.patch(
@@ -240,12 +242,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
             flex: 2,
             child: ElevatedButton(
               onPressed: _loading ? null : () {
-                if (_currentStep < 5) {
-                  _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                  setState(() => _currentStep++);
-                } else {
-                  _submit();
+                if (_currentStep == 0) {
+                  if (_nameCtrl.text.trim().length < 2) { _showSnack('Enter your full name', error: true); return; }
+                  if (_phoneCtrl.text.trim().length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
                 }
+                if (_currentStep == 1) {
+                  if (_passwordCtrl.text.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
+                  if (_passwordCtrl.text != _confirmCtrl.text) { _showSnack('Passwords do not match', error: true); return; }
+                }
+                if (_currentStep == 2) {
+                  if (_licenseNumCtrl.text.trim().isEmpty) { _showSnack('Enter your license number', error: true); return; }
+                  if (_licenseExpiry == null) { _showSnack('Select license expiry date', error: true); return; }
+                  if (_dlFront == null) { _showSnack('Upload DL Front photo', error: true); return; }
+                  if (_dlBack == null) { _showSnack('Upload DL Back photo', error: true); return; }
+                }
+                if (_currentStep == 3) {
+                  if (_vehicleBrandCtrl.text.trim().isEmpty) { _showSnack('Enter vehicle brand', error: true); return; }
+                  if (_vehicleModelCtrl.text.trim().isEmpty) { _showSnack('Enter vehicle model', error: true); return; }
+                  if (_vehicleColorCtrl.text.trim().isEmpty) { _showSnack('Enter vehicle color', error: true); return; }
+                  if (_vehicleYearCtrl.text.trim().isEmpty) { _showSnack('Enter vehicle year', error: true); return; }
+                  if (_vehicleNumCtrl.text.trim().isEmpty) { _showSnack('Enter vehicle number', error: true); return; }
+                }
+                if (_currentStep == 4) {
+                  if (_rcPhoto == null) { _showSnack('Upload RC photo', error: true); return; }
+                  if (_insurancePhoto == null) { _showSnack('Upload Insurance photo', error: true); return; }
+                  if (_vehicleFrontPhoto == null) { _showSnack('Upload Vehicle Front photo', error: true); return; }
+                }
+                if (_currentStep == 5) {
+                  if (_selfiePhoto == null) { _showSnack('Take a selfie photo', error: true); return; }
+                  _submit();
+                  return;
+                }
+                _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                setState(() => _currentStep++);
               },
               style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(_currentStep == 5 ? 'Submit Application' : 'Next'),
@@ -260,7 +289,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return _stepContainer('Basic Information', 'Tell us about yourself', [
       _input('Full Name', _nameCtrl, Icons.person),
       const SizedBox(height: 16),
-      _input('Phone Number', _phoneCtrl, Icons.phone, readOnly: true),
+      _phoneInput(),
       const SizedBox(height: 16),
       _datePicker('Date of Birth', _dob, (d) => setState(() => _dob = d)),
       const SizedBox(height: 16),
@@ -347,6 +376,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ...children,
         ],
       ),
+    );
+  }
+
+  Widget _phoneInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _phoneCtrl,
+          readOnly: false,
+          enabled: true,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            labelText: 'Phone Number',
+            labelStyle: const TextStyle(color: Colors.white54),
+            prefixIcon: const Icon(Icons.phone, color: _primary),
+            filled: true, fillColor: _surface,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
+        ),
+        if (_phoneCtrl.text.isNotEmpty && _phoneCtrl.text.length < 10)
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 12),
+            child: Text('Enter a valid 10-digit phone number', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+      ],
     );
   }
 

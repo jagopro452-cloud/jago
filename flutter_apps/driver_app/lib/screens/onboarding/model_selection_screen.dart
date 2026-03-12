@@ -26,13 +26,10 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
     if (_selectedModel == 'commission') {
       setState(() => _isLoading = true);
       try {
-        final token = await AuthService.getToken();
+        final headers = await AuthService.getHeaders();
         final res = await http.post(
           Uri.parse('${ApiConfig.baseUrl}/api/app/driver/choose-model'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+          headers: {...headers, 'Content-Type': 'application/json'},
           body: jsonEncode({'model': 'commission'}),
         );
 

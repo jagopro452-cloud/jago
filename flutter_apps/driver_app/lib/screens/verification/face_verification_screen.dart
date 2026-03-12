@@ -71,9 +71,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
     if (_selfieFile == null) return;
     setState(() { _loading = true; _error = null; });
     try {
-      final token = await AuthService.getToken();
+      final faceHeaders = await AuthService.getHeaders();
       final request = http.MultipartRequest('POST', Uri.parse(ApiConfig.faceVerify));
-      request.headers['Authorization'] = 'Bearer $token';
+      request.headers.addAll(faceHeaders);
       request.files.add(await http.MultipartFile.fromPath('selfie', _selfieFile!.path));
       final streamedResponse = await request.send();
       final body = await streamedResponse.stream.bytesToString();

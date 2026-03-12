@@ -26,10 +26,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _fetch() async {
     setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(Uri.parse(ApiConfig.notifications),
-          headers: {'Authorization': 'Bearer $token'});
+          headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         setState(() {
@@ -45,9 +45,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _markAllRead() async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     await http.patch(Uri.parse(ApiConfig.notificationsReadAll),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
     _fetch();
   }
 

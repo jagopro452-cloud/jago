@@ -58,9 +58,9 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
     if (picked == null) return;
     setState(() => _uploading[docType] = true);
     try {
-      final token = await AuthService.getToken();
+      final authHeaders = await AuthService.getHeaders();
       final request = http.MultipartRequest('POST', Uri.parse(ApiConfig.uploadDocument));
-      request.headers['Authorization'] = 'Bearer $token';
+      request.headers.addAll(authHeaders);
       request.fields['docType'] = docType;
       request.files.add(await http.MultipartFile.fromPath('document', picked.path));
       final response = await request.send();

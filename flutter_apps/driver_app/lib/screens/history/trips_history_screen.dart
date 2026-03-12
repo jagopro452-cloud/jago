@@ -52,11 +52,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
 
   Future<void> _fetchTrips({bool refresh = false}) async {
     if (refresh && mounted) setState(() => _loading = true);
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(
         Uri.parse('${ApiConfig.driverTrips}?limit=100'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200 && mounted) {
         final data = jsonDecode(res.body);
@@ -253,10 +253,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
 
   Future<void> _fetchAndShowReceipt(String tripId) async {
     if (tripId.isEmpty) return;
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(Uri.parse(ApiConfig.tripReceipt(tripId)),
-        headers: {'Authorization': 'Bearer $token'});
+        headers: headers);
       if (!mounted) return;
       if (res.statusCode == 200) {
         final receipt = jsonDecode(res.body)['receipt'] as Map<String, dynamic>;

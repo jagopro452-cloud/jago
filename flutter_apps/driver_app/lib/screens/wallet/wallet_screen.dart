@@ -41,11 +41,11 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   }
 
   Future<void> _fetchWallet() async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(
         Uri.parse(ApiConfig.driverWallet),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         setState(() { _wallet = jsonDecode(res.body); _loading = false; });
@@ -218,10 +218,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
 
   Future<void> _initiateRecharge(double amount) async {
     try {
-      final token = await AuthService.getToken();
+      final rechargeHeaders = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/wallet/create-order'),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...rechargeHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'amount': amount}),
       );
       if (res.statusCode != 200) {
@@ -236,7 +236,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       try {
         final profRes = await http.get(
           Uri.parse('${ApiConfig.baseUrl}/api/app/driver/profile'),
-          headers: {'Authorization': 'Bearer $token'},
+          headers: rechargeHeaders,
         );
         if (profRes.statusCode == 200) {
           driverPhone = jsonDecode(profRes.body)['phone']?.toString() ?? '';
@@ -263,10 +263,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   void _onPaymentSuccess(PaymentSuccessResponse response) async {
     _showSnack('Processing payment...', error: false);
     try {
-      final token = await AuthService.getToken();
+      final verifyHeaders = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/wallet/verify-payment'),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...verifyHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'razorpayOrderId': response.orderId,
           'razorpayPaymentId': response.paymentId,
@@ -445,7 +445,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                       }
                       setModalState(() => loading = true);
                       try {
-                        final token = await AuthService.getToken();
+                        final wdHeaders = await AuthService.getHeaders();
                         final body = method == 'upi'
                           ? {'amount': amt, 'method': 'upi', 'upiId': upiCtrl.text.trim()}
                           : {
@@ -457,7 +457,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                             };
                         final res = await http.post(
                           Uri.parse(ApiConfig.driverWithdrawRequest),
-                          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+                          headers: {...wdHeaders, 'Content-Type': 'application/json'},
                           body: jsonEncode(body),
                         );
                         final data = jsonDecode(res.body);

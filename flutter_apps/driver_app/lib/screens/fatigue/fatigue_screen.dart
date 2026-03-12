@@ -45,8 +45,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
 
   Future<void> _loadData() async {
     try {
-      final token = await AuthService.getToken();
-      final headers = {'Authorization': 'Bearer $token'};
+      final headers = await AuthService.getHeaders();
       final responses = await Future.wait([
         http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/driver/fatigue-status'), headers: headers),
         http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/driver/dashboard'), headers: headers),

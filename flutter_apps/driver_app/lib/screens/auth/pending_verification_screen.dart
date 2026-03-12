@@ -35,10 +35,10 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
 
   Future<void> _fetchStatus() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/verification-status'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);

@@ -145,13 +145,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Navigator.pop(context);
                   setState(() => _savingName = true);
                   try {
-                    final token = await AuthService.getToken();
+                    final headers = await AuthService.getHeaders();
                     final res = await http.put(
                       Uri.parse(ApiConfig.updateProfile),
-                      headers: {
-                        'Authorization': 'Bearer $token',
-                        'Content-Type': 'application/json',
-                      },
+                      headers: {...headers, 'Content-Type': 'application/json'},
                       body: jsonEncode({'fullName': newName}),
                     );
                     if (res.statusCode == 200 && mounted) {
@@ -183,11 +180,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteDriverAccount(bool permanent) async {
-    final token = await AuthService.getToken();
+    final headers = await AuthService.getHeaders();
     try {
       final res = await http.delete(
         Uri.parse(ApiConfig.deleteAccount),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'permanent': permanent}),
       );
       if (res.statusCode == 200 && mounted) {
@@ -458,13 +455,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final isDark = themeNotifier.value == ThemeMode.dark;
                   saveThemePreference(isDark ? ThemeMode.light : ThemeMode.dark);
                   // Persist to server
-                  AuthService.getToken().then((token) {
+                  AuthService.getHeaders().then((headers) {
                     http.patch(
                       Uri.parse('${ApiConfig.baseUrl}/api/app/driver/theme'),
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer $token',
-                      },
+                      headers: {...headers, 'Content-Type': 'application/json'},
                       body: jsonEncode({'theme': isDark ? 'light' : 'dark'}),
                     ).catchError((_) => http.Response('', 500));
                   });

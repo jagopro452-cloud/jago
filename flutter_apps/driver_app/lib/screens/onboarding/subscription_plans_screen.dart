@@ -43,13 +43,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
 
   Future<void> _syncSelectedModel() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/choose-model'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'model': widget.selectedModel}),
       );
     } catch (_) {
@@ -65,10 +62,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
 
   Future<void> _fetchPlans() async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/subscription-plans'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
@@ -99,13 +96,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
 
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/activate-subscription'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'planId': _selectedPlanId,
           'razorpayPaymentId': response.paymentId,
@@ -133,15 +127,12 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
 
   Future<void> _subscribe() async {
     if (_selectedPlanId == null) return;
-    
+
     try {
-      final token = await AuthService.getToken();
+      final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/subscribe'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'planId': _selectedPlanId}),
       );
 
@@ -150,12 +141,11 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         final orderId = data['orderId'];
         final amount = data['amount'];
         final keyId = data['keyId'] ?? '';
-        final token2 = await AuthService.getToken();
         String driverPhone = '';
         try {
           final profRes = await http.get(
             Uri.parse('${ApiConfig.baseUrl}/api/app/driver/profile'),
-            headers: {'Authorization': 'Bearer $token2'},
+            headers: headers,
           );
           if (profRes.statusCode == 200) {
             final profData = jsonDecode(profRes.body);
