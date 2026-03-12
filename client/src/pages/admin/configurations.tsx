@@ -20,6 +20,7 @@ const CONFIG_TABS = [
   { id: "sound", label: "Sound Alerts", icon: "bi-volume-up-fill", color: "#7c3aed", bg: "#f5f3ff" },
   { id: "firebase", label: "Firebase & SMS", icon: "bi-bell-fill", color: "#f97316", bg: "#fff7ed" },
   { id: "maps", label: "Google Maps", icon: "bi-map-fill", color: "#059669", bg: "#f0fdf4" },
+  { id: "ai", label: "Claude AI", icon: "bi-stars", color: "#7c3aed", bg: "#f5f3ff" },
 ];
 
 function Toggle({ label, desc, value, onChange, id }: any) {
@@ -193,6 +194,7 @@ export default function ConfigurationsPage() {
             {tab === "features" && "Enable or disable platform features instantly"}
             {tab === "firebase" && "Push notifications and SMS gateway settings"}
             {tab === "maps" && "Google Maps API for location and routing"}
+            {tab === "ai" && "Claude AI for voice booking — understands Telugu, Hindi, English"}
           </div>
         </div>
       </div>
@@ -545,6 +547,58 @@ export default function ConfigurationsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== CLAUDE AI ===== */}
+          {tab === "ai" && (
+            <div>
+              <div className="d-flex gap-3 mb-4 p-3 rounded-3" style={{ background: "linear-gradient(135deg,#f5f3ff,#ede9fe)", border: "1.5px solid #c4b5fd" }}>
+                <i className="bi bi-stars mt-1" style={{ fontSize: 22, color: "#7c3aed", flexShrink: 0 }}></i>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>Claude AI — Voice Booking Intelligence</div>
+                  <div style={{ fontSize: 12, color: "#6d28d9", marginTop: 3 }}>
+                    Users voice lo ride/parcel book cheyagalaru — Telugu, Hindi, English anni support avutundi.
+                    API Key paste chesthe immediately activate avutundi. Cost: ~₹0.001 per voice request.
+                  </div>
+                </div>
+              </div>
+
+              <Field label="Anthropic API Key" id="anthropic_api_key"
+                desc='console.anthropic.com → API Keys → Create Key. Format: sk-ant-api03-...'
+                value={get("anthropic_api_key")} onChange={set("anthropic_api_key")}
+                type="password" placeholder="sk-ant-api03-..." />
+
+              <div className="mt-3 p-3 rounded-3" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
+                  <i className="bi bi-info-circle me-1"></i>Voice commands supported:
+                </div>
+                <div className="row g-2">
+                  {[
+                    '"Book a bike from JNTU to Hitech City"',
+                    '"JNTU nundi Hitech City ki bike kavali"',
+                    '"Auto bulao JNTU se Hitech City"',
+                    '"Send parcel from Kukatpally to Miyapur"',
+                    '"Parcel pampinchu Ameerpet ki"',
+                    '"Cancel my ride"',
+                  ].map(ex => (
+                    <div key={ex} className="col-12 col-md-6">
+                      <div style={{ fontSize: 11.5, color: "#64748b", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <i className="bi bi-mic-fill mt-1" style={{ fontSize: 10, color: "#7c3aed", flexShrink: 0 }}></i>
+                        <span style={{ fontStyle: "italic" }}>{ex}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 p-3 rounded-3 d-flex gap-2 align-items-start" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
+                <i className="bi bi-lightning-charge-fill mt-1" style={{ color: "#d97706", flexShrink: 0 }}></i>
+                <div style={{ fontSize: 12, color: "#92400e" }}>
+                  Key save chesaaka server automatically Claude AI use chestundi. No restart needed.
+                  Key lekapothe regex fallback use avutundi (English basic patterns only).
                 </div>
               </div>
             </div>

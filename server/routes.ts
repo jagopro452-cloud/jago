@@ -205,7 +205,13 @@ const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http:
 
 // ── Claude AI voice intent parser ────────────────────────────────────────────
 async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // Read live from DB first (admin panel save), fallback to env var
+  let apiKey = process.env.ANTHROPIC_API_KEY;
+  try {
+    const dbR = await rawDb.execute(rawSql`SELECT value FROM business_settings WHERE key_name='anthropic_api_key' LIMIT 1`);
+    const dbKey = (dbR.rows[0] as any)?.value?.trim();
+    if (dbKey) apiKey = dbKey;
+  } catch (_) {}
   if (!apiKey) return null;
   try {
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
