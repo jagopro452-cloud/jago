@@ -5828,11 +5828,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
         // Subscription-like models require an active plan before going online
+        // Exception: drivers in their 30-day free launch period can go online
         const isSubscriptionLikeModel = ['subscription', 'hybrid'].includes(String(modelRow?.revenue_model || ''));
         if (isSubscriptionLikeModel) {
-          const subR = await rawDb.execute(rawSql`SELECT id, end_date FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date > NOW() ORDER BY end_date DESC LIMIT 1`);
-          if (!subR.rows.length) {
-            return res.status(403).json({ message: 'Your subscription has expired. Please renew to go online.', subscriptionExpired: true });
+          const freeCheckR = await rawDb.execute(rawSql`SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+          const freeRow = freeCheckR.rows[0] as any;
+          const inFreePeriod = freeRow?.launch_free_active === true
+            && freeRow?.free_period_end
+            && new Date(freeRow.free_period_end) >= new Date();
+          if (!inFreePeriod) {
+            const subR = await rawDb.execute(rawSql`SELECT id, end_date FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date > NOW() ORDER BY end_date DESC LIMIT 1`);
+            if (!subR.rows.length) {
+              return res.status(403).json({ message: 'Your subscription has expired. Please renew to go online.', subscriptionExpired: true });
+            }
           }
         }
         // Check document expiry — insurance, RC, PUC must be valid
@@ -6035,28 +6043,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
 
-      // ── Subscription gate: bike_ride uses subscription model ──────────────
-      // Check if a bike_ride service is active + uses subscription model
-      const svcR = await rawDb.execute(rawSql`
-        SELECT revenue_model FROM platform_services
-        WHERE service_key = 'bike_ride' AND service_status = 'active' LIMIT 1
+      // ── Subscription gate: rides use subscription model; parcels use commission (no gate) ──
+      const tripTypeR = await rawDb.execute(rawSql`
+        SELECT trip_type FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
-      if (svcR.rows.length) {
-        const model = (svcR.rows[0] as any).revenue_model;
-        if (model === 'subscription') {
-          // Driver must have an active, non-expired subscription
-          const subR = await rawDb.execute(rawSql`
-            SELECT id FROM driver_subscriptions
-            WHERE driver_id = ${driver.id}::uuid
-              AND is_active = true
-              AND end_date > NOW()
-            LIMIT 1
-          `);
-          if (!subR.rows.length) {
-            return res.status(403).json({
-              message: "Active subscription required to accept rides. Please subscribe to continue.",
-              code: "SUBSCRIPTION_REQUIRED",
-            });
+      const tripType = (tripTypeR.rows[0] as any)?.trip_type || 'normal';
+      const isParcelTrip = tripType === 'parcel' || tripType === 'delivery' || tripType === 'cargo';
+      if (!isParcelTrip) {
+        // Ride trip: check subscription model setting
+        const ridesModelR = await rawDb.execute(rawSql`
+          SELECT value FROM revenue_model_settings WHERE key_name='rides_model' LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const ridesModel = (ridesModelR.rows[0] as any)?.value || 'subscription';
+        if (ridesModel === 'subscription') {
+          // Check if driver has launch free period active OR an active paid subscription
+          const freeR = await rawDb.execute(rawSql`
+            SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          const freeRow = freeR.rows[0] as any;
+          const inFreePeriod = freeRow?.launch_free_active === true
+            && freeRow?.free_period_end
+            && new Date(freeRow.free_period_end) >= new Date();
+          if (!inFreePeriod) {
+            // Driver must have an active, non-expired paid subscription
+            const subR = await rawDb.execute(rawSql`
+              SELECT id FROM driver_subscriptions
+              WHERE driver_id = ${driver.id}::uuid
+                AND is_active = true
+                AND end_date > NOW()
+              LIMIT 1
+            `);
+            if (!subR.rows.length) {
+              return res.status(403).json({
+                message: "Active subscription required to accept rides. Please subscribe to continue.",
+                code: "SUBSCRIPTION_REQUIRED",
+              });
+            }
           }
         }
       }
