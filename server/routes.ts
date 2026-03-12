@@ -6338,10 +6338,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (tripRow.pickup_otp && pickupOtp !== tripRow.pickup_otp) {
         return res.status(400).json({ message: "Invalid OTP" });
       }
-      await rawDb.execute(rawSql`
+      const startR = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='on_the_way', ride_started_at=COALESCE(ride_started_at, NOW())
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+        RETURNING id
       `);
+      if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed — driver mismatch or trip already moved" });
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Trip started from driver app');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'start-trip' });
       res.json({ success: true, message: "Trip started" });
