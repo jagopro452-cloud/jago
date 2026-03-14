@@ -9,6 +9,9 @@ class SocketService {
 
   IO.Socket? _socket;
   bool _isConnected = false;
+  bool _wasOnline = false;
+  double? _lastLat;
+  double? _lastLng;
 
   final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
@@ -59,6 +62,17 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
+    });
+
+    // On reconnect after server restart: restore online status so driver stays visible
+    _socket!.on('reconnect', (_) {
+      if (_wasOnline) {
+        _socket!.emit('driver:online', {
+          'isOnline': true,
+          if (_lastLat != null) 'lat': _lastLat,
+          if (_lastLng != null) 'lng': _lastLng,
+        });
+      }
     });
 
     _socket!.on('disconnect', (_) {
@@ -125,6 +139,9 @@ class SocketService {
   }
 
   void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {
+    _wasOnline = isOnline; // remember for reconnect recovery
+    if (lat != null) _lastLat = lat;
+    if (lng != null) _lastLng = lng;
     if (!_isConnected) return;
     _socket!.emit('driver:online', {
       'isOnline': isOnline,

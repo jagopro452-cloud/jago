@@ -1,5 +1,11 @@
 name: jago-platform
 region: blr
+databases:
+  - name: jago-redis
+    engine: REDIS
+    version: "7"
+    production: true
+    size: db-s-1vcpu-1gb
 services:
   - name: jago-server
     source_dir: /
@@ -42,7 +48,7 @@ services:
       - key: ADMIN_2FA_REQUIRED
         value: "false"
       - key: ENABLE_DEV_OTP_RESPONSES
-        value: "true"
+        value: "false"
       - key: GOOGLE_MAPS_API_KEY
         value: "AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0"
         type: SECRET
@@ -68,6 +74,11 @@ services:
         type: SECRET
       - key: RAZORPAY_WEBHOOK_SECRET
         value: ""
+        type: SECRET
+        # ACTION REQUIRED: Set this to your Razorpay webhook secret from dashboard.razorpay.com
+        # Without this, payment webhook signature verification will reject ALL webhooks
+      - key: REDIS_URL
+        value: ${jago-redis.REDIS_URL}
         type: SECRET
       - key: ANTHROPIC_API_KEY
         value: "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"

@@ -195,6 +195,55 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
+  // Payment retry job: every 5 minutes, check trips stuck in payment_pending
+  // for more than 5 minutes and query Razorpay to auto-resolve them
+  setInterval(async () => {
+    try {
+      const { rawDb, rawSql } = await import("./db");
+      const { io: socketIo } = await import("./socket");
+      const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+      const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+      if (!RAZORPAY_KEY_ID) return;
+      // Find trips stuck in payment_pending for > 5 minutes
+      const stuckTrips = await rawDb.execute(rawSql`
+        SELECT t.id as trip_id, t.customer_id, dp.razorpay_order_id, dp.id as payment_id, dp.driver_id
+        FROM trip_requests t
+        JOIN driver_payments dp ON dp.trip_id = t.id
+        WHERE t.current_status = 'payment_pending'
+          AND t.updated_at < NOW() - INTERVAL '5 minutes'
+          AND dp.status = 'pending'
+          AND dp.razorpay_order_id IS NOT NULL
+        LIMIT 20
+      `);
+      for (const row of stuckTrips.rows as any[]) {
+        try {
+          // Query Razorpay for order payment status
+          const rzpRes = await fetch(`https://api.razorpay.com/v1/orders/${row.razorpay_order_id}/payments`, {
+            headers: { Authorization: `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64")}` },
+          });
+          if (!rzpRes.ok) continue;
+          const rzpData = await rzpRes.json() as any;
+          const captured = rzpData?.items?.find((p: any) => p.status === "captured");
+          if (captured) {
+            // Payment confirmed — complete the trip
+            await rawDb.execute(rawSql`
+              UPDATE driver_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
+              WHERE id=${row.payment_id}::uuid
+            `);
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET current_status='completed', completed_at=NOW(), payment_status='paid', updated_at=NOW()
+              WHERE id=${row.trip_id}::uuid AND current_status='payment_pending'
+            `);
+            socketIo.to(`user:${row.customer_id}`).emit("trip:completed", { tripId: row.trip_id, message: "Payment confirmed. Trip complete." });
+            log(`[PaymentRetry] Trip ${row.trip_id} resolved — payment ${captured.id} captured`);
+          }
+        } catch (_) {}
+      }
+    } catch (e: any) {
+      log(`[PaymentRetry] Error: ${e.message}`);
+    }
+  }, 5 * 60 * 1000); // every 5 minutes
+
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.

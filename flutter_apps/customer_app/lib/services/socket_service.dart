@@ -9,6 +9,7 @@ class SocketService {
 
   IO.Socket? _socket;
   bool _isConnected = false;
+  String? _activeTripId; // stored so we can re-join trip room after server restart
 
   final _driverAssignedController = StreamController<Map<String, dynamic>>.broadcast();
   final _driverLocationController = StreamController<Map<String, dynamic>>.broadcast();
@@ -19,6 +20,7 @@ class SocketService {
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
@@ -29,6 +31,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
+  Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -55,6 +58,13 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
+    });
+
+    // On reconnect after server restart: re-join active trip room so events resume
+    _socket!.on('reconnect', (_) {
+      if (_activeTripId != null) {
+        _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
+      }
     });
 
     _socket!.on('disconnect', (_) {
@@ -132,14 +142,22 @@ class SocketService {
       _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'timeout'});
     });
 
+    // Payment not yet verified — trip held at payment_pending
+    _socket!.on('trip:payment_pending', (data) {
+      _paymentPendingController.add(Map<String, dynamic>.from(data));
+    });
+
     _socket!.connect();
   }
 
-  // Start tracking a specific trip
+  // Start tracking a specific trip (also stored for reconnect recovery)
   void trackTrip(String tripId) {
+    _activeTripId = tripId;
     if (!_isConnected) return;
     _socket!.emit('customer:track_trip', {'tripId': tripId});
   }
+
+  void clearActiveTrip() => _activeTripId = null;
 
   // Cancel a trip
   void cancelTrip(String tripId) {
@@ -181,5 +199,6 @@ class SocketService {
     _messageHistoryController.close();
     _noDriversController.close();
     _tripSearchingController.close();
+    _paymentPendingController.close();
   }
 }
