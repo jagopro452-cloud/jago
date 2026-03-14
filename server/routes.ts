@@ -1473,7 +1473,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // ── 3. Activate all platform services ────────────────────────────────────
-      await rawDb.execute(rawSql`UPDATE platform_services SET status='active' WHERE status='inactive'`).catch(() => {});
+      await rawDb.execute(rawSql`UPDATE platform_services SET service_status='active' WHERE service_status='inactive'`).catch(() => {});
 
       // ── 4. Surge pricing rules (peak hours) ─────────────────────────────────
       const surges = [
@@ -9193,7 +9193,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Get subscription plans ────────────────────────────────────────
-  app.get("/api/app/driver/subscription-plans", async (_req, res) => {
+  app.get("/api/app/driver/subscription/plans", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT id, name, price, duration_days, features, plan_type

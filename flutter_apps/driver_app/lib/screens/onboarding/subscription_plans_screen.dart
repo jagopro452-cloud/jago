@@ -64,7 +64,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/driver/subscription-plans'),
+        Uri.parse(ApiConfig.subscriptionPlans),
         headers: headers,
       );
       if (res.statusCode == 200) {
@@ -271,7 +271,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     final isSelected = _selectedPlanId == id;
     final name = plan['name'];
     final price = plan['price'];
-    final durationDays = plan['durationDays'];
+    final durationDays = plan['duration_days'] ?? plan['durationDays'] ?? 30;
     final dailyRate = (price / durationDays).toStringAsFixed(0);
     final features = List<String>.from(plan['features'] ?? []);
     
