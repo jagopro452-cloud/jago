@@ -2348,10 +2348,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Users
   app.get("/api/users", async (req, res) => {
     try {
-      const { userType, search, page, limit } = req.query;
+      const { userType, search, page, limit } = req.query as Record<string, string>;
       const result = await storage.getUsers(
-        userType as string,
-        search as string,
+        userType,
+        search,
         Number(page) || 1,
         Number(limit) || 15
       );
@@ -2410,10 +2410,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Trips
   app.get("/api/trips", async (req, res) => {
     try {
-      const { status, search, page, limit } = req.query;
+      const { status, search, page, limit } = req.query as Record<string, string>;
       const result = await storage.getTrips(
-        status as string,
-        search as string,
+        status,
+        search,
         Number(page) || 1,
         Number(limit) || 15
       );
@@ -2983,8 +2983,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Transactions
   app.get("/api/transactions", async (req, res) => {
     try {
-      const { userId, page, limit } = req.query;
-      const result = await storage.getTransactions(userId as string, Number(page) || 1, Number(limit) || 15);
+      const { userId, page, limit } = req.query as Record<string, string>;
+      const result = await storage.getTransactions(userId, Number(page) || 1, Number(limit) || 15);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3039,7 +3039,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Reviews
   app.get("/api/reviews", async (req, res) => {
     try {
-      const { page, limit } = req.query;
+      const { page, limit } = req.query as Record<string, string>;
       const result = await storage.getReviews(Number(page) || 1, Number(limit) || 15);
       res.json(result);
     } catch (e: any) {
@@ -3150,8 +3150,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Withdraw Requests
   app.get("/api/withdrawals", async (req, res) => {
     try {
-      const { status } = req.query;
-      const result = await storage.getWithdrawRequests(status as string);
+      const { status } = req.query as Record<string, string>;
+      const result = await storage.getWithdrawRequests(status);
       // Normalize keys: storage returns { withdraw, user } but frontend expects { withdrawal, driver }
       const normalized = result.map((r: any) => ({
         withdrawal: r.withdraw || r.withdrawal || r,
