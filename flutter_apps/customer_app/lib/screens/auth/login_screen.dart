@@ -24,8 +24,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _showPassword = false;
   bool _usePassword = false;
   bool _loading = false;
-  String _serverOtp = '';
-  bool _usingFirebaseOtp = false;
   String? _firebaseVerificationId;
   int _seconds = 0;
   Timer? _timer;
@@ -89,67 +87,32 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
-
-    // Step 1: Ask server which OTP provider to use (server reads otp_settings from DB)
-    Map<String, dynamic> serverRes;
-    try {
-      serverRes = await AuthService.sendOtp(phone, 'customer');
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showSnack('Network error. Check your connection and try again.', error: true);
-      return;
-    }
-    if (!mounted) return;
-
-    final provider = serverRes['provider']?.toString() ?? 'sms';
-    final devOtp = serverRes['otp']?.toString() ?? '';
-
-    if (provider == 'firebase') {
-      // Step 2a: Server wants Firebase OTP — trigger on-device Firebase Phone Auth
-      final switchMsg = serverRes['message']?.toString() ?? '';
-      if (switchMsg.contains('failed') || switchMsg.contains('Switching')) {
-        _showSnack('SMS OTP failed. Switching to secure verification.', error: false);
-      }
-      await FirebaseOtpService.sendOtp(
-        phoneNumber: '+91$phone',
-        onCodeSent: (vId) {
-          if (!mounted) return;
-          _firebaseVerificationId = vId;
-          _usingFirebaseOtp = true;
-          setState(() { _loading = false; _otpSent = true; });
-          _startTimer();
-          _showSnack('OTP sent to +91$phone');
-        },
-        onError: (err) {
-          if (!mounted) return;
-          setState(() => _loading = false);
-          _showSnack('Verification unavailable. Please try again later.', error: true);
-        },
-        onAutoVerify: (idToken) async {
-          if (!mounted) return;
-          final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
-          if (!mounted) return;
-          setState(() => _loading = false);
-          if (res['success'] == true) {
-            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-          } else {
-            _showSnack(res['message'] ?? 'Auto-verify failed', error: true);
-          }
-        },
-      );
-    } else {
-      // Step 2b: Server sent SMS OTP successfully
-      _usingFirebaseOtp = false;
-      _serverOtp = devOtp;
-      setState(() {
-        _loading = false;
-        _otpSent = true;
-        if (devOtp.isNotEmpty) _otpCtrl.text = devOtp;
-      });
-      _startTimer();
-      _showSnack(devOtp.isNotEmpty ? 'OTP: $devOtp (auto-filled)' : 'OTP sent to +91$phone');
-    }
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (vId) {
+        if (!mounted) return;
+        _firebaseVerificationId = vId;
+        setState(() { _loading = false; _otpSent = true; });
+        _startTimer();
+        _showSnack('OTP sent to +91$phone');
+      },
+      onError: (err) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        _showSnack(err, error: true);
+      },
+      onAutoVerify: (idToken) async {
+        if (!mounted) return;
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+        if (!mounted) return;
+        setState(() => _loading = false);
+        if (res['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        } else {
+          _showSnack(res['message'] ?? 'Auto-verify failed', error: true);
+        }
+      },
+    );
   }
 
   Future<void> _verifyOtp() async {
@@ -157,31 +120,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
     setState(() => _loading = true);
-    if (_usingFirebaseOtp) {
-      try {
-        final idToken = await FirebaseOtpService.verifyOtp(smsCode: otp, verificationId: _firebaseVerificationId);
-        if (!mounted) return;
-        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
-        setState(() => _loading = false);
-        if (!mounted) return;
-        if (res['success'] == true) {
-          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-        } else {
-          _showSnack(res['message'] ?? 'Verification failed', error: true);
-        }
-      } catch (e) {
-        setState(() => _loading = false);
-        _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
-      }
-    } else {
-      final res = await AuthService.verifyOtp(phone, otp, 'customer');
+    try {
+      final idToken = await FirebaseOtpService.verifyOtp(smsCode: otp, verificationId: _firebaseVerificationId);
+      if (!mounted) return;
+      final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
       setState(() => _loading = false);
       if (!mounted) return;
       if (res['success'] == true) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
-        _showSnack(res['message'] ?? 'Invalid OTP', error: true);
+        _showSnack(res['message'] ?? 'Verification failed', error: true);
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
     }
   }
 

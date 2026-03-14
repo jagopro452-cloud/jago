@@ -5982,6 +5982,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── Reset password via Firebase token (SMS-free flow) ────────────────────
+  app.post("/api/app/reset-password-firebase", async (req, res) => {
+    try {
+      const { firebaseIdToken, phone, newPassword, userType = "customer" } = req.body;
+      if (!firebaseIdToken || !phone || !newPassword) {
+        return res.status(400).json({ message: "Firebase token, phone and new password are required" });
+      }
+      if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const phoneStr = phone.toString().replace(/\D/g, "").slice(-10);
+      if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+
+      // Verify Firebase token
+      let firebasePhone = "";
+      const { getFirebaseAdminAsync } = await import("./fcm.js");
+      const adminInst = await getFirebaseAdminAsync();
+      if (adminInst) {
+        const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
+        firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
+      } else {
+        const webApiKey = process.env.FIREBASE_WEB_API_KEY;
+        if (!webApiKey) return res.status(503).json({ message: "Firebase not configured. Contact support." });
+        const lookupRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: firebaseIdToken }) }
+        );
+        if (!lookupRes.ok) return res.status(401).json({ message: "Invalid or expired Firebase token." });
+        const lookupData = (await lookupRes.json()) as any;
+        firebasePhone = (lookupData.users?.[0]?.phoneNumber || "").replace(/\D/g, "").slice(-10);
+      }
+      if (!firebasePhone) return res.status(401).json({ message: "Could not verify phone from Firebase token." });
+      if (firebasePhone !== phoneStr) return res.status(400).json({ message: "Phone number mismatch." });
+
+      // Check user exists
+      const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      if (!userRes.rows.length) return res.status(404).json({ message: "User not found." });
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
+      res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
     // ── AUTH MIDDLEWARE (simple token check) ─────────────────────────────────
   async function authApp(req: Request, res: Response, next: NextFunction) {
     try {

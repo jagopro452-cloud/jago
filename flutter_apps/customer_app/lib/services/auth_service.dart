@@ -190,6 +190,20 @@ class AuthService {
     }
   }
 
+  static Future<Map<String, dynamic>> resetPasswordWithFirebase(String firebaseIdToken, String phone, String newPassword) async {
+    try {
+      final res = await http.post(Uri.parse(ApiConfig.resetPasswordFirebase),
+        headers: _base,
+        body: jsonEncode({'firebaseIdToken': firebaseIdToken, 'phone': phone, 'newPassword': newPassword, 'userType': 'customer'}));
+      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+        return {'success': false, 'message': 'Server error. Please try again.'};
+      }
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error. Check connection.'};
+    }
+  }
+
   static Future<Map<String, dynamic>> forgotPassword(String phone) async {
     try {
       final res = await http.post(Uri.parse(ApiConfig.forgotPassword),

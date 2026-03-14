@@ -33,6 +33,7 @@ class ApiConfig {
   static String get registerAccount => '$baseUrl/api/app/register';
   static String get forgotPassword => '$baseUrl/api/app/forgot-password';
   static String get resetPassword => '$baseUrl/api/app/reset-password';
+  static String get resetPasswordFirebase => '$baseUrl/api/app/reset-password-firebase';
   static String get changePassword => '$baseUrl/api/app/change-password';
   static String get logout => '$baseUrl/api/app/logout';
   static String get configs => '$baseUrl/api/app/configs';

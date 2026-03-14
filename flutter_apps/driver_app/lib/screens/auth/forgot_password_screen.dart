@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_otp_service.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -19,7 +20,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _showNewPass = false;
   bool _showConfirm = false;
   int _step = 0;
-  String _serverOtp = '';
+  String? _firebaseVerificationId;
+  String? _firebaseIdToken;
   int _seconds = 0;
   Timer? _timer;
 
@@ -57,27 +59,54 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.forgotPassword(phone);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (res['success'] == true) {
-      setState(() { _step = 1; _serverOtp = res['otp']?.toString() ?? ''; });
-      _startTimer();
-      _showSnack('Reset OTP sent to +91$phone');
-    } else {
-      _showSnack(res['message'] ?? 'Failed. Try again.', error: true);
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (vId) {
+        if (!mounted) return;
+        _firebaseVerificationId = vId;
+        setState(() { _loading = false; _step = 1; });
+        _startTimer();
+        _showSnack('OTP sent to +91$phone');
+      },
+      onError: (err) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        _showSnack(err, error: true);
+      },
+      onAutoVerify: (idToken) {
+        if (!mounted) return;
+        _firebaseIdToken = idToken;
+        setState(() { _loading = false; _step = 2; });
+      },
+    );
+  }
+
+  Future<void> _verifyOtpStep() async {
+    final otp = _otpCtrl.text.trim();
+    if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
+    setState(() => _loading = true);
+    try {
+      final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: otp, verificationId: _firebaseVerificationId);
+      if (!mounted) return;
+      _firebaseIdToken = idToken;
+      setState(() { _loading = false; _step = 2; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
     }
   }
 
   Future<void> _resetPassword() async {
-    final otp = _otpCtrl.text.trim();
     final newPass = _newPassCtrl.text;
     final confirm = _confirmCtrl.text;
-    if (otp.length < 4) { _showSnack('Enter the OTP sent to your phone', error: true); return; }
     if (newPass.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
     if (newPass != confirm) { _showSnack('Passwords do not match', error: true); return; }
+    if (_firebaseIdToken == null) { _showSnack('Verification expired. Please restart.', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.resetPassword(_phoneCtrl.text.trim(), otp, newPass);
+    final res = await AuthService.resetPasswordWithFirebase(
+        _firebaseIdToken!, _phoneCtrl.text.trim(), newPass);
     if (!mounted) return;
     setState(() => _loading = false);
     if (res['success'] == true) {
@@ -103,7 +132,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
-          child: _step == 0 ? _buildStep0() : _buildStep1(),
+          child: _step == 0 ? _buildStep0() : _step == 1 ? _buildStep1() : _buildStep2(),
         ),
       ),
     );
@@ -115,7 +144,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       const SizedBox(height: 16),
       const Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
       const SizedBox(height: 8),
-      Text('Enter your registered phone number to receive reset OTP.', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 14)),
+      Text('Enter your registered phone number. We\'ll send you a 6-digit OTP.', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 14)),
       const SizedBox(height: 32),
       Text('Phone Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55))),
       const SizedBox(height: 8),
@@ -146,11 +175,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Widget _buildStep1() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Icon(Icons.verified_user_rounded, size: 56, color: Color(0xFF2563EB)),
+      const Icon(Icons.sms_rounded, size: 56, color: Color(0xFF2563EB)),
       const SizedBox(height: 16),
-      const Text('Enter OTP & New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+      const Text('Enter OTP', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
       const SizedBox(height: 8),
-      Text('OTP sent to +91${_phoneCtrl.text}${_serverOtp.isNotEmpty ? " (Dev: $_serverOtp)" : ""}', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
+      Text('OTP sent to +91${_phoneCtrl.text}', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
       const SizedBox(height: 28),
       Text('6-Digit OTP', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55))),
       const SizedBox(height: 8),
@@ -169,7 +198,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Center(child: Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 13)))
       else
         Center(child: GestureDetector(onTap: _sendOtp, child: Text('Resend OTP', style: TextStyle(color: _blue, fontWeight: FontWeight.w700, fontSize: 13)))),
-      const SizedBox(height: 20),
+      const SizedBox(height: 32),
+      SizedBox(
+        width: double.infinity, height: 56,
+        child: ElevatedButton(
+          onPressed: _loading ? null : _verifyOtpStep,
+          style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Verify OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildStep2() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Icon(Icons.lock_reset_rounded, size: 56, color: Color(0xFF2563EB)),
+      const SizedBox(height: 16),
+      const Text('Set New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+      const SizedBox(height: 8),
+      Text('Phone verified. Set your new password.', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
+      const SizedBox(height: 28),
       Text('New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55))),
       const SizedBox(height: 8),
       _buildPassField(ctrl: _newPassCtrl, hint: 'Create new password', show: _showNewPass, onToggle: () => setState(() => _showNewPass = !_showNewPass)),
