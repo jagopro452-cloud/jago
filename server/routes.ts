@@ -546,6 +546,9 @@ async function ensureOperationalSchema() {
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_wallet_credit NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS vehicle_type_name VARCHAR(100);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS original_fare NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seats_booked INTEGER DEFAULT 1;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seat_price NUMERIC(10,2) DEFAULT 0;
 
@@ -6138,8 +6141,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT value FROM revenue_model_settings WHERE key_name='rides_model' LIMIT 1
         `).catch(() => ({ rows: [] as any[] }));
         const ridesModel = (ridesModelR.rows[0] as any)?.value || 'subscription';
-        if (ridesModel === 'subscription') {
-          // Check if driver has launch free period active OR an active paid subscription
+        // Both 'subscription' and 'hybrid' models require an active subscription or free period
+        if (['subscription', 'hybrid'].includes(ridesModel)) {
           const freeR = await rawDb.execute(rawSql`
             SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1
           `).catch(() => ({ rows: [] as any[] }));
@@ -6148,7 +6151,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             && freeRow?.free_period_end
             && new Date(freeRow.free_period_end) >= new Date();
           if (!inFreePeriod) {
-            // Driver must have an active, non-expired paid subscription
             const subR = await rawDb.execute(rawSql`
               SELECT id FROM driver_subscriptions
               WHERE driver_id = ${driver.id}::uuid
@@ -7366,7 +7368,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Book for someone else
         isForSomeoneElse = false, passengerName, passengerPhone,
         // Parcel fields
-        receiverName, receiverPhone
+        receiverName, receiverPhone,
+        // Coupon
+        couponCode, promoDiscount
       } = req.body;
       const finalDestAddress = destinationAddress || destAddress || "";
       const finalDestLat = destinationLat || destLat || 0;
@@ -7422,6 +7426,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // ── Coupon validation & discount ─────────────────────────────────────────
+      let discountAmount = 0;
+      let validatedCouponCode: string | null = null;
+      if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+        try {
+          const couponR = await rawDb.execute(rawSql`
+            SELECT id, code, discount_type, discount_value, max_discount, min_order_value
+            FROM coupons
+            WHERE UPPER(code) = UPPER(${couponCode.trim()})
+              AND is_active = true
+              AND (valid_from IS NULL OR valid_from <= NOW())
+              AND (valid_until IS NULL OR valid_until >= NOW())
+            LIMIT 1
+          `);
+          if (couponR.rows.length) {
+            const c = couponR.rows[0] as any;
+            const minOrder = parseFloat(c.min_order_value || '0');
+            if (computedFare >= minOrder) {
+              if (c.discount_type === 'percentage') {
+                discountAmount = computedFare * parseFloat(c.discount_value) / 100;
+              } else {
+                discountAmount = parseFloat(c.discount_value);
+              }
+              if (c.max_discount) discountAmount = Math.min(discountAmount, parseFloat(c.max_discount));
+              discountAmount = Math.round(discountAmount * 100) / 100;
+              validatedCouponCode = c.code;
+            }
+          }
+        } catch (_) {}
+      }
+      // Also accept pre-validated discount from Flutter (as fallback)
+      if (discountAmount === 0 && promoDiscount && Number(promoDiscount) > 0) {
+        discountAmount = Math.min(Number(promoDiscount), computedFare * 0.5); // cap at 50%
+      }
+      const finalFareAfterDiscount = Math.max(0, computedFare - discountAmount);
+
       // Auto-cancel any trips stuck in 'searching' for more than 3 minutes
       await rawDb.execute(rawSql`
         UPDATE trip_requests
@@ -7467,12 +7507,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
           ${pickupAddress || ""}, ${Number(pickupLat) || 0}, ${Number(pickupLng) || 0},
           ${finalDestAddress}, ${Number(finalDestLat) || 0}, ${Number(finalDestLng) || 0},
-          ${computedFare}, ${Number(finalDistance) || 0}, ${finalPayment},
+          ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
           ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
           ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
           ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}
         ) RETURNING *
       `);
+      // Store coupon/discount in trip (best-effort, columns may not exist yet)
+      if (validatedCouponCode || discountAmount > 0) {
+        rawDb.execute(rawSql`
+          UPDATE trip_requests SET
+            coupon_code = ${validatedCouponCode},
+            discount_amount = ${discountAmount},
+            original_fare = ${computedFare}
+          WHERE id = ${(trip.rows[0] as any).id}::uuid
+        `).catch(() => {});
+      }
 
       const tripRow = camelize(trip.rows[0]) as any;
       await appendTripStatus(tripRow.id, 'requested', 'customer', 'Customer created booking request');
@@ -10677,16 +10727,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       const order = (r.rows as any[])[0];
 
-      // Notify nearby parcel-capable drivers via socket
-      if (io) {
-        io.emit('parcel:new_request', {
-          orderId: order.id,
-          vehicleCategory,
-          pickupAddress,
-          pickupLat, pickupLng,
-          totalFare,
-          dropCount: dropsWithOtp.length,
-        });
+      // Notify nearby parcel-capable drivers via socket (targeted, not broadcast)
+      if (io && pickupLat && pickupLng) {
+        try {
+          const nearbyParcelDrivers = await rawDb.execute(rawSql`
+            SELECT dl.driver_id
+            FROM driver_locations dl
+            JOIN users u ON u.id = dl.driver_id
+            WHERE u.is_online = true
+              AND u.verification_status = 'approved'
+              AND u.user_type = 'driver'
+              AND (
+                (dl.lat - ${Number(pickupLat)}) * (dl.lat - ${Number(pickupLat)}) +
+                (dl.lng - ${Number(pickupLng)}) * (dl.lng - ${Number(pickupLng)})
+              ) < 0.1
+            ORDER BY (
+              (dl.lat - ${Number(pickupLat)}) * (dl.lat - ${Number(pickupLat)}) +
+              (dl.lng - ${Number(pickupLng)}) * (dl.lng - ${Number(pickupLng)})
+            ) ASC
+            LIMIT 10
+          `);
+          const payload = {
+            orderId: order.id,
+            vehicleCategory,
+            pickupAddress,
+            pickupLat, pickupLng,
+            totalFare,
+            dropCount: dropsWithOtp.length,
+          };
+          for (const row of (nearbyParcelDrivers.rows as any[])) {
+            io.to(`user:${row.driver_id}`).emit('parcel:new_request', payload);
+          }
+        } catch (_) {}
       }
 
       res.json({ success: true, orderId: order.id, pickupOtp, totalFare, drops: dropsWithOtp.length });

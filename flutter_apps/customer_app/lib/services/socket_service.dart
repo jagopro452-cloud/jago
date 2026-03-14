@@ -17,6 +17,8 @@ class SocketService {
   final _connectedController = StreamController<bool>.broadcast();
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
+  final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
@@ -25,6 +27,8 @@ class SocketService {
   Stream<bool> get onConnectionChanged => _connectedController.stream;
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
+  Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
+  Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -110,6 +114,24 @@ class SocketService {
       _messageHistoryController.add(Map<String, dynamic>.from(data));
     });
 
+    // No drivers found — trip auto-cancelled
+    _socket!.on('trip:no_drivers', (data) {
+      _noDriversController.add(Map<String, dynamic>.from(data));
+      // Also push as cancelled so tracking screen updates
+      _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'no_drivers'});
+    });
+
+    // Trip re-searching after driver rejected
+    _socket!.on('trip:searching', (data) {
+      _tripSearchingController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Trip timeout — server gave up finding driver
+    _socket!.on('trip:timeout', (data) {
+      _noDriversController.add(Map<String, dynamic>.from(data));
+      _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'timeout'});
+    });
+
     _socket!.connect();
   }
 
@@ -157,5 +179,7 @@ class SocketService {
     _connectedController.close();
     _chatMessageController.close();
     _messageHistoryController.close();
+    _noDriversController.close();
+    _tripSearchingController.close();
   }
 }

@@ -20,6 +20,7 @@ class SocketService {
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _newParcelController = StreamController<Map<String, dynamic>>.broadcast();
+  final _walletRechargedController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
@@ -31,6 +32,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onNewParcel => _newParcelController.stream;
+  Stream<Map<String, dynamic>> get onWalletRecharged => _walletRechargedController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -102,6 +104,11 @@ class SocketService {
     // Parcel delivery request
     _socket!.on('parcel:new_request', (data) {
       _newParcelController.add(Map<String, dynamic>.from(data));
+    });
+
+    // Wallet recharged (after Razorpay payment verified)
+    _socket!.on('wallet:recharged', (data) {
+      _walletRechargedController.add(Map<String, dynamic>.from(data));
     });
 
     _socket!.connect();

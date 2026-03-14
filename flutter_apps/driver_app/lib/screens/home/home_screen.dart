@@ -222,6 +222,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       AlarmService().startAlarm();
       _showIncomingParcel();
     }));
+
+    _subs.add(_socket.onWalletRecharged.listen((data) {
+      if (!mounted) return;
+      final newBalance = (data['newBalance'] ?? data['balance'] ?? 0).toDouble();
+      setState(() => _walletBalance = newBalance);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Wallet recharged! Balance: ₹${newBalance.toStringAsFixed(0)}',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        backgroundColor: const Color(0xFF16A34A),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ));
+    }));
   }
 
   @override

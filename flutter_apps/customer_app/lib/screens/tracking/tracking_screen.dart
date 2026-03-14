@@ -100,11 +100,50 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       // Trip cancelled by driver
       _subs.add(_socket.onTripCancelled.listen((data) {
         if (!mounted) return;
+        final reason = data['reason']?.toString() ?? '';
         setState(() => _status = 'cancelled');
         _announceStatus('cancelled');
         _pollTimer?.cancel();
+        if (reason == 'no_drivers' || reason == 'timeout') {
+          _showNoDriversDialog();
+        }
+      }));
+
+      // Re-searching for driver (after rejection)
+      _subs.add(_socket.onTripSearching.listen((data) {
+        if (!mounted) return;
+        setState(() => _status = 'searching');
+      }));
+
+      // No drivers available — trip auto-cancelled
+      _subs.add(_socket.onNoDrivers.listen((data) {
+        if (!mounted) return;
+        setState(() => _status = 'cancelled');
+        _pollTimer?.cancel();
+        _showNoDriversDialog();
       }));
     });
+  }
+
+  void _showNoDriversDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('No Pilots Available', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: const Text('Sorry, no pilots are available in your area right now. Please try again in a few minutes.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updateDriverMarker(LatLng pos) {
