@@ -1035,7 +1035,7 @@ class _DestSearchSheetState extends State<_DestSearchSheet> {
           '&radius=50000&components=country:in'
           '&key=${ApiConfig.googleMapsApiKey}';
       final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final data = jsonDecode(res.body);
         setState(() {
           _predictions = ((data['predictions'] as List<dynamic>?) ?? [])

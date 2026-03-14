@@ -65,7 +65,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                 final headers = await AuthService.getHeaders();
                 await http.post(Uri.parse(ApiConfig.emergencyContacts), headers: headers,
                   body: jsonEncode({'name': nameCtrl.text, 'phone': phoneCtrl.text, 'relation': relation}));
-                _load();
+                if (mounted) _load();
               },
               child: const Text('Add Contact'),
             ),
@@ -78,7 +78,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   Future<void> _delete(int id) async {
     final headers = await AuthService.getHeaders();
     await http.delete(Uri.parse('${ApiConfig.emergencyContacts}/$id'), headers: headers);
-    _load();
+    if (mounted) _load();
   }
 
   @override

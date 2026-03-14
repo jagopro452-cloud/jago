@@ -58,16 +58,17 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
       );
       if (!mounted) return;
       final body = jsonDecode(res.body);
+      final messenger = ScaffoldMessenger.of(context);
       if (res.statusCode == 200) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        messenger.showSnackBar(SnackBar(
           content: Text(body['message'] ?? 'Report submitted!'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 5),
         ));
         _load();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
+        messenger.showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
       }
     } catch (_) {}
     if (mounted) setState(() => _submitting = false);
