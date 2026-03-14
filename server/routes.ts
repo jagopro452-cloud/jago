@@ -1270,7 +1270,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await dbPool.query("SELECT 1");
       res.json({ status: "ok", db: "connected", ts: new Date().toISOString() });
     } catch (e: any) {
-      res.status(503).json({ status: "error", db: "disconnected", message: formatDbError(e) });
+      res.status(503).json({ status: "error", db: "disconnected" });
     }
   });
 
@@ -1294,7 +1294,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await ensureOperationalSchema();
       await ensureAdminExists();
       const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-  if (!adminEmail) { console.error("[SECURITY] ADMIN_EMAIL env var not set — skipping admin sync."); return; }
+      if (!adminEmail) {
+        return res.json({ success: true, message: "DB schema bootstrapped. ADMIN_EMAIL not set — admin not synced.", admin: null });
+      }
       const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,7) as pw_prefix FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
       const adminRow: any = r.rows[0];
       const adminPwdEnv = process.env.ADMIN_PASSWORD || "";
