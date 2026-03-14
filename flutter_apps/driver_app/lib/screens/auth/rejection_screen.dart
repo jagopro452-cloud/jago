@@ -11,7 +11,7 @@ class RejectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF060D1E),
+      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -40,7 +40,7 @@ class RejectionScreen extends StatelessWidget {
               height: 56,
               child: ElevatedButton(
                 onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6200), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2F80ED), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 child: const Text('Re-upload Documents', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),

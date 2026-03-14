@@ -15,7 +15,7 @@ class _OffersScreenState extends State<OffersScreen> {
   List<dynamic> _offers = [];
   bool _loading = true;
 
-  static const Color _blue = Color(0xFFFF6200);
+  static const Color _blue = Color(0xFF2F80ED);
 
   @override
   void initState() {
@@ -81,7 +81,7 @@ class _OffersScreenState extends State<OffersScreen> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
           : _offers.isEmpty
               ? _buildEmpty()
               : RefreshIndicator(
@@ -104,7 +104,7 @@ class _OffersScreenState extends State<OffersScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1565C0), Color(0xFFFF6200)],
+          colors: [Color(0xFF1565C0), Color(0xFF2F80ED)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
@@ -181,7 +181,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 const SizedBox(height: 6),
                 Row(children: [
                   if (double.tryParse(minAmount) != null && double.parse(minAmount) > 0) ...[
-                    _tag('Min ₹$minAmount', const Color(0xFFEFF6FF), const Color(0xFFFF6200)),
+                    _tag('Min ₹$minAmount', const Color(0xFFEFF6FF), const Color(0xFF2F80ED)),
                     const SizedBox(width: 6),
                   ],
                   if (maxDiscount != null && maxDiscount.toString() != '0') ...[

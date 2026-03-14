@@ -279,13 +279,14 @@ function mapServiceSuggestionToVehicle(serviceSuggestion?: string | null): strin
 }
 
 async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any; parserSource: "claude-ai" | "ai-assistant-service" | "monolith-fallback" }> {
-  // 1. Try external AI microservice
-  try {
+  // 1. Try external AI microservice — skip if it's the default localhost (not deployed)
+  const isExternalService = AI_ASSISTANT_SERVICE_URL && !AI_ASSISTANT_SERVICE_URL.includes('localhost');
+  if (isExternalService) try {
     const r = await fetch(`${AI_ASSISTANT_SERVICE_URL}/internal/voice/intent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transcript: text }),
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(1500), // reduced from 3000ms
     });
     if (r.ok) {
       const aiPayload = (await r.json()) as AssistantVoiceIntent;
@@ -302,9 +303,9 @@ async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any
         },
       };
     }
-  } catch (_) {}
+  } catch (_) {} // end external microservice block
 
-  // 2. Claude AI (Haiku) — fast, cheap, understands Telugu/Hindi naturally
+  // 2. Claude AI (Haiku) — fast, cheap, understands Telugu/Hindi/all Indian languages
   const claudeParsed = await parseVoiceIntentWithClaude(text);
   if (claudeParsed) {
     return { parserSource: "claude-ai", parsed: claudeParsed };
@@ -11180,6 +11181,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         emoji: s.emoji,
         color: s.color,
         isActive: map[`service_${s.key}_enabled`] !== '0',
+      }));
+      res.json({ services });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // App: Get only ACTIVE services from platform_services (Phase-based rollout)
+  app.get("/api/app/services/active", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT service_key as key, service_name as name, icon, color, description, sort_order
+        FROM platform_services
+        WHERE service_status = 'active'
+        ORDER BY sort_order ASC
+      `);
+      const services = (r.rows as any[]).map(row => ({
+        key: row.key,
+        name: row.name,
+        icon: row.icon || '🚗',
+        color: row.color || '#2F80ED',
+        description: row.description || '',
       }));
       res.json({ services });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

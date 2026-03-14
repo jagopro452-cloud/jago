@@ -32,8 +32,8 @@ class _TripScreenState extends State<TripScreen> {
   StreamSubscription? _cancelSub;
 
   static const Color _blue = Color(0xFF2563EB);
-  static const Color _bg = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF1C1C1E);
+  static const Color _bg = Color(0xFF0F172A);
+  static const Color _surface = Color(0xFF1E293B);
   static const Color _green = Color(0xFF16A34A);
 
   @override
@@ -1045,7 +1045,7 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1C1C1E), const Color(0xFF0F172A)],
+          colors: [const Color(0xFF1E293B), const Color(0xFF0F172A)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
@@ -1261,14 +1261,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFFF6200).withValues(alpha: 0.08),
+            color: const Color(0xFF2F80ED).withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFFF6200).withValues(alpha: 0.25)),
+            border: Border.all(color: const Color(0xFF2F80ED).withValues(alpha: 0.25)),
           ),
           child: const Row(children: [
-            Icon(Icons.navigation_rounded, color: Color(0xFFFF6200), size: 16),
+            Icon(Icons.navigation_rounded, color: Color(0xFF2F80ED), size: 16),
             SizedBox(width: 6),
-            Text('Navigate', style: TextStyle(color: Color(0xFFFF6200), fontSize: 12, fontWeight: FontWeight.w700)),
+            Text('Navigate', style: TextStyle(color: Color(0xFF2F80ED), fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),

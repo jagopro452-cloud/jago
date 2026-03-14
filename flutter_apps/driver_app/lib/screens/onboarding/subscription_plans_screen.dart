@@ -25,9 +25,9 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
   String? _selectedPlanId;
   dynamic _selectedPlan;
 
-  final Color _darkBg = const Color(0xFF060D1E);
-  final Color _primary = const Color(0xFFFF6200);
-  final Color _surface = const Color(0xFF1C1C1E);
+  final Color _darkBg = const Color(0xFF0F172A);
+  final Color _primary = const Color(0xFF2F80ED);
+  final Color _surface = const Color(0xFF1E293B);
   final Color _gold = const Color(0xFFFFD700);
 
   @override
@@ -223,7 +223,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
           : Column(
               children: [
                 const SizedBox(height: 10),

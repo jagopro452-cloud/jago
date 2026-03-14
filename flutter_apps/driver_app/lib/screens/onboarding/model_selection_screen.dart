@@ -17,9 +17,9 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
   String _selectedModel = 'commission';
   bool _isLoading = false;
 
-  final Color _darkBg = const Color(0xFF060D1E);
-  final Color _primary = const Color(0xFFFF6200);
-  final Color _surface = const Color(0xFF1C1C1E);
+  final Color _darkBg = const Color(0xFF0F172A);
+  final Color _primary = const Color(0xFF2F80ED);
+  final Color _surface = const Color(0xFF1E293B);
   final Color _gold = const Color(0xFFFFD700);
 
   Future<void> _continue() async {
@@ -332,7 +332,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                 right: 0,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFF6200),
+                    color: Color(0xFF2F80ED),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check, color: Colors.white, size: 20),

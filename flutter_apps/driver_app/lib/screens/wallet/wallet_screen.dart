@@ -12,9 +12,9 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderStateMixin {
-  static const Color _primary = Color(0xFFFF6200);
-  static const Color _navy = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF1C1C1E);
+  static const Color _primary = Color(0xFF2F80ED);
+  static const Color _navy = Color(0xFF0F172A);
+  static const Color _surface = Color(0xFF1E293B);
 
   Map<String, dynamic>? _wallet;
   bool _loading = true;
@@ -316,7 +316,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             style: const TextStyle(color: Colors.white70, fontSize: 14), textAlign: TextAlign.center),
           const SizedBox(height: 6),
           Text('New balance: ₹${newBalance.toStringAsFixed(2)}',
-            style: const TextStyle(color: Color(0xFFFF6200), fontSize: 16, fontWeight: FontWeight.bold)),
+            style: const TextStyle(color: Color(0xFF2F80ED), fontSize: 16, fontWeight: FontWeight.bold)),
           if (autoUnlocked) ...[
             const SizedBox(height: 10),
             Container(

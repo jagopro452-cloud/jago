@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
@@ -10,194 +12,202 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  late AnimationController _logoCtrl, _pulseCtrl;
-  late Animation<double> _logoScale, _logoFade, _pulse;
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _fadeCtrl;
+  late Animation<double> _fadeAnim;
 
-  static const _navy     = Color(0xFF060D1E);
-  static const _navyMid  = Color(0xFF1C1C1E);
-  static const _navyDeep = Color(0xFF040A14);
+  static const Color _blue = Color(0xFF2F80ED);
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
     ));
 
-    _logoCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..repeat(reverse: true);
-
-    _logoScale = Tween<double>(begin: 0.55, end: 1.0)
-        .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut));
-    _logoFade  = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeIn));
-    _pulse = Tween<double>(begin: 0.96, end: 1.0)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
-
-    Future.delayed(const Duration(milliseconds: 200), () => _logoCtrl.forward());
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
+    _fadeCtrl.forward();
     _navigate();
-  }
-
-  Future<void> _navigate() async {
-    await Future.delayed(const Duration(seconds: 3));
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
-    if (!mounted) return;
-    Navigator.pushReplacement(context, PageRouteBuilder(
-      pageBuilder: (_, a, __) => token != null ? const HomeScreen() : const LoginScreen(),
-      transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
-      transitionDuration: const Duration(milliseconds: 400),
-    ));
   }
 
   @override
   void dispose() {
-    _logoCtrl.dispose();
-    _pulseCtrl.dispose();
+    _fadeCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _navigate() async {
+    await Future.delayed(const Duration(milliseconds: 2800));
+    if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => token != null ? const HomeScreen() : const LoginScreen(),
+        transitionDuration: const Duration(milliseconds: 500),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: _navy,
-      body: AnimatedBuilder(
-        animation: Listenable.merge([_logoCtrl, _pulseCtrl]),
-        builder: (_, __) => Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [_navyMid, _navy, _navyDeep],
-              stops: [0.0, 0.5, 1.0],
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // Blue gradient accent — top edge
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: size.height * 0.18,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF2F80ED), Colors.white],
+                ),
+              ),
             ),
           ),
-          child: Stack(children: [
-            Positioned(
-              top: -size.width * 0.55,
-              right: -size.width * 0.45,
-              child: Opacity(
-                opacity: 0.08,
-                child: Container(
-                  width: size.width * 1.2, height: size.width * 1.2,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFFF6200),
-                  ),
+          // Blue gradient accent — bottom edge
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: size.height * 0.14,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xFF2F80ED), Colors.white],
                 ),
               ),
             ),
-            // Subtle glow blob — bottom left
-            Positioned(
-              bottom: -size.width * 0.5,
-              left: -size.width * 0.3,
-              child: Opacity(
-                opacity: 0.06,
-                child: Container(
-                  width: size.width, height: size.width,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Container(
-                height: size.height * 0.25,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      const Color(0xFFFF6200).withValues(alpha: 0.06),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // Center logo
-            Center(
-              child: Opacity(
-                opacity: _logoFade.value,
-                child: Transform.scale(
-                  scale: _logoScale.value,
-                  child: Transform.scale(
-                    scale: _pulse.value,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          'assets/images/jago_logo_white.png',
-                          width: size.width * 0.58,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Image.asset(
-                            'assets/images/jago_logo.png',
-                            width: size.width * 0.58,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const _FallbackLogo(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Opacity(
-                          opacity: _logoFade.value * 0.7,
-                          child: Container(
-                            width: 48, height: 2,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFF6200), Colors.white],
-                              ),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
+          ),
+          // Center content
+          Center(
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Logo with blue drop shadow
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _blue.withValues(alpha: 0.28),
+                          blurRadius: 36,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
+                    child: Image.asset(
+                      'assets/images/jago_logo.png',
+                      width: 200,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => _buildFallbackLogo(),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  // JAGO bold blue text
+                  Text(
+                    'JAGO',
+                    style: GoogleFonts.poppins(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      color: _blue,
+                      letterSpacing: 5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Tagline in grey
+                  Text(
+                    'Your ride, your way',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
               ),
             ),
-            // Bottom powered-by text
-            Positioned(
-              bottom: 48,
-              left: 0, right: 0,
-              child: Opacity(
-                opacity: _logoFade.value * 0.4,
-                child: const Text(
-                  'MindWheel IT Solutions',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w400,
+          ),
+          // Bottom: Made in India + company name
+          Positioned(
+            bottom: 36,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Made in India 🇮🇳',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      color: const Color(0xFF94A3B8),
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Mindwhile IT Solutions Pvt Ltd',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      color: const Color(0xFFCBD5E1),
+                      fontSize: 11,
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ]),
-        ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _FallbackLogo extends StatelessWidget {
-  const _FallbackLogo();
-  @override
-  Widget build(BuildContext context) {
-    return RichText(
-      text: const TextSpan(children: [
-        TextSpan(text: 'JA', style: TextStyle(color: Color(0xFFFF6200), fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: 4)),
-        TextSpan(text: 'GO', style: TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: 4)),
-      ]),
+  Widget _buildFallbackLogo() {
+    return Container(
+      width: 200,
+      height: 200,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Center(
+        child: Text(
+          'J',
+          style: GoogleFonts.poppins(
+            fontSize: 100,
+            fontWeight: FontWeight.w900,
+            color: _blue,
+            height: 1,
+          ),
+        ),
+      ),
     );
   }
 }

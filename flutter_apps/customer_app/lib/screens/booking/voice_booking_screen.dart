@@ -58,11 +58,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   late AnimationController _pulseCtrl;
   late AnimationController _waveCtrl;
 
-  static const Color _bg      = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF1C1C1E);
+  static const Color _bg      = Color(0xFF0F172A);
+  static const Color _surface = Color(0xFF1E293B);
   static const Color _blue    = Color(0xFF1B4DCC);
   static const Color _yellow  = Color(0xFFFBBC04);
-  static const Color _primary  = Color(0xFFFF6200);
+  static const Color _primary  = Color(0xFF2F80ED);
 
   // ─── Life-cycle ──────────────────────────────────────────────────────────
 
@@ -389,7 +389,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
     setState(() {
       _loading = true;
-      _statusText = 'Understanding your request…';
+      _statusText = '🧠 Understanding your request…';
     });
     try {
       final headers = await AuthService.getHeaders();
@@ -397,21 +397,34 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         Uri.parse('${ApiConfig.baseUrl}/api/app/voice-booking/parse'),
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'text': text}),
-      );
+      ).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        setState(() => _parsedIntent = data);
+        setState(() {
+          _parsedIntent = data;
+          _statusText = '📍 Finding locations…';
+        });
         if (data['pickup'] != null && data['destination'] != null) {
           await _getAllFares(data);
         } else {
-          setState(() => _statusText = 'Could not understand. Try: "Bike from JNTU to Hitech City"');
+          setState(() => _statusText = '❓ Could not understand. Try: "Bike from JNTU to Hitech City"');
           await _speak('Sorry, I could not understand. Please say the pickup and destination clearly.');
         }
+      } else {
+        final err = res.statusCode == 503
+          ? 'Maps service unavailable. Check Google Maps API key.'
+          : 'Server error (${res.statusCode}). Please try again.';
+        setState(() => _statusText = err);
+        await _speak('Sorry, something went wrong. Please try again.');
       }
-    } catch (_) {
-      setState(() => _statusText = 'Error parsing. Try again.');
+    } on TimeoutException {
+      setState(() => _statusText = '⏱ Request timed out. Check internet connection.');
+      await _speak('Request timed out. Please check your connection and try again.');
+    } catch (e) {
+      setState(() => _statusText = '⚠️ Error: ${e.toString().replaceAll('Exception: ', '')}');
+      await _speak('Sorry, an error occurred. Please try again.');
     }
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   // ─── Get ALL vehicle fares ────────────────────────────────────────────────
@@ -511,14 +524,13 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     final ttsMsg = sb.toString();
     setState(() => _statusText = '🔊 $ttsMsg');
 
-    // Set up a completion handler so we start listening right after TTS finishes
-    _tts.setCompletionHandler(() {
-      if (mounted && !_isListening && !_loading) {
-        _listenForConfirmation();
-      }
-    });
-
+    // Speak first, then listen for confirmation — no completion handler race condition
     await _speak(ttsMsg);
+    // Small delay so TTS fully finishes before mic opens
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (mounted && !_isListening && !_loading) {
+      _listenForConfirmation();
+    }
   }
 
   // ─── Confirm booking ──────────────────────────────────────────────────────

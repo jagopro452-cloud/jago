@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,45 +14,37 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
 Future<void> loadThemePreference() async {
   final prefs = await SharedPreferences.getInstance();
-  final mode = prefs.getString('theme_mode') ?? 'system';
-  themeNotifier.value = mode == 'light'
-      ? ThemeMode.light
-      : mode == 'dark'
-          ? ThemeMode.dark
-          : ThemeMode.system;
+  final pref = prefs.getString('theme_pref') ?? prefs.getString('theme_mode') ?? 'system';
+  themeNotifier.value = pref == 'dark' ? ThemeMode.dark : pref == 'light' ? ThemeMode.light : ThemeMode.system;
 }
 
-Future<void> saveThemePreference(ThemeMode mode) async {
+Future<void> saveThemePreference(String pref) async {
   final prefs = await SharedPreferences.getInstance();
-  final val = mode == ThemeMode.light
-      ? 'light'
-      : mode == ThemeMode.dark
-          ? 'dark'
-          : 'system';
-  await prefs.setString('theme_mode', val);
-  themeNotifier.value = mode;
+  await prefs.setString('theme_pref', pref);
+  await prefs.setString('theme_mode', pref);
+  themeNotifier.value = pref == 'dark' ? ThemeMode.dark : pref == 'light' ? ThemeMode.light : ThemeMode.system;
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await loadThemePreference();
   await L.init();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   try {
     await Firebase.initializeApp();
     await FcmService().init();
   } catch (_) {}
-  runApp(const JagoApp());
+  runApp(const JagoCustomerApp());
 }
 
-class JagoApp extends StatefulWidget {
-  const JagoApp({super.key});
+class JagoCustomerApp extends StatefulWidget {
+  const JagoCustomerApp({super.key});
 
   @override
-  State<JagoApp> createState() => _JagoAppState();
+  State<JagoCustomerApp> createState() => _JagoCustomerAppState();
 }
 
-class _JagoAppState extends State<JagoApp> {
+class _JagoCustomerAppState extends State<JagoCustomerApp> {
   final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
   StreamSubscription<Uri>? _linkSub;
   bool _voiceRouteOpen = false;
@@ -79,7 +72,6 @@ class _JagoAppState extends State<JagoApp> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
     if (token == null || token.isEmpty) return;
-
     final nav = _navKey.currentState;
     if (nav == null) return;
     _voiceRouteOpen = true;
@@ -102,10 +94,114 @@ class _JagoAppState extends State<JagoApp> {
       final initial = await appLinks.getInitialAppLink();
       await _handleIncomingUri(initial, coldStart: true);
     } catch (_) {}
-
     _linkSub = appLinks.uriLinkStream.listen((uri) {
       _handleIncomingUri(uri);
     }, onError: (_) {});
+  }
+
+  static ThemeData _lightTheme() {
+    const primary = Color(0xFF2F80ED);
+    const bg = Color(0xFFFFFFFF);
+    const card = Color(0xFFF5F8FF);
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: const ColorScheme.light(
+        primary: primary,
+        secondary: Color(0xFF56CCF2),
+        surface: card,
+        background: bg,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: Color(0xFF0F172A),
+      ),
+      scaffoldBackgroundColor: bg,
+      cardColor: card,
+      fontFamily: GoogleFonts.poppins().fontFamily,
+      textTheme: GoogleFonts.poppinsTextTheme().apply(
+        bodyColor: const Color(0xFF0F172A),
+        displayColor: const Color(0xFF0F172A),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: const Color(0xFF0F172A),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFFF5F8FF),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9FF))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 2)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        hintStyle: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14),
+      ),
+    );
+  }
+
+  static ThemeData _darkTheme() {
+    const primary = Color(0xFF2F80ED);
+    const bg = Color(0xFF0F172A);
+    const card = Color(0xFF1E293B);
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: const ColorScheme.dark(
+        primary: primary,
+        secondary: Color(0xFF56CCF2),
+        surface: card,
+        background: bg,
+        onPrimary: Colors.white,
+        onSurface: Colors.white,
+      ),
+      scaffoldBackgroundColor: bg,
+      cardColor: card,
+      fontFamily: GoogleFonts.poppins().fontFamily,
+      textTheme: GoogleFonts.poppinsTextTheme().apply(
+        bodyColor: Colors.white,
+        displayColor: Colors.white,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF334155))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 2)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        hintStyle: GoogleFonts.poppins(color: const Color(0xFF64748B), fontSize: 14),
+      ),
+    );
   }
 
   @override
@@ -118,8 +214,7 @@ class _JagoAppState extends State<JagoApp> {
           builder: (_, mode, __) {
             final isDark = mode == ThemeMode.dark ||
                 (mode == ThemeMode.system &&
-                    WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-                        Brightness.dark);
+                    WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
             SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
               statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
@@ -138,97 +233,4 @@ class _JagoAppState extends State<JagoApp> {
       },
     );
   }
-
-  ThemeData _lightTheme() => ThemeData(
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF6200),
-          primary: const Color(0xFFFF6200),
-          secondary: const Color(0xFFFFD700),
-          surface: Colors.white,
-        ),
-        primaryColor: const Color(0xFFFF6200),
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-        fontFamily: 'Roboto',
-        cardColor: Colors.white,
-        dividerColor: const Color(0xFFEEEEEE),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          titleTextStyle: TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 17,
-              fontWeight: FontWeight.w700),
-          iconTheme: IconThemeData(color: Color(0xFF111827)),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF6200),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFEEEEEE))),
-          enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFEEEEEE))),
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Color(0xFF111827)),
-          bodyMedium: TextStyle(color: Color(0xFF374151)),
-          bodySmall: TextStyle(color: Color(0xFF6B7280)),
-        ),
-        useMaterial3: true,
-      );
-
-  ThemeData _darkTheme() => ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFFF6200),
-            primary: const Color(0xFFFF6200),
-            secondary: const Color(0xFFFFD700),
-            surface: const Color(0xFF1C1C1E),
-            brightness: Brightness.dark),
-        primaryColor: const Color(0xFFFF6200),
-        scaffoldBackgroundColor: const Color(0xFF060D1E),
-        fontFamily: 'Roboto',
-        cardColor: const Color(0xFF1C1C1E),
-        dividerColor: Colors.white10,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1C1C1E),
-          elevation: 0,
-          titleTextStyle: TextStyle(
-              color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
-          iconTheme: IconThemeData(color: Colors.white),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF6200),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF1C1C1E),
-          border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none),
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Color(0xFFE5E7EB)),
-          bodySmall: TextStyle(color: Color(0xFF9CA3AF)),
-        ),
-        useMaterial3: true,
-      );
 }

@@ -33,7 +33,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
 
   Future<void> _showReceipt(BuildContext ctx, String tripId) async {
     showDialog(context: ctx, barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200))));
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED))));
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.tripReceipt(tripId)),
@@ -83,8 +83,8 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
             ]),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: const Color(0xFFFF6200).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-              child: const Text('PAID', style: TextStyle(color: Color(0xFFFF6200), fontWeight: FontWeight.bold, fontSize: 12)),
+              decoration: BoxDecoration(color: const Color(0xFF2F80ED).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              child: const Text('PAID', style: TextStyle(color: Color(0xFF2F80ED), fontWeight: FontWeight.bold, fontSize: 12)),
             ),
           ]),
           const SizedBox(height: 16),
@@ -109,7 +109,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             const Text('Total Paid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1A1A2E))),
             Text('₹${fare['payable'] ?? fare['total'] ?? 0}',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFFFF6200))),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF2F80ED))),
           ]),
           const SizedBox(height: 6),
           Row(children: [
@@ -123,7 +123,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
             child: ElevatedButton(
               onPressed: () => Navigator.pop(ctx),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6200),
+                backgroundColor: const Color(0xFF2F80ED),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14)),
               child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -176,7 +176,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
         title: const Text('My Rides', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold)),
       ),
       body: _loading
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6200)))
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
         : _trips.isEmpty
           ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey[300]),
@@ -207,11 +207,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
                         Container(
                           width: 44, height: 44,
                           decoration: BoxDecoration(
-                            color: (isCompleted ? const Color(0xFFFF6200) : isCancelled ? Colors.red : Colors.orange).withValues(alpha: 0.1),
+                            color: (isCompleted ? const Color(0xFF2F80ED) : isCancelled ? Colors.red : Colors.orange).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12)),
                           child: Icon(
                             isCompleted ? Icons.check_circle_outline : isCancelled ? Icons.cancel_outlined : Icons.directions_bike,
-                            color: isCompleted ? const Color(0xFFFF6200) : isCancelled ? Colors.red : Colors.orange,
+                            color: isCompleted ? const Color(0xFF2F80ED) : isCancelled ? Colors.red : Colors.orange,
                             size: 24)),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -244,8 +244,8 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => _showReceipt(ctx, t['id'] ?? t['tripId'] ?? ''),
-                              icon: const Icon(Icons.receipt_long, size: 15, color: Color(0xFFFF6200)),
-                              label: const Text('Receipt', style: TextStyle(fontSize: 12, color: Color(0xFFFF6200), fontWeight: FontWeight.w600)),
+                              icon: const Icon(Icons.receipt_long, size: 15, color: Color(0xFF2F80ED)),
+                              label: const Text('Receipt', style: TextStyle(fontSize: 12, color: Color(0xFF2F80ED), fontWeight: FontWeight.w600)),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Color(0xFFBFDBFE)),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -267,8 +267,8 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
                                   vehicleCategoryName: t['vehicleCategoryName']?.toString() ?? t['vehicle_category_name']?.toString(),
                                 ),
                               )),
-                              icon: const Icon(Icons.refresh_rounded, size: 15, color: Color(0xFFFF6200)),
-                              label: const Text('Book Again', style: TextStyle(fontSize: 12, color: Color(0xFFFF6200), fontWeight: FontWeight.w600)),
+                              icon: const Icon(Icons.refresh_rounded, size: 15, color: Color(0xFF2F80ED)),
+                              label: const Text('Book Again', style: TextStyle(fontSize: 12, color: Color(0xFF2F80ED), fontWeight: FontWeight.w600)),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Color(0xFFBFDBFE)),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

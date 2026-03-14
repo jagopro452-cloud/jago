@@ -52,8 +52,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
 
-  static const Color _jagoPrimary = Color(0xFFFF6200);
-  static const Color _jagoSecondary = Color(0xFFFF8C42);
+  static const Color _jagoPrimary = Color(0xFF2F80ED);
+  static const Color _jagoSecondary = Color(0xFF56CCF2);
 
   static const Color _blue = _jagoPrimary;
   static const Color _green = Color(0xFF16A34A);
@@ -97,13 +97,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   static Color _accentForVehicle(String name) {
     final n = name.toLowerCase();
-    if (n.contains('bike')) return const Color(0xFFFF6200);
+    if (n.contains('bike')) return const Color(0xFF2F80ED);
     if (n.contains('auto')) return const Color(0xFF059669);
     if (n.contains('cargo') || n.contains('truck')) return const Color(0xFF7C3AED);
     if (n.contains('parcel')) return const Color(0xFFF59E0B);
     if (n.contains('suv')) return const Color(0xFF0EA5E9);
     if (n.contains('car')) return const Color(0xFF2563EB);
-    return const Color(0xFFFF6200);
+    return const Color(0xFF2F80ED);
   }
 
   Widget _buildVehicleHero() {
@@ -302,6 +302,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final grandTotal = double.parse((raw + gst).toStringAsFixed(2));
       return {
         'vehicleCategoryId': null,
+        'vehicleCategoryName': name,
         'vehicleName': name,
         'baseFare': base,
         'farePerKm': perKm,
@@ -363,9 +364,6 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final data = jsonDecode(res.body);
         final tripId = data['trip']?['id'] ?? '';
         if (!mounted) return;
-        // Offer navigation to pickup location before going to tracking
-        await _offerNavigateToPickup();
-        if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(
           builder: (_) => TrackingScreen(tripId: tripId)));
       } else {
@@ -397,7 +395,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         margin: const EdgeInsets.all(16),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 30)],
         ),
@@ -420,7 +418,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey[600])),
           const SizedBox(height: 6),
           Text(pickupAddr,
-            style: const TextStyle(fontSize: 13, color: Color(0xFFFF6200), fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 13, color: Color(0xFF2F80ED), fontWeight: FontWeight.w600),
             maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
           const SizedBox(height: 20),
           Row(children: [
@@ -461,9 +459,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 child: Container(
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFFF6200), Color(0xFF1244A2)]),
+                    gradient: const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1244A2)]),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: const Color(0xFFFF6200).withValues(alpha: 0.35), blurRadius: 12)],
+                    boxShadow: [BoxShadow(color: const Color(0xFF2F80ED).withValues(alpha: 0.35), blurRadius: 12)],
                   ),
                   child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
@@ -587,12 +585,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? const Color(0xFF060D1E) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
+    final panelBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF060D1E) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
       body: Stack(children: [
         GoogleMap(
           initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 13),
@@ -723,7 +721,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   width: double.infinity, height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [_jagoPrimary, Color(0xFFFF8C42)],
+                      colors: [_jagoPrimary, Color(0xFF56CCF2)],
                       begin: Alignment.centerLeft, end: Alignment.centerRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
@@ -779,7 +777,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: _bookForSomeone ? _blue.withValues(alpha: 0.06) : (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF)),
+            color: _bookForSomeone ? _blue.withValues(alpha: 0.06) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF)),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: _bookForSomeone ? _blue.withValues(alpha: 0.3) : (isDark ? Colors.white12 : const Color(0xFFE8EFFF))),
@@ -895,7 +893,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE8EFFF)),
       ),
@@ -982,7 +980,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             const SizedBox(width: 8),
             const Expanded(child: Text(
               'Secure payment via Razorpay — UPI, Cards, Netbanking accepted',
-              style: TextStyle(fontSize: 12, color: Color(0xFFFF6200), fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 12, color: Color(0xFF2F80ED), fontWeight: FontWeight.w500),
             )),
           ]),
         ),
@@ -993,7 +991,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   Widget _payBtn(String method, IconData icon, String label, String? subtitle) {
     final selected = _paymentMethod == method;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
+    final unselBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF);
     final unselBorder = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
     final unselText = isDark ? Colors.white70 : const Color(0xFF374151);
     return GestureDetector(
@@ -1144,7 +1142,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildVehicleSelector() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white54 : Colors.grey.shade600;
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
@@ -1224,7 +1222,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             Flexible(child: Text(widget.pickup.split(',').first,
               style: TextStyle(fontSize: 9, color: textSub.withValues(alpha: 0.65), fontWeight: FontWeight.w500),
               maxLines: 1, overflow: TextOverflow.ellipsis)),
-            const Text(' → ', style: TextStyle(fontSize: 9, color: Color(0xFFFF6200))),
+            const Text(' → ', style: TextStyle(fontSize: 9, color: Color(0xFF2F80ED))),
             Flexible(child: Text(widget.destination.split(',').first,
               style: TextStyle(fontSize: 9, color: textSub.withValues(alpha: 0.65), fontWeight: FontWeight.w500),
               maxLines: 1, overflow: TextOverflow.ellipsis)),
@@ -1368,7 +1366,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildFareBreakdown(Map<String, dynamic> fare) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white54 : Colors.grey.shade600;
@@ -1410,12 +1408,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF6200).withValues(alpha: 0.12),
+                  color: const Color(0xFF2F80ED).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFF6200).withValues(alpha: 0.3)),
+                  border: Border.all(color: const Color(0xFF2F80ED).withValues(alpha: 0.3)),
                 ),
                 child: const Text('Min fare', style: TextStyle(
-                  fontSize: 10, color: Color(0xFFFF6200), fontWeight: FontWeight.w800)),
+                  fontSize: 10, color: Color(0xFF2F80ED), fontWeight: FontWeight.w800)),
               )
             else if (isNight)
               Container(
@@ -1532,7 +1530,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   Widget _buildPromoRow() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFF);
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFF);
     final borderCol = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     if (_appliedPromo != null) {

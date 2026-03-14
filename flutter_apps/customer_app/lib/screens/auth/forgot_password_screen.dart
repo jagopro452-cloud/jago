@@ -23,7 +23,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   int _seconds = 0;
   Timer? _timer;
 
-  static const Color _blue = Color(0xFFFF6200);
+  static const Color _blue = Color(0xFF2F80ED);
 
   @override
   void dispose() {
@@ -111,7 +111,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Widget _buildStep0() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Icon(Icons.lock_reset_rounded, size: 56, color: Color(0xFFFF6200)),
+      const Icon(Icons.lock_reset_rounded, size: 56, color: Color(0xFF2F80ED)),
       const SizedBox(height: 16),
       Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.grey[900])),
       const SizedBox(height: 8),
@@ -147,7 +147,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Widget _buildStep1() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Icon(Icons.verified_user_rounded, size: 56, color: Color(0xFFFF6200)),
+      const Icon(Icons.verified_user_rounded, size: 56, color: Color(0xFF2F80ED)),
       const SizedBox(height: 16),
       Text('Enter OTP & New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.grey[900])),
       const SizedBox(height: 8),

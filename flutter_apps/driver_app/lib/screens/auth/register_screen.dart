@@ -55,9 +55,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   File? _selfiePhoto;
 
   final _picker = ImagePicker();
-  static const Color _primary = Color(0xFFFF6200);
-  static const Color _bg = Color(0xFF060D1E);
-  static const Color _surface = Color(0xFF1C1C1E);
+  static const Color _primary = Color(0xFF2F80ED);
+  static const Color _bg = Color(0xFF0F172A);
+  static const Color _surface = Color(0xFF1E293B);
 
   @override
   void initState() {

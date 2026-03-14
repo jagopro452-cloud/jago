@@ -250,12 +250,12 @@ class _WalletScreenState extends State<WalletScreen> {
                             horizontal: 20, vertical: 10),
                         decoration: BoxDecoration(
                           color: sel
-                              ? const Color(0xFFFF6200)
+                              ? const Color(0xFF2F80ED)
                               : fieldBg,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                               color: sel
-                                  ? const Color(0xFFFF6200)
+                                  ? const Color(0xFF2F80ED)
                                   : borderColor),
                         ),
                         child: Text('₹$amt',
@@ -330,7 +330,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             _startRazorpayPayment(amt);
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6200),
+                      backgroundColor: const Color(0xFF2F80ED),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
@@ -404,7 +404,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6200)))
+              child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
           : Column(children: [
               Container(
                 width: double.infinity,
@@ -415,7 +415,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFFF6200), Color(0xFF3B82F6)],
+                        colors: [Color(0xFF2F80ED), Color(0xFF3B82F6)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -465,7 +465,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     child: ElevatedButton(
                       onPressed: _paying ? null : _showAddMoneySheet,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF6200),
+                        backgroundColor: const Color(0xFF2F80ED),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14)),
