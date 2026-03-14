@@ -764,8 +764,8 @@ export default function LandingPage() {
                     <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGO50</strong>
                   </p>
                   <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-                    {[{ label: "App Store", sub: "Download on", isApple: true }, { label: "Google Play", sub: "Get it on", isApple: false }].map(d => (
-                      <a key={d.label} href="#" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 12, background: W, color: N800, borderRadius: 14, padding: "14px 26px", textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>
+                    {[{ label: "App Store", sub: "Download on", isApple: true, href: "https://apps.apple.com" }, { label: "Google Play", sub: "Get it on", isApple: false, href: "https://play.google.com/store" }].map(d => (
+                      <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 12, background: W, color: N800, borderRadius: 14, padding: "14px 26px", textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>
                         {d.isApple ? <AppleIcon /> : <PlayIcon />}
                         <div style={{ textAlign: "left" }}>
                           <div style={{ fontSize: 9.5, opacity: .5, textTransform: "uppercase", letterSpacing: 1 }}>{d.sub}</div>
