@@ -5796,11 +5796,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── PASSWORD-BASED REGISTER ───────────────────────────────────────────────
-  app.post("/api/app/register", async (req, res) => {
+  app.post("/api/app/register", loginLimiter, async (req, res) => {
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
       if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
+      if (fullName.length > 100) return res.status(400).json({ message: "Name too long (max 100 chars)" });
+      if (email && email.length > 200) return res.status(400).json({ message: "Email too long" });
       if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
       const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
@@ -5834,7 +5836,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── PASSWORD-BASED LOGIN ──────────────────────────────────────────────────
-  app.post("/api/app/login-password", async (req, res) => {
+  app.post("/api/app/login-password", loginLimiter, async (req, res) => {
     try {
       const { phone, password, userType = "customer" } = req.body;
       if (!phone || !password) return res.status(400).json({ message: "Phone and password are required" });
