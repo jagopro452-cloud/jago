@@ -549,6 +549,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS original_fare NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS pending_payment_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seats_booked INTEGER DEFAULT 1;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seat_price NUMERIC(10,2) DEFAULT 0;
 
@@ -6613,7 +6614,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // ONLINE: Platform already collected fare → credit driver net amount (positive)
       //         No negative wallet, no auto-lock for this ride
       const paymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
-      const isOnlinePayment = ['online', 'wallet', 'upi', 'razorpay', 'card', 'prepaid'].includes(paymentMethod);
+      // For wallet payment: verify customer has sufficient balance BEFORE crediting driver
+      let effectivePaymentMethod = paymentMethod;
+      if (paymentMethod === 'wallet') {
+        try {
+          const preCheckR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripRow.customer_id}::uuid`);
+          const preBal = parseFloat((preCheckR.rows[0] as any)?.wallet_balance || '0');
+          if (preBal < userPayable) {
+            // Insufficient wallet — treat as cash so driver pending dues are tracked correctly
+            effectivePaymentMethod = 'cash';
+          }
+        } catch (_) {}
+      }
+      const isOnlinePayment = ['online', 'wallet', 'upi', 'razorpay', 'card', 'prepaid'].includes(effectivePaymentMethod);
       const commissionOwed = parseFloat((deductAmount - gstAmount).toFixed(2));
       const lockThresholdVal = parseFloat(s.commission_lock_threshold || "200");
 
@@ -6742,14 +6755,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const custWalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
           const custBal = parseFloat((custWalRes.rows[0] as any)?.wallet_balance || '0');
           if (custBal >= userPayable) {
+            // Full wallet deduction
             await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${userPayable} WHERE id=${tripCustomerId}::uuid`);
             const newCustBal = parseFloat((custBal - userPayable).toFixed(2));
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
               VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
             `).catch(() => {});
+          } else if (custBal > 0) {
+            // Partial wallet deduction — deduct what's available, record remainder as pending
+            const deducted = parseFloat(custBal.toFixed(2));
+            const remaining = parseFloat((userPayable - deducted).toFixed(2));
+            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = 0 WHERE id=${tripCustomerId}::uuid`);
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET payment_status='partial_payment',
+                pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
+            `).catch(() => {});
+            await rawDb.execute(rawSql`
+              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+              VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
+            `).catch(() => {});
           } else {
-            await rawDb.execute(rawSql`UPDATE trip_requests SET payment_status='pending_payment' WHERE id=${tripId}::uuid`).catch(() => {});
+            // No wallet balance — mark full amount as pending
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET payment_status='pending_payment',
+                pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
+            `).catch(() => {});
           }
         } catch (_) {}
       }
@@ -7432,24 +7463,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
         try {
           const couponR = await rawDb.execute(rawSql`
-            SELECT id, code, discount_type, discount_value, max_discount, min_order_value
-            FROM coupons
+            SELECT id, code, discount_type, discount_amount, max_discount_amount, min_trip_amount, total_usage_limit, limit_per_user
+            FROM coupon_setups
             WHERE UPPER(code) = UPPER(${couponCode.trim()})
               AND is_active = true
-              AND (valid_from IS NULL OR valid_from <= NOW())
-              AND (valid_until IS NULL OR valid_until >= NOW())
+              AND (end_date IS NULL OR end_date >= NOW())
             LIMIT 1
           `);
           if (couponR.rows.length) {
-            const c = couponR.rows[0] as any;
-            const minOrder = parseFloat(c.min_order_value || '0');
+            const c = camelize(couponR.rows[0]) as any;
+            const minOrder = parseFloat(c.minTripAmount || '0');
             if (computedFare >= minOrder) {
-              if (c.discount_type === 'percentage') {
-                discountAmount = computedFare * parseFloat(c.discount_value) / 100;
+              if (c.discountType === 'percent' || c.discountType === 'percentage') {
+                discountAmount = computedFare * parseFloat(c.discountAmount) / 100;
               } else {
-                discountAmount = parseFloat(c.discount_value);
+                discountAmount = parseFloat(c.discountAmount);
               }
-              if (c.max_discount) discountAmount = Math.min(discountAmount, parseFloat(c.max_discount));
+              if (c.maxDiscountAmount) discountAmount = Math.min(discountAmount, parseFloat(c.maxDiscountAmount));
               discountAmount = Math.round(discountAmount * 100) / 100;
               validatedCouponCode = c.code;
             }
@@ -9325,10 +9355,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, ${razorpayPaymentId}, now())
       `);
       // Keep hybrid if already chosen; otherwise default to subscription after successful payment
+      // Also expire free period — paid subscription overrides it
       await rawDb.execute(rawSql`
         UPDATE users
         SET revenue_model = CASE WHEN revenue_model='hybrid' THEN 'hybrid' ELSE 'subscription' END,
-            model_selected_at = NOW()
+            model_selected_at = NOW(),
+            launch_free_active = false,
+            free_period_end = LEAST(COALESCE(free_period_end, NOW()), NOW())
         WHERE id=${driver.id}::uuid
       `);
       res.json({ success: true, message: `Subscription active until ${endDate.toDateString()}`, endDate });
