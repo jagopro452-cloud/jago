@@ -5984,21 +5984,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         else if (vehicleType === 'cargo') relevantModelKey = 'cargo_model';
         const activeModel = mS[relevantModelKey] || mS['active_model'] || "commission";
         if (activeModel === "subscription" || activeModel === "hybrid") {
-          const subR = await rawDb.execute(rawSql`
-            SELECT id, end_date, is_active FROM driver_subscriptions
-            WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date >= CURRENT_DATE
-            ORDER BY end_date DESC LIMIT 1
-          `);
-          if (!subR.rows.length) {
-            return res.status(403).json({
-              message: "Subscription required. Please purchase or renew your subscription to go online.",
-              subscriptionExpired: true, requiresSubscription: true, isLocked: false
-            });
-          }
-          const sub = subR.rows[0] as any;
-          const daysLeft = Math.ceil((new Date(sub.end_date).getTime() - Date.now()) / 86400000);
-          if (daysLeft <= 2) {
-            res.setHeader("X-Subscription-Warning", `Subscription expires in ${daysLeft} day(s)`);
+          // Re-check free period here so it bypasses the system-model subscription gate too
+          const fp2R = await rawDb.execute(rawSql`SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+          const fp2 = fp2R.rows[0] as any;
+          const inFP2 = fp2?.launch_free_active === true && fp2?.free_period_end && new Date(fp2.free_period_end) >= new Date();
+          if (!inFP2) {
+            const subR = await rawDb.execute(rawSql`
+              SELECT id, end_date, is_active FROM driver_subscriptions
+              WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date >= CURRENT_DATE
+              ORDER BY end_date DESC LIMIT 1
+            `);
+            if (!subR.rows.length) {
+              return res.status(403).json({
+                message: "Subscription required. Please purchase or renew your subscription to go online.",
+                subscriptionExpired: true, requiresSubscription: true, isLocked: false
+              });
+            }
+            const sub = subR.rows[0] as any;
+            const daysLeft = Math.ceil((new Date(sub.end_date).getTime() - Date.now()) / 86400000);
+            if (daysLeft <= 2) {
+              res.setHeader("X-Subscription-Warning", `Subscription expires in ${daysLeft} day(s)`);
+            }
           }
         }
       }
@@ -7474,14 +7480,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const c = camelize(couponR.rows[0]) as any;
             const minOrder = parseFloat(c.minTripAmount || '0');
             if (computedFare >= minOrder) {
-              if (c.discountType === 'percent' || c.discountType === 'percentage') {
-                discountAmount = computedFare * parseFloat(c.discountAmount) / 100;
-              } else {
-                discountAmount = parseFloat(c.discountAmount);
+              let couponValid = true;
+              // Check total usage limit
+              if (c.totalUsageLimit) {
+                const usageR = await rawDb.execute(rawSql`
+                  SELECT COUNT(*) AS cnt FROM trip_requests
+                  WHERE coupon_code = UPPER(${couponCode.trim()}) AND current_status != 'cancelled'
+                `);
+                const usedCount = parseInt((usageR.rows[0] as any).cnt || '0', 10);
+                if (usedCount >= parseInt(c.totalUsageLimit, 10)) couponValid = false;
               }
-              if (c.maxDiscountAmount) discountAmount = Math.min(discountAmount, parseFloat(c.maxDiscountAmount));
-              discountAmount = Math.round(discountAmount * 100) / 100;
-              validatedCouponCode = c.code;
+              // Check per-user limit
+              if (couponValid && c.limitPerUser) {
+                const userUsageR = await rawDb.execute(rawSql`
+                  SELECT COUNT(*) AS cnt FROM trip_requests
+                  WHERE coupon_code = UPPER(${couponCode.trim()}) AND customer_id = ${customer.id}::uuid
+                    AND current_status != 'cancelled'
+                `);
+                const userUsed = parseInt((userUsageR.rows[0] as any).cnt || '0', 10);
+                if (userUsed >= parseInt(c.limitPerUser, 10)) couponValid = false;
+              }
+              if (couponValid) {
+                if (c.discountType === 'percent' || c.discountType === 'percentage') {
+                  discountAmount = computedFare * parseFloat(c.discountAmount) / 100;
+                } else {
+                  discountAmount = parseFloat(c.discountAmount);
+                }
+                if (c.maxDiscountAmount) discountAmount = Math.min(discountAmount, parseFloat(c.maxDiscountAmount));
+                discountAmount = Math.round(discountAmount * 100) / 100;
+                validatedCouponCode = c.code;
+              }
             }
           }
         } catch (_) {}
@@ -8977,6 +9005,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(400).json({ message: "Invalid or expired coupon" });
       const coupon = camelize(r.rows[0]) as any;
+      // Check usage limits
+      if (coupon.totalUsageLimit) {
+        const usageR = await rawDb.execute(rawSql`
+          SELECT COUNT(*) AS cnt FROM trip_requests
+          WHERE coupon_code = UPPER(${code}) AND current_status != 'cancelled'
+        `);
+        const used = parseInt((usageR.rows[0] as any).cnt || '0', 10);
+        if (used >= parseInt(coupon.totalUsageLimit, 10))
+          return res.status(400).json({ message: "Coupon usage limit reached" });
+      }
+      if (coupon.limitPerUser) {
+        const userR = await rawDb.execute(rawSql`
+          SELECT COUNT(*) AS cnt FROM trip_requests
+          WHERE coupon_code = UPPER(${code}) AND customer_id = ${customer.id}::uuid
+            AND current_status != 'cancelled'
+        `);
+        const userUsed = parseInt((userR.rows[0] as any).cnt || '0', 10);
+        if (userUsed >= parseInt(coupon.limitPerUser, 10))
+          return res.status(400).json({ message: "You have already used this coupon" });
+      }
       let discount = 0;
       if (coupon.discountType === "percent") {
         discount = (fareAmount * coupon.discountAmount) / 100;
