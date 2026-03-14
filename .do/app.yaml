@@ -16,7 +16,7 @@ services:
     build_command: npm ci && npm run build
     run_command: node dist/index.js
     http_port: 8080
-    instance_count: 1
+    instance_count: 2
     instance_size_slug: basic-s
     health_check:
       http_path: /api/health
@@ -73,10 +73,8 @@ services:
         value: "NoLQoxlCg8SPnKHSX0ciIDjJ"
         type: SECRET
       - key: RAZORPAY_WEBHOOK_SECRET
-        value: ""
         type: SECRET
-        # ACTION REQUIRED: Set this to your Razorpay webhook secret from dashboard.razorpay.com
-        # Without this, payment webhook signature verification will reject ALL webhooks
+        # Set this in DigitalOcean dashboard — do NOT add value here or it will wipe the dashboard value on redeploy
       - key: REDIS_URL
         value: ${jago-redis.REDIS_URL}
         type: SECRET
