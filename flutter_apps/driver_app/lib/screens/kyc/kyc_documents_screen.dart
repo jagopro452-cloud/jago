@@ -73,7 +73,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Please try again.'), backgroundColor: Colors.red));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Try again.'), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Try again.'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _uploading[docType] = false);
     }

@@ -458,7 +458,7 @@ export default function LandingPage() {
               <div style={{ textAlign: "center", maxWidth: 540, margin: "0 auto 64px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Our Services</div>
                 <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Every ride,<br />every need.</h2>
-                <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls � Jago gets you there.</p>
+                <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls — Jago gets you there.</p>
               </div>
               <div className="svc-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
                 {[
@@ -537,7 +537,7 @@ export default function LandingPage() {
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why Jago</div>
                   <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
-                  <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first � for both riders and pilots.</p>
+                  <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first — for both riders and pilots.</p>
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                     <a href="#download" style={{ padding: "12px 22px", borderRadius: 12, background: N500, color: W, fontSize: 14, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Get the App</a>
                     <a href="/auth" style={{ padding: "12px 22px", borderRadius: 12, border: `1px solid ${BORDER}`, color: W70, fontSize: 14, fontWeight: 500, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Become a Pilot</a>
@@ -550,7 +550,7 @@ export default function LandingPage() {
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1110.34 18"/><path d="M7 6h1v4"/><path d="M16.71 13.88l.7.71-2.82 2.82"/></svg>, title: "No Surge Pricing", desc: "Fixed fares, no hidden charges, ever." },
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>, title: "Live GPS Tracking", desc: "Real-time tracking with family share link." },
                     { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>, title: "In-App Chat", desc: "Talk to your pilot without sharing your number." },
-                    { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="white"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, title: "Rated 4.9?", desc: "Highest rated ride app in South India." },
+                    { icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="white"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, title: "Rated 4.9★", desc: "Highest rated ride app in South India." },
                   ].map((w, i) => (
                     <div key={i} className="feat-card" style={{ background: N700, border: `1px solid ${BORDER}`, borderRadius: 16, padding: "18px" }}>
                       <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>{w.icon}</div>
@@ -578,7 +578,7 @@ export default function LandingPage() {
                   { refObj: sRides.ref,  val: `${(sRides.val/1000).toFixed(0)}K+`, label: "Rides Completed" },
                   { refObj: sCities.ref, val: `${sCities.val}+`, label: "Cities Active" },
                   { refObj: sPilots.ref, val: `${(sPilots.val/1000).toFixed(0)}K+`, label: "Verified Pilots" },
-                  { refObj: sRating.ref, val: `${(sRating.val/10).toFixed(1)}?`, label: "Avg Rider Rating" },
+                  { refObj: sRating.ref, val: `${(sRating.val/10).toFixed(1)}★`, label: "Avg Rider Rating" },
                 ].map((s, i) => (
                   <div key={i} ref={s.refObj} style={{ textAlign: "center", background: W06, backdropFilter: "blur(12px)", borderRadius: 20, padding: "36px 16px", border: `1px solid ${W10}` }}>
                     <p style={{ fontSize: 44, fontWeight: 800, color: W, margin: "0 0 10px", fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
@@ -600,7 +600,7 @@ export default function LandingPage() {
               </div>
               <div className="apps-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 {[
-                  { title: "Jago Customer App", sub: "For Riders",  desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly � all in one app.", cta: "Get Customer App", shade: "#1035A8" },
+                  { title: "Jago Customer App", sub: "For Riders",  desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly — all in one app.", cta: "Get Customer App", shade: "#1035A8" },
                   { title: "Jago Pilot App",    sub: "For Drivers", desc: "Accept trips, manage earnings, grow with Jago's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", shade: "#0A0F2E" },
                 ].map((d, i) => (
                   <div key={i} style={{ borderRadius: 24, padding: "44px 40px", background: `linear-gradient(135deg,${N500} 0%,${d.shade} 100%)`, position: "relative", overflow: "hidden" }}>
@@ -760,7 +760,7 @@ export default function LandingPage() {
                   </div>
                   <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with Jago?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
-                    Download now and get your first ride up to <strong style={{ color: W }}>?50 OFF</strong> with code{" "}
+                    Download now and get your first ride up to <strong style={{ color: W }}>₹50 OFF</strong> with code{" "}
                     <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGO50</strong>
                   </p>
                   <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
@@ -786,7 +786,7 @@ export default function LandingPage() {
             <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 40, marginBottom: 52 }}>
               <div>
                 <img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain", marginBottom: 18 }} />
-                <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable � everywhere.</p>
+                <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
               </div>
               {[
                 { t: "Company", l: [{ label: "About Us", href: "/about-us" }, { label: "Contact Us", href: "/contact-us" }, { label: "Become a Pilot", href: "/auth" }, { label: "Careers", href: "#" }] },
@@ -806,8 +806,8 @@ export default function LandingPage() {
               ))}
             </div>
             <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>� 2026 Jago Technologies Pvt. Ltd. � MindWhile IT Solutions Product � All rights reserved.</p>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ? in India</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 Jago Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ❤️ in India</p>
             </div>
           </div>
         </footer>

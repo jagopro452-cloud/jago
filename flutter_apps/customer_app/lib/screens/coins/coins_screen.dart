@@ -26,9 +26,9 @@ class _CoinsScreenState extends State<CoinsScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/coins'), headers: headers);
-      if (res.statusCode == 200) setState(() => _data = jsonDecode(res.body));
+      if (res.statusCode == 200 && mounted) setState(() => _data = jsonDecode(res.body));
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _redeem(int coins) async {
@@ -48,7 +48,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
       ));
       if (res.statusCode == 200) _load();
     } catch (_) {}
-    setState(() => _redeeming = false);
+    if (mounted) setState(() => _redeeming = false);
   }
 
   @override

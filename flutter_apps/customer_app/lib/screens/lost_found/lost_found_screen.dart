@@ -37,9 +37,9 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/lost-found'), headers: headers);
-      if (res.statusCode == 200) setState(() => _reports = jsonDecode(res.body));
+      if (res.statusCode == 200 && mounted) setState(() => _reports = jsonDecode(res.body));
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _submit() async {
@@ -70,7 +70,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
       }
     } catch (_) {}
-    setState(() => _submitting = false);
+    if (mounted) setState(() => _submitting = false);
   }
 
   void _showReportSheet() {

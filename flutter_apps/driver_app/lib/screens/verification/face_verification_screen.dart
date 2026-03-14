@@ -53,13 +53,14 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
     if (_camCtrl == null || !_camCtrl!.value.isInitialized) return;
     setState(() => _countdown = 3);
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!mounted) { t.cancel(); return; }
       if (_countdown <= 1) {
         t.cancel();
         try {
           final photo = await _camCtrl!.takePicture();
-          setState(() { _selfieFile = File(photo.path); _countdown = 0; });
+          if (mounted) setState(() { _selfieFile = File(photo.path); _countdown = 0; });
         } catch (e) {
-          setState(() => _error = 'Failed to capture. Try again.');
+          if (mounted) setState(() => _error = 'Failed to capture. Try again.');
         }
       } else {
         if (mounted) setState(() => _countdown--);
@@ -78,9 +79,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
       final streamedResponse = await request.send();
       final body = await streamedResponse.stream.bytesToString();
       if (streamedResponse.statusCode == 200) {
-        setState(() { _submitted = true; _loading = false; });
+        if (mounted) setState(() { _submitted = true; _loading = false; });
         await Future.delayed(const Duration(milliseconds: 1500));
-        widget.onVerified();
+        if (mounted) widget.onVerified();
       } else {
         String msg = 'Verification failed. Try again.';
         try {
@@ -89,10 +90,10 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
             msg = data['message'] ?? msg;
           }
         } catch (_) {}
-        setState(() { _error = msg; _loading = false; });
+        if (mounted) setState(() { _error = msg; _loading = false; });
       }
     } catch (e) {
-      setState(() { _error = 'Network error. Please check connection.'; _loading = false; });
+      if (mounted) setState(() { _error = 'Network error. Please check connection.'; _loading = false; });
     }
   }
 

@@ -38,7 +38,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
       }
     } catch (_) {}
-    setState(() => _sending = false);
+    if (mounted) setState(() => _sending = false);
   }
 
   @override

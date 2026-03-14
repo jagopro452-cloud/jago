@@ -27,7 +27,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/monthly-pass'), headers: headers);
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final d = jsonDecode(res.body);
         setState(() {
           _activePlan = d['activePlan'];
@@ -35,7 +35,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
         });
       }
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _buy(String planName) async {
@@ -56,7 +56,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
       ));
       if (res.statusCode == 200) _load();
     } catch (_) {}
-    setState(() => _buying = false);
+    if (mounted) setState(() => _buying = false);
   }
 
   @override

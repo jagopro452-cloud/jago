@@ -151,6 +151,7 @@ class _TripScreenState extends State<TripScreen> {
         final res = await http.post(Uri.parse(ApiConfig.driverArrived),
           headers: {...stepHeaders, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId}));
+        if (!mounted) return;
         if (res.statusCode == 200) {
           _socket.updateTripStatus(tripId, 'arrived');
           setState(() => _status = 'arrived');
@@ -438,6 +439,7 @@ class _TripScreenState extends State<TripScreen> {
       if (res.statusCode == 200) {
         // Notify customer trip started via socket
         _socket.updateTripStatus(tripId, 'on_the_way', otp: otp);
+        if (!mounted) return;
         setState(() { _status = 'in_progress'; _loading = false; });
         final destLat = (_trip?['destinationLat'] as num?)?.toDouble();
         final destLng = (_trip?['destinationLng'] as num?)?.toDouble();
@@ -692,6 +694,7 @@ class _TripScreenState extends State<TripScreen> {
         headers: {...delivOtpHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
+        if (!mounted) return;
         _showSnack('✅ Delivery verified! You can now complete the trip.');
       } else {
         final err = jsonDecode(res.body);

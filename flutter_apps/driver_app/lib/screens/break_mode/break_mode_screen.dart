@@ -39,7 +39,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/driver/break'), headers: headers);
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final d = jsonDecode(res.body);
         setState(() {
           _onBreak = d['onBreak'] ?? false;
@@ -49,12 +49,13 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
         if (_onBreak) _startCountdown();
       }
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   void _startCountdown() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(minutes: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
       if (_minutesLeft <= 1) {
         t.cancel();
         setState(() { _onBreak = false; _minutesLeft = 0; });
@@ -90,7 +91,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
         ));
       }
     } catch (_) {}
-    setState(() => _settingBreak = false);
+    if (mounted) setState(() => _settingBreak = false);
   }
 
   Future<void> _endBreak() async {
@@ -99,11 +100,11 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
       final headers = await AuthService.getHeaders();
       await http.delete(Uri.parse('${ApiConfig.baseUrl}/api/app/driver/break'), headers: headers);
       _timer?.cancel();
-      setState(() { _onBreak = false; _minutesLeft = 0; });
       if (!mounted) return;
+      setState(() { _onBreak = false; _minutesLeft = 0; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Back online!'), backgroundColor: Colors.green));
     } catch (_) {}
-    setState(() => _settingBreak = false);
+    if (mounted) setState(() => _settingBreak = false);
   }
 
   @override

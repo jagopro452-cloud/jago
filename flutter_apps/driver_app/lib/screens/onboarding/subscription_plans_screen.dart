@@ -72,7 +72,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         final plans = (body is List)
             ? body
             : List<dynamic>.from((body['plans'] as List?) ?? const []);
-        setState(() {
+        if (mounted) setState(() {
           _plans = plans;
           _isLoading = false;
           if (_plans.isNotEmpty) {

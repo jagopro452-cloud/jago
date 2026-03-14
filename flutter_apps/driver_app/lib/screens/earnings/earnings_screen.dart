@@ -39,29 +39,29 @@ class _EarningsScreenState extends State<EarningsScreen> {
   }
 
   Future<void> _loadStats() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/earnings?period=$_period'),
         headers: headers,
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         setState(() => _stats = jsonDecode(res.body));
       }
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _loadWeekly() async {
-    setState(() => _weekLoading = true);
+    if (mounted) setState(() => _weekLoading = true);
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/weekly-earnings'),
         headers: headers,
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final d = jsonDecode(res.body);
         setState(() {
           _weekDays = List<Map<String, dynamic>>.from(d['days'] ?? []);
@@ -69,7 +69,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         });
       }
     } catch (_) {}
-    setState(() => _weekLoading = false);
+    if (mounted) setState(() => _weekLoading = false);
   }
 
   @override
