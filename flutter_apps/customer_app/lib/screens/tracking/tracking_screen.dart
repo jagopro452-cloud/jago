@@ -167,6 +167,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     _pollTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
+    _socket.disconnect();
     super.dispose();
   }
 

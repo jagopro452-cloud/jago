@@ -680,7 +680,7 @@ class _TripScreenState extends State<TripScreen> {
           ]),
         ),
       ),
-    );
+    ).then((_) => deliveryOtpCtrl.dispose());
   }
 
   Future<void> _verifyDeliveryOtp(String otp) async {

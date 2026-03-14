@@ -196,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _driverAssignedSub?.cancel();
+    _socket.disconnect();
     super.dispose();
   }
 

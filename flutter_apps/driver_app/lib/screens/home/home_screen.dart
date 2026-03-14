@@ -256,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _idleTimer?.cancel();
     _heatmap.stopRefresh();
     _pulseCtrl.dispose();
+    _socket.disconnect();
     super.dispose();
   }
 
