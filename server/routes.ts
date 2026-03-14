@@ -2400,7 +2400,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/users/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
-      const user = await storage.updateUserStatus(req.params.id, isActive);
+      const user = await storage.updateUserStatus(String(req.params.id), isActive);
       res.json(user);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -2464,7 +2464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
-      const cat = await storage.updateVehicleCategory(req.params.id, req.body);
+      const cat = await storage.updateVehicleCategory(String(req.params.id), req.body);
       res.json(cat);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -2481,7 +2481,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteVehicleCategory(req.params.id);
+      await storage.deleteVehicleCategory(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -2527,7 +2527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
         return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
       }
-      const zone = await storage.updateZone(req.params.id, req.body);
+      const zone = await storage.updateZone(String(req.params.id), req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
@@ -2540,7 +2540,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
         return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
       }
-      const zone = await storage.updateZone(req.params.id, req.body);
+      const zone = await storage.updateZone(String(req.params.id), req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
@@ -2550,7 +2550,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteZone(req.params.id);
+      await storage.deleteZone(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -2578,7 +2578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/fares/:id", requireAdminAuth, async (req, res) => {
     try {
-      const fare = await storage.updateTripFare(req.params.id, req.body);
+      const fare = await storage.updateTripFare(String(req.params.id), req.body);
       res.json(fare);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -2587,7 +2587,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/fares/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteTripFare(req.params.id);
+      await storage.deleteTripFare(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3012,7 +3012,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
-      const coupon = await storage.updateCoupon(req.params.id, req.body);
+      const coupon = await storage.updateCoupon(String(req.params.id), req.body);
       res.json(coupon);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3029,7 +3029,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteCoupon(req.params.id);
+      await storage.deleteCoupon(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3122,7 +3122,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
-      const blog = await storage.updateBlog(req.params.id, req.body);
+      const blog = await storage.updateBlog(String(req.params.id), req.body);
       res.json(blog);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3132,7 +3132,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
-      const updated = await storage.updateBlog(req.params.id, { isActive } as any);
+      const updated = await storage.updateBlog(String(req.params.id), { isActive } as any);
       res.json(updated);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3140,7 +3140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.delete("/api/blogs/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteBlog(req.params.id);
+      await storage.deleteBlog(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3188,7 +3188,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
       }
-      const result = await storage.updateWithdrawStatus(req.params.id, status);
+      const result = await storage.updateWithdrawStatus(String(req.params.id), status);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -3244,7 +3244,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/cancellation-reasons/:id", requireAdminAuth, async (req, res) => {
     try {
-      await storage.deleteCancellationReason(req.params.id);
+      await storage.deleteCancellationReason(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -4241,7 +4241,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Deduct platform fee per ride (called after ride completion — legacy endpoint)
   app.post("/api/driver-wallet/:id/deduct", requireAdminAuth, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { amount, description, tripId, gstPortion = 0 } = req.body;
       const parsedAmount = parseFloat(String(amount));
       if (!parsedAmount || parsedAmount <= 0 || parsedAmount > 100000 || isNaN(parsedAmount)) {
@@ -4949,7 +4949,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (vehicleNumber) updateData.vehicleNumber = vehicleNumber;
       if (vehicleModel) updateData.vehicleModel = vehicleModel;
       if (status === "approved") updateData.isActive = true;
-      await storage.updateUser(req.params.id, updateData);
+      await storage.updateUser(String(req.params.id), updateData);
       res.json({ success: true, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -4964,7 +4964,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (licenseNumber !== undefined) updateData.licenseNumber = licenseNumber;
       if (vehicleNumber !== undefined) updateData.vehicleNumber = vehicleNumber;
       if (vehicleModel !== undefined) updateData.vehicleModel = vehicleModel;
-      await storage.updateUser(req.params.id, updateData);
+      await storage.updateUser(String(req.params.id), updateData);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -5000,14 +5000,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
-      const [row] = await db.update(parcelAttributes).set(sanitizeAttr(req.body) as any).where(eq(parcelAttributes.id, req.params.id)).returning();
+      const [row] = await db.update(parcelAttributes).set(sanitizeAttr(req.body) as any).where(eq(parcelAttributes.id, String(req.params.id))).returning();
       res.json(row);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
-      await db.delete(parcelAttributes).where(eq(parcelAttributes.id, req.params.id));
+      await db.delete(parcelAttributes).where(eq(parcelAttributes.id, String(req.params.id)));
       res.status(204).end();
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -11962,7 +11962,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       // Upsert each grid cell
-      for (const [key, cell] of gridMap) {
+      for (const [key, cell] of Array.from(gridMap.entries())) {
         const drivers = driverGrid.get(key) || 0;
         const score = parseFloat((cell.requests / Math.max(1, drivers)).toFixed(4));
 
