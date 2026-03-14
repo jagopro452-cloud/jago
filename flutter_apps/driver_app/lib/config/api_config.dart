@@ -104,4 +104,10 @@ class ApiConfig {
   static String driverParcelAccept(String id) => '$baseUrl/api/app/driver/parcel/$id/accept';
   static String driverParcelPickupOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/pickup-otp';
   static String driverParcelDropOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/drop-otp';
+
+  // ── Heatmap Earnings Predictor ────────────────────────────────────────
+  static String driverHeatmap({double lat = 17.38, double lng = 78.49, double radius = 10}) =>
+      '$baseUrl/api/app/driver/heatmap?lat=$lat&lng=$lng&radius=$radius';
+  static String driverHeatmapSuggestion({double lat = 17.38, double lng = 78.49}) =>
+      '$baseUrl/api/app/driver/heatmap/suggestion?lat=$lat&lng=$lng';
 }

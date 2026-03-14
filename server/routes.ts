@@ -6460,6 +6460,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed — driver mismatch or trip already moved" });
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Trip started from driver app');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'start-trip' });
+      // 📍 Heatmap: confirmed pickup demand signal — fetch pickup coords from trip
+      rawDb.execute(rawSql`SELECT pickup_lat, pickup_lng, trip_type FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1`)
+        .then(r2 => {
+          const t2 = r2.rows[0] as any;
+          if (t2?.pickup_lat && t2?.pickup_lng) {
+            const svc = (t2.trip_type === 'parcel' || t2.trip_type === 'delivery') ? 'parcel' : 'ride';
+            logHeatmapEvent('pickup', parseFloat(t2.pickup_lat), parseFloat(t2.pickup_lng), svc);
+          }
+        }).catch(() => {});
       res.json({ success: true, message: "Trip started" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -7589,6 +7598,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         paymentMethod: finalPayment,
       });
 
+      // 📍 Heatmap event: booking demand signal
+      logHeatmapEvent(
+        'booking',
+        Number(pickupLat), Number(pickupLng),
+        (tripType === 'parcel' || tripType === 'delivery') ? 'parcel'
+          : (tripType === 'carpool' || tripType === 'pool') ? 'pool'
+          : (tripType === 'cargo') ? 'cargo' : 'ride'
+      );
+
       // AI Driver Matching — find best drivers using intelligent scoring (distance + rating + response speed + completion rate)
       const bestDrivers = await findBestDrivers(
         Number(pickupLat), Number(pickupLng),
@@ -7864,6 +7882,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(effectiveTripId, 'trip_cancelled', 'customer', reason || 'Customer cancelled');
       await logRideLifecycleEvent(effectiveTripId, 'trip_cancelled', customer.id, 'customer', { reason: reason || 'Customer cancelled' });
       clearTripWaypoints(effectiveTripId);
+      // 📍 Heatmap: log cancellation demand signal (location still valuable for supply/demand)
+      if (trip.pickup_lat && trip.pickup_lng) {
+        logHeatmapEvent('cancellation', parseFloat(trip.pickup_lat), parseFloat(trip.pickup_lng), 'ride');
+      }
       if (trip.driver_id) {
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${trip.driver_id}::uuid`);
         const drvDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.driver_id}::uuid`);
@@ -11728,6 +11750,422 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       });
     } catch (e: any) { res.status(500).json({ message: e.message, status: 'error' }); }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DRIVER HEATMAP EARNINGS PREDICTOR SYSTEM
+  //  - Grid-based demand tracking (configurable cell size, default 500m×500m)
+  //  - Real-time demand score = requests / active_drivers per cell
+  //  - Service-wise breakdown: ride, parcel, pool, cargo
+  //  - Earning predictions per zone (₹min–₹max in 30 min)
+  //  - Idle driver suggestions after configurable idle timeout
+  //  - Admin config: grid size, thresholds, activation, idle timeout
+  //  - Event sources: search, booking, pickup, cancellation, parcel
+  //  - Background refresh every 30–60 seconds
+  //  - Data privacy: only aggregated stats, no individual passenger data
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── DB Schema ─────────────────────────────────────────────────────────────
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS heatmap_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type VARCHAR(30) NOT NULL,
+      lat DOUBLE PRECISION NOT NULL,
+      lng DOUBLE PRECISION NOT NULL,
+      service_type VARCHAR(20) DEFAULT 'ride',
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_heatmap_events_time ON heatmap_events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_heatmap_events_loc ON heatmap_events(lat, lng);
+
+    CREATE TABLE IF NOT EXISTS heatmap_grid_cache (
+      grid_key VARCHAR(60) PRIMARY KEY,
+      center_lat DOUBLE PRECISION NOT NULL,
+      center_lng DOUBLE PRECISION NOT NULL,
+      request_count INT DEFAULT 0,
+      active_drivers INT DEFAULT 0,
+      demand_score NUMERIC(10,4) DEFAULT 0,
+      demand_level VARCHAR(10) DEFAULT 'low',
+      service_breakdown JSONB DEFAULT '{}',
+      estimated_earning_min INT DEFAULT 0,
+      estimated_earning_max INT DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS heatmap_config (
+      id INT PRIMARY KEY DEFAULT 1,
+      grid_size_meters INT DEFAULT 500,
+      refresh_interval_seconds INT DEFAULT 30,
+      is_active BOOLEAN DEFAULT true,
+      idle_timeout_minutes INT DEFAULT 5,
+      low_demand_threshold NUMERIC(6,3) DEFAULT 0.5,
+      medium_demand_threshold NUMERIC(6,3) DEFAULT 1.5,
+      high_demand_threshold NUMERIC(6,3) DEFAULT 3.0,
+      lookback_minutes INT DEFAULT 30,
+      earning_low_min INT DEFAULT 60,
+      earning_low_max INT DEFAULT 130,
+      earning_medium_min INT DEFAULT 120,
+      earning_medium_max INT DEFAULT 220,
+      earning_high_min INT DEFAULT 200,
+      earning_high_max INT DEFAULT 350,
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    INSERT INTO heatmap_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+  `).catch(() => {});
+
+  // ── Helper: fire-and-forget event log (never blocks request) ──────────────
+  function logHeatmapEvent(
+    eventType: 'search' | 'booking' | 'pickup' | 'cancellation' | 'parcel',
+    lat: number, lng: number,
+    serviceType: 'ride' | 'parcel' | 'pool' | 'cargo' = 'ride'
+  ) {
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    rawDb.execute(rawSql`
+      INSERT INTO heatmap_events (event_type, lat, lng, service_type, created_at)
+      VALUES (${eventType}, ${lat}, ${lng}, ${serviceType}, NOW())
+    `).catch(() => {});
+  }
+
+  // ── Grid Computation Engine ───────────────────────────────────────────────
+  async function computeHeatmapGrid() {
+    try {
+      const cfgR = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
+      const cfg: any = cfgR.rows[0] || {};
+      if (cfg.is_active === false) return;
+
+      const gridMeters = parseInt(cfg.grid_size_meters ?? '500');
+      const lookbackMin = parseInt(cfg.lookback_minutes ?? '30');
+      // Convert grid size to degrees (~111,320 m per degree at equator)
+      const gridDeg = gridMeters / 111320;
+
+      const lowT    = parseFloat(cfg.low_demand_threshold   ?? '0.5');
+      const medT    = parseFloat(cfg.medium_demand_threshold ?? '1.5');
+      const highT   = parseFloat(cfg.high_demand_threshold  ?? '3.0');
+
+      const eLoMin  = parseInt(cfg.earning_low_min    ?? '60');
+      const eLoMax  = parseInt(cfg.earning_low_max    ?? '130');
+      const eMedMin = parseInt(cfg.earning_medium_min ?? '120');
+      const eMedMax = parseInt(cfg.earning_medium_max ?? '220');
+      const eHiMin  = parseInt(cfg.earning_high_min   ?? '200');
+      const eHiMax  = parseInt(cfg.earning_high_max   ?? '350');
+
+      // Fetch recent demand events
+      const evtR = await rawDb.execute(rawSql`
+        SELECT lat, lng, event_type, service_type
+        FROM heatmap_events
+        WHERE created_at > NOW() - (${lookbackMin} || ' minutes')::INTERVAL
+          AND lat IS NOT NULL AND lng IS NOT NULL
+          AND lat BETWEEN -90 AND 90 AND lng BETWEEN -180 AND 180
+      `);
+
+      // Aggregate events into grid cells
+      const gridMap = new Map<string, {
+        centerLat: number; centerLng: number;
+        requests: number;
+        services: Record<string, number>;
+      }>();
+
+      for (const row of evtR.rows as any[]) {
+        const cellX = Math.floor(row.lat / gridDeg);
+        const cellY = Math.floor(row.lng / gridDeg);
+        const key = `${cellX}:${cellY}`;
+        if (!gridMap.has(key)) {
+          gridMap.set(key, {
+            centerLat: parseFloat(((cellX + 0.5) * gridDeg).toFixed(6)),
+            centerLng: parseFloat(((cellY + 0.5) * gridDeg).toFixed(6)),
+            requests: 0,
+            services: { ride: 0, parcel: 0, pool: 0, cargo: 0 },
+          });
+        }
+        const cell = gridMap.get(key)!;
+        if (['search', 'booking', 'pickup'].includes(row.event_type)) cell.requests++;
+        const svc = row.service_type || 'ride';
+        cell.services[svc] = (cell.services[svc] || 0) + 1;
+      }
+
+      if (gridMap.size === 0) return;
+
+      // Fetch online driver positions
+      const drvR = await rawDb.execute(rawSql`
+        SELECT lat, lng FROM driver_locations WHERE is_online = true
+          AND lat IS NOT NULL AND lng IS NOT NULL
+      `);
+      const driverGrid = new Map<string, number>();
+      for (const row of drvR.rows as any[]) {
+        const cellX = Math.floor(row.lat / gridDeg);
+        const cellY = Math.floor(row.lng / gridDeg);
+        const key = `${cellX}:${cellY}`;
+        driverGrid.set(key, (driverGrid.get(key) || 0) + 1);
+      }
+
+      // Upsert each grid cell
+      for (const [key, cell] of gridMap) {
+        const drivers = driverGrid.get(key) || 0;
+        const score = parseFloat((cell.requests / Math.max(1, drivers)).toFixed(4));
+
+        let level = 'low';
+        let eMin = eLoMin, eMax = eLoMax;
+        if (score >= highT) { level = 'high'; eMin = eHiMin; eMax = eHiMax; }
+        else if (score >= medT) { level = 'medium'; eMin = eMedMin; eMax = eMedMax; }
+        else if (score >= lowT) { level = 'low'; eMin = eLoMin; eMax = eLoMax; }
+        else { level = 'low'; eMin = 0; eMax = 0; }
+
+        await rawDb.execute(rawSql`
+          INSERT INTO heatmap_grid_cache
+            (grid_key, center_lat, center_lng, request_count, active_drivers,
+             demand_score, demand_level, service_breakdown,
+             estimated_earning_min, estimated_earning_max, updated_at)
+          VALUES (
+            ${key}, ${cell.centerLat}, ${cell.centerLng},
+            ${cell.requests}, ${drivers}, ${score}, ${level},
+            ${JSON.stringify(cell.services)}::jsonb,
+            ${eMin}, ${eMax}, NOW()
+          )
+          ON CONFLICT (grid_key) DO UPDATE SET
+            center_lat=${cell.centerLat}, center_lng=${cell.centerLng},
+            request_count=${cell.requests}, active_drivers=${drivers},
+            demand_score=${score}, demand_level=${level},
+            service_breakdown=${JSON.stringify(cell.services)}::jsonb,
+            estimated_earning_min=${eMin}, estimated_earning_max=${eMax},
+            updated_at=NOW()
+        `);
+      }
+
+      // Purge stale cells not updated in 2× lookback window
+      await rawDb.execute(rawSql`
+        DELETE FROM heatmap_grid_cache
+        WHERE updated_at < NOW() - (${lookbackMin * 2} || ' minutes')::INTERVAL
+      `);
+
+      // Purge old raw events (keep 24h)
+      await rawDb.execute(rawSql`
+        DELETE FROM heatmap_events WHERE created_at < NOW() - INTERVAL '24 hours'
+      `);
+    } catch (e: any) {
+      console.error('[Heatmap] Grid compute error:', e.message);
+    }
+  }
+
+  // ── Background refresh: start after 10s delay, then every 30s ─────────────
+  setTimeout(async () => {
+    await computeHeatmapGrid();
+    setInterval(computeHeatmapGrid, 30000);
+  }, 10000);
+
+  // ── Hook event logging into estimate-fare (demand signal: customer is searching) ──
+  // Wrap existing estimate-fare to also log search events
+  app.use('/api/app/customer/estimate-fare', (req: Request, res: Response, next: any) => {
+    const origJson = res.json.bind(res);
+    (res as any).json = (body: any) => {
+      if (res.statusCode === 200 || res.statusCode === undefined) {
+        const pLat = parseFloat(req.body?.pickupLat ?? 0);
+        const pLng = parseFloat(req.body?.pickupLng ?? 0);
+        const svc = req.body?.vehicleCategoryId ? 'ride' : 'ride';
+        if (pLat && pLng) logHeatmapEvent('search', pLat, pLng, svc);
+      }
+      return origJson(body);
+    };
+    next();
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  HEATMAP API ENDPOINTS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── DRIVER: Get heatmap grid zones (for map overlay) ─────────────────────
+  app.get("/api/app/driver/heatmap", authApp, async (req, res) => {
+    try {
+      const cfgR = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
+      const cfg: any = cfgR.rows[0] || {};
+      if (cfg.is_active === false) return res.json({ zones: [], isActive: false });
+
+      const lat = parseFloat((req.query.lat || '17.38') as string);
+      const lng = parseFloat((req.query.lng || '78.49') as string);
+      const radiusKm = parseFloat((req.query.radius || '10') as string);
+
+      // Convert radius to degrees
+      const radiusDeg = radiusKm / 111.32;
+
+      const zones = await rawDb.execute(rawSql`
+        SELECT grid_key, center_lat, center_lng, request_count, active_drivers,
+               demand_score, demand_level, service_breakdown,
+               estimated_earning_min, estimated_earning_max, updated_at
+        FROM heatmap_grid_cache
+        WHERE center_lat BETWEEN ${lat - radiusDeg} AND ${lat + radiusDeg}
+          AND center_lng BETWEEN ${lng - radiusDeg} AND ${lng + radiusDeg}
+          AND updated_at > NOW() - INTERVAL '1 hour'
+          AND request_count > 0
+        ORDER BY demand_score DESC
+        LIMIT 100
+      `);
+
+      const gridMeters = parseInt(cfg.grid_size_meters ?? '500');
+
+      res.json({
+        isActive: true,
+        gridSizeMeters: gridMeters,
+        refreshIntervalSeconds: parseInt(cfg.refresh_interval_seconds ?? '30'),
+        idleTimeoutMinutes: parseInt(cfg.idle_timeout_minutes ?? '5'),
+        zones: zones.rows.map((z: any) => ({
+          key: z.grid_key,
+          lat: parseFloat(z.center_lat),
+          lng: parseFloat(z.center_lng),
+          requestCount: parseInt(z.request_count),
+          activeDrivers: parseInt(z.active_drivers),
+          demandScore: parseFloat(z.demand_score),
+          demandLevel: z.demand_level, // low | medium | high
+          serviceBreakdown: z.service_breakdown || {},
+          earningMin: parseInt(z.estimated_earning_min),
+          earningMax: parseInt(z.estimated_earning_max),
+          updatedAt: z.updated_at,
+        })),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── DRIVER: Get best zone suggestion for idle driver ─────────────────────
+  app.get("/api/app/driver/heatmap/suggestion", authApp, async (req, res) => {
+    try {
+      const lat = parseFloat((req.query.lat || '17.38') as string);
+      const lng = parseFloat((req.query.lng || '78.49') as string);
+
+      // Find nearest high-demand zone within 15km
+      const best = await rawDb.execute(rawSql`
+        SELECT grid_key, center_lat, center_lng, demand_level, demand_score,
+               estimated_earning_min, estimated_earning_max, service_breakdown,
+               SQRT(
+                 POW((center_lat - ${lat}) * 111.32, 2) +
+                 POW((center_lng - ${lng}) * 111.32 * COS(${lat} * PI() / 180), 2)
+               ) AS dist_km
+        FROM heatmap_grid_cache
+        WHERE demand_level IN ('high', 'medium')
+          AND updated_at > NOW() - INTERVAL '45 minutes'
+          AND request_count > 0
+          AND SQRT(
+            POW((center_lat - ${lat}) * 111.32, 2) +
+            POW((center_lng - ${lng}) * 111.32 * COS(${lat} * PI() / 180), 2)
+          ) <= 15
+        ORDER BY demand_score DESC, dist_km ASC
+        LIMIT 1
+      `);
+
+      if (!best.rows.length) return res.json({ suggestion: null });
+
+      const z: any = best.rows[0];
+      const distKm = parseFloat(z.dist_km).toFixed(1);
+      const level = z.demand_level;
+
+      // Build human-readable message
+      let icon = level === 'high' ? '🔴' : '🟡';
+      const svc = z.service_breakdown || {};
+      const topService = Object.entries(svc as Record<string, number>)
+        .sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] || 'ride';
+      const svcLabel = topService === 'parcel' ? 'Parcel delivery'
+        : topService === 'pool' ? 'Pool rides'
+        : topService === 'cargo' ? 'Cargo'
+        : 'Ride requests';
+
+      res.json({
+        suggestion: {
+          lat: parseFloat(z.center_lat),
+          lng: parseFloat(z.center_lng),
+          distanceKm: parseFloat(distKm),
+          demandLevel: level,
+          earningMin: parseInt(z.estimated_earning_min),
+          earningMax: parseInt(z.estimated_earning_max),
+          topService,
+          message: `${icon} ${level === 'high' ? 'High' : 'Medium'} demand zone ${distKm} km away`,
+          detail: `${svcLabel} detected. Estimated ₹${z.estimated_earning_min}–₹${z.estimated_earning_max} in next 30 min`,
+        },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── INTERNAL: Log heatmap event (called from booking flows) ──────────────
+  app.post("/api/app/heatmap/event", authApp, async (req, res) => {
+    try {
+      const { eventType, lat, lng, serviceType = 'ride' } = req.body;
+      if (!lat || !lng) return res.json({ ok: true });
+      logHeatmapEvent(eventType || 'search', parseFloat(lat), parseFloat(lng), serviceType);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Get heatmap config ─────────────────────────────────────────────
+  app.get("/api/admin/heatmap/config", requireAdminAuth, async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
+      res.json(camelize(r.rows[0] || {}));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Update heatmap config ──────────────────────────────────────────
+  app.put("/api/admin/heatmap/config", requireAdminAuth, async (req, res) => {
+    try {
+      const {
+        gridSizeMeters, refreshIntervalSeconds, isActive, idleTimeoutMinutes,
+        lowDemandThreshold, mediumDemandThreshold, highDemandThreshold, lookbackMinutes,
+        earningLowMin, earningLowMax, earningMediumMin, earningMediumMax,
+        earningHighMin, earningHighMax,
+      } = req.body;
+      await rawDb.execute(rawSql`
+        UPDATE heatmap_config SET
+          grid_size_meters            = COALESCE(${gridSizeMeters ?? null}::int, grid_size_meters),
+          refresh_interval_seconds    = COALESCE(${refreshIntervalSeconds ?? null}::int, refresh_interval_seconds),
+          is_active                   = COALESCE(${isActive ?? null}::boolean, is_active),
+          idle_timeout_minutes        = COALESCE(${idleTimeoutMinutes ?? null}::int, idle_timeout_minutes),
+          low_demand_threshold        = COALESCE(${lowDemandThreshold ?? null}::numeric, low_demand_threshold),
+          medium_demand_threshold     = COALESCE(${mediumDemandThreshold ?? null}::numeric, medium_demand_threshold),
+          high_demand_threshold       = COALESCE(${highDemandThreshold ?? null}::numeric, high_demand_threshold),
+          lookback_minutes            = COALESCE(${lookbackMinutes ?? null}::int, lookback_minutes),
+          earning_low_min             = COALESCE(${earningLowMin ?? null}::int, earning_low_min),
+          earning_low_max             = COALESCE(${earningLowMax ?? null}::int, earning_low_max),
+          earning_medium_min          = COALESCE(${earningMediumMin ?? null}::int, earning_medium_min),
+          earning_medium_max          = COALESCE(${earningMediumMax ?? null}::int, earning_medium_max),
+          earning_high_min            = COALESCE(${earningHighMin ?? null}::int, earning_high_min),
+          earning_high_max            = COALESCE(${earningHighMax ?? null}::int, earning_high_max),
+          updated_at                  = NOW()
+        WHERE id=1
+      `);
+      const r = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── ADMIN: Get grid stats summary ─────────────────────────────────────────
+  app.get("/api/admin/heatmap/stats", requireAdminAuth, async (req, res) => {
+    try {
+      const grid = await rawDb.execute(rawSql`
+        SELECT demand_level, COUNT(*) as zones, SUM(request_count) as total_requests,
+               AVG(demand_score)::numeric(6,2) as avg_score,
+               SUM(active_drivers) as total_drivers
+        FROM heatmap_grid_cache
+        WHERE updated_at > NOW() - INTERVAL '1 hour'
+        GROUP BY demand_level
+      `);
+      const totalEvents = await rawDb.execute(rawSql`
+        SELECT event_type, COUNT(*) as cnt
+        FROM heatmap_events WHERE created_at > NOW() - INTERVAL '1 hour'
+        GROUP BY event_type
+      `);
+      const topZones = await rawDb.execute(rawSql`
+        SELECT center_lat, center_lng, demand_level, demand_score, request_count,
+               active_drivers, estimated_earning_min, estimated_earning_max, service_breakdown
+        FROM heatmap_grid_cache
+        WHERE updated_at > NOW() - INTERVAL '1 hour' AND request_count > 0
+        ORDER BY demand_score DESC LIMIT 10
+      `);
+      res.json({
+        gridSummary: grid.rows.map(camelize),
+        eventCounts: totalEvents.rows.map(camelize),
+        topZones: topZones.rows.map(camelize),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── HOOK: Log booking events automatically ────────────────────────────────
+  // Intercept book-ride responses to log pickup location
+  const _origBookRide = app._router?.stack?.find?.((l: any) => l?.route?.path === '/api/app/customer/book-ride');
+  // Event logging is done directly inside book-ride handler — see post-booking log below
 
   return httpServer;
 }

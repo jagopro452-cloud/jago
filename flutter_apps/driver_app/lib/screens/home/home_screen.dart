@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show cos, pi, sqrt;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/heatmap_service.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
@@ -62,6 +64,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _navIndex = 0;
   bool _inFreePeriod = false;
   int _freeDaysRemaining = 0;
+
+  // ── Heatmap ────────────────────────────────────────────────────────────
+  final HeatmapService _heatmap = HeatmapService();
+  Set<Circle> _heatmapCircles = {};
+  bool _showHeatmap = true;
+  HeatmapZone? _nearestHighZone;
+  HeatmapSuggestion? _heatmapSuggestion;
+  Timer? _idleTimer;
+  int _idleSeconds = 0;
+  bool _idleSuggestionShown = false;
 
   static const Color _primary = Color(0xFF2F80ED);
   static const Color _bg = Color(0xFF0F172A);
@@ -241,6 +253,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     for (final s in _subs) s.cancel();
     _locationTimer?.cancel();
+    _idleTimer?.cancel();
+    _heatmap.stopRefresh();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -378,6 +392,134 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _stopLocationStreaming() {
     _locationTimer?.cancel();
     _locationTimer = null;
+  }
+
+  // ── Heatmap methods ────────────────────────────────────────────────────
+
+  void _startHeatmapRefresh() {
+    _idleSuggestionShown = false;
+    _heatmap.startRefresh(
+      _center.latitude, _center.longitude,
+      onUpdate: () {
+        if (!mounted) return;
+        setState(() {
+          _heatmapCircles = _showHeatmap ? _heatmap.buildCircles() : {};
+          _nearestHighZone = _heatmap.nearestHighDemand(
+            _center.latitude, _center.longitude);
+        });
+      },
+    );
+  }
+
+  void _stopHeatmap() {
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    _idleSeconds = 0;
+    _idleSuggestionShown = false;
+    _heatmap.stopRefresh();
+    if (mounted) setState(() { _heatmapCircles = {}; _nearestHighZone = null; _heatmapSuggestion = null; });
+  }
+
+  void _toggleHeatmap() {
+    setState(() {
+      _showHeatmap = !_showHeatmap;
+      _heatmapCircles = _showHeatmap ? _heatmap.buildCircles() : {};
+    });
+  }
+
+  void _startIdleTimer() {
+    _idleTimer?.cancel();
+    _idleSeconds = 0;
+    _idleSuggestionShown = false;
+    final timeoutSecs = _heatmap.idleTimeoutMinutes * 60;
+    _idleTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!_isOnline || _incomingTrip != null || !mounted) {
+        _idleSeconds = 0;
+        _idleSuggestionShown = false;
+        return;
+      }
+      _idleSeconds++;
+      if (_idleSeconds >= timeoutSecs && !_idleSuggestionShown) {
+        _idleSuggestionShown = true;
+        _triggerIdleSuggestion();
+      }
+    });
+  }
+
+  Future<void> _triggerIdleSuggestion() async {
+    final sugg = await _heatmap.fetchSuggestion(_center.latitude, _center.longitude);
+    if (sugg == null || !mounted) return;
+    setState(() => _heatmapSuggestion = sugg);
+    _showIdleSuggestionDialog(sugg);
+  }
+
+  void _showIdleSuggestionDialog(HeatmapSuggestion sugg) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: sugg.demandLevel == 'high'
+                  ? const Color(0xFFEF4444).withOpacity(0.15)
+                  : const Color(0xFFF59E0B).withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.local_fire_department_rounded,
+              color: sugg.demandLevel == 'high' ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
+              size: 22),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text('Demand Zone Nearby', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(sugg.message, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(sugg.detail, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16A34A).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF16A34A).withOpacity(0.3)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.currency_rupee_rounded, color: Color(0xFF16A34A), size: 18),
+              const SizedBox(width: 6),
+              Text('₹${sugg.earningMin}–₹${sugg.earningMax} in 30 min',
+                style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 14)),
+            ]),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () { Navigator.pop(context); _idleSuggestionShown = false; },
+            child: Text('Stay Here', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                LatLng(sugg.lat, sugg.lng), 14));
+            },
+            icon: const Icon(Icons.navigation_rounded, size: 16),
+            label: const Text('Go There'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F80ED),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showIncomingTrip() {
@@ -726,9 +868,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() => _isOnline = newStatus);
         if (_isOnline) {
           _startLocationStreaming();
+          _startHeatmapRefresh();
+          _startIdleTimer();
           _showSnack('Online అయ్యారు! Trips కోసం ready ✓');
         } else {
           _stopLocationStreaming();
+          _stopHeatmap();
           _showSnack('Offline అయ్యారు');
         }
       } else if (res.statusCode == 401) {
@@ -845,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         drawer: _buildDrawer(),
         bottomNavigationBar: _buildDriverBottomNav(),
         body: Stack(children: [
-          // Full-screen map
+          // Full-screen map with heatmap circle overlays
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 14),
             onMapCreated: (c) { _mapController = c; },
@@ -853,6 +998,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
+            circles: _heatmapCircles,
           ),
           // Top dark gradient overlay
           Positioned(
@@ -876,10 +1022,90 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _buildTopBar(),
               const SizedBox(height: 10),
               const Spacer(),
+              // Heatmap earning prediction banner (shown when online + high/medium zone nearby)
+              if (_isOnline && _nearestHighZone != null && _showHeatmap)
+                _buildHeatmapBanner(_nearestHighZone!),
               _buildBottomPanel(),
             ]),
           ),
+          // Heatmap toggle button (bottom-right, above bottom nav)
+          if (_isOnline)
+            Positioned(
+              right: 14,
+              bottom: 100,
+              child: _buildHeatmapToggle(),
+            ),
         ]),
+      ),
+    );
+  }
+
+  Widget _buildHeatmapBanner(HeatmapZone zone) {
+    final color = zone.color;
+    final icon = zone.demandLevel == 'high' ? Icons.local_fire_department_rounded : Icons.trending_up_rounded;
+
+    return GestureDetector(
+      onTap: () => _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(zone.lat, zone.lng), 15)),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A).withOpacity(0.92),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+          boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              zone.demandLevel == 'high' ? '🔴 High demand zone ${_calcDist(zone)} away' : '🟡 Medium demand zone ${_calcDist(zone)} away',
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            if (zone.earningMin > 0)
+              Text(
+                'Est. ₹${zone.earningMin}–₹${zone.earningMax} in 30 min',
+                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+          ])),
+          Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.4), size: 14),
+        ]),
+      ),
+    );
+  }
+
+  String _calcDist(HeatmapZone zone) {
+    final dLat = (zone.lat - _center.latitude) * 111.32;
+    final dLng = (zone.lng - _center.longitude) * 111.32 * cos(_center.latitude * pi / 180);
+    final d = sqrt(dLat * dLat + dLng * dLng);
+    if (d < 1.0) return '${(d * 1000).toStringAsFixed(0)} m';
+    return '${d.toStringAsFixed(1)} km';
+  }
+
+  Widget _buildHeatmapToggle() {
+    return GestureDetector(
+      onTap: _toggleHeatmap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: _showHeatmap ? const Color(0xFF2F80ED) : const Color(0xFF1E293B).withOpacity(0.95),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _showHeatmap ? const Color(0xFF2F80ED) : Colors.white.withOpacity(0.15),
+            width: 1.5),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        ),
+        child: Icon(
+          Icons.layers_rounded,
+          color: _showHeatmap ? Colors.white : Colors.white.withOpacity(0.55),
+          size: 20,
+        ),
       ),
     );
   }
