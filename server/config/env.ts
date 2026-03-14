@@ -49,13 +49,24 @@ export function isTrue(value: string | undefined): boolean {
 export function validateProductionReadiness(env: AppEnv): void {
   if (env.NODE_ENV !== "production") return;
 
-  const missing: string[] = [];
-  if (!env.ADMIN_PASSWORD) missing.push("ADMIN_PASSWORD");
-  if (!env.GOOGLE_MAPS_API_KEY) missing.push("GOOGLE_MAPS_API_KEY");
-  if (!env.OPS_API_KEY) missing.push("OPS_API_KEY");
+  const critical: string[] = [];
+  const warnings: string[] = [];
 
-  if (missing.length) {
-    // Warn only — do NOT crash; server can still run with defaults for missing optional vars.
-    console.warn(`[config] WARNING: Production env vars not set: ${missing.join(", ")} — server will start with defaults.`);
+  // These must be set in production — app cannot function securely without them
+  if (!env.ADMIN_PASSWORD) critical.push("ADMIN_PASSWORD");
+
+  // These are important but app can degrade gracefully
+  if (!env.GOOGLE_MAPS_API_KEY) warnings.push("GOOGLE_MAPS_API_KEY");
+  if (!env.OPS_API_KEY) warnings.push("OPS_API_KEY");
+  if (!env.RAZORPAY_KEY_ID) warnings.push("RAZORPAY_KEY_ID");
+  if (!env.RAZORPAY_KEY_SECRET) warnings.push("RAZORPAY_KEY_SECRET");
+  if (!env.RAZORPAY_WEBHOOK_SECRET) warnings.push("RAZORPAY_WEBHOOK_SECRET");
+  if (!env.SOCKET_ALLOWED_ORIGINS) warnings.push("SOCKET_ALLOWED_ORIGINS (defaults to * — set to restrict WebSocket origins)");
+
+  if (critical.length) {
+    throw new Error(`[config] FATAL: Critical production env vars not set: ${critical.join(", ")} — cannot start in production without these.`);
+  }
+  if (warnings.length) {
+    console.warn(`[config] WARNING: Production env vars not set: ${warnings.join(", ")} — some features will be unavailable.`);
   }
 }

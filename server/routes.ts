@@ -134,6 +134,12 @@ function computeEtaMinutes(distanceKm: number, avgSpeedKmph = 25): number {
   return Math.max(1, Math.round((distanceKm / avgSpeedKmph) * 60));
 }
 
+/** Returns a safe error message: generic in production, detailed in development. */
+function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
+  if (process.env.NODE_ENV === "production") return fallback;
+  return e?.message || fallback;
+}
+
 async function appendTripStatus(tripId: string, status: string, source = "system", note?: string) {
   if (!tripId) return;
   await rawDb.execute(rawSql`
@@ -1297,7 +1303,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, message: e.message });
+      res.status(500).json({ success: false, message: safeErrMsg(e) });
     }
   });
 
@@ -1584,7 +1590,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, message: e.message });
+      res.status(500).json({ success: false, message: safeErrMsg(e) });
     }
   });
 
@@ -1674,7 +1680,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         customers: createdCustomers.map(c => ({ name: c.name, phone: c.phone, password: 'Test@123', status: c.status })),
         drivers: createdDrivers.map(d => ({ name: d.name, phone: d.phone, password: 'Test@123', vehicle: d.vc, vNum: d.vNum, status: d.status })),
       });
-    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+    } catch (e: any) { res.status(500).json({ success: false, message: safeErrMsg(e) }); }
   });
 
   app.get("/api/ops/metrics", requireOpsKey, async (_req, res) => {
@@ -1715,7 +1721,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT destination_lat as lat, destination_lng as lng, 0.6 as intensity FROM trip_requests WHERE destination_lat IS NOT NULL ORDER BY created_at DESC LIMIT 5000
       `);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Live vehicle tracking — use actual driver telemetry instead of synthetic positions
@@ -1792,7 +1798,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       res.json(trips);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/fleet-drivers", requireAdminAuth, async (_req, res) => {
@@ -1809,7 +1815,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           lng: d.currentLng,
         }));
       res.json(result);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Dashboard
@@ -1818,7 +1824,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const stats = await storage.getDashboardStats();
       res.json(stats);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -1960,7 +1966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         serviceSettings: svcSettings,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
 
@@ -2001,7 +2007,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }));
       res.json(chart);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2024,7 +2030,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const items = camelize(r.rows).map((x: any) => ({ ...x, uiState: toUiTripState(x) }));
       res.json({ items, total: items.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/rides/history", async (req, res) => {
@@ -2042,7 +2048,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const items = camelize(r.rows).map((x: any) => ({ ...x, uiState: toUiTripState(x) }));
       res.json({ items, total: items.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/rides/cancelled", async (_req, res) => {
@@ -2057,7 +2063,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.created_at DESC LIMIT 500
       `);
       res.json({ items: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/rides/:tripId/route", async (req, res) => {
@@ -2069,7 +2075,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const waypoints = getTripWaypoints(tripId);
       res.json({ events: camelize(events.rows), waypoints });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/admin/complaints", async (req, res) => {
@@ -2083,7 +2089,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await logAdminAction('complaint_created', 'ride_complaint', (r.rows[0] as any)?.id, { tripId, complaintType });
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/complaints", async (req, res) => {
@@ -2099,7 +2105,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY rc.created_at DESC LIMIT 500
       `);
       res.json({ items: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/admin/complaints/:id", requireAdminRole(["admin", "superadmin", "support"]), async (req, res) => {
@@ -2116,7 +2122,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!r.rows.length) return res.status(404).json({ message: 'Complaint not found' });
       await logAdminAction('complaint_updated', 'ride_complaint', id, { status: nextStatus, resolutionNote: note });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/system/live-overview", async (_req, res) => {
@@ -2132,7 +2138,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         openSafetyIncidents: (sos.rows[0] as any)?.c || 0,
         ts: new Date().toISOString(),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Auth — with rate limiting and bcrypt password verification
@@ -2209,7 +2215,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         expiresAt: session.expiresAt.toISOString(),
       });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2245,7 +2251,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         expiresAt: expiresAt.toISOString(),
       });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2276,7 +2282,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         res.json({ success: true, message: "Password reset OTP sent (dev mode — check console).", otp, dev: true });
       }
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Reset Password — verify OTP and set new password ───────────────
@@ -2294,7 +2300,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await rawDb.execute(rawSql`UPDATE admins SET password=${hashedPassword} WHERE email=${email}`);
       res.json({ success: true, message: "Password reset successfully. You can now login with your new password." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Emergency password reset (protected by ADMIN_RESET_KEY) ────────
@@ -2313,7 +2319,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE LOWER(email)=${email.trim().toLowerCase()}
       `);
       res.json({ success: true, message: "Admin password reset successfully. You can now login." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Catch-all protection for legacy /api/ admin routes ──────────────────
@@ -2346,7 +2352,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2356,7 +2362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json(user);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2372,7 +2378,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       res.status(201).json(result.rows[0]);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2382,7 +2388,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await xDb.execute(xSql`DELETE FROM users WHERE id::text = ${req.params.id}`);
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2392,7 +2398,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await storage.updateUserStatus(req.params.id, isActive);
       res.json(user);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2408,7 +2414,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2418,7 +2424,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!trip) return res.status(404).json({ message: "Trip not found" });
       res.json(trip);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2428,7 +2434,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const trip = await storage.updateTripStatus(req.params.id, status);
       res.json(trip);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2438,7 +2444,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cats = await storage.getVehicleCategories();
       res.json(cats);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2447,7 +2453,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cat = await storage.createVehicleCategory(req.body);
       res.status(201).json(cat);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2456,7 +2462,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cat = await storage.updateVehicleCategory(req.params.id, req.body);
       res.json(cat);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2465,7 +2471,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
@@ -2473,7 +2479,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteVehicleCategory(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2483,7 +2489,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const zoneList = await storage.getZones();
       res.json(zoneList);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2507,7 +2513,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const zone = await storage.createZone(req.body);
       res.status(201).json(zone);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2520,7 +2526,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2533,7 +2539,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!zone) return res.status(404).json({ message: "Zone not found" });
       res.json(zone);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2542,7 +2548,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteZone(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2552,7 +2558,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const fares = await storage.getTripFares();
       res.json(fares);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2561,7 +2567,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const fare = await storage.upsertTripFare(req.body);
       res.status(201).json(fare);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2570,7 +2576,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const fare = await storage.updateTripFare(req.params.id, req.body);
       res.json(fare);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2579,7 +2585,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteTripFare(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2631,7 +2637,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           vc.name
       `);
       res.json(rows.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Upsert fare for a specific vehicle category (no zone required)
@@ -2693,7 +2699,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json(camelize(result.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Pricing Management ─────────────────────────────────────────────
@@ -2733,7 +2739,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           END, vc.name
       `);
       res.json(rows.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // PUT /api/admin/pricing/vehicles/:id — update vehicle pricing in both vehicle_categories + trip_fares
@@ -2805,7 +2811,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ success: true, vehicleCategory: camelize(vcUpdated.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // PATCH /api/admin/pricing/vehicles/:id/availability — toggle vehicle availability
@@ -2818,7 +2824,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Vehicle category not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // GET /api/admin/pricing/settings — get GST rate, launch campaign, commission settings
@@ -2834,7 +2840,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         launchCampaignEnabled: settings.launch_campaign_enabled !== 'false',
         activeModel: settings.active_model || 'commission',
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // PUT /api/admin/pricing/settings — update one or more pricing settings
@@ -2861,7 +2867,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json({ success: true, updated: Object.keys(updates).length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Admin: Commission Settlement Endpoints ────────────────────────────────
@@ -2886,7 +2892,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const totalR = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM commission_settlements cs ${whereClause}`).catch(() => ({ rows: [{ cnt: 0 }] }));
       res.json({ data: camelize(rows.rows), total: parseInt((totalR.rows[0] as any)?.cnt || 0), page: parseInt(page), limit: parseInt(limit) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // GET /api/admin/commission-settlements/drivers — per-driver pending balance summary
@@ -2908,7 +2914,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY u.total_pending_balance DESC
       `);
       res.json({ data: camelize(rows.rows), total: rows.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // POST /api/admin/commission-settlements/drivers/:driverId/settle — admin manually settles partial/full amount
@@ -2966,7 +2972,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${driverId}::uuid, ${payAmt}, 'admin_settlement', 'completed', ${description || 'Admin settlement'})
       `).catch(() => {});
       res.json({ success: true, newPendingBalance: newTotal, pendingCommission: newCommission, pendingGst: newGst, autoUnlocked: shouldUnlock && bal.is_locked });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Transactions
@@ -2976,7 +2982,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.getTransactions(userId as string, Number(page) || 1, Number(limit) || 15);
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -2986,7 +2992,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const coupons = await storage.getCoupons();
       res.json(coupons);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3004,7 +3010,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const coupon = await storage.updateCoupon(req.params.id, req.body);
       res.json(coupon);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3013,7 +3019,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE coupon_setups SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/coupons/:id", requireAdminAuth, async (req, res) => {
@@ -3021,7 +3027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteCoupon(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3032,7 +3038,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.getReviews(Number(page) || 1, Number(limit) || 15);
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3042,7 +3048,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settings = await storage.getBusinessSettings();
       res.json(settings);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3071,7 +3077,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
       res.json(setting);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3080,14 +3086,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const settings = await storage.getBusinessSettings();
       res.json(settings);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/business-settings", async (req, res) => {
     try {
       const { keyName, value, settingsType } = req.body;
       const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
       res.json(setting);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Blogs
@@ -3096,7 +3102,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const blogList = await storage.getBlogs();
       res.json(blogList);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3105,7 +3111,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const blog = await storage.createBlog(req.body);
       res.status(201).json(blog);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3114,7 +3120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const blog = await storage.updateBlog(req.params.id, req.body);
       res.json(blog);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3124,7 +3130,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const updated = await storage.updateBlog(req.params.id, { isActive } as any);
       res.json(updated);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
   app.delete("/api/blogs/:id", requireAdminAuth, async (req, res) => {
@@ -3132,7 +3138,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteBlog(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3148,7 +3154,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }));
       res.json(normalized);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3180,7 +3186,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.updateWithdrawStatus(req.params.id, status);
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3190,7 +3196,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const reasons = await storage.getCancellationReasons();
       res.json(reasons);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3199,7 +3205,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const reason = await storage.createCancellationReason(req.body);
       res.status(201).json(reason);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3213,7 +3219,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3227,7 +3233,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3236,7 +3242,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteCancellationReason(req.params.id);
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -3250,14 +3256,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM banners ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/banners", requireAdminAuth, async (req, res) => {
     try {
       const { title, image_url, redirect_url, zone, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO banners (title, image_url, redirect_url, zone, is_active) VALUES (${title}, ${image_url}, ${redirect_url}, ${zone}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3274,7 +3280,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${id}::uuid RETURNING *
       `);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   // PUT is same as PATCH for banners (frontend uses PUT for full update + toggle)
   app.put("/api/banners/:id", requireAdminAuth, async (req, res) => {
@@ -3292,13 +3298,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${id}::uuid RETURNING *
       `);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM banners WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Discounts
@@ -3306,20 +3312,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM discounts ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/discounts", requireAdminAuth, async (req, res) => {
     try {
       const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO discounts (name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active) VALUES (${name}, ${discount_amount}, ${discount_type}, ${min_order_amount}, ${max_discount_amount}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM discounts WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3327,7 +3333,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const active = isActive ?? is_active;
       const r = await rawDb.execute(rawSql`UPDATE discounts SET is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3344,7 +3350,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${req.params.id}::uuid RETURNING *
       `);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Spin Wheel
@@ -3352,27 +3358,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM spin_wheel_items ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/spin-wheel", requireAdminAuth, async (req, res) => {
     try {
       const { label, reward_amount, reward_type, probability, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${reward_amount}, ${reward_type}, ${probability}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM spin_wheel_items WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3380,7 +3386,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const lbl = label; const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType; const prob = probability; const active = is_active ?? isActive;
       const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET label=${lbl}, reward_amount=${rAmt}, reward_type=${rType}, probability=${prob}, is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // User Levels (driver & customer)
@@ -3388,66 +3394,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='driver' ORDER BY min_points ASC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/driver-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'driver', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/customer-levels", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM user_levels WHERE user_type='customer' ORDER BY min_points ASC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/customer-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'customer', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/user-levels", requireAdminAuth, async (req, res) => {
     try {
       const { name, user_type, min_points, max_points, reward, reward_type, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, ${user_type}, ${min_points}, ${max_points}, ${reward}, ${reward_type}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/user-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM user_levels WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Employees
@@ -3458,7 +3464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`SELECT e.*, z.name as zone_name FROM employees e LEFT JOIN zones z ON z.id=e.zone_id WHERE e.zone_id=${zoneId}::uuid ORDER BY e.created_at DESC`)
         : await rawDb.execute(rawSql`SELECT e.*, z.name as zone_name FROM employees e LEFT JOIN zones z ON z.id=e.zone_id ORDER BY e.created_at DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/employees", requireAdminAuth, async (req, res) => {
     try {
@@ -3467,7 +3473,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, zone_id, is_active) VALUES (${name}, ${email}, ${phone}, ${role ?? 'employee'}, ${zoneId}::uuid, ${isActive ?? true}) RETURNING *`)
         : await rawDb.execute(rawSql`INSERT INTO employees (name, email, phone, role, is_active) VALUES (${name}, ${email}, ${phone}, ${role ?? 'employee'}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3476,7 +3482,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`UPDATE employees SET name=${name}, email=${email}, phone=${phone}, role=${role}, zone_id=${zoneId}::uuid, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`)
         : await rawDb.execute(rawSql`UPDATE employees SET name=${name}, email=${email}, phone=${phone}, role=${role}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3486,13 +3492,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (updates.length === 0) return res.status(400).json({ message: "Nothing to update" });
       const r = await rawDb.execute(rawSql`UPDATE employees SET is_active=${req.body.isActive ?? null} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM employees WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // B2B Companies
@@ -3503,21 +3509,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`SELECT * FROM b2b_companies WHERE status=${status} ORDER BY created_at DESC`)
         : await rawDb.execute(rawSql`SELECT * FROM b2b_companies ORDER BY created_at DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/b2b-companies", requireAdminAuth, async (req, res) => {
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO b2b_companies (company_name, contact_person, phone, email, gst_number, address, city, status, commission_pct) VALUES (${companyName}, ${contactPerson}, ${phone}, ${email}, ${gstNumber}, ${address}, ${city}, ${status ?? 'active'}, ${commissionPct ?? 10}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE b2b_companies SET company_name=${companyName}, contact_person=${contactPerson}, phone=${phone}, email=${email}, gst_number=${gstNumber}, address=${address}, city=${city}, status=${status}, commission_pct=${commissionPct} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/b2b-companies/:id/wallet", requireAdminAuth, async (req, res) => {
     try {
@@ -3526,13 +3532,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${amount} WHERE id=${req.params.id}::uuid RETURNING *`)
         : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${amount} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM b2b_companies WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Parcel Categories & Weights
@@ -3540,39 +3546,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM parcel_categories ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/parcel-categories", async (req, res) => {
     try {
       const { name, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO parcel_categories (name, is_active) VALUES (${name}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/parcel-categories/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM parcel_categories WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/parcel-weights", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM parcel_weights ORDER BY min_weight ASC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/parcel-weights", async (req, res) => {
     try {
       const { label, min_weight, max_weight, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO parcel_weights (label, min_weight, max_weight, is_active) VALUES (${label}, ${min_weight}, ${max_weight}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/parcel-weights/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM parcel_weights WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Vehicle Brands & Models
@@ -3583,14 +3589,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true AND category=${category as string} ORDER BY name ASC`)
         : await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true ORDER BY category, name ASC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/vehicle-brands", async (req, res) => {
     try {
       const { name, logo_url, category = 'two_wheeler', is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, logo_url, category, is_active) VALUES (${name}, ${logo_url||null}, ${category}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/vehicle-brands/:id", async (req, res) => {
     try {
@@ -3598,26 +3604,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const active = is_active ?? isActive ?? true;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_brands SET name=${name}, logo_url=${logo_url||null}, category=${category||'two_wheeler'}, is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/vehicle-brands/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM vehicle_brands WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/vehicle-models", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT vm.*, vb.name as brand_name FROM vehicle_models vm LEFT JOIN vehicle_brands vb ON vb.id=vm.brand_id ORDER BY vm.name ASC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/vehicle-models", requireAdminAuth, async (req, res) => {
     try {
       const { name, brand_id, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id}::uuid, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3630,13 +3636,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name ?? null}, name), is_active=COALESCE(${active ?? null}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
       }
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM vehicle_models WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Parcel Fares
@@ -3644,27 +3650,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT pf.*, z.name as zone_name FROM parcel_fares pf LEFT JOIN zones z ON z.id::uuid=pf.zone_id ORDER BY pf.created_at DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/parcel-fares", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zoneId}::uuid, ${baseFare}, ${farePerKm}, ${farePerKg}, ${minimumFare}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare}, fare_per_km=${farePerKm}, fare_per_kg=${farePerKg}, minimum_fare=${minimumFare} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM parcel_fares WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Surge Pricing
@@ -3672,7 +3678,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT sp.*, z.name as zone_name FROM surge_pricing sp LEFT JOIN zones z ON z.id::uuid=sp.zone_id ORDER BY sp.created_at DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/surge-pricing", requireAdminAuth, async (req, res) => {
     try {
@@ -3683,7 +3689,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const active = isActive ?? is_active ?? true;
       const r = await rawDb.execute(rawSql`INSERT INTO surge_pricing (zone_id, start_time, end_time, multiplier, reason, is_active) VALUES (${zid}, ${st}, ${et}, ${multiplier}, ${reason || null}, ${active}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3695,13 +3701,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE surge_pricing SET zone_id=${zid}, start_time=${st}, end_time=${et}, multiplier=${multiplier}, reason=${reason || null}, is_active=${active} WHERE id=${req.params.id}::uuid`);
       const r = await rawDb.execute(rawSql`SELECT sp.*, z.name as zone_name FROM surge_pricing sp LEFT JOIN zones z ON z.id::uuid=sp.zone_id WHERE sp.id=${req.params.id}::uuid`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM surge_pricing WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Vehicle Requests
@@ -3712,21 +3718,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
         : await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id ORDER BY vr.created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/vehicle-requests/:id/status", requireAdminAuth, async (req, res) => {
     try {
       const { status } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/vehicle-requests/:id", requireAdminAuth, async (req, res) => {
     try {
       const { status } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE vehicle_requests SET status=${status} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Wallet Bonus
@@ -3734,14 +3740,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM wallet_bonuses ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/wallet-bonus", requireAdminAuth, async (req, res) => {
     try {
       const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3757,13 +3763,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${req.params.id}::uuid RETURNING *
       `);
       res.json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM wallet_bonuses WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Subscription Plans
@@ -3771,34 +3777,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM subscription_plans ORDER BY price ASC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/subscription-plans", requireAdminAuth, async (req, res) => {
     try {
       const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO subscription_plans (name, price, duration_days, features, is_active, plan_type, max_rides, max_parcels) VALUES (${name}, ${price}, ${durationDays||30}, ${features||''}, ${isActive ?? true}, ${planType||'both'}, ${maxRides||0}, ${maxParcels||0}) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, price, durationDays, features, isActive, planType, maxRides, maxParcels } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET name=${name}, price=${price}, duration_days=${durationDays}, features=${features}, is_active=${isActive}, plan_type=${planType || 'both'}, max_rides=${maxRides || 0}, max_parcels=${maxParcels || 0}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE subscription_plans SET is_active=${isActive}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/subscription-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM subscription_plans WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Intercity Routes CRUD
@@ -3810,7 +3816,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY ir.from_city, ir.to_city
       `);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/intercity-routes", requireAdminAuth, async (req, res) => {
     try {
@@ -3822,7 +3828,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`INSERT INTO intercity_routes (from_city, to_city, estimated_km, base_fare, fare_per_km, toll_charges, is_active) VALUES (${fromCity}, ${toCity}, ${estimatedKm||0}, ${baseFare||0}, ${farePerKm||0}, ${tollCharges||0}, ${isActive ?? true}) RETURNING *`);
       }
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -3834,20 +3840,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`UPDATE intercity_routes SET from_city=${fromCity}, to_city=${toCity}, estimated_km=${estimatedKm||0}, base_fare=${baseFare||0}, fare_per_km=${farePerKm||0}, toll_charges=${tollCharges||0}, vehicle_category_id=NULL, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       }
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE intercity_routes SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/intercity-routes/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM intercity_routes WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Business settings — bulk update
@@ -3859,7 +3865,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const r = await rawDb.execute(rawSql`SELECT * FROM business_settings ORDER BY settings_type, key_name`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Business Pages — GET by settings_type
@@ -3868,7 +3874,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const type = (req.query.type as string) || "pages_settings";
       const r = await rawDb.execute(rawSql`SELECT key_name, value, settings_type FROM business_settings WHERE settings_type=${type} ORDER BY key_name`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Business Pages — upsert single setting
@@ -3879,7 +3885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const type = settingsType || "pages_settings";
       await rawDb.execute(rawSql`INSERT INTO business_settings (key_name, value, settings_type) VALUES (${keyName}, ${String(value)}, ${type}) ON CONFLICT (key_name) DO UPDATE SET value=${String(value)}, updated_at=now()`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin password change
@@ -3896,7 +3902,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hash = await bcrypt.hash(String(newPassword), 10);
       await rawDb.execute(rawSql`UPDATE admins SET password=${hash} WHERE id=${admin.id}::uuid`);
       res.json({ success: true, message: "Password changed successfully" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Newsletter subscribers (from existing users table)
@@ -3904,7 +3910,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT id, full_name, email, phone, created_at FROM users WHERE user_type='customer' ORDER BY created_at DESC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Parcel Refunds (derived from cancelled parcel trips)
@@ -3921,7 +3927,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return s === "cancelled";
       });
       res.json({ data: refunds, total: refunds.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/parcel-refunds/:id/status", requireAdminAuth, async (req, res) => {
@@ -3939,7 +3945,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${req.params.id}::uuid
       `);
       res.json({ success: true, refundStatus, paymentStatus });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer Wallet top-up / deduct (admin operation — adjusts users.wallet_balance)
@@ -3959,7 +3965,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!(r.rows as any[]).length) return res.status(404).json({ message: "User not found" });
       const newBalance = parseFloat((r.rows as any[])[0].wallet_balance);
       res.json({ success: true, newBalance, type });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Notifications send — broadcasts real FCM push to all matching user devices
@@ -4006,7 +4012,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       console.log(`[Notification] To=${target}/${userType} Title=${title} Recipients=${recipientCount} Delivered=${deliveredCount}`);
       res.json({ success: true, message: "Notification sent", recipientCount, deliveredCount });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Car Sharing APIs ────────────────────────────────────────────────────────
@@ -4031,7 +4037,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         seatsSold: parseInt(sRow.seats_sold || 0),
         seatsTotal: parseInt(sRow.seats_total || 0),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Rides list
@@ -4050,7 +4056,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY cs.departure_time DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Update ride status
@@ -4060,7 +4066,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status } = req.body;
       await rawDb.execute(rawSql`UPDATE car_sharing_rides SET status = ${status} WHERE id = ${id}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Bookings list
@@ -4080,7 +4086,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY b.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Settings get
@@ -4090,7 +4096,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settings: any = {};
       r.rows.forEach((row: any) => { settings[row.key_name] = row.value; });
       res.json(settings);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Settings save
@@ -4104,7 +4110,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Revenue Model Settings ──────────────────────────────────────────────────
@@ -4115,7 +4121,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const s: any = {};
       r.rows.forEach((row: any) => { s[row.key_name] = row.value; });
       res.json(s);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.put("/api/revenue-model", requireAdminAuth, async (req, res) => {
@@ -4128,7 +4134,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Admin Revenue Stats ─────────────────────────────────────────────────────
@@ -4162,7 +4168,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         breakdown: totals.rows.map(camelize),
         totalRevenue: parseFloat((grandTotal.rows[0] as any).total || 0),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Driver Commission Settlement System ────────────────────────────────────
@@ -4193,7 +4199,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }
 
   // Get all drivers with wallet + pending balance info
-  app.get("/api/driver-wallet", async (req, res) => {
+  app.get("/api/driver-wallet", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT u.id, u.full_name, u.phone, u.email, u.user_type,
@@ -4206,11 +4212,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY u.total_pending_balance DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Get driver payment history
-  app.get("/api/driver-wallet/:id/history", async (req, res) => {
+  app.get("/api/driver-wallet/:id/history", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const payments = await rawDb.execute(rawSql`
@@ -4224,14 +4230,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY cs.created_at DESC LIMIT 100
       `);
       res.json({ payments: camelize(payments.rows), settlements: camelize(settlements.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Deduct platform fee per ride (called after ride completion — legacy endpoint)
-  app.post("/api/driver-wallet/:id/deduct", async (req, res) => {
+  app.post("/api/driver-wallet/:id/deduct", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { amount, description, tripId, gstPortion = 0 } = req.body;
+      const parsedAmount = parseFloat(String(amount));
+      if (!parsedAmount || parsedAmount <= 0 || parsedAmount > 100000 || isNaN(parsedAmount)) {
+        return res.status(400).json({ message: "Invalid amount. Must be between 0.01 and 100000." });
+      }
+      if (description && String(description).length > 500) {
+        return res.status(400).json({ message: "Description too long (max 500 chars)." });
+      }
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
@@ -4271,11 +4284,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const lockResult = await checkAndApplySettlementLock(id, settings);
       const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
       res.json({ success: true, newBalance, pendingBalance: newTotal, ...lockResult });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Manual lock / unlock by admin
-  app.patch("/api/driver-wallet/:id/lock", async (req, res) => {
+  app.patch("/api/driver-wallet/:id/lock", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { lock, reason } = req.body;
@@ -4285,14 +4298,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Razorpay: Create payment order for driver commission settlement
-  app.post("/api/driver-wallet/:id/create-order", async (req, res) => {
+  app.post("/api/driver-wallet/:id/create-order", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { amount } = req.body;
+      const parsedOrderAmount = parseFloat(String(amount));
+      if (!parsedOrderAmount || parsedOrderAmount <= 0 || parsedOrderAmount > 100000 || isNaN(parsedOrderAmount)) {
+        return res.status(400).json({ message: "Invalid amount. Must be between 0.01 and 100000." });
+      }
       const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
       const keySecret = await getConf("RAZORPAY_KEY_SECRET", "razorpay_key_secret");
       if (!keyId || !keySecret) {
@@ -4300,10 +4317,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      const order = await rzp.orders.create({ amount: Math.round(amount * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
+      const order = await rzp.orders.create({ amount: Math.round(parsedOrderAmount * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
-        VALUES (${id}::uuid, ${amount}, 'commission_payment', ${order.id}, 'pending', 'Commission settlement via Razorpay')
+        VALUES (${id}::uuid, ${parsedOrderAmount}, 'commission_payment', ${order.id}, 'pending', 'Commission settlement via Razorpay')
       `);
       res.json({ order, keyId });
     } catch (e: any) {
@@ -4395,14 +4412,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pendingGst: newGst,
         autoUnlocked: newTotal < lockThreshold && wasLocked,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: manually credit pending balance (offline/cash payment to platform)
-  app.post("/api/driver-wallet/:id/credit", async (req, res) => {
+  app.post("/api/driver-wallet/:id/credit", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { amount, description } = req.body;
+      const parsedCreditAmount = parseFloat(String(amount));
+      if (!parsedCreditAmount || parsedCreditAmount <= 0 || parsedCreditAmount > 100000 || isNaN(parsedCreditAmount)) {
+        return res.status(400).json({ message: "Invalid amount. Must be between 0.01 and 100000." });
+      }
+      if (description && String(description).length > 500) {
+        return res.status(400).json({ message: "Description too long (max 500 chars)." });
+      }
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
@@ -4460,7 +4484,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pendingGst: newGst,
         autoUnlocked: newTotal < lockThreshold && wasLocked,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Refund Requests ─────────────────────────────────────────────────────────
@@ -4478,7 +4502,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY rr.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/refund-requests", async (req, res) => {
@@ -4488,7 +4512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? await rawDb.execute(rawSql`INSERT INTO refund_requests (customer_id, trip_id, amount, reason, payment_method) VALUES (${customerId}::uuid, ${tripId}::uuid, ${amount}, ${reason}, ${paymentMethod||'wallet'}) RETURNING *`)
         : await rawDb.execute(rawSql`INSERT INTO refund_requests (customer_id, amount, reason, payment_method) VALUES (${customerId}::uuid, ${amount}, ${reason}, ${paymentMethod||'wallet'}) RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/refund-requests/:id", async (req, res) => {
@@ -4508,7 +4532,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Intercity Car Sharing ────────────────────────────────────────────────────
@@ -4520,7 +4544,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const obj: any = {};
       r.rows.forEach((row: any) => { obj[row.key_name] = row.value; });
       res.json(obj);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.put("/api/intercity-cs/settings", async (req, res) => {
@@ -4532,7 +4556,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Rides list (admin view)
@@ -4550,7 +4574,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY r.departure_date ASC, r.departure_time ASC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Create ride (driver action / admin can create too)
@@ -4571,7 +4595,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Toggle ride active/inactive
@@ -4581,7 +4605,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { isActive } = req.body;
       await rawDb.execute(rawSql`UPDATE intercity_cs_rides SET is_active=${isActive} WHERE id=${id}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Update ride status
@@ -4591,7 +4615,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status } = req.body;
       await rawDb.execute(rawSql`UPDATE intercity_cs_rides SET status=${status} WHERE id=${id}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Bookings list (admin view)
@@ -4611,7 +4635,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY b.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── OUTSTATION POOL ────────────────────────────────────────────────────────
@@ -4635,7 +4659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json({ success: true, ride: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/app/driver/outstation-pool/rides", authApp, async (req, res) => {
@@ -4652,7 +4676,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY opr.created_at DESC
       `);
       res.json({ data: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/app/driver/outstation-pool/rides/:id", authApp, async (req, res) => {
@@ -4671,7 +4695,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid
       `);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer: search outstation pool rides
@@ -4696,7 +4720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY opr.departure_date ASC, opr.fare_per_seat ASC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer: book seats in outstation pool ride
@@ -4740,7 +4764,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `),
       ]);
       res.json({ success: true, booking: camelize(bookingRes.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/app/customer/outstation-pool/bookings", authApp, async (req, res) => {
@@ -4757,7 +4781,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY opb.created_at DESC
       `);
       res.json({ data: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: manage outstation pool
@@ -4775,7 +4799,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY opr.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/outstation-pool/bookings", async (req, res) => {
@@ -4793,7 +4817,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY opb.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/admin/outstation-pool/settings", async (req, res) => {
@@ -4806,7 +4830,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
       `);
       res.json({ success: true, outstation_pool_mode: mode });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // GET all revenue model settings as a flat key-value map
@@ -4816,7 +4840,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const obj: Record<string, string> = {};
       r.rows.forEach((row: any) => { obj[row.key_name] = row.value; });
       res.json(obj);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Call Logs — real data from call_logs table
@@ -4841,7 +4865,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ${status !== "all" ? rawSql`WHERE status = ${status}` : rawSql``}
       `);
       res.json({ data: r.rows.map(camelize), total: Number((countR.rows[0] as any).total) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Record a call log entry (called by mobile app when a call is placed)
@@ -4854,7 +4878,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json({ success: true, data: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Support Chat (Admin ↔ User) ────────────────────────────────────────────
@@ -4871,7 +4895,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Mark as read
       await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${userId}::uuid AND sender='user'`);
       res.json({ messages: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post('/api/support-chat', async (req, res) => {
@@ -4883,7 +4907,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${userId}::uuid, ${sender}, ${message}) RETURNING *
       `);
       res.json({ success: true, data: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get('/api/support-chat/unread-count', async (_req, res) => {
@@ -4894,7 +4918,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         GROUP BY user_id
       `);
       res.json({ unreadByUser: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Static uploads ──────────────────────────────────────────────────────────
@@ -4907,7 +4931,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const url = `/uploads/${req.file.filename}`;
       res.json({ url, filename: req.file.filename, originalname: req.file.originalname, size: req.file.size });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Driver verification ─────────────────────────────────────────────────────
@@ -4922,7 +4946,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (status === "approved") updateData.isActive = true;
       await storage.updateUser(req.params.id, updateData);
       res.json({ success: true, status });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/drivers/:id/documents", authApp, async (req, res) => {
@@ -4937,7 +4961,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (vehicleModel !== undefined) updateData.vehicleModel = vehicleModel;
       await storage.updateUser(req.params.id, updateData);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Parcel Attributes ───────────────────────────────────────────────────────
@@ -4951,7 +4975,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         rows = await db.select().from(parcelAttributes);
       }
       res.json(rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   function sanitizeAttr(body: any) {
@@ -4966,21 +4990,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const [row] = await db.insert(parcelAttributes).values(sanitizeAttr(req.body) as any).returning();
       res.status(201).json(row);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.put("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
       const [row] = await db.update(parcelAttributes).set(sanitizeAttr(req.body) as any).where(eq(parcelAttributes.id, req.params.id)).returning();
       res.json(row);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/parcel-attributes/:id", requireAdminAuth, async (req, res) => {
     try {
       await db.delete(parcelAttributes).where(eq(parcelAttributes.id, req.params.id));
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Insurance Plans ──────────────────────────────────────────────
@@ -4988,34 +5012,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM insurance_plans ORDER BY premium_monthly ASC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/insurance-plans", requireAdminAuth, async (req, res) => {
     try {
       const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO insurance_plans (name, plan_type, premium_daily, premium_monthly, coverage_amount, features, is_active) VALUES (${name}, ${planType||'vehicle'}, ${premiumDaily||0}, ${premiumMonthly||0}, ${coverageAmount||0}, ${features||''}, ${isActive ?? true}) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, planType, premiumDaily, premiumMonthly, coverageAmount, features, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET name=${name}, plan_type=${planType||'vehicle'}, premium_daily=${premiumDaily||0}, premium_monthly=${premiumMonthly||0}, coverage_amount=${coverageAmount||0}, features=${features||''}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE insurance_plans SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/insurance-plans/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM insurance_plans WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Driver Insurance ─────────────────────────────────────────────
@@ -5029,14 +5053,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`SELECT di.*, ip.name as plan_name, ip.premium_monthly, ip.coverage_amount, u.full_name as driver_name FROM driver_insurance di LEFT JOIN insurance_plans ip ON ip.id=di.plan_id LEFT JOIN users u ON u.id=di.driver_id ORDER BY di.created_at DESC`);
       }
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/driver-insurance", async (req, res) => {
     try {
       const { driverId, planId, startDate, endDate, paymentAmount, paymentStatus } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO driver_insurance (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active) VALUES (${driverId}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${paymentAmount||0}, ${paymentStatus||'paid'}, true) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Driver Subscriptions ─────────────────────────────────────────
@@ -5050,7 +5074,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`SELECT ds.*, sp.name as plan_name, sp.price, sp.duration_days, sp.max_rides, u.full_name as driver_name FROM driver_subscriptions ds LEFT JOIN subscription_plans sp ON sp.id=ds.plan_id LEFT JOIN users u ON u.id=ds.driver_id ORDER BY ds.created_at DESC LIMIT 100`);
       }
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/driver-subscriptions", async (req, res) => {
     try {
@@ -5058,7 +5082,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE driver_subscriptions SET is_active=false WHERE driver_id=${driverId}::uuid`);
       const r = await rawDb.execute(rawSql`INSERT INTO driver_subscriptions (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active) VALUES (${driverId}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${paymentAmount||0}, ${paymentStatus||'paid'}, true) RETURNING *`);
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Reports ──────────────────────────────────────────────────────
@@ -5085,7 +5109,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return camelize({ ...row, commission: commission.toFixed(2), gst: gst.toFixed(2), insurance: insurance.toFixed(2), admin_total: adminTotal.toFixed(2), driver_earning: driverEarning.toFixed(2) });
       });
       res.json({ rows, summary: { totalRevenue: rows.reduce((s: any, r: any) => s + parseFloat(r.revenue||0), 0).toFixed(2), totalTrips: rows.reduce((s: any, r: any) => s + parseInt(r.trips||0), 0), totalCommission: rows.reduce((s: any, r: any) => s + parseFloat(r.commission||0), 0).toFixed(2), totalGst: rows.reduce((s: any, r: any) => s + parseFloat(r.gst||0), 0).toFixed(2), totalInsurance: rows.reduce((s: any, r: any) => s + parseFloat(r.insurance||0), 0).toFixed(2), totalAdminEarning: rows.reduce((s: any, r: any) => s + parseFloat(r.adminTotal||0), 0).toFixed(2) } });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/reports/trips", async (req, res) => {
     try {
@@ -5094,19 +5118,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const toDate = to || new Date().toISOString().split('T')[0];
       const r = await rawDb.execute(rawSql`SELECT tr.ref_id, tr.pickup_address, tr.destination_address, tr.estimated_fare, tr.actual_fare, tr.current_status, tr.payment_method, tr.trip_type, tr.created_at, u.full_name as customer_name, vc.name as vehicle_name FROM trip_requests tr LEFT JOIN users u ON u.id=tr.customer_id LEFT JOIN vehicle_categories vc ON vc.id=tr.vehicle_category_id WHERE DATE(tr.created_at) BETWEEN ${fromDate} AND ${toDate} ORDER BY tr.created_at DESC LIMIT 500`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/reports/drivers", async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT u.full_name, u.phone, u.email, u.is_active, u.verification_status, u.created_at, u.vehicle_number, u.vehicle_model, vc.name as vehicle_category, dd.avg_rating, dd.availability_status, COUNT(tr.id) as total_trips, COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status='completed'), 0) as total_earnings FROM users u LEFT JOIN driver_details dd ON dd.user_id=u.id LEFT JOIN vehicle_categories vc ON vc.id=dd.vehicle_category_id LEFT JOIN trip_requests tr ON tr.driver_id=u.id WHERE u.user_type='driver' GROUP BY u.id, u.full_name, u.phone, u.email, u.is_active, u.verification_status, u.created_at, u.vehicle_number, u.vehicle_model, vc.name, dd.avg_rating, dd.availability_status ORDER BY total_trips DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.get("/api/reports/customers", async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT u.full_name, u.phone, u.email, u.is_active, u.created_at, COUNT(tr.id) as total_trips, COALESCE(SUM(tr.actual_fare) FILTER (WHERE tr.current_status='completed'), 0) as total_spent FROM users u LEFT JOIN trip_requests tr ON tr.customer_id=u.id WHERE u.user_type='customer' GROUP BY u.id, u.full_name, u.phone, u.email, u.is_active, u.created_at ORDER BY total_spent DESC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Safety Alerts ───────────────────────────────────────────────────────────
@@ -5127,7 +5151,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`${base} ORDER BY sa.created_at DESC LIMIT 100`);
       }
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/safety-alerts/stats", async (_req, res) => {
@@ -5143,7 +5167,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM safety_alerts
       `);
       res.json(camelize(r.rows[0] || {}));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/safety-alerts", async (req, res) => {
@@ -5173,7 +5197,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/safety-alerts/:id/acknowledge", async (req, res) => {
@@ -5185,7 +5209,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Alert not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/safety-alerts/:id/resolve", async (req, res) => {
@@ -5197,14 +5221,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Alert not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/safety-alerts/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM safety_alerts WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Police Stations ──────────────────────────────────────────────────────────
@@ -5212,7 +5236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT ps.*, z.name as zone_name FROM police_stations ps LEFT JOIN zones z ON z.id::uuid = ps.zone_id ORDER BY ps.name`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/police-stations", async (req, res) => {
@@ -5226,7 +5250,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`INSERT INTO police_stations (name, address, phone, latitude, longitude) VALUES (${name}, ${address||null}, ${phone||null}, ${latitude||null}, ${longitude||null}) RETURNING *`);
       }
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.put("/api/police-stations/:id", async (req, res) => {
@@ -5239,14 +5263,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r = await rawDb.execute(rawSql`UPDATE police_stations SET name=${name}, zone_id=NULL, address=${address||null}, phone=${phone||null}, latitude=${latitude||null}, longitude=${longitude||null}, is_active=${isActive??true} WHERE id=${req.params.id}::uuid RETURNING *`);
       }
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/police-stations/:id", async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM police_stations WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── Female Matching Algorithm — Driver Pool ──────────────────────────────────
@@ -5266,7 +5290,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const settingsMap = Object.fromEntries((settings.rows as any[]).map((s: any) => [s.key_name, s.value]));
       res.json({ stats: camelize(r.rows[0] || {}), settings: settingsMap });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // GET available drivers with matching algorithm applied
@@ -5327,7 +5351,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // PATCH user gender + preference
@@ -5344,7 +5368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "User not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ========== FARE CALCULATOR ==========
@@ -5396,7 +5420,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         inputs: { distanceKm: dist, durationMin: dur, perKm, perMin, baseFare: base },
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ========== DRIVER EARNINGS ==========
@@ -5429,7 +5453,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT ${Number(limit)} OFFSET ${Number(offset)}
       `);
       res.json(rows.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/driver-earnings/:driverId", async (req, res) => {
@@ -5468,7 +5492,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         profile: camelize(profile.rows[0]),
         monthly: monthly.rows.map(camelize),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ========== REFERRAL SYSTEM ==========
@@ -5487,7 +5511,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM referrals
       `);
       res.json(camelize(stats.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/referrals", async (req, res) => {
@@ -5506,7 +5530,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT ${Number(limit)} OFFSET ${Number(offset)}
       `);
       res.json(rows.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/referrals/:id/pay", requireAdminAuth, async (req, res) => {
@@ -5516,7 +5540,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Referral not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/referrals/:id/expire", requireAdminAuth, async (req, res) => {
@@ -5526,7 +5550,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Referral not found" });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -5573,23 +5597,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // SMS sent successfully
       res.json({ success: true, message: "OTP sent to your mobile number" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── OTP VERIFY + LOGIN / REGISTER ────────────────────────────────────────
-  app.post("/api/app/verify-otp", async (req, res) => {
+  app.post("/api/app/verify-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, otp, userType = "customer", name, referralCode } = req.body;
       if (!phone || !otp) return res.status(400).json({ message: "Phone and OTP required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
+      // Per-phone OTP brute force protection: max 5 failed attempts per 15 min
+      const failedAttempts = await rawDb.execute(rawSql`
+        SELECT COUNT(*) AS cnt FROM otp_logs
+        WHERE phone=${phoneStr} AND is_used=false AND created_at > NOW() - INTERVAL '15 minutes'
+          AND attempt_count >= 3
+        LIMIT 1
+      `).catch(() => ({ rows: [{ cnt: 0 }] as any[] }));
+      const recentFails = parseInt((failedAttempts.rows[0] as any)?.cnt || '0', 10);
+      if (recentFails >= 1) {
+        return res.status(429).json({ message: "Too many failed OTP attempts. Please request a new OTP after 15 minutes." });
+      }
+
       // Check OTP
       const otpRow = await rawDb.execute(rawSql`
         SELECT * FROM otp_logs WHERE phone=${phoneStr} AND otp=${otp} AND is_used=false AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1
       `);
-      if (!otpRow.rows.length) return res.status(400).json({ message: "Invalid or expired OTP" });
+      if (!otpRow.rows.length) {
+        // Increment failed attempt counter
+        await rawDb.execute(rawSql`
+          UPDATE otp_logs SET attempt_count = COALESCE(attempt_count, 0) + 1
+          WHERE phone=${phoneStr} AND is_used=false AND expires_at > NOW()
+        `).catch(() => {});
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+      }
 
       // Mark used
       await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`);
@@ -5649,7 +5692,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           isLocked,
         }
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── FIREBASE TOKEN VERIFICATION ───────────────────────────────────────────
@@ -5673,7 +5716,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       } else {
         // Fallback: verify token via Firebase REST API (only needs Web API key — no service account needed)
-        const webApiKey = process.env.FIREBASE_WEB_API_KEY || "AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8";
+        const webApiKey = process.env.FIREBASE_WEB_API_KEY;
+        if (!webApiKey) {
+          return res.status(503).json({ message: "Firebase authentication not configured. Contact support." });
+        }
         const lookupRes = await fetch(
           `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
           { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: firebaseIdToken }) }
@@ -5743,7 +5789,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (e.code && String(e.code).startsWith("auth/")) {
         return res.status(401).json({ message: "Invalid or expired Firebase token. Please retry." });
       }
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -5782,7 +5828,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (_) {}
       }
       res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PASSWORD-BASED LOGIN ──────────────────────────────────────────────────
@@ -5802,7 +5848,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
       const walletBalance = parseFloat(user.walletBalance || 0);
       res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: parseFloat(user.rating || "5.0"), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── FORGOT PASSWORD (send reset OTP to phone) ─────────────────────────────
@@ -5829,7 +5875,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ success: true, message: "Reset OTP sent to your mobile number" });
       }
       res.json({ success: true, message: "Reset OTP sent to your mobile number" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── RESET PASSWORD (verify OTP + set new password) ────────────────────────
@@ -5845,7 +5891,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const passwordHash = await bcrypt.hash(newPassword, 10);
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
     // ── AUTH MIDDLEWARE (simple token check) ─────────────────────────────────
@@ -5886,7 +5932,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/app/driver/online-status", authApp, async (req, res) => {
@@ -6018,7 +6064,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ON CONFLICT (driver_id) DO UPDATE SET lat=${lat}, lng=${lng}, is_online=${isOnline}, updated_at=NOW()
       `);
       res.json({ success: true, isOnline });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get profile + wallet + current trip ───────────────────────────
@@ -6071,7 +6117,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       };
       res.json({ user: userObj, ...userObj });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Incoming trip request (polling) ───────────────────────────────
@@ -6125,7 +6171,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ trip: camelize(searching.rows[0]), stage: "new_request" });
       }
       res.json({ trip: null });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Accept trip ───────────────────────────────────────────────────
@@ -6239,7 +6285,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }).catch(() => {});
 
       res.json({ success: true, trip: tripData, pickupOtp: otp });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Reject / skip trip ─────────────────────────────────────────────
@@ -6302,7 +6348,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Verify pickup OTP + start ride ────────────────────────────────
@@ -6340,7 +6386,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status: "on_the_way", otp, uiState: 'trip_started' });
       }
       res.json({ success: true, trip: camelize(updated.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Verify delivery OTP (Parcel) ─────────────────────────────────
@@ -6363,7 +6409,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
       `);
       res.json({ success: true, message: "Delivery OTP verified. Complete the trip." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Arrived at pickup ─────────────────────────────────────────────
@@ -6427,7 +6473,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ success: true, pickupOtp: otp });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Start trip (arrived → on_the_way) ────────────────────────────
@@ -6470,7 +6516,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }).catch(() => {});
       res.json({ success: true, message: "Trip started" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: "Failed to create payment order. Please try again." }); }
   });
 
   // ── DRIVER: Complete trip ─────────────────────────────────────────────────
@@ -6481,6 +6527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Input validation
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
+      const tipsVal = Math.min(Math.max(0, parseFloat(tips) || 0), 500); // Cap tips at ₹500
       // Get trip details to use estimated_fare as fallback
       const tripInfo = await rawDb.execute(rawSql`
         SELECT tr.estimated_fare, tr.estimated_distance, tr.current_status, tr.payment_method,
@@ -6496,8 +6543,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if ((tripRow.trip_type === 'parcel' || tripRow.trip_type === 'delivery') && tripRow.delivery_otp) {
         return res.status(400).json({ message: "Verify delivery OTP before completing this parcel trip." });
       }
-      const fare = parseFloat(actualFare) || parseFloat(tripRow.estimated_fare) || 0;
+      const estimatedFareVal = parseFloat(tripRow.estimated_fare) || 0;
+      let fare = parseFloat(actualFare) || estimatedFareVal;
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
+      // Cap actual fare to 3x estimated fare to prevent fare manipulation
+      if (estimatedFareVal > 0 && fare > estimatedFareVal * 3) {
+        fare = estimatedFareVal * 3;
+      }
+      // Absolute cap at ₹10,000 per ride
+      if (fare > 10000) fare = 10000;
 
       // ── Pricing: user discount (first 2 rides = 50% off) ─────────────────
       const customerRow = tripRow.customer_id
@@ -6524,7 +6578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE trip_requests
         SET current_status='completed', ride_ended_at=NOW(),
             actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
-            tips=${parseFloat(tips) || 0}, payment_status='paid',
+            tips=${tipsVal}, payment_status='paid',
             ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
             user_payable=${userPayable}, gst_amount=${gstAmount},
             vehicle_type_name=${vehicleTypeName},
@@ -6867,7 +6921,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           breakdown,
         },
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Cancel trip ───────────────────────────────────────────────────
@@ -6930,7 +6984,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
       }
       res.json({ success: true, reassigned: cancelNextBest.length > 0 });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Trip history ──────────────────────────────────────────────────
@@ -6949,7 +7003,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE driver_id=${driver.id}::uuid ${status ? rawSql`AND current_status=${status as string}` : rawSql``}`);
       const trips = camelize(r.rows);
       res.json({ trips, total: Number((cnt.rows[0] as any).total) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Rate customer ─────────────────────────────────────────────────
@@ -6976,7 +7030,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${customerId}::uuid
       `);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get wallet summary ─────────────────────────────────────────────
@@ -7038,7 +7092,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         subscriptionRequired: true,
         canAcceptRides: !!hasActiveSub && !(d?.is_locked),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Commission settlement status (detailed breakdown) ────────────────
@@ -7076,7 +7130,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         recentSettlements: camelize(recent.rows),
         progressPercent: lockThreshold > 0 ? Math.min(100, Math.round((totalPending / lockThreshold) * 100)) : 0,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Initiate Razorpay payment to settle pending commission ───────────
@@ -7182,7 +7236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         autoUnlocked: newTotal < lockThreshold && wasLocked,
         message: newTotal <= 0 ? 'All dues cleared! Account unlocked.' : `₹${newTotal.toFixed(2)} pending. Pay remaining to unlock.`,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Submit withdrawal request ────────────────────────────────────────
@@ -7212,7 +7266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json({ success: true, message: `Withdrawal request of ₹${amt} submitted. Will be processed in 2-3 business days.`, request: camelize(wr.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Subscription status & purchase ───────────────────────────────
@@ -7253,7 +7307,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
         commissionRate: parseFloat(s.commission_pct || "15"),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/driver/subscription/create-order", authApp, async (req, res) => {
@@ -7279,7 +7333,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notes: { driver_id: driver.id, plan_id: planId, plan_name: plan.name }
       });
       res.json({ order, keyId, amount: total, planFee: parseFloat(plan.price), gst, plan });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/driver/subscription/verify-payment", authApp, async (req, res) => {
@@ -7312,7 +7366,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${driver.id}::uuid, ${plan.price}, 'subscription_purchase', ${JSON.stringify({ planName: plan.name, durationDays: plan.durationDays, paymentId: razorpayPaymentId })}::jsonb)
       `).catch(() => {});
       res.json({ success: true, subscription: camelize(sub.rows[0]), plan, validUntil: endDate, message: `Subscription activated until ${endDate}` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/driver/wallet/create-order", authApp, async (req, res) => {
@@ -7332,7 +7386,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notes: { driver_id: driver.id, purpose: "wallet_recharge" }
       });
       res.json({ order, keyId, amount: amt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/driver/wallet/verify-payment", authApp, async (req, res) => {
@@ -7370,7 +7424,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${driver.id}::uuid, ${amt}, 'wallet_topup', ${razorpayOrderId}, ${razorpayPaymentId}, 'completed', ${`Wallet recharge via Razorpay`})
       `).catch(() => {});
       res.json({ success: true, newBalance, autoUnlocked, message: `₹${amt.toFixed(0)} added to wallet` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Get profile ─────────────────────────────────────────────────
@@ -7399,7 +7453,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       };
       res.json({ user: custObj, ...custObj });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Book a ride ─────────────────────────────────────────────────
@@ -7735,7 +7789,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status: "searching",
         uiState: toUiTripState({ current_status: 'searching' }),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Track current trip ──────────────────────────────────────────
@@ -7776,7 +7830,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         delete trip.pickupOtp;
       }
       res.json({ trip });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Get active trip ─────────────────────────────────────────────
@@ -7823,7 +7877,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         delete trip.deliveryOtp;
       }
       res.json({ trip });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── TRIP: Get chat message history ───────────────────────────────────────
@@ -7857,7 +7911,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           timestamp: r.created_at,
         })),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Cancel trip ─────────────────────────────────────────────────
@@ -7893,7 +7947,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
       }
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Rate driver ─────────────────────────────────────────────────
@@ -7929,7 +7983,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Free driver from current trip
       if (driverId) await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driverId}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Trip history ─────────────────────────────────────────────────
@@ -7949,7 +8003,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cnt = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM trip_requests WHERE customer_id=${customer.id}::uuid`);
       const cTrips = camelize(r.rows);
       res.json({ trips: cTrips, total: Number((cnt.rows[0] as any).total) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Trip receipt ─────────────────────────────────────────────────
@@ -8028,7 +8082,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         cancelReason: t.cancelReason,
       };
       res.json({ receipt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Trip receipt ────────────────────────────────────────────────────
@@ -8083,7 +8137,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripType: t.tripType,
       };
       res.json({ receipt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Fare estimate ────────────────────────────────────────────────
@@ -8258,7 +8312,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PARCEL FARE ESTIMATE (weight + distance based) ────────────────────────
@@ -8343,7 +8397,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       res.json({ fares, distanceKm: Math.round(distKm * 10) / 10, weightKg: wt });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── VOICE BOOKING: AI-Enhanced NLP Intent Parser ──────────────────────────
@@ -8408,7 +8462,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         originalText: text,
       });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -8438,7 +8492,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT 20
       `);
       res.json({ drivers: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── SHARED: Update FCM token ──────────────────────────────────────────────
@@ -8452,7 +8506,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ON CONFLICT (user_id) DO UPDATE SET fcm_token=${fcmToken}, device_type=${deviceType}, app_version=${appVersion||''}, updated_at=NOW()
       `);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── SHARED: App configs (vehicle categories, cancellation reasons etc) ────
@@ -8476,7 +8530,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         parcelWeights: camelize(parcelWeights.rows),
         configs,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: SOS alert ─────────────────────────────────────────────────────
@@ -8490,7 +8544,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => {}); // if sos_alerts table doesn't exist, ignore
       console.log(`[SOS] ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng}`);
       res.json({ success: true, message: "SOS alert sent. Help is on the way." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Wallet balance + transactions ───────────────────────────────
@@ -8514,7 +8568,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         date: r.created_at,
       }));
       res.json({ balance, transactions });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Wallet recharge (manual / legacy) ───────────────────────────
@@ -8535,7 +8589,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${customer.id}::uuid, ${`Wallet recharge via ${paymentMethod}`}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${paymentRef||null})
       `).catch(() => {});
       res.json({ success: true, balance: newBal, message: `₹${amt} added to wallet` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
@@ -8558,8 +8612,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
-      const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
-      res.status(500).json({ message: msg });
+      console.error("[wallet-order]", e.message || e);
+      res.status(500).json({ message: "Failed to create payment order. Please try again." });
     }
   });
 
@@ -8589,7 +8643,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
       `).catch(() => {});
       res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Razorpay – Create order for ride payment ────────────────────
@@ -8628,14 +8682,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
       if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
       res.json({ success: true, paymentId: razorpayPaymentId, amount: parseFloat(amount) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── RAZORPAY WEBHOOK (server-side async payment confirmation) ─────────────
   app.post("/api/webhooks/razorpay", async (req, res) => {
     try {
-      const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
-      if (!webhookSecret) return res.status(503).json({ message: "Webhook secret not configured" });
+      const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.error("[webhook] RAZORPAY_WEBHOOK_SECRET not configured — rejecting webhook");
+        return res.status(503).json({ message: "Webhook not configured" });
+      }
       const signature = req.headers['x-razorpay-signature'] as string;
       if (!signature) return res.status(400).json({ message: "Missing webhook signature header" });
       const rawBody = (req as any).rawBody;
@@ -8695,7 +8752,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ success: true });
     } catch (e: any) {
       console.error("[WEBHOOK] Razorpay webhook error:", e.message);
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -8710,7 +8767,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${customer.id}::uuid`);
       if (gender) await rawDb.execute(rawSql`UPDATE users SET gender=${gender}, updated_at=now() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Profile updated" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Update profile ────────────────────────────────────────────────
@@ -8738,7 +8795,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
       res.json({ success: true, message: "Profile updated" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Upload KYC document ───────────────────────────────────────────
@@ -8793,7 +8850,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ success: true, message: "Document uploaded. Under admin review.", allRequiredUploaded: allUploaded });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get KYC status ────────────────────────────────────────────────
@@ -8815,7 +8872,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         requiredDocs: ['aadhar', 'license', 'rc'],
         optionalDocs: ['insurance', 'photo', 'bank'],
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: List pending KYC reviews ──────────────────────────────────────
@@ -8840,7 +8897,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT 50
       `);
       res.json({ drivers: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Approve/Reject KYC ─────────────────────────────────────────────
@@ -8905,7 +8962,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ success: true, action, driverId });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Earnings summary ──────────────────────────────────────────────
@@ -8960,7 +9017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         commission: parseFloat(d.commission || "0"),
         netEarnings: parseFloat(d.netEarnings || "0"),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Saved places ────────────────────────────────────────────────
@@ -8971,7 +9028,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT * FROM saved_places WHERE user_id=${customer.id}::uuid ORDER BY created_at DESC
       `);
       res.json({ data: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/customer/saved-places", authApp, async (req, res) => {
@@ -8985,7 +9042,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       res.json({ success: true, data: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/app/customer/saved-places/:id", authApp, async (req, res) => {
@@ -8996,7 +9053,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         DELETE FROM saved_places WHERE id=${id}::uuid AND user_id=${customer.id}::uuid
       `);
       res.json({ success: true, message: "Place removed" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Browse available offers/coupons ────────────────────────────
@@ -9011,7 +9068,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT 20
       `);
       res.json(r.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Apply coupon code ───────────────────────────────────────────
@@ -9065,7 +9122,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         finalFare: parseFloat((fareAmount - discount).toFixed(2)),
         message: `Coupon applied! You save ₹${discount.toFixed(2)}`,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── LOGOUT: Invalidate auth token ────────────────────────────────────────
@@ -9074,7 +9131,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       await rawDb.execute(rawSql`UPDATE users SET auth_token=NULL WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: "Logged out successfully" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Change password ───────────────────────────────────────────────
@@ -9096,7 +9153,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hashed = await bcrypt.hash(String(newPass), 10);
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${hashed}, updated_at=now() WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: "Password updated successfully" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Delete account ──────────────────────────────────────────────
@@ -9121,7 +9178,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Soft delete — just deactivate
       await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Delete account ────────────────────────────────────────────────
@@ -9145,7 +9202,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${driver.id}::uuid AND user_type='driver'`);
       res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Referral info ─────────────────────────────────────────────────
@@ -9165,7 +9222,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         totalEarned: parseFloat(summary.totalEarned || "0"),
         referrals: r.rows.map(camelize),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ========== ADVANCED FEATURES ==========
@@ -9187,7 +9244,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const needsVerification = !lastVerified || hoursSinceVerify >= 24 || tripsSince >= 10;
       const reason = !lastVerified ? 'first_time' : hoursSinceVerify >= 24 ? 'daily_check' : tripsSince >= 10 ? 'after_10_trips' : null;
       res.json({ needsVerification, reason, tripsSince, lastVerified });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Submit face verification selfie ───────────────────────────────
@@ -9209,7 +9266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
       });
       res.json({ success: true, verified: true, selfieUrl, message: "Face verified successfully!" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Upload pickup location photo (ride security) ─────────────────
@@ -9226,7 +9283,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid AND driver_id=${user.id}::uuid
       `);
       res.json({ success: true, photoUrl });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Upload documents (DL, RC, Aadhar) ────────────────────────────
@@ -9255,7 +9312,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       });
       res.json({ success: true, docType, fileUrl, status: 'pending', message: "Document uploaded. Under review." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get documents status ──────────────────────────────────────────
@@ -9264,7 +9321,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`SELECT * FROM driver_documents WHERE driver_id=${user.id}::uuid`).catch(() => ({ rows: [] }));
       res.json({ success: true, documents: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Upload document as base64 (for Flutter) ───────────────────────
@@ -9281,7 +9338,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${imageData}, status='pending', expiry_date=${expiryDate || null}, updated_at=now()
       `);
       res.json({ success: true, docType, status: 'pending', message: "Document uploaded. Under review." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Update registration profile fields ─────────────────────────────
@@ -9322,7 +9379,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(() => {});
       }
       res.json({ success: true, message: "Profile updated" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get verification status (full detail) ──────────────────────────
@@ -9348,7 +9405,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const profile = camelize(profileR.rows[0] || {});
       const documents = docsR.rows.map(camelize);
       res.json({ success: true, ...profile, documents });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get subscription plans ────────────────────────────────────────
@@ -9365,7 +9422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         savings: p.duration_days === 30 ? 'Best Value' : p.duration_days === 15 ? 'Popular' : p.duration_days === 7 ? 'Starter' : null,
       }));
       res.json({ success: true, plans });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Choose revenue model (commission, subscription, or hybrid) ─────
@@ -9378,7 +9435,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE users SET revenue_model=${model}, model_selected_at=NOW() WHERE id=${driver.id}::uuid
       `);
       res.json({ success: true, model });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Create Razorpay order for subscription plan ────────────────────
@@ -9395,7 +9452,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const amountPaise = Math.round(parseFloat(plan.price) * 100);
       const order = await razorpay.orders.create({ amount: amountPaise, currency: 'INR', receipt: `sub_${driver.id}_${planId}` });
       res.json({ success: true, orderId: order.id, amount: amountPaise, currency: 'INR', plan, keyId: process.env.RAZORPAY_KEY_ID });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Activate subscription after payment ────────────────────────────
@@ -9435,7 +9492,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${driver.id}::uuid
       `);
       res.json({ success: true, message: `Subscription active until ${endDate.toDateString()}`, endDate });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Update theme preference ────────────────────────────────────────
@@ -9446,7 +9503,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!['dark', 'light'].includes(theme)) return res.status(400).json({ message: "Invalid theme" });
       await rawDb.execute(rawSql`UPDATE users SET theme_preference=${theme} WHERE id=${driver.id}::uuid`);
       res.json({ success: true, theme });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: GST Wallet ────────────────────────────────────────────────────
@@ -9464,7 +9521,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LIMIT 50
       `);
       res.json({ wallet: camelize(walletR.rows[0] ?? {}), recentCollections: camelize(recentR.rows) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: List drivers by verification status ─────────────────────────────
@@ -9495,7 +9552,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         cancelledTripIds: staleTripRes.rows.map((r: any) => r.ref_id),
         freedDriverNames: freedRes.rows.map((r: any) => r.full_name),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/admin/drivers/pending-verification", async (req, res) => {
@@ -9522,7 +9579,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return { ...camelize(d), documents: docsR.rows.map(camelize) };
       }));
       res.json({ success: true, drivers, count: drivers.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Review a single document (approve/reject) ──────────────────────
@@ -9538,7 +9595,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE driver_id=${id}::uuid AND doc_type=${docType}
       `);
       res.json({ success: true, docType, status });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Approve/Reject entire driver verification ──────────────────────
@@ -9582,7 +9639,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (_) {}
       }
       res.json({ success: true, status });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Driver: Launch Benefit status endpoint ──────────────────────────────
@@ -9619,7 +9676,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ? `🎉 Launch Offer Active! No commission and no platform fee for your first 30 days. ${freeDaysRemaining} day(s) remaining.`
           : null,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Advanced dashboard stats ─────────────────────────────────────
@@ -9721,7 +9778,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           onboardDate: launchRow?.onboard_date ? new Date(launchRow.onboard_date).toISOString() : null,
         },
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Home data (recent + nearby drivers count) ───────────────────
@@ -9759,7 +9816,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         vehicleCategories: vehicleCats.rows.map(camelize),
         banners: banners.rows.map(camelize),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Schedule a ride ─────────────────────────────────────────────
@@ -9786,7 +9843,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) RETURNING *
       `);
       res.json({ success: true, trip: camelize(r.rows[0]), message: `Ride scheduled for ${scheduledTime.toLocaleString('en-IN')}` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER: Get scheduled rides ────────────────────────────────────────
@@ -9801,7 +9858,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.scheduled_at ASC
       `);
       res.json({ success: true, scheduledRides: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── INTERCITY BOOKING ────────────────────────────────────────────────────
@@ -9844,7 +9901,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         passengers: pax,
         route: camelize(r),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── CUSTOMER SUPPORT CHAT ─────────────────────────────────────────────────
@@ -9856,7 +9913,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${user.id}::uuid AND sender='admin'`);
       res.json({ messages: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post('/api/app/customer/support-chat/send', authApp, async (req, res) => {
@@ -9868,7 +9925,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO support_messages (user_id, sender, message) VALUES (${user.id}::uuid, 'user', ${message}) RETURNING *
       `);
       res.json({ success: true, data: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Driver support chat (aliases customer endpoints — same user table) ───
@@ -9880,7 +9937,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await rawDb.execute(rawSql`UPDATE support_messages SET is_read=true WHERE user_id=${user.id}::uuid AND sender='admin'`);
       res.json({ messages: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post('/api/app/driver/support-chat/send', authApp, async (req, res) => {
@@ -9892,7 +9949,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO support_messages (user_id, sender, message) VALUES (${user.id}::uuid, 'user', ${message}) RETURNING *
       `);
       res.json({ success: true, data: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── TRIP SHARING: Generate share link ────────────────────────────────────
@@ -9909,7 +9966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const shareLink = `${process.env.APP_BASE_URL || 'https://oyster-app-9e9cd.ondigitalocean.app'}/track/${shareToken}`;
       res.json({ success: true, shareLink, shareToken });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── TRIP SHARING: Get trip by share token (public) ────────────────────────
@@ -9929,7 +9986,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => ({ rows: [] }));
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
       res.json({ success: true, trip: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── EMERGENCY CONTACTS (CRUD) ─────────────────────────────────────────────
@@ -9948,7 +10005,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return { rows: [] };
       });
       res.json({ success: true, contacts: r.rows.map(camelize) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/emergency-contacts", authApp, async (req, res) => {
@@ -9968,7 +10025,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO emergency_contacts (user_id, name, phone, relation) VALUES (${user.id}::uuid, ${name}, ${phone}, ${relation || 'Friend'}) RETURNING *
       `);
       res.json({ success: true, contact: camelize(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/app/emergency-contacts/:id", authApp, async (req, res) => {
@@ -9976,7 +10033,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       await rawDb.execute(rawSql`DELETE FROM emergency_contacts WHERE id=${parseInt(req.params.id as string)} AND user_id=${user.id}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────
@@ -9990,7 +10047,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT COUNT(*) as c FROM notification_log WHERE user_id=${user.id}::uuid AND is_read=false
       `).catch(() => ({ rows: [{ c: '0' }] }));
       res.json({ success: true, notifications: r.rows.map(camelize), unreadCount: parseInt((unread.rows[0] as any)?.c || '0') });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   const _markNotificationsRead = async (req: any, res: any) => {
@@ -9998,7 +10055,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       await rawDb.execute(rawSql`UPDATE notification_log SET is_read=true WHERE user_id=${user.id}::uuid`).catch(() => {});
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   };
   app.patch("/api/app/notifications/read-all", authApp, _markNotificationsRead);
   app.post("/api/app/notifications/read-all", authApp, _markNotificationsRead);
@@ -10036,7 +10093,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         };
       });
       res.json({ days: result, total: result.reduce((s, d) => s + d.gross, 0) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/app/driver/performance", authApp, async (req, res) => {
@@ -10071,7 +10128,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         level: performanceScore >= 90 ? 'Gold' : performanceScore >= 70 ? 'Silver' : 'Bronze',
         overallRating: parseFloat((rating.rows[0] as any)?.rating || 5),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ========== FLUTTER SDK FILES DOWNLOAD ==========
@@ -10126,7 +10183,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       const countRes = await rawDb.execute(rawSql`SELECT COUNT(*) as total FROM notification_logs`);
       res.json({ data: rows.rows.map(camelize), total: Number((countRes.rows[0] as any).total) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -10234,7 +10291,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           "Bonus coins on referrals & first rides",
         ],
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/customer/redeem-coins", async (req, res) => {
@@ -10252,7 +10309,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         VALUES (${user.id}::uuid, ${-coins}, 'redeem', 'Redeemed ${coins} coins for ₹${discount} discount')
       `);
       res.json({ success: true, coinsUsed: coins, discountAmount: discount, message: `₹${discount} discount applied to next ride!` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Daily Spin Wheel (customer-facing) ───────────────────────────────────
@@ -10269,7 +10326,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       ]);
       const canSpin = playedR.rows.length === 0;
       res.json({ items: itemsR.rows.map(camelize), canSpin });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/customer/spin-wheel/play", authApp, async (req, res) => {
@@ -10313,7 +10370,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       res.json({ success: true, item: camelize(chosen), canSpin: false });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10328,7 +10385,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       } else {
         res.json(camelize(rows.rows[0]));
       }
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/customer/preferences", async (req, res) => {
@@ -10344,7 +10401,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           preferred_gender=${preferredGender || 'any'}, updated_at=NOW()
       `);
       res.json({ success: true, message: "Preferences saved! Applied to your next ride." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10368,7 +10425,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         VALUES (${trip.driver_id}::uuid, ${amount * 10}, 'tip_bonus', 'Tip received for ride — bonus coins', ${tripId}::uuid)
       `);
       res.json({ success: true, message: `₹${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Coins 🎉` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10390,7 +10447,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING id
       `);
       res.json({ success: true, reportId: (result.rows[0] as any).id, message: "Report submitted! We will contact the driver and update you within 2 hours." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/app/customer/lost-found", async (req, res) => {
@@ -10406,7 +10463,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ORDER BY l.created_at DESC
       `);
       res.json(rows.rows.map(camelize));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10430,7 +10487,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         activePlan: active.rows.length ? camelize(active.rows[0]) : null,
         availablePlans: MONTHLY_PLANS,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/customer/monthly-pass/buy", async (req, res) => {
@@ -10458,7 +10515,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         VALUES (${user.id}::uuid, ${bonusCoins}, 'pass_bonus', 'Welcome bonus for ${plan.name} purchase')
       `);
       res.json({ success: true, message: `${plan.name} activated! ${plan.rides} rides for 30 days. Bonus: ${bonusCoins} JAGO Coins credited!` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10479,7 +10536,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ORDER BY cs.departure_time ASC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post('/api/app/customer/car-sharing/book', authApp, async (req, res) => {
@@ -10507,7 +10564,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       await rawDb.execute(rawSql`INSERT INTO car_sharing_bookings (ride_id, customer_id, seats_booked, total_fare, status) VALUES (${rideId}::uuid, ${user.id}::uuid, ${seats}, ${totalFare}, 'confirmed')`);
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${totalFare} WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: seats + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get('/api/app/customer/car-sharing/my-bookings', authApp, async (req, res) => {
@@ -10524,7 +10581,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ORDER BY b.created_at DESC
       `);
       res.json({ data: camelize(r.rows), total: r.rows.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // 6. SURGE ALERT — "Notify me when surge drops"
@@ -10538,7 +10595,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         VALUES (${user.id}::uuid, ${lat || 0}, ${lng || 0}, ${address || ''})
       `);
       res.json({ success: true, message: "We'll notify you when surge pricing drops for this area!" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10552,7 +10609,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const breakUntil = new Date(Date.now() + minutes * 60 * 1000);
       await rawDb.execute(rawSql`UPDATE users SET break_until=${breakUntil.toISOString()}, is_online=false WHERE id=${user.id}::uuid`);
       res.json({ success: true, breakUntil: breakUntil.toISOString(), message: `Break set for ${minutes} minutes. You'll auto go-online after break.` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/app/driver/break", async (req, res) => {
@@ -10560,7 +10617,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const user = await requireAppAuth(req, res); if (!user) return;
       await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=true WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: "Break ended! You are now online." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.get("/api/app/driver/break", async (req, res) => {
@@ -10575,7 +10632,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
       const minsLeft = Math.ceil((new Date(breakUntil).getTime() - Date.now()) / 60000);
       res.json({ onBreak: true, breakUntil, minutesLeft: minsLeft });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -10604,7 +10661,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           : "You're doing great! Keep safe.",
         suggestBreak: fatigueLevel !== 'low',
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ─── LANGUAGE MANAGEMENT ────────────────────────────────────────────────────
@@ -10617,7 +10674,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         FROM app_languages ORDER BY sort_order ASC
       `);
       res.json(rows.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: list all languages
@@ -10628,7 +10685,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         FROM app_languages ORDER BY sort_order ASC
       `);
       res.json(rows.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: add language
@@ -10648,7 +10705,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (e.message.includes('unique')) {
         res.status(400).json({ message: "Language code already exists" });
       } else {
-        res.status(500).json({ message: e.message });
+        res.status(500).json({ message: safeErrMsg(e) });
       }
     }
   });
@@ -10668,7 +10725,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         WHERE id = ${id}::uuid
       `);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: delete language
@@ -10677,7 +10734,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const { id } = req.params;
       await rawDb.execute(rawSql`DELETE FROM app_languages WHERE id = ${id}::uuid`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PLATFORM SERVICES — per-service activation + revenue model control ──────
@@ -10686,7 +10743,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM platform_services ORDER BY sort_order ASC`);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: toggle status / update revenue model + commission rate
@@ -10711,7 +10768,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!(r.rows as any[]).length) return res.status(404).json({ message: 'Service not found' });
       res.json((r.rows as any[])[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // App: get only active services (for customer app home screen)
@@ -10724,7 +10781,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ORDER BY sort_order ASC
       `);
       res.json({ services: r.rows });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
@@ -10762,7 +10819,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         driverEarnings: totalFare - commAmt,
         dropCount: (dropLocations as any[]).length,
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer: book a multi-drop parcel order
@@ -10865,7 +10922,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       res.json({ success: true, orderId: order.id, pickupOtp, totalFare, drops: dropsWithOtp.length });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer: get active/recent parcel orders
@@ -10881,7 +10938,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         LIMIT 20
       `);
       res.json({ orders: r.rows });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Customer: cancel parcel order
@@ -10898,7 +10955,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!(r.rows as any[]).length) return res.status(400).json({ message: 'Cannot cancel this order' });
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Driver: get pending parcel requests nearby
@@ -10911,7 +10968,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         LIMIT 20
       `);
       res.json({ orders: r.rows });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Driver: accept a parcel order
@@ -10929,7 +10986,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const order = (r.rows as any[])[0];
       if (io) io.to(`user:${order.customer_id}`).emit('parcel:driver_assigned', { orderId: order.id, driverId });
       res.json({ success: true, order });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Driver: verify pickup OTP → start delivery
@@ -10948,7 +11005,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (io) io.to(`user:${order.customer_id}`).emit('parcel:in_transit', { orderId: order.id });
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Driver: verify delivery OTP for a specific drop stop
@@ -10991,7 +11048,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
       }
       res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx] });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PARCEL: Multi-stop route optimization (nearest-neighbor) ─────────────
@@ -11033,7 +11090,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       res.json({ stops: ordered, totalDistKm: parseFloat(totalDistKm.toFixed(2)), optimized: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PARCEL: Track order with all stop details ─────────────────────────────
@@ -11072,7 +11129,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           driverPhone: order.driverPhone ? order.driverPhone.replace(/(\d{2})\d{6}(\d{2})/, '$1XXXXXX$2') : null,
         }
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── PARCEL: Receipt after delivery ────────────────────────────────────────
@@ -11126,7 +11183,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           vehicleCategory: o.vehicleCategory,
         }
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── B2B: Company registration ─────────────────────────────────────────────
@@ -11173,7 +11230,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING id
       `);
       res.json({ success: true, message: "B2B company registered", companyId: (ins.rows[0] as any).id });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── B2B: Get delivery stats + order history ───────────────────────────────
@@ -11217,7 +11274,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         },
         recentOrders: camelize(recentR.rows),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: list all parcel orders with filters
@@ -11237,7 +11294,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}
       `);
       res.json({ orders: rows.rows });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: get single parcel order detail
@@ -11253,7 +11310,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!(r.rows as any[]).length) return res.status(404).json({ message: 'Not found' });
       res.json((r.rows as any[])[0]);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // B2B: bulk delivery — create multiple parcel orders for a business
@@ -11305,7 +11362,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         results.push((r.rows as any[])[0]);
       }
       res.json({ success: true, ordersCreated: results.length, orders: results });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── SERVICES MANAGEMENT ───────────────────────────────────────────────────
@@ -11329,7 +11386,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         isActive: map[`service_${s.key}_enabled`] !== '0',
       }));
       res.json(services);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Admin: Toggle service on/off
@@ -11344,7 +11401,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
       `);
       res.json({ success: true, key, isActive });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // App: Get active services for customer app
@@ -11363,7 +11420,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         isActive: map[`service_${s.key}_enabled`] !== '0',
       }));
       res.json({ services });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // App: Get only ACTIVE services from platform_services (Phase-based rollout)
@@ -11383,7 +11440,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         description: row.description || '',
       }));
       res.json({ services });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Also seed default vehicle_category is_active based on service toggle
@@ -11393,7 +11450,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const { isActive } = req.body;
       await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type=${key}`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── Stale searching trip auto-cancel: expire after 12 minutes ───────────
@@ -11495,7 +11552,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const suggestions = await getSmartSuggestions(user.id, hour);
       res.json({ suggestions });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11519,7 +11576,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       );
       res.json({ drivers, count: drivers.length });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11529,7 +11586,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const zones = await getDemandHeatmap();
       res.json({ zones, generatedAt: new Date().toISOString() });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11554,7 +11611,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
       res.json({ alerts: alerts.rows.map(camelize) });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11574,7 +11631,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11611,7 +11668,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
       res.json({ success: true, message: "SOS alert recorded and notifications sent" });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11627,7 +11684,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!stats.rows.length) return res.json({ stats: null });
       res.json({ stats: camelize(stats.rows[0]) });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
@@ -11748,7 +11805,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         },
         status: 'ok',
       });
-    } catch (e: any) { res.status(500).json({ message: e.message, status: 'error' }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -12019,7 +12076,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           updatedAt: z.updated_at,
         })),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Get best zone suggestion for idle driver ─────────────────────
@@ -12077,7 +12134,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           detail: `${svcLabel} detected. Estimated ₹${z.estimated_earning_min}–₹${z.estimated_earning_max} in next 30 min`,
         },
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── INTERNAL: Log heatmap event (called from booking flows) ──────────────
@@ -12087,7 +12144,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!lat || !lng) return res.json({ ok: true });
       logHeatmapEvent(eventType || 'search', parseFloat(lat), parseFloat(lng), serviceType);
       res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Get heatmap config ─────────────────────────────────────────────
@@ -12095,7 +12152,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
       res.json(camelize(r.rows[0] || {}));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Update heatmap config ──────────────────────────────────────────
@@ -12128,7 +12185,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       const r = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── ADMIN: Get grid stats summary ─────────────────────────────────────────
@@ -12159,7 +12216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         eventCounts: totalEvents.rows.map(camelize),
         topZones: topZones.rows.map(camelize),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── HOOK: Log booking events automatically ────────────────────────────────

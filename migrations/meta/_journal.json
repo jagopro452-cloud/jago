@@ -15,6 +15,13 @@
       "when": 1772863800000,
       "tag": "0001_operational_schema_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1741910400000,
+      "tag": "0002_performance_indexes",
+      "breakpoints": true
     }
   ]
 }
