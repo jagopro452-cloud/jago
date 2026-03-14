@@ -60,6 +60,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
   int _navIndex = 0;
+  bool _inFreePeriod = false;
+  int _freeDaysRemaining = 0;
 
   static const Color _primary = Color(0xFF2F80ED);
   static const Color _bg = Color(0xFF0F172A);
@@ -93,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadUser();
     _getLocation();
     _fetchDashboard();
+    _fetchLaunchBenefit();
     _connectSocket();
     // Check for pending FCM trip (app opened from notification while terminated)
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmTrip());
@@ -114,11 +117,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             MaterialPageRoute(builder: (_) => const PendingVerificationScreen()),
           );
         } else if (data['modelSelectedAt'] == null) {
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ModelSelectionScreen()),
-          );
+          // Check if driver is in 30-day free period — skip model selection if so
+          final inFreePeriod = data['launchFreeActive'] == true &&
+              data['freePeriodEnd'] != null &&
+              DateTime.tryParse(data['freePeriodEnd'].toString())?.isAfter(DateTime.now()) == true;
+          if (!inFreePeriod) {
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const ModelSelectionScreen()),
+            );
+          }
         }
       }
     } catch (_) {}
@@ -279,6 +288,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       } else if (res.statusCode == 401) {
         _handleSessionExpired();
         return;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchLaunchBenefit() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.launchBenefit), headers: headers);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (mounted) {
+          setState(() {
+            _inFreePeriod = data['active'] == true;
+            _freeDaysRemaining = data['freeDaysRemaining'] ?? 0;
+          });
+        }
       }
     } catch (_) {}
   }
@@ -1270,6 +1295,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ],
             const SizedBox(height: 14),
+            if (_inFreePeriod) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF065F46), Color(0xFF047857)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.4)),
+                ),
+                child: Row(children: [
+                  const Text('🎉', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Free Period Active', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                      Text('No subscription & no commission for $_freeDaysRemaining more day${_freeDaysRemaining == 1 ? '' : 's'}',
+                        style: const TextStyle(color: Color(0xFF6EE7B7), fontSize: 11)),
+                    ],
+                  )),
+                ]),
+              ),
+            ],
             _buildStatsRow(),
             if (_vehicleCategory.isNotEmpty || _vehicleNumber.isNotEmpty) ...[
               const SizedBox(height: 10),

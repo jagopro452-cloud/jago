@@ -529,6 +529,15 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS onboard_date TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS free_period_end TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS launch_free_active BOOLEAN DEFAULT false;
+      -- Backfill: give existing approved drivers their 30-day free period from created_at
+      UPDATE users SET
+        onboard_date = COALESCE(onboard_date, created_at),
+        free_period_end = COALESCE(free_period_end, created_at + INTERVAL '30 days'),
+        launch_free_active = CASE
+          WHEN (created_at + INTERVAL '30 days') >= NOW() THEN true
+          ELSE false
+        END
+      WHERE user_type = 'driver' AND verification_status = 'approved' AND onboard_date IS NULL;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS completed_rides_count INTEGER NOT NULL DEFAULT 0;
 
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS ride_full_fare NUMERIC(23,3) DEFAULT 0;
@@ -1519,14 +1528,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         parcels_model:               'commission',   // default: commission for parcel
         cargo_model:                 'commission',
         intercity_model:             'commission',
-        // Launch campaign
-        launch_campaign_enabled:     'false', // Turn off free rides
+        // Launch campaign — 30-day free period for every new driver
+        launch_campaign_enabled:     'true',
       };
       for (const [key, value] of Object.entries(revenueSettings)) {
         await rawDb.execute(rawSql`
           INSERT INTO revenue_model_settings (key_name, value)
           VALUES (${key}, ${value})
-          ON CONFLICT (key_name) DO UPDATE SET value=${value}
+          ON CONFLICT (key_name) DO NOTHING
         `).catch(() => {});
       }
 
@@ -9175,7 +9184,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                u.license_expiry, u.vehicle_number, u.vehicle_model, u.vehicle_brand,
                u.vehicle_color, u.vehicle_year, u.date_of_birth, u.city, u.selfie_image,
                u.full_name, u.phone, u.profile_image, u.revenue_model, u.model_selected_at,
-               u.theme_preference,
+               u.theme_preference, u.launch_free_active, u.free_period_end, u.onboard_date,
                dd.vehicle_category_id, vc.name as vehicle_category_name
         FROM users u
         LEFT JOIN driver_details dd ON dd.user_id = u.id
@@ -9395,18 +9404,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (status === 'approved') {
         await rawDb.execute(rawSql`UPDATE users SET is_active=true WHERE id=${id}::uuid`);
-        // Check if the global launch campaign is enabled
-        const campaignR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='launch_campaign_enabled' LIMIT 1`).catch(() => ({ rows: [] }));
-        const campaignEnabled = (campaignR.rows[0] as any)?.value !== 'false';
-        if (campaignEnabled) {
-          await rawDb.execute(rawSql`
-            UPDATE users
-            SET onboard_date = NOW(),
-                free_period_end = NOW() + INTERVAL '30 days',
-                launch_free_active = true
-            WHERE id=${id}::uuid AND user_type='driver'
-          `);
-        }
+        // Always grant 30-day free period on approval (no subscription/commission for first month)
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET onboard_date = COALESCE(onboard_date, NOW()),
+              free_period_end = COALESCE(free_period_end, NOW() + INTERVAL '30 days'),
+              launch_free_active = true
+          WHERE id=${id}::uuid AND user_type='driver'
+        `).catch(() => {});
       }
       // Send FCM notification if token exists
       const tokenR = await rawDb.execute(rawSql`SELECT fcm_token, full_name FROM users WHERE id=${id}::uuid`).catch(() => ({ rows: [] }));

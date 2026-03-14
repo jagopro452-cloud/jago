@@ -89,6 +89,9 @@ class ApiConfig {
   // ── Trip Receipt ─────────────────────────────────────────────────────
   static String tripReceipt(String tripId) => '$baseUrl/api/app/driver/trip-receipt/$tripId';
 
+  // ── Free Period (30-day onboarding benefit) ──────────────────────────
+  static String get launchBenefit => '$baseUrl/api/app/driver/launch-benefit';
+
   // ── Subscription Plans ───────────────────────────────────────────────
   static String get subscriptionPlans => '$baseUrl/api/app/driver/subscription/plans';
   static String get subscriptionCreateOrder => '$baseUrl/api/app/driver/subscription/create-order';
