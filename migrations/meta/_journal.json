@@ -22,6 +22,13 @@
       "when": 1741910400000,
       "tag": "0002_performance_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1741996800000,
+      "tag": "0003_otp_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -3101,6 +3101,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── OTP Settings (Admin) ─────────────────────────────────────────────────
+  app.get("/api/otp-settings", requireAdminAuth, async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`);
+      if (!r.rows.length) {
+        return res.json({ primaryProvider: 'sms', smsEnabled: true, firebaseEnabled: true, fallbackEnabled: true, otpExpirySeconds: 120, maxAttempts: 3 });
+      }
+      const row = r.rows[0] as any;
+      res.json({
+        primaryProvider: row.primary_provider,
+        smsEnabled: row.sms_enabled,
+        firebaseEnabled: row.firebase_enabled,
+        fallbackEnabled: row.fallback_enabled,
+        otpExpirySeconds: row.otp_expiry_seconds,
+        maxAttempts: row.max_attempts,
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.put("/api/otp-settings", requireAdminAuth, async (req, res) => {
+    try {
+      const { primaryProvider, smsEnabled, firebaseEnabled, fallbackEnabled, otpExpirySeconds, maxAttempts } = req.body;
+      const provider = ['sms', 'firebase'].includes(primaryProvider) ? primaryProvider : 'sms';
+      const expiry = Math.min(Math.max(60, parseInt(otpExpirySeconds) || 120), 600);
+      const attempts = Math.min(Math.max(1, parseInt(maxAttempts) || 3), 10);
+      await rawDb.execute(rawSql`
+        INSERT INTO otp_settings (primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds, max_attempts, updated_at)
+        VALUES (${provider}, ${!!smsEnabled}, ${!!firebaseEnabled}, ${!!fallbackEnabled}, ${expiry}, ${attempts}, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          primary_provider = EXCLUDED.primary_provider,
+          sms_enabled = EXCLUDED.sms_enabled,
+          firebase_enabled = EXCLUDED.firebase_enabled,
+          fallback_enabled = EXCLUDED.fallback_enabled,
+          otp_expiry_seconds = EXCLUDED.otp_expiry_seconds,
+          max_attempts = EXCLUDED.max_attempts,
+          updated_at = NOW()
+      `);
+      res.json({ success: true, primaryProvider: provider, smsEnabled: !!smsEnabled, firebaseEnabled: !!firebaseEnabled, fallbackEnabled: !!fallbackEnabled, otpExpirySeconds: expiry, maxAttempts: attempts });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   // Blogs
   app.get("/api/blogs", async (req, res) => {
     try {
@@ -5562,13 +5603,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ██  MOBILE APP APIs — Driver App + Customer App                       ██
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ── OTP SEND (Twilio SMS gateway) ──────────────────────────────────────
+  // ── OTP SEND ─────────────────────────────────────────────────────────────
+  // Server controls which OTP provider to use based on otp_settings table.
+  // Response includes `provider` field: "sms" | "firebase"
+  //   "sms"      → OTP sent via SMS; app shows OTP input
+  //   "firebase" → App must trigger Firebase Phone Auth on-device
   app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+
+      // Load OTP settings from DB (with safe defaults)
+      const settingsRow = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`)
+        .catch(() => ({ rows: [] as any[] }));
+      const cfg = settingsRow.rows[0] as any || {};
+      const primaryProvider: string  = cfg.primary_provider   ?? 'sms';
+      const smsEnabled: boolean      = cfg.sms_enabled        ?? true;
+      const firebaseEnabled: boolean = cfg.firebase_enabled   ?? true;
+      const fallbackEnabled: boolean = cfg.fallback_enabled   ?? true;
+      const expirySeconds: number    = cfg.otp_expiry_seconds ?? 120;
 
       // Rate limiting: max 5 OTPs per phone per hour
       const recentCount = await rawDb.execute(rawSql`
@@ -5578,30 +5633,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // If primary provider is Firebase, skip SMS entirely
+      if (primaryProvider === 'firebase' && firebaseEnabled) {
+        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase (primary)`);
+        return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
+      }
 
-      // Invalidate old OTPs and store new one
+      // Generate OTP and store (expiry from settings)
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiryInterval = `${expirySeconds} seconds`;
       await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE phone=${phoneStr} AND is_used=false`);
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, expires_at)
-        VALUES (${phoneStr}, ${otp}, ${userType}, NOW() + INTERVAL '5 minutes')
+        VALUES (${phoneStr}, ${otp}, ${userType}, NOW() + ${expiryInterval}::INTERVAL)
       `);
 
-      // Send real SMS via Twilio
-      const smsResult = await sendOtpSms(phoneStr, otp);
-
-      if (smsResult.provider === "none" || !smsResult.success) {
-        // No SMS provider configured or SMS failed — return OTP in response if ENABLE_DEV_OTP_RESPONSES=true
-        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} SMS provider: ${smsResult.provider}, success: ${smsResult.success}`);
-        if (isDevOtpResponseEnabled) {
-          return res.json({ success: true, message: "OTP generated. Enter it to continue.", otp });
+      // Try SMS provider if enabled
+      if (smsEnabled) {
+        const smsResult = await sendOtpSms(phoneStr, otp);
+        if (smsResult.success) {
+          console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → SMS (${smsResult.provider})`);
+          const base: any = { success: true, provider: 'sms', message: 'OTP sent to your mobile number' };
+          if (isDevOtpResponseEnabled) base.otp = otp;
+          return res.json(base);
         }
-        // SMS provider not configured and dev mode not enabled
-        return res.status(503).json({ message: "SMS service not configured. Set FAST2SMS_API_KEY or ENABLE_DEV_OTP_RESPONSES=true." });
+        // SMS failed
+        console.warn(`[OTP] SMS failed for ${phoneStr.slice(-4).padStart(phoneStr.length, '*')}: ${smsResult.error}`);
+        if (fallbackEnabled && firebaseEnabled) {
+          console.log(`[OTP] Falling back to Firebase for ${phoneStr.slice(-4).padStart(phoneStr.length, '*')}`);
+          return res.json({ success: true, provider: 'firebase', message: 'SMS OTP failed. Switching to secure verification.' });
+        }
+        if (isDevOtpResponseEnabled) {
+          return res.json({ success: true, provider: 'sms', message: 'OTP generated (dev mode).', otp });
+        }
+        return res.status(503).json({ message: 'SMS service unavailable. Please try again.' });
       }
 
-      // SMS sent successfully
-      res.json({ success: true, message: "OTP sent to your mobile number" });
+      // SMS disabled by admin — use Firebase if available
+      if (firebaseEnabled) {
+        return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
+      }
+
+      return res.status(503).json({ message: 'No OTP provider enabled. Contact support.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -5613,11 +5686,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
-      // Per-phone OTP brute force protection: max 5 failed attempts per 15 min
+      // Per-phone OTP brute force protection (max_attempts from otp_settings, default 3)
+      const otpCfg = await rawDb.execute(rawSql`SELECT max_attempts FROM otp_settings LIMIT 1`)
+        .catch(() => ({ rows: [] as any[] }));
+      const maxAttempts = parseInt((otpCfg.rows[0] as any)?.max_attempts ?? '3', 10);
       const failedAttempts = await rawDb.execute(rawSql`
         SELECT COUNT(*) AS cnt FROM otp_logs
         WHERE phone=${phoneStr} AND is_used=false AND created_at > NOW() - INTERVAL '15 minutes'
-          AND attempt_count >= 3
+          AND attempt_count >= ${maxAttempts}
         LIMIT 1
       `).catch(() => ({ rows: [{ cnt: 0 }] as any[] }));
       const recentFails = parseInt((failedAttempts.rows[0] as any)?.cnt || '0', 10);
