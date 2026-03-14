@@ -12,6 +12,7 @@ async function sendViaFast2Sms(phone: string, otp: string): Promise<SmsResult> {
       method: "POST",
       headers: { authorization: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ route: "otp", variables_values: otp, flash: 0, numbers: tenDigit }),
+      signal: AbortSignal.timeout(10000),
     });
     const otpData = (await otpRes.json()) as any;
     if (otpData.return === true) { console.log(`[SMS-FAST2SMS-OTP] OTP sent to ${tenDigit}`); return { success: true, provider: "fast2sms" }; }
@@ -22,6 +23,7 @@ async function sendViaFast2Sms(phone: string, otp: string): Promise<SmsResult> {
       method: "POST",
       headers: { authorization: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ route: "q", message: `Your JAGO OTP is ${otp}. Valid for 5 minutes. Do not share. -JAGO`, flash: 0, numbers: tenDigit }),
+      signal: AbortSignal.timeout(10000),
     });
     const quickData = (await quickRes.json()) as any;
     if (quickData.return === true) { console.log(`[SMS-FAST2SMS-QUICK] OTP sent to ${tenDigit}`); return { success: true, provider: "fast2sms-quick" }; }
@@ -58,7 +60,7 @@ export async function sendCustomSms(phone: string, message: string): Promise<Sms
   const fast2smsKey = await getConf("FAST2SMS_API_KEY", "fast2sms_api_key");
   if (fast2smsKey) {
     try {
-      const res = await fetch("https://www.fast2sms.com/dev/bulkV2", { method: "POST", headers: { authorization: fast2smsKey, "Content-Type": "application/json" }, body: JSON.stringify({ route: "q", message, flash: 0, numbers: tenDigit }) });
+      const res = await fetch("https://www.fast2sms.com/dev/bulkV2", { method: "POST", headers: { authorization: fast2smsKey, "Content-Type": "application/json" }, body: JSON.stringify({ route: "q", message, flash: 0, numbers: tenDigit }), signal: AbortSignal.timeout(10000) });
       const data = (await res.json()) as any;
       if (data.return === true) return { success: true, provider: "fast2sms" };
     } catch (e: any) { console.warn("[SMS-CUSTOM] Fast2SMS error:", e.message); }
