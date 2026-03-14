@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
+import 'onboarding/driver_onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -52,6 +53,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
+    final onboardingSeen = prefs.getBool('driver_onboarding_seen') ?? false;
+    if (!onboardingSeen) {
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const DriverOnboardingScreen(),
+          transitionDuration: const Duration(milliseconds: 500),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        ),
+      );
+      return;
+    }
     final langSelected = prefs.getBool('language_selected') ?? false;
     if (!langSelected) {
       Navigator.pushReplacement(

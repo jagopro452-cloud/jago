@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
+import 'onboarding/onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -46,12 +47,24 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(milliseconds: 2800));
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
+    final onboardingSeen = prefs.getBool('onboarding_seen') ?? false;
     final token = prefs.getString('auth_token');
     if (!mounted) return;
+
+    Widget destination;
+    if (!onboardingSeen) {
+      // First-time user → show onboarding
+      destination = const OnboardingScreen();
+    } else if (token != null && token.isNotEmpty) {
+      destination = const HomeScreen();
+    } else {
+      destination = const LoginScreen();
+    }
+
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => token != null ? const HomeScreen() : const LoginScreen(),
+        pageBuilder: (_, __, ___) => destination,
         transitionDuration: const Duration(milliseconds: 500),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
       ),

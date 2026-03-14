@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _connectSocket();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
   }
 
   Future<void> _fetchUnreadCount() async {
@@ -166,6 +167,84 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     } catch (_) {}
+  }
+
+  Future<void> _maybeShowTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool('home_tutorial_seen') ?? false;
+    if (seen || !mounted) return;
+    await prefs.setBool('home_tutorial_seen', true);
+    // Small delay so the home screen finishes building first
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.75),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)]),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('👋', style: TextStyle(fontSize: 28)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Welcome to JAGO!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                        Text('Here\'s a quick guide to get you started', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _TutorialTip(icon: '🔍', title: 'Search Destination', desc: 'Tap "Where do you want to go?" to search for your destination and see instant fare estimates.'),
+                    const SizedBox(height: 14),
+                    _TutorialTip(icon: '🚗', title: 'Choose a Service', desc: 'Select from Auto, Bike, Car, Ride Pool, Parcel, and more based on your need.'),
+                    const SizedBox(height: 14),
+                    _TutorialTip(icon: '💳', title: 'Wallet & Payments', desc: 'Recharge your wallet for cashless rides. Tap the wallet icon in the top right.'),
+                    const SizedBox(height: 14),
+                    _TutorialTip(icon: '🔔', title: 'Stay Updated', desc: 'Enable notifications to get real-time alerts for your rides, offers, and more.'),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2F80ED),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                        child: Text('Got it, Let\'s Go! 🚀', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _connectSocket() {
@@ -2030,5 +2109,41 @@ class _AllServicesSheet extends StatelessWidget {
     if (lower.contains('intercity')) return '🛣️';
     if (lower.contains('shar')) return '🚘';
     return '🚖';
+  }
+}
+
+// Tutorial tip row widget used in the first-visit tutorial overlay
+class _TutorialTip extends StatelessWidget {
+  final String icon;
+  final String title;
+  final String desc;
+  const _TutorialTip({required this.icon, required this.title, required this.desc});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 42, height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(child: Text(icon, style: const TextStyle(fontSize: 20))),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0F172A))),
+              const SizedBox(height: 2),
+              Text(desc, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF64748B), height: 1.4)),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

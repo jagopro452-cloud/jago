@@ -302,11 +302,13 @@ export default function LandingPage() {
   const sRating = useCountUp(49, 1400);
 
   const secSvc    = useReveal();
+  const secHow    = useReveal();
   const secWhy    = useReveal();
   const secApps   = useReveal();
   const secStats  = useReveal();
   const secCities = useReveal();
   const secDl     = useReveal();
+  const secJoin   = useReveal();
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 24);
@@ -382,7 +384,7 @@ export default function LandingPage() {
           <div className="container" style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <a href="/"><img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain" }} /></a>
             <div className="hide-mobile" style={{ display: "flex", gap: 32, alignItems: "center" }}>
-              {[["#services","Services"],["#why","Why Jago"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
+              {[["#services","Services"],["#how","How It Works"],["#why","Why Jago"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
                 <a key={href} href={href} className="nav-link">{label}</a>
               ))}
             </div>
@@ -476,6 +478,50 @@ export default function LandingPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: N500, fontFamily: "Space Grotesk,sans-serif" }}>
                       Book now <ArrowR />
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section id="how" className="sec" style={{ background: N800 }}>
+          <div className="container">
+            <div ref={secHow.ref} className={`reveal${secHow.vis ? " vis" : ""}`}>
+              <div style={{ textAlign: "center", maxWidth: 560, margin: "0 auto 64px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>How It Works</div>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Ride in 3 simple steps.</h2>
+                <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From booking to destination — the whole experience is designed to be fast and effortless.</p>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 24 }} className="svc-grid">
+                {[
+                  {
+                    step: "01",
+                    icon: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+                    title: "Set your destination",
+                    desc: "Open the app and enter where you want to go. Jago instantly shows you available ride options and upfront fares — no surprises.",
+                  },
+                  {
+                    step: "02",
+                    icon: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></svg>,
+                    title: "Get matched instantly",
+                    desc: "A verified pilot near you accepts your trip in under 60 seconds. Track their live location as they head your way.",
+                  },
+                  {
+                    step: "03",
+                    icon: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+                    title: "Ride & pay seamlessly",
+                    desc: "Confirm OTP, hop in, and your route is navigated automatically. Pay with UPI, card, or Jago Wallet — earn coins with every trip.",
+                  },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: N700, borderRadius: 24, padding: "36px 28px", border: `1px solid ${BORDER}`, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 20, right: 22, fontSize: 56, fontWeight: 800, color: "rgba(21,88,196,0.08)", fontFamily: "Space Grotesk,sans-serif", lineHeight: 1, pointerEvents: "none" }}>{s.step}</div>
+                    <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 22, boxShadow: "0 8px 24px rgba(21,88,196,0.4)" }}>
+                      {s.icon}
+                    </div>
+                    <h3 style={{ fontSize: 17, fontWeight: 700, color: W, marginBottom: 12, fontFamily: "Space Grotesk,sans-serif" }}>{s.title}</h3>
+                    <p style={{ fontSize: 13.5, color: W40, lineHeight: 1.75 }}>{s.desc}</p>
                   </div>
                 ))}
               </div>
@@ -643,6 +689,59 @@ export default function LandingPage() {
                     <p style={{ fontSize: 11, fontWeight: 600, color: W70, margin: 0, fontFamily: "Space Grotesk,sans-serif" }}>{city}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* JOIN AS PILOT CTA */}
+        <section className="sec" style={{ background: N800, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(circle at 30% 50%, rgba(21,88,196,0.14) 0%, transparent 55%), radial-gradient(circle at 75% 20%, rgba(14,47,168,0.1) 0%, transparent 50%)`, pointerEvents: "none" }} />
+          <div className="container" style={{ position: "relative" }}>
+            <div ref={secJoin.ref} className={`reveal${secJoin.vis ? " vis" : ""}`}>
+              <div style={{ borderRadius: 28, background: `linear-gradient(135deg,#0D1340 0%,#111A52 60%,#0e2fa8 100%)`, padding: "64px 56px", border: `1px solid rgba(21,88,196,0.3)`, position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: -80, right: -80, width: 320, height: 320, borderRadius: "50%", background: "rgba(21,88,196,0.1)" }} />
+                <div style={{ position: "absolute", bottom: -60, left: "30%", width: 250, height: 250, borderRadius: "50%", background: "rgba(21,88,196,0.07)" }} />
+                <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 56, alignItems: "center" }} className="hero-grid">
+                  <div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(21,88,196,0.25)", border: "1px solid rgba(21,88,196,0.4)", borderRadius: 30, padding: "6px 14px", marginBottom: 22 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)", fontFamily: "Space Grotesk,sans-serif" }}>Now accepting pilots in 50+ cities</span>
+                    </div>
+                    <h2 style={{ fontSize: "clamp(28px,3.5vw,52px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.1, marginBottom: 18, color: W }}>
+                      Your vehicle.<br />Your schedule.<br /><span style={{ color: "#60a5fa" }}>Your income.</span>
+                    </h2>
+                    <p style={{ fontSize: 16, color: W70, lineHeight: 1.8, maxWidth: 440, marginBottom: 36 }}>
+                      Join thousands of pilots earning ₹2,500+ daily with Jago. Zero commission for 90 days, daily payouts, and full insurance on every trip.
+                    </p>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                      <a href="/auth" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, background: W, color: N800, textDecoration: "none", fontSize: 15, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}>
+                        Start Earning Today <ArrowR />
+                      </a>
+                      <a href="#download" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 24px", borderRadius: 14, border: `1px solid rgba(255,255,255,0.2)`, color: W70, textDecoration: "none", fontSize: 14, fontWeight: 600, fontFamily: "Space Grotesk,sans-serif" }}>
+                        Get Pilot App
+                      </a>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {[
+                      { icon: "₹", label: "₹2,500+", sub: "Average daily earnings" },
+                      { icon: "0", label: "0% commission", sub: "For your first 90 days" },
+                      { icon: "⚡", label: "Daily payouts", sub: "Withdraw anytime, same day" },
+                      { icon: "🛡️", label: "Full insurance", sub: "Covered on every single trip" },
+                    ].map((p, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, background: "rgba(255,255,255,0.05)", borderRadius: 14, padding: "16px 20px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ width: 42, height: 42, borderRadius: 12, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: i === 0 ? 18 : 20, fontWeight: i === 0 ? 800 : 400, color: W, fontFamily: "Space Grotesk,sans-serif" }}>{p.icon}</span>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 15, fontWeight: 700, color: W, margin: 0, fontFamily: "Space Grotesk,sans-serif" }}>{p.label}</p>
+                          <p style={{ fontSize: 12, color: W40, margin: 0, marginTop: 2 }}>{p.sub}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
