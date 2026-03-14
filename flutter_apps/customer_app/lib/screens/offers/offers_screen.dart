@@ -37,16 +37,18 @@ class _OffersScreenState extends State<OffersScreen> {
     } catch (_) { setState(() { _loading = false; }); }
   }
 
+  bool _isPercent(String? type) => type == 'percentage' || type == 'percent';
+
   Color _discountColor(String? type) =>
-      type == 'percentage' ? const Color(0xFF7C3AED) : const Color(0xFF0D9488);
+      _isPercent(type) ? const Color(0xFF7C3AED) : const Color(0xFF0D9488);
 
   IconData _discountIcon(String? type) =>
-      type == 'percentage' ? Icons.percent_rounded : Icons.currency_rupee_rounded;
+      _isPercent(type) ? Icons.percent_rounded : Icons.currency_rupee_rounded;
 
   String _discountLabel(dynamic offer) {
     final type = offer['discountType']?.toString();
-    final val = offer['discountValue']?.toString() ?? '0';
-    if (type == 'percentage') return '$val% OFF';
+    final val = (offer['discountValue'] ?? offer['discountAmount'])?.toString() ?? '0';
+    if (_isPercent(type)) return '$val% OFF';
     return '₹$val OFF';
   }
 
@@ -133,11 +135,11 @@ class _OffersScreenState extends State<OffersScreen> {
 
   Widget _buildOfferCard(dynamic offer) {
     final name = offer['name']?.toString() ?? 'Special Offer';
-    final code = offer['couponCode']?.toString() ?? '';
+    final code = (offer['code'] ?? offer['couponCode'])?.toString() ?? '';
     final type = offer['discountType']?.toString();
-    final minAmount = offer['minTripAmount']?.toString() ?? '0';
-    final maxDiscount = offer['maxDiscount'];
-    final expiry = offer['expiryDate']?.toString();
+    final minAmount = (offer['minTripAmount'] ?? offer['min_trip_amount'])?.toString() ?? '0';
+    final maxDiscount = offer['maxDiscountAmount'] ?? offer['maxDiscount'];
+    final expiry = (offer['endDate'] ?? offer['expiryDate'])?.toString();
     final desc = offer['description']?.toString();
     final color = _discountColor(type);
 
