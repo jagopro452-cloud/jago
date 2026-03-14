@@ -182,9 +182,9 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0B0B0B),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF0B0B0B),
         foregroundColor: Colors.white,
         title: const Text('Daily Spin', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,

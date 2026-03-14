@@ -113,21 +113,21 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         background: bg,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
-        onSurface: Color(0xFF0F172A),
+        onSurface: Color(0xFF0B0B0B),
       ),
       scaffoldBackgroundColor: bg,
       cardColor: card,
       fontFamily: GoogleFonts.poppins().fontFamily,
       textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: const Color(0xFF0F172A),
-        displayColor: const Color(0xFF0F172A),
+        bodyColor: const Color(0xFF0B0B0B),
+        displayColor: const Color(0xFF0B0B0B),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
-        foregroundColor: const Color(0xFF0F172A),
+        foregroundColor: const Color(0xFF0B0B0B),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
+        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0B0B0B)),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -154,8 +154,8 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
 
   static ThemeData _darkTheme() {
     const primary = Color(0xFF2F80ED);
-    const bg = Color(0xFF0F172A);
-    const card = Color(0xFF1E293B);
+    const bg = Color(0xFF0B0B0B);
+    const card = Color(0xFF1A1A1A);
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,

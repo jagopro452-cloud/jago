@@ -299,7 +299,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF0B0B0B) : Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
@@ -340,12 +340,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final panelBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
 
     return PopScope(
       canPop: _status == 'completed' || _status == 'cancelled',
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF0B0B0B) : Colors.white,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -536,7 +536,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-            ? [const Color(0xFF1E293B), const Color(0xFF111F4A)]
+            ? [const Color(0xFF1A1A1A), const Color(0xFF111F4A)]
             : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
@@ -562,7 +562,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
-                color: isDark ? Colors.white : const Color(0xFF0F172A), letterSpacing: -0.3)),
+                color: isDark ? Colors.white : const Color(0xFF0B0B0B), letterSpacing: -0.3)),
               const SizedBox(height: 3),
               Row(children: [
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 14),

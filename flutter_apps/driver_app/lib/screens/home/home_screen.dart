@@ -76,8 +76,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _idleSuggestionShown = false;
 
   static const Color _primary = Color(0xFF2F80ED);
-  static const Color _bg = Color(0xFF0F172A);
-  static const Color _surface = Color(0xFF1E293B);
+  static const Color _bg = Color(0xFF0B0B0B);
+  static const Color _surface = Color(0xFF1A1A1A);
   static const Color _green = Color(0xFF16A34A);
 
   String _getTimeGreeting() {
@@ -262,6 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _loadUser() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _userName = prefs.getString('user_name') ?? 'Pilot';
       _userPhone = prefs.getString('user_phone') ?? '';
@@ -272,6 +273,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       await Geolocator.requestPermission();
       final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));
       _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
     } catch (_) {}
@@ -341,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.notifications), headers: headers);
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final data = jsonDecode(res.body);
         setState(() => _unreadNotifCount = (data['unreadCount'] ?? 0).toInt());
       }
@@ -460,7 +462,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       barrierColor: Colors.black54,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(children: [
           Container(
@@ -590,7 +592,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
+          color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -1052,7 +1054,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withOpacity(0.92),
+          color: const Color(0xFF0B0B0B).withOpacity(0.92),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withOpacity(0.5), width: 1.5),
           boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
@@ -1096,7 +1098,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: _showHeatmap ? const Color(0xFF2F80ED) : const Color(0xFF1E293B).withOpacity(0.95),
+          color: _showHeatmap ? const Color(0xFF2F80ED) : const Color(0xFF1A1A1A).withOpacity(0.95),
           shape: BoxShape.circle,
           border: Border.all(
             color: _showHeatmap ? const Color(0xFF2F80ED) : Colors.white.withOpacity(0.15),
@@ -1290,7 +1292,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: _bg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF1E293B), width: 1),
+        border: Border.all(color: const Color(0xFF1A1A1A), width: 1),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 24, offset: const Offset(0, -4))],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1947,7 +1949,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [_primary.withOpacity(0.14), const Color(0xFF0F172A)],
+          colors: [_primary.withOpacity(0.14), const Color(0xFF0B0B0B)],
           begin: Alignment.centerLeft, end: Alignment.centerRight,
         ),
         borderRadius: BorderRadius.circular(14),
@@ -2028,7 +2030,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       decoration: BoxDecoration(
         color: _bg,
-        border: Border(top: BorderSide(color: const Color(0xFF1E293B), width: 1)),
+        border: Border(top: BorderSide(color: const Color(0xFF1A1A1A), width: 1)),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, -4))],
       ),
       child: SafeArea(

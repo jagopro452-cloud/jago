@@ -11,8 +11,8 @@ class EarningsScreen extends StatefulWidget {
 }
 
 class _EarningsScreenState extends State<EarningsScreen> {
-  static const _bg = Color(0xFF0F172A);
-  static const _surface = Color(0xFF1E293B);
+  static const _bg = Color(0xFF0B0B0B);
+  static const _surface = Color(0xFF1A1A1A);
   static const _green = Color(0xFF10B981);
   static const _blue = Color(0xFF2563EB);
   static const _amber = Color(0xFFD97706);

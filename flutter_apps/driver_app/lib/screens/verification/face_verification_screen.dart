@@ -118,7 +118,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
   Widget build(BuildContext context) {
     if (_submitted) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF0B0B0B),
         body: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withValues(alpha: 0.2), shape: BoxShape.circle),
@@ -133,9 +133,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0B0B0B),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF0B0B0B),
         title: const Text('Safety Verification', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         automaticallyImplyLeading: false,

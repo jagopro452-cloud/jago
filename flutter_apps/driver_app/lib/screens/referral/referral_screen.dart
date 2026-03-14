@@ -20,8 +20,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
   List<dynamic> _referrals = [];
 
   static const Color _blue = Color(0xFF2563EB);
-  static const Color _surface = Color(0xFF1E293B);
-  static const Color _bg = Color(0xFF0F172A);
+  static const Color _surface = Color(0xFF1A1A1A);
+  static const Color _bg = Color(0xFF0B0B0B);
 
   @override
   void initState() {

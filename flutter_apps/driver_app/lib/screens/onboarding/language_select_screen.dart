@@ -17,8 +17,8 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
   late Animation<double> _fadeAnim;
 
   static const _primary = Color(0xFF2F80ED);
-  static const _navy = Color(0xFF0F172A);
-  static const _surface = Color(0xFF1E293B);
+  static const _navy = Color(0xFF0B0B0B);
+  static const _surface = Color(0xFF1A1A1A);
 
   @override
   void initState() {
@@ -200,7 +200,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+          colors: [Color(0xFF0B0B0B), Color(0xFF1A1A1A)],
           begin: Alignment.topCenter, end: Alignment.bottomCenter),
       ),
       child: SafeArea(

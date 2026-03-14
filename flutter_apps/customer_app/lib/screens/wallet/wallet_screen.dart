@@ -171,7 +171,7 @@ class _WalletScreenState extends State<WalletScreen> {
         final sheetBg = isDark ? const Color(0xFF141B2D) : Colors.white;
         final textColor = isDark ? Colors.white : const Color(0xFF111827);
         final subColor = isDark ? Colors.white54 : const Color(0xFF6B7280);
-        final fieldBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF5F7FA);
+        final fieldBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA);
         final borderColor = isDark ? Colors.white12 : const Color(0xFFE5E7EB);
 
         return StatefulBuilder(

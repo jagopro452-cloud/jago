@@ -24,8 +24,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Timer? _timer;
 
   static const Color _blue = Color(0xFF2563EB);
-  static const Color _bg = Color(0xFF0F172A);
-  static const Color _surface = Color(0xFF1E293B);
+  static const Color _bg = Color(0xFF0B0B0B);
+  static const Color _surface = Color(0xFF1A1A1A);
 
   @override
   void dispose() {

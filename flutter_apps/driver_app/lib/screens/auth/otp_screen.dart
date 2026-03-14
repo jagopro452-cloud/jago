@@ -85,9 +85,9 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0B0B0B),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A), elevation: 0,
+        backgroundColor: const Color(0xFF0B0B0B), elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios, color: Colors.white.withValues(alpha: 0.7)),
           onPressed: () => Navigator.pop(context)),

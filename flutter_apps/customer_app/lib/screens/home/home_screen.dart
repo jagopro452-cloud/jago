@@ -53,8 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color _primary = Color(0xFF2F80ED);
   static const Color _secondary = Color(0xFF56CCF2);
   static const Color _lightAccent = Color(0xFF86D5F5);
-  static const Color _darkBg = Color(0xFF0F172A);
-  static const Color _darkCard = Color(0xFF1E293B);
+  static const Color _darkBg = Color(0xFF0B0B0B);
+  static const Color _darkCard = Color(0xFF1A1A1A);
   static const Color _lightBg = Color(0xFFFFFFFF);
   static const Color _lightCard = Color(0xFFF5F8FF);
 
@@ -282,6 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUser() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _userName = prefs.getString('user_name') ?? 'there';
       _userPhone = prefs.getString('user_phone') ?? '';
@@ -500,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = isDark ? _darkBg : _lightBg;
     final cardBg = isDark ? _darkCard : _lightCard;
-    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -510,7 +511,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(children: [
           _buildTopBar(isDark, cardBg, textColor),
           Expanded(
-            child: SingleChildScrollView(
+            child: _homeLoading
+                ? _buildSkeletonLoader(isDark, cardBg)
+                : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (_activeTrip != null)
@@ -532,6 +535,48 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildBottomNav(isDark, cardBg, textColor),
         ]),
       ),
+    );
+  }
+
+  Widget _buildSkeletonLoader(bool isDark, Color cardBg) {
+    final shimmer = isDark ? const Color(0xFF2A3A50) : const Color(0xFFE8EDF2);
+    Widget box(double w, double h, {double r = 10}) => Container(
+      width: w, height: h,
+      decoration: BoxDecoration(color: shimmer, borderRadius: BorderRadius.circular(r)),
+    );
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Greeting skeleton
+        box(160, 22, r: 8),
+        const SizedBox(height: 8),
+        box(220, 16, r: 8),
+        const SizedBox(height: 20),
+        // Search bar skeleton
+        box(double.infinity, 52, r: 14),
+        const SizedBox(height: 20),
+        // Service grid skeleton
+        Row(children: List.generate(4, (_) => Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(children: [
+            box(double.infinity, 60, r: 14),
+            const SizedBox(height: 6),
+            box(50, 12, r: 6),
+          ]),
+        )))),
+        const SizedBox(height: 20),
+        box(120, 18, r: 8),
+        const SizedBox(height: 12),
+        Row(children: List.generate(3, (_) => Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: box(double.infinity, 90, r: 12),
+        )))),
+        const SizedBox(height: 20),
+        box(double.infinity, 100, r: 16),
+        const SizedBox(height: 16),
+        box(double.infinity, 80, r: 16),
+      ]),
     );
   }
 
@@ -1619,7 +1664,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: isDark
-                ? [const Color(0xFF1E293B), const Color(0xFF0F2050)]
+                ? [const Color(0xFF1A1A1A), const Color(0xFF0F2050)]
                 : [const Color(0xFF1A2A5E), const Color(0xFF0F1E48)],
               begin: Alignment.topLeft, end: Alignment.bottomRight,
             ),
@@ -1757,7 +1802,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── DRAWER ───────────────────────────────────────────────────────────────
   Widget _buildDrawer(bool isDark) {
     final drawerBg = isDark ? _darkBg : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
     return Drawer(
       backgroundColor: drawerBg,
       child: SafeArea(
@@ -1913,9 +1958,9 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     final query = _ctrl.text;
     final items = query.length >= 3 ? _results : _nearby;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-    final inputBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF5F8FF);
-    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final sheetBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
+    final inputBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F8FF);
+    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
     final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -2042,9 +2087,9 @@ class _AllServicesSheet extends StatelessWidget {
       : allServices;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF5F8FF);
-    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final sheetBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F8FF);
+    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
     final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
 
     return Container(
@@ -2154,7 +2199,7 @@ class _TutorialTip extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0F172A))),
+              Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0B0B0B))),
               const SizedBox(height: 2),
               Text(desc, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF64748B), height: 1.4)),
             ],

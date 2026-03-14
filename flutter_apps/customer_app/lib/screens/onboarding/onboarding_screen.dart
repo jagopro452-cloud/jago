@@ -18,7 +18,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   late Animation<double> _fadeAnim;
 
   static const _blue = Color(0xFF2F80ED);
-  static const _navy = Color(0xFF0F172A);
+  static const _navy = Color(0xFF0B0B0B);
 
   static const _slides = [
     _Slide(

@@ -37,8 +37,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   bool _savingName = false;
 
-  static const Color _bg = Color(0xFF0F172A);
-  static const Color _surface = Color(0xFF1E293B);
+  static const Color _bg = Color(0xFF0B0B0B);
+  static const Color _surface = Color(0xFF1A1A1A);
   static const Color _blue = Color(0xFF2563EB);
 
   @override
@@ -92,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: Container(
           decoration: const BoxDecoration(
-            color: Color(0xFF1E293B),
+            color: Color(0xFF1A1A1A),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
@@ -218,7 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
+          color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
@@ -333,7 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
+          color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),

@@ -201,8 +201,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg =
-        isDark ? const Color(0xFF0F172A) : const Color(0xFFF5F5F5);
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF5F5F5);
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
     final textColor = isDark ? Colors.white : const Color(0xFF111827);
     final subColor = isDark ? Colors.white54 : const Color(0xFF6B7280);
     final divColor = isDark ? Colors.white10 : const Color(0xFFEEEEEE);
@@ -489,7 +489,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       bool isDark,
       {TextInputType keyboard = TextInputType.text}) {
     final fieldBg =
-        isDark ? const Color(0xFF1E293B) : const Color(0xFFF5F7FA);
+        isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA);
     final borderColor =
         isDark ? Colors.white12 : const Color(0xFFE5E9F0);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

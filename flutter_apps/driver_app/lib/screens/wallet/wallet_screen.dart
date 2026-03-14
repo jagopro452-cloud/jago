@@ -13,8 +13,8 @@ class WalletScreen extends StatefulWidget {
 
 class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderStateMixin {
   static const Color _primary = Color(0xFF2F80ED);
-  static const Color _navy = Color(0xFF0F172A);
-  static const Color _surface = Color(0xFF1E293B);
+  static const Color _navy = Color(0xFF0B0B0B);
+  static const Color _surface = Color(0xFF1A1A1A);
 
   Map<String, dynamic>? _wallet;
   bool _loading = true;

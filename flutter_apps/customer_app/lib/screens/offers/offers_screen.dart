@@ -72,10 +72,10 @@ class _OffersScreenState extends State<OffersScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF0F172A), size: 20),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF0B0B0B), size: 20),
         ),
         title: const Text('Offers & Coupons',
-            style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.w800)),
+            style: TextStyle(color: Color(0xFF0B0B0B), fontSize: 18, fontWeight: FontWeight.w800)),
         centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -175,7 +175,7 @@ class _OffersScreenState extends State<OffersScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0B0B0B))),
                 if (desc != null && desc.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),

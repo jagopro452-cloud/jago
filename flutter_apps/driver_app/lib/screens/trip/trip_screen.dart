@@ -32,8 +32,8 @@ class _TripScreenState extends State<TripScreen> {
   StreamSubscription? _cancelSub;
 
   static const Color _blue = Color(0xFF2563EB);
-  static const Color _bg = Color(0xFF0F172A);
-  static const Color _surface = Color(0xFF1E293B);
+  static const Color _bg = Color(0xFF0B0B0B);
+  static const Color _surface = Color(0xFF1A1A1A);
   static const Color _green = Color(0xFF16A34A);
 
   @override
@@ -1048,7 +1048,7 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1E293B), const Color(0xFF0F172A)],
+          colors: [const Color(0xFF1A1A1A), const Color(0xFF0B0B0B)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),

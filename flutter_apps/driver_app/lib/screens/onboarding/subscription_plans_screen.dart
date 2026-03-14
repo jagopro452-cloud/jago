@@ -25,9 +25,9 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
   String? _selectedPlanId;
   dynamic _selectedPlan;
 
-  final Color _darkBg = const Color(0xFF0F172A);
+  final Color _darkBg = const Color(0xFF0B0B0B);
   final Color _primary = const Color(0xFF2F80ED);
-  final Color _surface = const Color(0xFF1E293B);
+  final Color _surface = const Color(0xFF1A1A1A);
   final Color _gold = const Color(0xFFFFD700);
 
   @override

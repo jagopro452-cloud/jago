@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   static const _blue = Color(0xFF2F80ED);
   static const _blueDark = Color(0xFF1A6FE0);
-  static const _navy = Color(0xFF0F172A);
+  static const _navy = Color(0xFF0B0B0B);
 
   @override
   void initState() {

@@ -174,7 +174,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(Icons.description, color: statusColor),
         title: Text(labels[type] ?? type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
