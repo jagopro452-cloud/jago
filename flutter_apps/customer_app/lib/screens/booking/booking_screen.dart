@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   double _promoDiscount = 0;
   bool _promoLoading = false;
   String? _promoError;
+  Timer? _debounce;
 
   late Razorpay _razorpay;
 
@@ -208,6 +210,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _promoCtrl.dispose();
     _razorpay.clear();
     _passengerNameCtrl.dispose();
@@ -227,6 +230,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (mounted) setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
       }
     } catch (_) {}
+  }
+
+  void _onCouponChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (value.trim().isNotEmpty) _applyPromo();
+    });
   }
 
   Future<void> _applyPromo() async {
@@ -1574,6 +1584,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             child: TextField(
               controller: _promoCtrl,
               textCapitalization: TextCapitalization.characters,
+              onChanged: _onCouponChanged,
               decoration: InputDecoration(
                 hintText: 'Promo code',
                 border: InputBorder.none, isDense: true,

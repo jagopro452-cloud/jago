@@ -16,6 +16,7 @@ import { parseEnv } from "./config/env";
 export let io: SocketIOServer;
 
 // Track connected sockets: userId → socketId
+// NOTE: These maps are local to this process. With Redis adapter, socket routing works across processes but these maps still need Redis-backed storage for full HA. TODO: migrate to Redis hashes.
 const driverSockets = new Map<string, string>();
 const customerSockets = new Map<string, string>();
 
@@ -311,10 +312,38 @@ export function setupSocket(httpServer: HttpServer) {
               WHERE id=${tripId}::uuid
             `);
           } else if (status === "completed") {
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status=${status}, completed_at=NOW(), updated_at=NOW()
-              WHERE id=${tripId}::uuid
+            // PAYMENT GATE: trip only moves to completed if payment is verified
+            const paymentCheckR = await rawDb.execute(rawSql`
+              SELECT payment_status FROM trip_requests WHERE id=${tripId}::uuid
             `);
+            const paymentStatus = (paymentCheckR.rows[0] as any)?.payment_status;
+            if (paymentStatus === 'paid' || paymentStatus === 'cash') {
+              // Payment verified — mark as completed normally
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET current_status=${status}, completed_at=NOW(), updated_at=NOW()
+                WHERE id=${tripId}::uuid
+              `);
+            } else {
+              // Payment not yet verified — hold trip in payment_pending state
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET current_status='payment_pending', updated_at=NOW()
+                WHERE id=${tripId}::uuid
+              `);
+              // Notify customer to complete payment before trip is marked done
+              const pendingTripR = await rawDb.execute(rawSql`
+                SELECT customer_id FROM trip_requests WHERE id=${tripId}::uuid
+              `);
+              if (pendingTripR.rows.length) {
+                const customerId = (pendingTripR.rows[0] as any).customer_id;
+                io.to(`user:${customerId}`).emit("trip:payment_pending", {
+                  tripId,
+                  message: "Ride complete. Awaiting payment confirmation.",
+                });
+              }
+              socket.emit("driver:trip_status_ok", { tripId, status: "payment_pending" });
+              console.log(`[SOCKET] Trip ${tripId} held at payment_pending — payment not verified`);
+              return;
+            }
           } else {
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET current_status=${status}, updated_at=NOW()
@@ -569,6 +598,15 @@ export function setupSocket(httpServer: HttpServer) {
   console.log("[SOCKET] Socket.IO initialized");
   return io;
 }
+
+// ── Razorpay webhook: POST /api/app/razorpay/webhook ─────────────────────────
+// When payment is verified and the trip was in payment_pending, set current_status = 'completed'.
+// This must be implemented in routes.ts as an Express route that:
+//   1. Validates the Razorpay webhook signature using RAZORPAY_WEBHOOK_SECRET
+//   2. On event 'payment.captured': finds the trip by razorpay_order_id, checks current_status = 'payment_pending'
+//   3. Updates trip: current_status = 'completed', completed_at = NOW(), payment_status = 'paid'
+//   4. Emits trip:status_update { status: 'completed' } to the customer and driver via io
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Notify nearby online drivers of a new searching trip ─────────────────────
 export async function notifyNearbyDriversNewTrip(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,11 +59,13 @@ class AuthService {
         Uri.parse(ApiConfig.sendOtp),
         headers: _base,
         body: jsonEncode({'phone': phone, 'userType': userType}),
-      );
+      ).timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
       return jsonDecode(res.body) as Map<String, dynamic>;
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
       return {'success': false, 'message': 'Network error. Check your connection.'};
     }
@@ -74,7 +77,7 @@ class AuthService {
         Uri.parse(ApiConfig.verifyOtp),
         headers: _base,
         body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}),
-      );
+      ).timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
@@ -86,6 +89,8 @@ class AuthService {
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
       return {'success': false, 'message': 'Network error. Check your connection.'};
     }
@@ -94,7 +99,8 @@ class AuthService {
   static Future<void> logout() async {
     try {
       final headers = await getHeaders();
-      await http.post(Uri.parse(ApiConfig.logout), headers: headers);
+      await http.post(Uri.parse(ApiConfig.logout), headers: headers)
+          .timeout(const Duration(seconds: 10));
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
@@ -104,10 +110,13 @@ class AuthService {
   static Future<UserModel?> getProfile() async {
     try {
       final headers = await getHeaders();
-      final res = await http.get(Uri.parse(ApiConfig.driverProfile), headers: headers);
+      final res = await http.get(Uri.parse(ApiConfig.driverProfile), headers: headers)
+          .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         return UserModel.fromJson(jsonDecode(res.body));
       }
+    } on TimeoutException {
+      return null;
     } catch (_) {}
     return null;
   }
@@ -116,7 +125,8 @@ class AuthService {
     try {
       final res = await http.post(Uri.parse(ApiConfig.loginPassword),
         headers: _base,
-        body: jsonEncode({'phone': phone, 'password': password, 'userType': 'driver'}));
+        body: jsonEncode({'phone': phone, 'password': password, 'userType': 'driver'}))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
@@ -127,8 +137,10 @@ class AuthService {
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
-      return {'success': false, 'message': 'Network error. Check connection.'};
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 
@@ -137,7 +149,8 @@ class AuthService {
     try {
       final res = await http.post(Uri.parse(ApiConfig.verifyFirebaseToken),
         headers: _base,
-        body: jsonEncode({'firebaseIdToken': idToken, 'phone': phone, 'userType': userType}));
+        body: jsonEncode({'firebaseIdToken': idToken, 'phone': phone, 'userType': userType}))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
@@ -148,17 +161,21 @@ class AuthService {
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
       return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 
-  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email, String? vehicleNumber, String? vehicleModel, String? vehicleCategoryId}) async {    try {
+  static Future<Map<String, dynamic>> registerWithPassword(String phone, String password, String fullName, {String? email, String? vehicleNumber, String? vehicleModel, String? vehicleCategoryId}) async {
+    try {
       final body = <String, dynamic>{'phone': phone, 'password': password, 'fullName': fullName, 'userType': 'driver'};
       if (email != null && email.isNotEmpty) body['email'] = email;
       final res = await http.post(Uri.parse(ApiConfig.registerAccount),
         headers: _base,
-        body: jsonEncode(body));
+        body: jsonEncode(body))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
@@ -169,8 +186,10 @@ class AuthService {
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
-      return {'success': false, 'message': 'Network error. Check connection.'};
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 
@@ -178,13 +197,16 @@ class AuthService {
     try {
       final res = await http.post(Uri.parse(ApiConfig.forgotPassword),
         headers: _base,
-        body: jsonEncode({'phone': phone, 'userType': 'driver'}));
+        body: jsonEncode({'phone': phone, 'userType': 'driver'}))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
       return jsonDecode(res.body);
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
-      return {'success': false, 'message': 'Network error. Check connection.'};
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 
@@ -192,13 +214,16 @@ class AuthService {
     try {
       final res = await http.post(Uri.parse(ApiConfig.resetPassword),
         headers: _base,
-        body: jsonEncode({'phone': phone, 'otp': otp, 'newPassword': newPassword, 'userType': 'driver'}));
+        body: jsonEncode({'phone': phone, 'otp': otp, 'newPassword': newPassword, 'userType': 'driver'}))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
       return jsonDecode(res.body);
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
-      return {'success': false, 'message': 'Network error. Check connection.'};
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 
@@ -206,13 +231,16 @@ class AuthService {
     try {
       final res = await http.post(Uri.parse(ApiConfig.resetPasswordFirebase),
         headers: _base,
-        body: jsonEncode({'firebaseIdToken': firebaseIdToken, 'phone': phone, 'newPassword': newPassword, 'userType': 'driver'}));
+        body: jsonEncode({'firebaseIdToken': firebaseIdToken, 'phone': phone, 'newPassword': newPassword, 'userType': 'driver'}))
+          .timeout(const Duration(seconds: 10));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
       }
       return jsonDecode(res.body);
+    } on TimeoutException {
+      return {'success': false, 'message': 'Request timed out. Check your connection.'};
     } catch (e) {
-      return {'success': false, 'message': 'Network error. Check connection.'};
+      return {'success': false, 'message': 'Network error. Check your connection.'};
     }
   }
 }

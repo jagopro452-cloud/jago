@@ -271,7 +271,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _getLocation() async {
     try {
-      await Geolocator.requestPermission();
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text('Location Required'),
+            content: const Text('Location access is required to request rides. Please enable it in your device settings.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () { Navigator.pop(context); Geolocator.openAppSettings(); },
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));

@@ -135,8 +135,28 @@ app.use((req, res, next) => {
     log(`[config] Could not load DB settings (non-fatal): ${e.message}`);
   }
 
-  // Initialize Socket.IO for real-time driver-customer communication
+  // Redis adapter for Socket.IO (required for PM2 cluster mode)
+  // Install: npm install @socket.io/redis-adapter ioredis
   setupSocket(httpServer);
+  try {
+    const { createAdapter } = await import("@socket.io/redis-adapter");
+    const { default: IORedis } = await import("ioredis");
+    const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+    const pubClient = new IORedis(REDIS_URL);
+    const subClient = pubClient.duplicate();
+    const { io: socketIo } = await import("./socket");
+    Promise.all([
+      new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
+      new Promise<void>((res, rej) => { subClient.once("ready", res); subClient.once("error", rej); }),
+    ]).then(() => {
+      socketIo.adapter(createAdapter(pubClient, subClient));
+      log("[Socket.IO] Redis adapter connected");
+    }).catch((err: any) => {
+      log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${err.message}`);
+    });
+  } catch (err: any) {
+    log(`[Socket.IO] Redis adapter package not available, using in-memory adapter: ${err.message}`);
+  }
 
   await registerRoutes(httpServer, app);
 

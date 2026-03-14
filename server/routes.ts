@@ -8850,6 +8850,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               UPDATE driver_payments SET status='completed', razorpay_payment_id=${paymentId}, verified_at=NOW()
               WHERE razorpay_order_id=${orderId}
             `);
+            // PAYMENT GATE: if trip was held at payment_pending, now complete it
+            if (rec.tripId) {
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET current_status='completed', completed_at=NOW(), payment_status='paid', updated_at=NOW()
+                WHERE id=${rec.tripId}::uuid AND current_status='payment_pending'
+              `);
+              if (io) {
+                io.to(`user:${rec.customerId ?? ''}`).emit("trip:completed", {
+                  tripId: rec.tripId,
+                  message: "Payment confirmed. Trip complete.",
+                });
+              }
+            }
             // Credit wallet
             const updated = await rawDb.execute(rawSql`
               UPDATE users SET wallet_balance = wallet_balance + ${rec.amount}

@@ -1,9 +1,10 @@
+// Requires Redis adapter for Socket.IO — see server/index.ts
 module.exports = {
   apps: [{
     name: 'jago',
     script: 'dist/index.js',
-    instances: 1,
-    exec_mode: 'fork',
+    instances: 'max',
+    exec_mode: 'cluster',
     node_args: '--env-file=/var/www/jago/.env',
     env_production: {
       NODE_ENV: 'production',
