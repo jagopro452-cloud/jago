@@ -205,7 +205,8 @@ const nearbyDriversLimiter = rateLimit({
 });
 
 const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL_HOURS || 24));
-const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true";
+// SECURITY: Never expose OTPs in production responses, regardless of env var setting
+const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" && process.env.NODE_ENV !== "production";
 
 const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http://localhost:7104").replace(/\/$/, "");
 
