@@ -24,17 +24,17 @@ class _OffersScreenState extends State<OffersScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
       final r = await http.get(Uri.parse(ApiConfig.customerOffers),
           headers: headers);
       if (r.statusCode == 200) {
-        setState(() { _offers = jsonDecode(r.body); _loading = false; });
+        if (mounted) setState(() { _offers = jsonDecode(r.body); _loading = false; });
       } else {
-        setState(() { _loading = false; });
+        if (mounted) setState(() { _loading = false; });
       }
-    } catch (_) { setState(() { _loading = false; }); }
+    } catch (_) { if (mounted) setState(() { _loading = false; }); }
   }
 
   bool _isPercent(String? type) => type == 'percentage' || type == 'percent';

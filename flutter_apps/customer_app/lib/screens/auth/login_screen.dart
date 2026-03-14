@@ -420,7 +420,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 const Text('📦', style: TextStyle(fontSize: 60)),
                 const SizedBox(height: 10),
                 Text(
-                  'Pilot',
+                  'JAGO',
                   style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -429,7 +429,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   ),
                 ),
                 Text(
-                  'Rides & Deliveries',
+                  'Your Rides & Deliveries',
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: _blue.withValues(alpha: 0.6),
@@ -610,7 +610,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _buildRegisterLink() {
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text("New to Pilot?  ", style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14)),
+      Text("New to JAGO?  ", style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14)),
       GestureDetector(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
         child: Text('Create Account',

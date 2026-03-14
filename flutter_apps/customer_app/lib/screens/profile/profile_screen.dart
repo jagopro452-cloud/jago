@@ -46,6 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     final data = await AuthService.getProfile();
+    if (!mounted) return;
     setState(() {
       _name = data?['fullName'] ?? data?['name'] ?? 'User';
       _phone = data?['phone'] ?? '';
@@ -63,11 +64,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
-    setState(() => _saving = true);
+    if (mounted) setState(() => _saving = true);
     final res = await AuthService.updateProfile(
       fullName: _nameCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
     );
+    if (!mounted) return;
     setState(() => _saving = false);
     if (res['success'] == true) {
       setState(() {

@@ -37,23 +37,23 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
   }
 
   Future<void> _loadRides() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/car-sharing/rides'), headers: headers);
-      if (res.statusCode == 200) setState(() => _rides = jsonDecode(res.body)['data'] ?? []);
+      if (res.statusCode == 200 && mounted) setState(() => _rides = jsonDecode(res.body)['data'] ?? []);
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _loadMyBookings() async {
-    setState(() => _myLoading = true);
+    if (mounted) setState(() => _myLoading = true);
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/car-sharing/my-bookings'), headers: headers);
-      if (res.statusCode == 200) setState(() => _myBookings = jsonDecode(res.body)['data'] ?? []);
+      if (res.statusCode == 200 && mounted) setState(() => _myBookings = jsonDecode(res.body)['data'] ?? []);
     } catch (_) {}
-    setState(() => _myLoading = false);
+    if (mounted) setState(() => _myLoading = false);
   }
 
   Future<void> _book(String rideId, String from, String to, double seatPrice) async {

@@ -35,7 +35,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        setState(() {
+        if (mounted) setState(() {
           _code = data['referralCode']?.toString() ?? '';
           _totalReferrals = int.tryParse(data['totalReferrals']?.toString() ?? '0') ?? 0;
           _totalEarned = double.tryParse(data['totalEarned']?.toString() ?? '0') ?? 0;
@@ -43,10 +43,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
           _loading = false;
         });
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

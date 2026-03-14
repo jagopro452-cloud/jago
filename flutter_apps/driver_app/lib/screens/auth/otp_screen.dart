@@ -31,8 +31,8 @@ class _OtpScreenState extends State<OtpScreen> {
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_seconds == 0) t.cancel();
-      else setState(() => _seconds--);
+      if (_seconds == 0) { t.cancel(); return; }
+      if (mounted) setState(() => _seconds--);
     });
   }
 
@@ -63,6 +63,7 @@ class _OtpScreenState extends State<OtpScreen> {
     } else {
       // Server OTP fallback
       final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
+      if (!mounted) return;
       setState(() => _loading = false);
       if (res['success'] == true) {
         Navigator.pushAndRemoveUntil(context,

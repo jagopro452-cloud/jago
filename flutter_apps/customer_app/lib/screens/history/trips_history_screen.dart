@@ -24,11 +24,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen> {
       final res = await http.get(Uri.parse(ApiConfig.trips), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        setState(() { _trips = data['trips'] ?? []; _loading = false; });
+        if (mounted) setState(() { _trips = data['trips'] ?? []; _loading = false; });
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
-    } catch (_) { setState(() => _loading = false); }
+    } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
   Future<void> _showReceipt(BuildContext ctx, String tripId) async {

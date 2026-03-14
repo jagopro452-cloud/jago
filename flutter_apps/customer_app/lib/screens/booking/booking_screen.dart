@@ -362,8 +362,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         body: jsonEncode(body));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final tripId = data['trip']?['id'] ?? '';
+        final tripId = data['trip']?['id']?.toString() ?? '';
         if (!mounted) return;
+        if (tripId.isEmpty) {
+          _showSnack('Booking confirmed but could not track trip. Please check My Trips.', error: false);
+          setState(() => _loading = false);
+          Navigator.pop(context);
+          return;
+        }
         Navigator.pushReplacement(context, MaterialPageRoute(
           builder: (_) => TrackingScreen(tripId: tripId)));
       } else {

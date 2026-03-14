@@ -73,7 +73,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             canc++;
           }
         }
-        setState(() {
+        if (mounted) setState(() {
           _allTrips = trips;
           _totalEarnings = total;
           _completedCount = comp;

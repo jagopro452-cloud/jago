@@ -48,12 +48,12 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         headers: headers,
       );
       if (res.statusCode == 200) {
-        setState(() { _wallet = jsonDecode(res.body); _loading = false; });
+        if (mounted) setState(() { _wallet = jsonDecode(res.body); _loading = false; });
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

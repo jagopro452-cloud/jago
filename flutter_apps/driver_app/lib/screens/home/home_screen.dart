@@ -302,6 +302,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final res = await http.get(Uri.parse(ApiConfig.driverDashboard), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
+        if (!mounted) return;
         setState(() {
           _isOnline = data['isOnline'] ?? false;
           _walletBalance = (data['walletBalance'] ?? 0).toDouble();

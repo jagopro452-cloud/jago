@@ -253,6 +253,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   Future<void> _stopListening() async {
     await _speech.stop();
+    if (!mounted) return;
     setState(() => _isListening = false);
     if (_recognizedText.isNotEmpty) {
       if (_awaitingConfirmation) {
@@ -400,6 +401,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       ).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
+        if (!mounted) return;
         setState(() {
           _parsedIntent = data;
           _statusText = '📍 Finding locations…';
@@ -407,21 +409,21 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         if (data['pickup'] != null && data['destination'] != null) {
           await _getAllFares(data);
         } else {
-          setState(() => _statusText = '❓ Could not understand. Try: "Bike from JNTU to Hitech City"');
+          if (mounted) setState(() => _statusText = '❓ Could not understand. Try: "Bike from JNTU to Hitech City"');
           await _speak('Sorry, I could not understand. Please say the pickup and destination clearly.');
         }
       } else {
         final err = res.statusCode == 503
           ? 'Maps service unavailable. Check Google Maps API key.'
           : 'Server error (${res.statusCode}). Please try again.';
-        setState(() => _statusText = err);
+        if (mounted) setState(() => _statusText = err);
         await _speak('Sorry, something went wrong. Please try again.');
       }
     } on TimeoutException {
-      setState(() => _statusText = '⏱ Request timed out. Check internet connection.');
+      if (mounted) setState(() => _statusText = '⏱ Request timed out. Check internet connection.');
       await _speak('Request timed out. Please check your connection and try again.');
     } catch (e) {
-      setState(() => _statusText = '⚠️ Error: ${e.toString().replaceAll('Exception: ', '')}');
+      if (mounted) setState(() => _statusText = '⚠️ Error: ${e.toString().replaceAll('Exception: ', '')}');
       await _speak('Sorry, an error occurred. Please try again.');
     }
     if (mounted) setState(() => _loading = false);
@@ -461,7 +463,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         }).toList();
 
         if (rideVehicles.isEmpty) {
-          setState(() => _statusText = 'No vehicles available right now.');
+          if (mounted) setState(() => _statusText = 'No vehicles available right now.');
           await _speak('Sorry, no vehicles are available right now. Please try again later.');
           return;
         }
@@ -476,6 +478,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           if (idx >= 0) preferredIndex = idx;
         }
 
+        if (!mounted) return;
         setState(() {
           _allFares = rideVehicles;
           _selectedFareIndex = preferredIndex;
@@ -485,7 +488,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         await _announceAllFaresAndConfirm(intent);
       }
     } catch (_) {
-      setState(() => _statusText = 'Error fetching fares. Try again.');
+      if (mounted) setState(() => _statusText = 'Error fetching fares. Try again.');
     }
   }
 

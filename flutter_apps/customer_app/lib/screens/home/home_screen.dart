@@ -47,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _activeTrip;
   StreamSubscription? _driverAssignedSub;
   int _navIndex = 0;
+  bool _homeLoading = true;
 
   // Brand colors
   static const Color _primary = Color(0xFF2F80ED);
@@ -347,6 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _vehicleCategories = _defaultVehicleCategories();
       });
     }
+    if (mounted) setState(() => _homeLoading = false);
   }
 
   List<Map<String, dynamic>> _defaultVehicleCategories() => [
@@ -850,8 +852,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ]),
         const SizedBox(height: 14),
 
-        // Empty state
-        if (_activeServices.isEmpty && _vehicleCategories.isEmpty)
+        // Loading state
+        if (_homeLoading)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              CircularProgressIndicator(color: _primary, strokeWidth: 2.5),
+              const SizedBox(height: 16),
+              Text('Loading services...', style: GoogleFonts.poppins(fontSize: 13, color: textColor.withValues(alpha: 0.5))),
+            ]),
+          )
+
+        // Empty state (only shown after loading is done)
+        else if (_activeServices.isEmpty && _vehicleCategories.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
@@ -861,7 +875,7 @@ class _HomeScreenState extends State<HomeScreen> {
               border: Border.all(color: _primary.withValues(alpha: 0.15)),
             ),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text('🚧', style: const TextStyle(fontSize: 36)),
+              const Text('🚧', style: TextStyle(fontSize: 36)),
               const SizedBox(height: 10),
               Text(
                 'No services available in your area yet. Stay tuned!',
@@ -1196,8 +1210,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final bannerColor = isArrived ? const Color(0xFF16A34A) : _primary;
 
     return GestureDetector(
-      onTap: () => Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId))),
+      onTap: () {
+        if (tripId.isEmpty) return;
+        Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+      },
       child: Container(
         margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         padding: const EdgeInsets.all(14),

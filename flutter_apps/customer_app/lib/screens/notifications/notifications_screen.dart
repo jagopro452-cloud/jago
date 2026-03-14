@@ -23,22 +23,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _fetch() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     final headers = await AuthService.getHeaders();
     try {
       final res = await http.get(Uri.parse(ApiConfig.notifications),
           headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        setState(() {
+        if (mounted) setState(() {
           _notifications = List<dynamic>.from(data['notifications'] ?? data ?? []);
           _loading = false;
         });
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

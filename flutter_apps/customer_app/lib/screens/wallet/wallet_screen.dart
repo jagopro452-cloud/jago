@@ -41,15 +41,15 @@ class _WalletScreenState extends State<WalletScreen> {
       final res = await http.get(Uri.parse(ApiConfig.wallet),
           headers: headers);
       if (res.statusCode == 200) {
-        setState(() {
+        if (mounted) setState(() {
           _wallet = jsonDecode(res.body);
           _loading = false;
         });
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

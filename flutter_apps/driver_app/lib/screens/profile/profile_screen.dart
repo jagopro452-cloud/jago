@@ -49,6 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     final data = await AuthService.getProfile();
+    if (!mounted) return;
     if (data != null) {
       setState(() {
         _name = data.fullName;
