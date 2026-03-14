@@ -2353,7 +2353,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         userType,
         search,
         Number(page) || 1,
-        Number(limit) || 15
+        Math.min(Number(limit) || 15, 100)
       );
       res.json(result);
     } catch (e: any) {
@@ -2654,6 +2654,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         minimumFare = 0, cancellationFee = 0, waitingChargePerMin = 0,
         nightChargeMultiplier = 1.25, helperCharge = 0, zoneId,
       } = req.body;
+
+      const fareValues = [baseFare, farePerKm, farePerMin, farePerKg, minimumFare, cancellationFee, waitingChargePerMin, helperCharge];
+      if (fareValues.some(v => parseFloat(String(v)) < 0)) {
+        return res.status(400).json({ message: "Fare values must be non-negative" });
+      }
 
       // Check if a fare already exists for this vehicle category
       const existing = await rawDb.execute(rawSql`

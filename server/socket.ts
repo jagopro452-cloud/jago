@@ -364,9 +364,22 @@ export function setupSocket(httpServer: HttpServer) {
       console.log(`[SOCKET] Customer ${userId} connected`);
 
       // ── Customer: join trip room for tracking ──────────────────────────────
-      socket.on("customer:track_trip", (data: { tripId: string }) => {
-        socket.join(`trip:${data.tripId}`);
-        console.log(`[SOCKET] Customer ${userId} tracking trip ${data.tripId}`);
+      socket.on("customer:track_trip", async (data: { tripId: string }) => {
+        try {
+          const { tripId } = data;
+          if (!tripId) return;
+          const tripR = await rawDb.execute(rawSql`
+            SELECT id FROM trip_requests WHERE id=${tripId}::uuid AND customer_id=${userId}::uuid
+          `);
+          if (!tripR.rows.length) {
+            socket.emit("error", { message: "Trip not found" });
+            return;
+          }
+          socket.join(`trip:${tripId}`);
+          console.log(`[SOCKET] Customer ${userId} tracking trip ${tripId}`);
+        } catch (e: any) {
+          console.error("[SOCKET] customer:track_trip error:", e.message);
+        }
       });
 
       // ── Customer: cancel trip ──────────────────────────────────────────────
@@ -400,7 +413,7 @@ export function setupSocket(httpServer: HttpServer) {
     socket.on("trip:send_message", async (data: { tripId: string; message: string; senderName: string; senderType: string }) => {
       try {
         const { tripId, message, senderName, senderType } = data;
-        if (!tripId || !message?.trim()) return;
+        if (!tripId || !message?.trim() || message.length > 2000) return;
 
         const now = new Date();
 
