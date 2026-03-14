@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -97,6 +97,14 @@ export default function ConfigurationsPage() {
   const set = (key: string) => (val: string) => setLocal(p => ({ ...p, [key]: val }));
 
   const hasChanges = Object.keys(local).length > 0;
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasChanges) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasChanges]);
 
   const save = useMutation({
     mutationFn: () => apiRequest("PUT", "/api/business-settings", local),
