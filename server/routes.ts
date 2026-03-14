@@ -379,7 +379,8 @@ async function requireAdminAuth(req: Request, res: Response, next: NextFunction)
 }
 
 async function ensureAdminExists() {
-  const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
+  const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  if (!adminEmail) { console.error("[SECURITY] ADMIN_EMAIL env var not set — skipping admin sync."); return; }
   const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) {
@@ -1291,7 +1292,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await ensureOperationalSchema();
       await ensureAdminExists();
-      const adminEmail = (process.env.ADMIN_EMAIL || "kiranatmakuri518@gmail.com").trim().toLowerCase();
+      const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  if (!adminEmail) { console.error("[SECURITY] ADMIN_EMAIL env var not set — skipping admin sync."); return; }
       const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,7) as pw_prefix FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
       const adminRow: any = r.rows[0];
       const adminPwdEnv = process.env.ADMIN_PASSWORD || "";
