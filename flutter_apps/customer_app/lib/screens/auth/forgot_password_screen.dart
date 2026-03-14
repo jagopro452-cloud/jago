@@ -58,8 +58,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
     final res = await AuthService.forgotPassword(phone);
-    setState(() => _loading = false);
     if (!mounted) return;
+    setState(() => _loading = false);
     if (res['success'] == true) {
       setState(() { _step = 1; _serverOtp = res['otp']?.toString() ?? ''; });
       _startTimer();
@@ -78,8 +78,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (newPass != confirm) { _showSnack('Passwords do not match', error: true); return; }
     setState(() => _loading = true);
     final res = await AuthService.resetPassword(_phoneCtrl.text.trim(), otp, newPass);
-    setState(() => _loading = false);
     if (!mounted) return;
+    setState(() => _loading = false);
     if (res['success'] == true) {
       _showSnack('Password reset successfully!');
       await Future.delayed(const Duration(seconds: 1));

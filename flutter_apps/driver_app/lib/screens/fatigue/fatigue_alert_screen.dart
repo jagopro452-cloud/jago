@@ -26,9 +26,9 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/driver/fatigue-status'), headers: headers);
-      if (res.statusCode == 200) setState(() => _data = jsonDecode(res.body));
+      if (res.statusCode == 200 && mounted) setState(() => _data = jsonDecode(res.body));
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override

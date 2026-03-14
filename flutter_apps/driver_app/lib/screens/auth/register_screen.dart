@@ -193,7 +193,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       _showSnack(e.toString(), error: true);
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

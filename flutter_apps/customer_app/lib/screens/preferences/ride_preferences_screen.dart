@@ -31,7 +31,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/customer/preferences'), headers: headers);
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 && mounted) {
         final d = jsonDecode(res.body);
         setState(() {
           _quietRide = d['quietRide'] ?? false;
@@ -43,7 +43,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
         });
       }
     } catch (_) {}
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _save() async {
@@ -69,7 +69,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
         backgroundColor: res.statusCode == 200 ? Colors.green : Colors.red,
       ));
     } catch (_) {}
-    setState(() => _saving = false);
+    if (mounted) setState(() => _saving = false);
   }
 
   @override

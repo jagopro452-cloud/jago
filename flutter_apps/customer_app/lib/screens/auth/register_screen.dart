@@ -62,8 +62,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     if (password != confirm) { _showSnack('Passwords do not match', error: true); return; }
     setState(() => _loading = true);
     final res = await AuthService.registerWithPassword(phone, password, name, email: _emailCtrl.text.trim());
-    setState(() => _loading = false);
     if (!mounted) return;
+    setState(() => _loading = false);
     if (res['success'] == true) {
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
     } else {
