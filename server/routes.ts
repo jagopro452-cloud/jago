@@ -8639,7 +8639,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── VOICE BOOKING: AI-Enhanced NLP Intent Parser ──────────────────────────
   app.post("/api/app/voice-booking/parse", authApp, async (req, res) => {
     try {
-      const { text } = req.body;
+      const { text, currentLat, currentLng, currentAddress } = req.body;
       if (!text) return res.status(400).json({ message: "No text provided" });
 
       const { parsed, parserSource } = await parseVoiceIntentOrchestrated(text);
@@ -8674,7 +8674,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return null;
       };
 
-      if (parsed.pickup || parsed.destination) {
+      // Check if pickup is current location
+      const isCurrentLocation = !parsed.pickup ||
+        /current|here|my location|ikkade|ikkad|yahan|naa location/i.test(parsed.pickup || '');
+
+      if (isCurrentLocation && currentLat && currentLng) {
+        // Use GPS coordinates directly — no geocoding needed
+        pickupGeo = { lat: Number(currentLat), lng: Number(currentLng), address: currentAddress || 'Current Location' };
+        if (parsed.destination) destGeo = await geocode(parsed.destination);
+      } else if (parsed.pickup || parsed.destination) {
         const promises: Promise<any>[] = [];
         promises.push(parsed.pickup ? geocode(parsed.pickup) : Promise.resolve(null));
         promises.push(parsed.destination ? geocode(parsed.destination) : Promise.resolve(null));
