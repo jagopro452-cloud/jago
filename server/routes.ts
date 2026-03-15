@@ -8820,12 +8820,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
-      const order = await rzp.orders.create({
-        amount: Math.round(amt * 100),
-        currency: "INR",
-        receipt: `w_${Date.now().toString(36)}`,
-        notes: { customer_id: customer.id, purpose: "wallet_topup" }
-      });
+      // Explicit 20s timeout — prevents DO App Platform 504 if Razorpay API is slow
+      const timeoutErr = new Error("Payment gateway timeout. Please try again.");
+      const order = await Promise.race([
+        rzp.orders.create({
+          amount: Math.round(amt * 100),
+          currency: "INR",
+          receipt: `w_${Date.now().toString(36)}`,
+          notes: { customer_id: customer.id, purpose: "wallet_topup" }
+        }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(timeoutErr), 20000))
+      ]);
       // Persist pending record so verify-payment can cross-check amount from DB
       await rawDb.execute(rawSql`
         INSERT INTO customer_payments (customer_id, amount, payment_type, razorpay_order_id, status, description)
@@ -8835,7 +8840,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
       console.error("[wallet-order]", e.message || e);
-      res.status(500).json({ message: "Failed to create payment order. Please try again." });
+      const msg = e.message?.includes("timeout") ? "Payment gateway timeout. Please try again." : safeErrMsg(e);
+      res.status(500).json({ message: msg });
     }
   });
 
