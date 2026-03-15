@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -25,11 +26,17 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   int _completedCount = 0;
   int _cancelledCount = 0;
 
-  static const Color _bg = Color(0xFF0B0B0B);
-  static const Color _surface = Color(0xFF1A1A1A);
-  static const Color _blue = Color(0xFF2563EB);
-  static const Color _green = Color(0xFF16A34A);
-  static const Color _red = Color(0xFFDC2626);
+  // Color system
+  static const Color _bg = Color(0xFF060A14);
+  static const Color _surface = Color(0xFF0F1923);
+  static const Color _card = Color(0xFF162030);
+  static const Color _border = Color(0xFF1E3050);
+  static const Color _primary = Color(0xFF00D4FF);
+  static const Color _green = Color(0xFF00E676);
+  static const Color _amber = Color(0xFFFFB300);
+  static const Color _red = Color(0xFFFF3D57);
+  static const Color _textSecondary = Color(0xFF8899BB);
+  static const Color _textHint = Color(0xFF445577);
 
   @override
   void initState() {
@@ -119,8 +126,8 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
     switch (status) {
       case 'completed': return _green;
       case 'cancelled': return _red;
-      case 'ongoing': return _blue;
-      default: return Colors.orange;
+      case 'ongoing': return _primary;
+      default: return _amber;
     }
   }
 
@@ -141,69 +148,81 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         (t['actualFare'] ?? t['estimatedFare'] ?? '0').toString()) ?? 0;
     final isPaid = (t['paymentStatus'] ?? '') == 'paid';
     final type = (t['type'] ?? 'ride').toString();
+    final statusColor = _statusColor(status);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(
+            top: BorderSide(color: statusColor.withValues(alpha: 0.3), width: 1),
+          ),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 40, height: 4,
+            width: 44, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: _border,
               borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
           Row(children: [
             Container(
-              width: 48, height: 48,
+              width: 52, height: 52,
               decoration: BoxDecoration(
-                color: _statusColor(status).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.2), blurRadius: 16)],
               ),
               child: Icon(
                 type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded,
-                color: _statusColor(status), size: 26),
+                color: statusColor, size: 26),
             ),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 type == 'parcel' ? 'Parcel Delivery' : 'Ride',
-                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(_formatDate(t['createdAt']?.toString()),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                style: GoogleFonts.poppins(color: _textHint, fontSize: 12)),
             ])),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _statusColor(status).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
               ),
               child: Text(_statusLabel(status),
-                style: TextStyle(color: _statusColor(status), fontSize: 12, fontWeight: FontWeight.w700)),
+                style: GoogleFonts.poppins(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
             ),
           ]),
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
+
+          // Pickup/drop rows
           _detailRow(Icons.my_location_rounded, 'Pickup',
-            t['pickupAddress']?.toString() ?? '—', const Color(0xFF16A34A)),
-          const SizedBox(height: 10),
+            t['pickupAddress']?.toString() ?? '—', _green),
+          const SizedBox(height: 12),
           _detailRow(Icons.location_on_rounded, 'Drop',
             t['destinationAddress']?.toString() ?? '—', _red),
+
           const SizedBox(height: 20),
+
+          // Stats row
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              color: _surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _border, width: 1),
             ),
             child: Row(children: [
               _tripStat('Fare', '₹${fare.toStringAsFixed(0)}', Icons.currency_rupee_rounded, _green),
@@ -211,38 +230,41 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               _tripStat('Payment',
                 isPaid ? 'Paid' : (t['paymentMethod']?.toString() ?? 'Cash'),
                 isPaid ? Icons.check_circle_rounded : Icons.account_balance_wallet_rounded,
-                isPaid ? _green : Colors.orange),
+                isPaid ? _green : _amber),
               _vDivider(),
               _tripStat('Distance',
                 '${(double.tryParse(t['distanceKm']?.toString() ?? '0') ?? 0).toStringAsFixed(1)} km',
-                Icons.straighten_rounded, _blue),
+                Icons.straighten_rounded, _primary),
             ]),
           ),
+
           if (t['refId'] != null) ...[
             const SizedBox(height: 14),
             Row(children: [
-              Icon(Icons.tag_rounded, size: 14, color: Colors.white.withValues(alpha: 0.3)),
+              Icon(Icons.tag_rounded, size: 14, color: _textHint),
               const SizedBox(width: 6),
               Text('Trip ID: ${t['refId']}',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12, fontFamily: 'monospace')),
+                style: GoogleFonts.poppins(color: _textHint, fontSize: 12, letterSpacing: 0.5)),
             ]),
           ],
+
           if (status == 'completed') ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
+              height: 52,
               child: ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.pop(context);
                   await _fetchAndShowReceipt(t['id']?.toString() ?? t['tripId']?.toString() ?? '');
                 },
-                icon: const Icon(Icons.receipt_long, size: 16),
-                label: const Text('View Receipt', style: TextStyle(fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                label: Text('View Receipt', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12)),
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
               ),
             ),
           ],
@@ -263,11 +285,17 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         _showReceiptSheet(receipt);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Receipt not available'), backgroundColor: Colors.red));
+          SnackBar(
+            content: Text('Receipt not available', style: GoogleFonts.poppins()),
+            backgroundColor: _red,
+          ));
       }
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load receipt'), backgroundColor: Colors.red));
+        SnackBar(
+          content: Text('Could not load receipt', style: GoogleFonts.poppins()),
+          backgroundColor: _red,
+        ));
     }
   }
 
@@ -278,40 +306,69 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(top: BorderSide(color: _green.withValues(alpha: 0.3), width: 1)),
         ),
         padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
+          left: 22, right: 22, top: 20,
           bottom: MediaQuery.of(context).viewInsets.bottom + 28),
         child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 16),
-          const Text('Earnings Receipt', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Container(width: 44, height: 4,
+            decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 18),
+          Text('Earnings Receipt', style: GoogleFonts.poppins(
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(r['receiptNo'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-          const SizedBox(height: 16),
-          _receiptLine('Pickup', r['pickup']?['address'] ?? '—'),
-          _receiptLine('Drop', r['destination']?['address'] ?? '—'),
-          _receiptLine('Distance', '${r['distanceKm'] ?? 0} km'),
-          const Divider(color: Colors.white12, height: 24),
-          _receiptLine('Total Fare', '₹${fare['total'] ?? 0}'),
-          _receiptLine('GST (5%)', '₹${fare['gst'] ?? 0}', highlight: Colors.orange),
-          _receiptLine('Commission', '₹${fare['commission'] ?? 0}', highlight: Colors.red[300]),
-          const Divider(color: Colors.white12, height: 24),
-          _receiptLine('Your Earning', '₹${fare['driverEarning'] ?? 0}', highlight: _green, bold: true),
-          _receiptLine('Payment', (fare['paymentMethod'] ?? 'Cash').toUpperCase()),
+          Text(r['receiptNo'] ?? '', style: GoogleFonts.poppins(color: _textHint, fontSize: 12)),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _border),
+            ),
+            child: Column(children: [
+              _receiptLine('Pickup', r['pickup']?['address'] ?? '—'),
+              const SizedBox(height: 6),
+              _receiptLine('Drop', r['destination']?['address'] ?? '—'),
+              const SizedBox(height: 6),
+              _receiptLine('Distance', '${r['distanceKm'] ?? 0} km'),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _border),
+            ),
+            child: Column(children: [
+              _receiptLine('Total Fare', '₹${fare['total'] ?? 0}'),
+              const SizedBox(height: 6),
+              _receiptLine('GST (5%)', '₹${fare['gst'] ?? 0}', highlight: _amber),
+              const SizedBox(height: 6),
+              _receiptLine('Commission', '₹${fare['commission'] ?? 0}', highlight: _red),
+              Divider(color: _border, height: 24),
+              _receiptLine('Your Earning', '₹${fare['driverEarning'] ?? 0}', highlight: _green, bold: true),
+              const SizedBox(height: 6),
+              _receiptLine('Payment', (fare['paymentMethod'] ?? 'Cash').toUpperCase()),
+            ]),
+          ),
           const SizedBox(height: 20),
           SizedBox(width: double.infinity,
+            height: 52,
             child: ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _blue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 13)),
-              child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                backgroundColor: _primary,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text('Close', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black)),
             )),
         ])),
       ),
@@ -319,47 +376,57 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   }
 
   Widget _receiptLine(String label, String value, {Color? highlight, bool bold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
-        Text(value, style: TextStyle(
-          color: highlight ?? Colors.white,
-          fontSize: bold ? 15 : 13,
-          fontWeight: bold ? FontWeight.bold : FontWeight.w500)),
-      ]),
-    );
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
+      Text(value, style: GoogleFonts.poppins(
+        color: highlight ?? Colors.white,
+        fontSize: bold ? 15 : 13,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+    ]);
   }
 
   Widget _detailRow(IconData icon, String label, String value, Color color) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
-        width: 32, height: 32,
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-        child: Icon(icon, color: color, size: 16),
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Icon(icon, color: color, size: 18),
       ),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 3),
+        Text(value, style: GoogleFonts.poppins(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
       ])),
     ]);
   }
 
   Widget _tripStat(String label, String value, IconData icon, Color color) {
     return Expanded(child: Column(children: [
-      Icon(icon, color: color, size: 18),
-      const SizedBox(height: 6),
-      Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+      Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Icon(icon, color: color, size: 18),
+      ),
+      const SizedBox(height: 8),
+      Text(value, style: GoogleFonts.poppins(
+          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
       const SizedBox(height: 2),
-      Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10)),
+      Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10)),
     ]));
   }
 
   Widget _vDivider() => Container(
-    width: 1, height: 40,
-    color: Colors.white.withValues(alpha: 0.07),
+    width: 1, height: 50,
+    color: _border,
     margin: const EdgeInsets.symmetric(horizontal: 8),
   );
 
@@ -370,35 +437,32 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       body: NestedScrollView(
         headerSliverBuilder: (_, __) => [
           SliverAppBar(
-            expandedHeight: 200,
+            expandedHeight: 210,
             floating: false,
             pinned: true,
             backgroundColor: _bg,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withValues(alpha: 0.7)),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
-            title: const Text('My Trips',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            title: Text('My Trips',
+              style: GoogleFonts.poppins(
+                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF1A1A1A), Color(0xFF0B0B0B)],
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                  ),
-                ),
+                color: _bg,
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 60, 16, 0),
                     child: Column(children: [
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      // Summary stat cards
                       Row(children: [
                         _summaryCard('Total Earned', '₹${_totalEarnings.toStringAsFixed(0)}',
                           Icons.currency_rupee_rounded, _green),
                         const SizedBox(width: 10),
                         _summaryCard('Completed', '$_completedCount',
-                          Icons.check_circle_rounded, _blue),
+                          Icons.check_circle_rounded, _primary),
                         const SizedBox(width: 10),
                         _summaryCard('Cancelled', '$_cancelledCount',
                           Icons.cancel_rounded, _red),
@@ -409,16 +473,17 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               ),
             ),
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
+              preferredSize: const Size.fromHeight(52),
               child: Container(
                 color: _bg,
                 child: TabBar(
                   controller: _tabCtrl,
-                  indicatorColor: _blue,
-                  indicatorWeight: 3,
+                  indicatorColor: _primary,
+                  indicatorWeight: 2,
                   labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white38,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  unselectedLabelColor: _textHint,
+                  labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12),
+                  unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 12),
                   tabs: [
                     Tab(text: 'All (${_allTrips.length})'),
                     Tab(text: 'Done ($_completedCount)'),
@@ -432,13 +497,13 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         body: Column(children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
             child: Container(
-              height: 42,
+              height: 46,
               decoration: BoxDecoration(
-                color: _surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                color: _card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _border, width: 1),
               ),
               child: TextField(
                 controller: _searchCtrl,
@@ -446,14 +511,14 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   setState(() => _searchQuery = v);
                   _applyFilter();
                 },
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Search by pickup or destination...',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withValues(alpha: 0.3), size: 18),
+                  hintStyle: GoogleFonts.poppins(color: _textHint, fontSize: 13),
+                  prefixIcon: Icon(Icons.search_rounded, color: _textHint, size: 20),
                   suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear_rounded, color: Colors.white.withValues(alpha: 0.3), size: 18),
+                        icon: Icon(Icons.clear_rounded, color: _textHint, size: 18),
                         onPressed: () {
                           _searchCtrl.clear();
                           setState(() => _searchQuery = '');
@@ -461,7 +526,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                         })
                     : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
@@ -470,9 +535,18 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           // Trip list
           Expanded(
             child: _loading
-              ? const Center(child: CircularProgressIndicator(color: _blue))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: _primary, strokeWidth: 2, backgroundColor: _border),
+                      const SizedBox(height: 16),
+                      Text('Loading trips...', style: GoogleFonts.poppins(color: _textHint, fontSize: 13)),
+                    ],
+                  ),
+                )
               : RefreshIndicator(
-                  color: _blue, backgroundColor: _surface,
+                  color: _primary, backgroundColor: _card,
                   onRefresh: () => _fetchTrips(refresh: true),
                   child: _filtered.isEmpty
                     ? ListView(children: [
@@ -480,30 +554,32 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                           height: 300,
                           child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Container(
-                              width: 72, height: 72,
+                              width: 80, height: 80,
                               decoration: BoxDecoration(
-                                color: _blue.withValues(alpha: 0.1),
+                                color: _card,
                                 shape: BoxShape.circle,
+                                border: Border.all(color: _border),
                               ),
-                              child: Icon(Icons.route_outlined, size: 36, color: _blue.withValues(alpha: 0.6)),
+                              child: Icon(Icons.route_outlined, size: 38, color: _textHint),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 18),
                             Text(
                               _searchQuery.isNotEmpty ? 'No trips found' : 'No trips yet',
-                              style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
+                              style: GoogleFonts.poppins(
+                                  color: _textSecondary, fontSize: 16, fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               _searchQuery.isNotEmpty
                                 ? 'Try a different search term'
                                 : 'Your trip history will appear here',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
+                              style: GoogleFonts.poppins(color: _textHint, fontSize: 13),
                             ),
                           ])),
                         )
                       ])
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                         itemCount: _filtered.length,
                         itemBuilder: (_, i) {
                           final t = _filtered[i] as Map;
@@ -517,98 +593,120 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                           return GestureDetector(
                             onTap: () => _showTripDetail(Map.from(t)),
                             child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
+                              margin: const EdgeInsets.only(bottom: 12),
                               decoration: BoxDecoration(
-                                color: _surface,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                                color: _card,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: statusColor.withValues(alpha: 0.15), width: 1),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4)),
+                                ],
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Row(children: [
                                     Container(
-                                      width: 42, height: 42,
+                                      width: 46, height: 46,
                                       decoration: BoxDecoration(
                                         color: statusColor.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: statusColor.withValues(alpha: 0.25)),
                                       ),
                                       child: Icon(
                                         type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded,
                                         color: statusColor, size: 22),
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 14),
                                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Text(
                                         t['destinationAddress']?.toString() ?? 'Destination',
                                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: GoogleFonts.poppins(
                                           color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        t['pickupAddress']?.toString() ?? '',
-                                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.38), fontSize: 11),
-                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(children: [
+                                        Container(
+                                          width: 8, height: 8,
+                                          decoration: BoxDecoration(
+                                            color: _green, shape: BoxShape.circle,
+                                            boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.5), blurRadius: 4)],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            t['pickupAddress']?.toString() ?? '',
+                                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.poppins(color: _textHint, fontSize: 11),
+                                          ),
+                                        ),
+                                      ]),
                                     ])),
                                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                                       Text('₹${fare.toStringAsFixed(0)}',
-                                        style: const TextStyle(
-                                          color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
-                                      const SizedBox(height: 4),
+                                        style: GoogleFonts.poppins(
+                                          color: _green, fontSize: 18, fontWeight: FontWeight.w900)),
+                                      const SizedBox(height: 5),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withValues(alpha: 0.12),
-                                          borderRadius: BorderRadius.circular(6),
+                                          color: statusColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: statusColor.withValues(alpha: 0.25)),
                                         ),
                                         child: Text(_statusLabel(status),
-                                          style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w700)),
+                                          style: GoogleFonts.poppins(
+                                              color: statusColor, fontSize: 10, fontWeight: FontWeight.w700)),
                                       ),
                                     ]),
                                   ]),
+                                  const SizedBox(height: 14),
+                                  // Divider
+                                  Container(height: 1, color: _border),
                                   const SizedBox(height: 12),
                                   Row(children: [
-                                    // Date
-                                    Icon(Icons.schedule_rounded, size: 12, color: Colors.white.withValues(alpha: 0.3)),
-                                    const SizedBox(width: 4),
+                                    Icon(Icons.schedule_rounded, size: 13, color: _textHint),
+                                    const SizedBox(width: 5),
                                     Text(_formatDate(t['createdAt']?.toString()),
-                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11)),
+                                      style: GoogleFonts.poppins(color: _textHint, fontSize: 11)),
                                     const Spacer(),
-                                    // Payment
+                                    // Payment badge
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: isPaid
-                                          ? Colors.green.withValues(alpha: 0.1)
-                                          : Colors.orange.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(5),
+                                        color: (isPaid ? _green : _amber).withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(7),
+                                        border: Border.all(
+                                            color: (isPaid ? _green : _amber).withValues(alpha: 0.3)),
                                       ),
                                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                                         Icon(
                                           isPaid ? Icons.check_circle_rounded : Icons.account_balance_wallet_rounded,
-                                          size: 10,
-                                          color: isPaid ? Colors.green : Colors.orange),
-                                        const SizedBox(width: 3),
+                                          size: 11,
+                                          color: isPaid ? _green : _amber),
+                                        const SizedBox(width: 4),
                                         Text(
                                           isPaid ? 'Paid' : (t['paymentMethod']?.toString() ?? 'Cash'),
-                                          style: TextStyle(
+                                          style: GoogleFonts.poppins(
                                             fontSize: 10, fontWeight: FontWeight.w700,
-                                            color: isPaid ? Colors.green : Colors.orange)),
+                                            color: isPaid ? _green : _amber)),
                                       ]),
                                     ),
+                                    const SizedBox(width: 8),
                                     // Type badge
-                                    const SizedBox(width: 6),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: _blue.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(5),
+                                        color: _primary.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(7),
+                                        border: Border.all(color: _primary.withValues(alpha: 0.25)),
                                       ),
                                       child: Text(
-                                        type == 'parcel' ? '📦 Parcel' : '🚗 Ride',
-                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _blue)),
+                                        type == 'parcel' ? 'Parcel' : 'Ride',
+                                        style: GoogleFonts.poppins(
+                                            fontSize: 10, fontWeight: FontWeight.w700, color: _primary)),
                                     ),
                                   ]),
                                 ]),
@@ -627,19 +725,29 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   Widget _summaryCard(String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.15)),
+          color: _card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 16)],
         ),
         child: Column(children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 6),
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: 8),
           Text(value,
-            style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9),
+            style: GoogleFonts.poppins(
+                color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 3),
+          Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 9),
             textAlign: TextAlign.center),
         ]),
       ),

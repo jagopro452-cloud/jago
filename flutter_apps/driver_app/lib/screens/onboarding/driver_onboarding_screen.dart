@@ -14,37 +14,57 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
     with TickerProviderStateMixin {
   final _pageCtrl = PageController();
   int _current = 0;
-  late AnimationController _fadeCtrl;
+  late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
+
+  // Color system
+  static const _bg = Color(0xFF060A14);
+  static const _surface = Color(0xFF0F1923);
+  static const _card = Color(0xFF162030);
+  static const _border = Color(0xFF1E3050);
+  static const _primary = Color(0xFF00D4FF);
+  static const _green = Color(0xFF00E676);
+  static const _amber = Color(0xFFFFB300);
+  static const _red = Color(0xFFFF3D57);
+  static const _textSecondary = Color(0xFF8899BB);
 
   static const _slides = [
     _Slide(
-      icon: '📱',
-      gradient: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
-      title: 'Accept Rides Easily',
-      subtitle: 'Go online with one tap. Incoming ride requests appear instantly — accept or let them pass. You\'re always in control.',
-      features: ['One-tap online/offline', 'See trip details before accepting', 'Choose trips that fit your route'],
+      icon: Icons.directions_car_rounded,
+      neonColor: Color(0xFF00D4FF),
+      label: 'RIDES',
+      title: 'Accept Rides\nInstantly',
+      subtitle: 'Go online with one tap. See trip details before accepting — you\'re always in control.',
+      features: ['One-tap online / offline', 'Preview trip before accepting', 'Choose trips on your route'],
+      gradient: [Color(0xFF060A14), Color(0xFF0A1E30)],
     ),
     _Slide(
-      icon: '🗺️',
-      gradient: [Color(0xFF7C3AED), Color(0xFF6D28D9)],
-      title: 'Navigate Every Trip',
-      subtitle: 'Built-in navigation guides you door-to-door. Start, pause, and complete trips with simple buttons — no confusion.',
-      features: ['Turn-by-turn navigation', 'Live trip status updates', 'Easy trip start & end flow'],
+      icon: Icons.map_rounded,
+      neonColor: Color(0xFF00E676),
+      label: 'NAVIGATE',
+      title: 'Navigate\nEvery Trip',
+      subtitle: 'Built-in navigation guides you door-to-door. Start and complete trips with simple taps.',
+      features: ['Turn-by-turn navigation', 'Live trip status updates', 'Simple start & end flow'],
+      gradient: [Color(0xFF060A14), Color(0xFF0A1E18)],
     ),
     _Slide(
-      icon: '💰',
-      gradient: [Color(0xFF059669), Color(0xFF047857)],
-      title: 'Track Your Earnings',
-      subtitle: 'Your earnings are updated after every trip. View your daily, weekly totals and withdraw directly to your bank account.',
+      icon: Icons.account_balance_wallet_rounded,
+      neonColor: Color(0xFFFFB300),
+      label: 'EARNINGS',
+      title: 'Track Your\nEarnings',
+      subtitle: 'Earnings updated after every trip. View daily/weekly totals. Withdraw to bank anytime.',
       features: ['Instant earnings per trip', 'Daily & weekly summaries', 'Easy bank withdrawal'],
+      gradient: [Color(0xFF060A14), Color(0xFF1E1200)],
     ),
     _Slide(
-      icon: '🛡️',
-      gradient: [Color(0xFFD97706), Color(0xFFB45309)],
-      title: 'Safety Guidelines',
-      subtitle: 'Follow our safety standards: verify customer OTP before starting, keep documents updated, and use the SOS button if needed.',
-      features: ['Verify OTP before trip start', 'Keep documents up to date', 'SOS emergency button always ready'],
+      icon: Icons.verified_user_rounded,
+      neonColor: Color(0xFFFF3D57),
+      label: 'SAFETY',
+      title: 'Safety First,\nAlways',
+      subtitle: 'Verify customer OTP before every trip. Keep documents updated. SOS button always ready.',
+      features: ['Verify OTP before start', 'Keep documents updated', 'SOS emergency button'],
+      gradient: [Color(0xFF060A14), Color(0xFF1E0810)],
     ),
   ];
 
@@ -55,15 +75,17 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ));
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
-    _fadeCtrl.forward();
+    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _animCtrl.forward();
   }
 
   @override
   void dispose() {
     _pageCtrl.dispose();
-    _fadeCtrl.dispose();
+    _animCtrl.dispose();
     super.dispose();
   }
 
@@ -71,17 +93,16 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('driver_onboarding_seen', true);
     if (!mounted) return;
-    Navigator.pushReplacement(context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const LanguageSelectScreen(),
-        transitionDuration: const Duration(milliseconds: 500),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-      ));
+    Navigator.pushReplacement(context, PageRouteBuilder(
+      pageBuilder: (_, __, ___) => const LanguageSelectScreen(),
+      transitionDuration: const Duration(milliseconds: 500),
+      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+    ));
   }
 
   void _next() {
     if (_current < _slides.length - 1) {
-      _pageCtrl.nextPage(duration: const Duration(milliseconds: 380), curve: Curves.easeInOut);
+      _pageCtrl.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
     } else {
       _finish();
     }
@@ -91,25 +112,27 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   Widget build(BuildContext context) {
     final slide = _slides[_current];
     final isLast = _current == _slides.length - 1;
+    final size = MediaQuery.of(context).size;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
       child: Scaffold(
+        backgroundColor: _bg,
         body: AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
+          duration: const Duration(milliseconds: 450),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
               colors: slide.gradient,
             ),
           ),
           child: SafeArea(
             child: Column(
               children: [
-                // Header row: dots + skip
+                // Top bar — progress dots + skip
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -117,90 +140,96 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                         children: List.generate(_slides.length, (i) => AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
                           margin: const EdgeInsets.only(right: 6),
-                          width: i == _current ? 22 : 7,
-                          height: 7,
+                          width: i == _current ? 28 : 6,
+                          height: 6,
                           decoration: BoxDecoration(
-                            color: i == _current ? Colors.white : Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(4),
+                            color: i == _current
+                                ? slide.neonColor
+                                : _border,
+                            borderRadius: BorderRadius.circular(3),
+                            boxShadow: i == _current ? [
+                              BoxShadow(
+                                color: slide.neonColor.withValues(alpha: 0.6),
+                                blurRadius: 8,
+                              ),
+                            ] : [],
                           ),
                         )),
                       ),
-                      TextButton(
-                        onPressed: _finish,
-                        child: Text('Skip', style: GoogleFonts.poppins(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w600, fontSize: 14)),
-                      ),
+                      if (!isLast)
+                        TextButton(
+                          onPressed: _finish,
+                          style: TextButton.styleFrom(
+                            foregroundColor: _textSecondary,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          child: Text('Skip', style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600, fontSize: 14, color: _textSecondary,
+                          )),
+                        )
+                      else
+                        const SizedBox(width: 60),
                     ],
                   ),
                 ),
 
-                // Pilot badge
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-                    ),
-                    child: Text('JAGO Pilot App', style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      letterSpacing: 1,
-                    )),
-                  ),
-                ),
-
-                // PageView
+                // Page content
                 Expanded(
                   child: PageView.builder(
                     controller: _pageCtrl,
                     onPageChanged: (i) {
-                      _fadeCtrl.reset();
+                      _animCtrl.reset();
                       setState(() => _current = i);
-                      _fadeCtrl.forward();
+                      _animCtrl.forward();
                     },
                     itemCount: _slides.length,
-                    itemBuilder: (_, i) => _SlidePage(slide: _slides[i], fadeAnim: _fadeAnim),
+                    itemBuilder: (_, i) => _SlidePage(
+                      slide: _slides[i],
+                      fadeAnim: _fadeAnim,
+                      slideAnim: _slideAnim,
+                      screenHeight: size.height,
+                    ),
                   ),
                 ),
 
-                // Buttons
+                // CTA button
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: _next,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: slide.gradient[0],
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: Text(
-                            isLast ? 'Start Driving →' : 'Next →',
-                            style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 16),
-                          ),
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 36),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: GestureDetector(
+                      onTap: _next,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        decoration: BoxDecoration(
+                          color: slide.neonColor,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: slide.neonColor.withValues(alpha: 0.45),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              isLast ? 'Start Driving' : 'Continue',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                color: Colors.black,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward_rounded, size: 20, color: Colors.black),
+                          ],
                         ),
                       ),
-                      if (!isLast) ...[
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: _finish,
-                          child: Text('Skip to Setup',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 13, fontWeight: FontWeight.w500)),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -215,53 +244,101 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
 class _SlidePage extends StatelessWidget {
   final _Slide slide;
   final Animation<double> fadeAnim;
-  const _SlidePage({required this.slide, required this.fadeAnim});
+  final Animation<Offset> slideAnim;
+  final double screenHeight;
+  const _SlidePage({required this.slide, required this.fadeAnim, required this.slideAnim, required this.screenHeight});
 
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: fadeAnim,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
-              ),
-              child: Center(child: Text(slide.icon, style: const TextStyle(fontSize: 58))),
-            ),
-            const SizedBox(height: 32),
-            Text(slide.title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w800, height: 1.2)),
-            const SizedBox(height: 14),
-            Text(slide.subtitle,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.82), fontSize: 14, height: 1.6)),
-            const SizedBox(height: 26),
-            Column(
-              children: slide.features.map((f) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28, height: 28,
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                      child: const Center(child: Icon(Icons.check, color: Colors.white, size: 14)),
+      child: SlideTransition(
+        position: slideAnim,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icon container with neon glow
+              Container(
+                width: 100, height: 100,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF162030),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: slide.neonColor.withValues(alpha: 0.4), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: slide.neonColor.withValues(alpha: 0.3),
+                      blurRadius: 30,
+                      spreadRadius: 0,
                     ),
-                    const SizedBox(width: 12),
-                    Text(f, style: GoogleFonts.poppins(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                    BoxShadow(
+                      color: slide.neonColor.withValues(alpha: 0.1),
+                      blurRadius: 60,
+                      spreadRadius: 5,
+                    ),
                   ],
                 ),
-              )).toList(),
-            ),
-          ],
+                child: Icon(slide.icon, color: slide.neonColor, size: 46),
+              ),
+
+              SizedBox(height: screenHeight * 0.05),
+
+              // Label chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(
+                  color: slide.neonColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: slide.neonColor.withValues(alpha: 0.3), width: 1),
+                ),
+                child: Text(slide.label, style: GoogleFonts.poppins(
+                  color: slide.neonColor,
+                  fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2.5,
+                )),
+              ),
+
+              const SizedBox(height: 18),
+
+              // Title
+              Text(slide.title, style: GoogleFonts.poppins(
+                color: Colors.white, fontSize: 34,
+                fontWeight: FontWeight.w900, height: 1.1, letterSpacing: -0.5,
+              )),
+
+              const SizedBox(height: 16),
+
+              // Subtitle
+              Text(slide.subtitle, style: GoogleFonts.poppins(
+                color: const Color(0xFF8899BB),
+                fontSize: 15, fontWeight: FontWeight.w400, height: 1.65,
+              )),
+
+              SizedBox(height: screenHeight * 0.045),
+
+              // Feature list
+              ...slide.features.map((f) => Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Row(children: [
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: slide.neonColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: slide.neonColor.withValues(alpha: 0.25), width: 1),
+                    ),
+                    child: Icon(Icons.check_rounded, color: slide.neonColor, size: 18),
+                  ),
+                  const SizedBox(width: 14),
+                  Text(f, style: GoogleFonts.poppins(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontSize: 14, fontWeight: FontWeight.w600,
+                  )),
+                ]),
+              )),
+            ],
+          ),
         ),
       ),
     );
@@ -269,10 +346,15 @@ class _SlidePage extends StatelessWidget {
 }
 
 class _Slide {
-  final String icon;
+  final IconData icon;
+  final Color neonColor;
   final List<Color> gradient;
+  final String label;
   final String title;
   final String subtitle;
   final List<String> features;
-  const _Slide({required this.icon, required this.gradient, required this.title, required this.subtitle, required this.features});
+  const _Slide({
+    required this.icon, required this.neonColor, required this.gradient,
+    required this.label, required this.title, required this.subtitle, required this.features,
+  });
 }

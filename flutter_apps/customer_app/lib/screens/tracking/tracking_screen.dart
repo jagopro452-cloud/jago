@@ -61,8 +61,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       // Real-time driver GPS location
       _subs.add(_socket.onDriverLocation.listen((data) {
         if (!mounted) return;
-        final lat = (data['lat'] as num?)?.toDouble();
-        final lng = (data['lng'] as num?)?.toDouble();
+        final lat = double.tryParse(data['lat']?.toString() ?? '');
+        final lng = double.tryParse(data['lng']?.toString() ?? '');
         if (lat != null && lng != null) {
           setState(() {
             _driverLatLng = LatLng(lat, lng);
@@ -83,6 +83,15 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           }
         });
         _announceStatus(newStatus);
+        if (newStatus == 'arrived') {
+          AlarmService().playChime();
+          HapticFeedback.heavyImpact();
+          _showArrivalBanner();
+        }
+        if (newStatus == 'in_progress' || newStatus == 'on_the_way') {
+          AlarmService().playChime();
+          HapticFeedback.mediumImpact();
+        }
         if (newStatus == 'completed') AlarmService().playChime();
         if (newStatus == 'completed' || newStatus == 'cancelled') {
           _pollTimer?.cancel();
@@ -236,8 +245,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         final data = jsonDecode(res.body);
         final trip = data['trip'];
         if (trip != null && mounted) {
-          final dLat = (trip['driverLat'] as num?)?.toDouble();
-          final dLng = (trip['driverLng'] as num?)?.toDouble();
+          final dLat = double.tryParse(trip['driverLat']?.toString() ?? '');
+          final dLng = double.tryParse(trip['driverLng']?.toString() ?? '');
           setState(() {
             _trip = trip;
             _status = trip['currentStatus'] ?? _status;
@@ -246,8 +255,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               _updateDriverMarker(_driverLatLng!);
             }
             // Update map to pickup position
-            final pLat = (trip['pickupLat'] as num?)?.toDouble();
-            final pLng = (trip['pickupLng'] as num?)?.toDouble();
+            final pLat = double.tryParse(trip['pickupLat']?.toString() ?? '');
+            final pLng = double.tryParse(trip['pickupLng']?.toString() ?? '');
             if (pLat != null && pLng != null && pLat != 0) {
               _center = LatLng(pLat, pLng);
               // Animate camera only when driver is not yet assigned (searching state)
@@ -1069,6 +1078,29 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           child: const Text('Book New Ride →', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
         )),
     ]);
+  }
+
+  void _showArrivalBanner() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+          child: const Icon(Icons.where_to_vote_rounded, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('Pilot has arrived!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+          Text('Share your OTP to start the trip', style: TextStyle(fontSize: 11, color: Colors.white70)),
+        ])),
+      ]),
+      backgroundColor: const Color(0xFF16A34A),
+      duration: const Duration(seconds: 5),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    ));
   }
 
   Map<String, dynamic> _getStatusInfo(String status) {

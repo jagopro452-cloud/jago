@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
 import 'onboarding/onboarding_screen.dart';
@@ -15,79 +15,61 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  // Logo scale animation
   late AnimationController _logoCtrl;
   late Animation<double> _logoScale;
   late Animation<double> _logoOpacity;
 
-  // Text slide-up animation
   late AnimationController _textCtrl;
   late Animation<Offset> _textSlide;
   late Animation<double> _textOpacity;
 
-  // Bottom content fade
-  late AnimationController _bottomCtrl;
-  late Animation<double> _bottomOpacity;
+  late AnimationController _progressCtrl;
 
-  // Loading dots pulse
-  late AnimationController _dotCtrl;
-
-  static const Color _blue = Color(0xFF2F80ED);
+  static const _bg1 = Color(0xFF0A1628);
+  static const _bg2 = Color(0xFF1A2F5E);
+  static const _accent = Color(0xFF2F80ED);
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.light,
     ));
 
-    // Logo: scale + fade in (0ms → 700ms)
-    _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
-    _logoScale = Tween<double>(begin: 0.55, end: 1.0)
+    _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _logoScale = Tween<double>(begin: 0.6, end: 1.0)
         .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack));
     _logoOpacity = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeIn)));
+        .animate(CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.7)));
 
-    // Text: slide up + fade (starts at 450ms, duration 550ms)
-    _textCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
-    _textSlide = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
+    _textCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
         .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOutCubic));
     _textOpacity = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeIn));
+        .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut));
 
-    // Bottom footer: fade in last (starts at 900ms)
-    _bottomCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _bottomOpacity = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _bottomCtrl, curve: Curves.easeIn));
-
-    // Dots: looping pulse
-    _dotCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat();
+    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+      ..forward();
 
     _runSequence();
     _navigate();
   }
 
   Future<void> _runSequence() async {
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 200));
     if (!mounted) return;
     _logoCtrl.forward();
-    await Future.delayed(const Duration(milliseconds: 450));
+    await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     _textCtrl.forward();
-    await Future.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
-    _bottomCtrl.forward();
   }
 
   @override
   void dispose() {
     _logoCtrl.dispose();
     _textCtrl.dispose();
-    _bottomCtrl.dispose();
-    _dotCtrl.dispose();
+    _progressCtrl.dispose();
     super.dispose();
   }
 
@@ -103,244 +85,166 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     if (!onboardingSeen) {
       destination = const OnboardingScreen();
     } else if (token != null && token.isNotEmpty) {
-      destination = const HomeScreen();
+      final profile = await AuthService.getProfile();
+      if (!mounted) return;
+      if (profile != null) {
+        destination = const HomeScreen();
+      } else {
+        await prefs.remove('auth_token');
+        await prefs.remove('user_data');
+        destination = const LoginScreen();
+      }
     } else {
       destination = const LoginScreen();
     }
 
-    Navigator.pushReplacement(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => destination,
-        transitionDuration: const Duration(milliseconds: 500),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-      ),
-    );
+    if (!mounted) return;
+    Navigator.pushReplacement(context, PageRouteBuilder(
+      pageBuilder: (_, __, ___) => destination,
+      transitionDuration: const Duration(milliseconds: 600),
+      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // ── Radial glow behind logo ──
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _logoCtrl,
-              builder: (_, __) => Opacity(
-                opacity: (_logoOpacity.value * 0.6).clamp(0.0, 1.0),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(0, -0.1),
-                      radius: 0.7,
-                      colors: [Color(0xFFD6E9FF), Colors.white],
-                    ),
-                  ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_bg1, _bg2, Color(0xFF0D2444)],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Background glow circle
+            Positioned(
+              top: -size.height * 0.15,
+              left: -size.width * 0.2,
+              child: Container(
+                width: size.width * 0.8,
+                height: size.width * 0.8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _accent.withValues(alpha: 0.07),
                 ),
               ),
             ),
-          ),
-
-          // ── Top edge gradient ──
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: Container(
-              height: size.height * 0.15,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF2F80ED), Colors.transparent],
+            Positioned(
+              bottom: -size.height * 0.1,
+              right: -size.width * 0.25,
+              child: Container(
+                width: size.width * 0.7,
+                height: size.width * 0.7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _accent.withValues(alpha: 0.05),
                 ),
               ),
             ),
-          ),
 
-          // ── Bottom edge gradient ──
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: Container(
-              height: size.height * 0.18,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Color(0xFF2F80ED), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-
-          // ── Center: Logo + Text ──
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logo with scale + opacity
-                AnimatedBuilder(
-                  animation: _logoCtrl,
-                  builder: (_, child) => Opacity(
-                    opacity: _logoOpacity.value,
-                    child: Transform.scale(scale: _logoScale.value, child: child),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _blue.withValues(alpha: 0.25),
-                          blurRadius: 40,
-                          spreadRadius: 4,
-                          offset: const Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: Image.asset(
-                      'assets/images/jago_logo.png',
-                      width: 110,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => _buildFallbackLogo(),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // JAGO text + tagline with slide+fade
-                SlideTransition(
-                  position: _textSlide,
-                  child: FadeTransition(
-                    opacity: _textOpacity,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)],
-                          ).createShader(bounds),
-                          child: Text(
-                            'JAGO',
-                            style: GoogleFonts.poppins(
-                              fontSize: 38,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 8,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Your ride, your way',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: const Color(0xFF64748B),
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 48),
-
-                // Animated loading dots
-                AnimatedBuilder(
-                  animation: _dotCtrl,
-                  builder: (_, __) => _buildLoadingDots(),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Bottom footer ──
-          Positioned(
-            bottom: 32, left: 0, right: 0,
-            child: FadeTransition(
-              opacity: _bottomOpacity,
+            // Center content
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Made in India \u{1F1EE}\u{1F1F3}',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 12,
-                      letterSpacing: 0.5,
-                      fontWeight: FontWeight.w500,
+                  // Logo
+                  AnimatedBuilder(
+                    animation: _logoCtrl,
+                    builder: (_, child) => Opacity(
+                      opacity: _logoOpacity.value,
+                      child: Transform.scale(scale: _logoScale.value, child: child),
+                    ),
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: const LinearGradient(
+                          colors: [_accent, Color(0xFF1A6FE0)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _accent.withValues(alpha: 0.45),
+                            blurRadius: 40,
+                            spreadRadius: 4,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: Image.asset(
+                          'assets/images/jago_logo.png',
+                          fit: BoxFit.contain,
+                          color: Colors.white,
+                          colorBlendMode: BlendMode.srcIn,
+                          errorBuilder: (_, __, ___) => Container(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [_accent, Color(0xFF1A6FE0)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(28),
+                            ),
+                            child: Center(
+                              child: Text('J',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 52,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  height: 1,
+                                )),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Mindwhile IT Solutions Pvt Ltd',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 11,
-                      letterSpacing: 0.8,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
+
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildLoadingDots() {
-    final t = _dotCtrl.value;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        // Each dot pulses with phase offset
-        final phase = (t - i * 0.25).clamp(0.0, 1.0);
-        final pulse = math.sin(phase * math.pi);
-        final size = 6.0 + pulse * 3.0;
-        final opacity = 0.3 + pulse * 0.7;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _blue.withValues(alpha: opacity),
+            // Bottom: progress bar + company
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Thin progress bar
+                  AnimatedBuilder(
+                    animation: _progressCtrl,
+                    builder: (_, __) => LinearProgressIndicator(
+                      value: _progressCtrl.value,
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      valueColor: const AlwaysStoppedAnimation<Color>(_accent),
+                      minHeight: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Mindwhile IT Solutions Pvt Ltd',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      fontSize: 11,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildFallbackLogo() {
-    return Container(
-      width: 110,
-      height: 110,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Center(
-        child: Text(
-          'J',
-          style: GoogleFonts.poppins(
-            fontSize: 64,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            height: 1,
-          ),
+          ],
         ),
       ),
     );

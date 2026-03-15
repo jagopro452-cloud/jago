@@ -23,6 +23,7 @@ import '../saved_places/saved_places_screen.dart';
 import '../booking/parcel_booking_screen.dart';
 import '../booking/voice_booking_screen.dart';
 import '../../services/trip_service.dart';
+import '../auth/login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -48,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _driverAssignedSub;
   int _navIndex = 0;
   bool _homeLoading = true;
+  Timer? _loadingTimeout;
 
   // Brand colors
   static const Color _primary = Color(0xFF2F80ED);
@@ -70,6 +72,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSavedPlaces();
     _loadRecentTrips();
     _connectSocket();
+    // Safety fallback: never show loading more than 6 seconds
+    _loadingTimeout = Timer(const Duration(seconds: 6), () {
+      if (mounted && _homeLoading) {
+        setState(() {
+          _homeLoading = false;
+          if (_vehicleCategories.isEmpty) _vehicleCategories = _defaultVehicleCategories();
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
@@ -79,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final headers = await AuthService.getHeaders();
       final r = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/notifications?limit=1'),
-        headers: headers);
+        headers: headers).timeout(const Duration(seconds: 8));
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
         setState(() => _unreadNotifCount = (data['unreadCount'] as int?) ?? 0);
@@ -90,10 +101,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchWalletBalance() async {
     try {
       final headers = await AuthService.getHeaders();
-      final r = await http.get(Uri.parse(ApiConfig.wallet), headers: headers);
+      final r = await http.get(Uri.parse(ApiConfig.wallet), headers: headers)
+          .timeout(const Duration(seconds: 8));
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body);
-        setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
+        setState(() => _walletBalance = double.tryParse(data['balance']?.toString() ?? '0') ?? 0.0);
       }
     } catch (_) {}
   }
@@ -275,6 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _loadingTimeout?.cancel();
     _driverAssignedSub?.cancel();
     _socket.disconnect();
     super.dispose();
@@ -341,13 +354,29 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  void _handleUnauthorized() {
+    AuthService.logout().then((_) {
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+    });
+  }
+
   Future<void> _fetchHome() async {
     try {
       final headers = await AuthService.getHeaders();
       final results = await Future.wait([
-        http.get(Uri.parse(ApiConfig.customerHomeData), headers: headers),
-        http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/services'), headers: headers),
+        http.get(Uri.parse(ApiConfig.customerHomeData), headers: headers)
+            .timeout(const Duration(seconds: 6)),
+        http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/services'), headers: headers)
+            .timeout(const Duration(seconds: 6)),
       ]);
+      // 401 = token expired — logout and go to login
+      if (results[0].statusCode == 401) {
+        if (mounted) setState(() => _homeLoading = false);
+        _handleUnauthorized();
+        return;
+      }
       if (results[0].statusCode == 200) {
         final data = jsonDecode(results[0].body) as Map<String, dynamic>;
         final cats = (data['vehicleCategories'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
@@ -556,7 +585,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSkeletonLoader(bool isDark, Color cardBg) {
-    final shimmer = isDark ? const Color(0xFF2A3A50) : const Color(0xFFE8EDF2);
+    final shimmer = isDark ? const Color(0xFF2A3A50) : const Color(0xFFCBD5E1);
     Widget box(double w, double h, {double r = 10}) => Container(
       width: w, height: h,
       decoration: BoxDecoration(color: shimmer, borderRadius: BorderRadius.circular(r)),
@@ -1337,7 +1366,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ..._recentTrips.take(3).map((trip) {
             final pickup = trip['pickupAddress']?.toString() ?? trip['pickup_address']?.toString() ?? '';
             final dest = trip['destinationAddress']?.toString() ?? trip['destination_address']?.toString() ?? '';
-            final fare = (trip['estimatedFare'] ?? trip['actual_fare'] ?? trip['estimated_fare'] ?? 0).toDouble();
+            final fareRaw = trip['estimatedFare'] ?? trip['actual_fare'] ?? trip['estimated_fare'] ?? 0;
+            final fare = double.tryParse(fareRaw.toString()) ?? 0.0;
             final destLat = double.tryParse(trip['destinationLat']?.toString() ?? trip['destination_lat']?.toString() ?? '0') ?? 0;
             final destLng = double.tryParse(trip['destinationLng']?.toString() ?? trip['destination_lng']?.toString() ?? '0') ?? 0;
             final vehicle = trip['vehicleName']?.toString() ?? trip['vehicle_name']?.toString() ?? '';

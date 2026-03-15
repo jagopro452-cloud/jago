@@ -33,6 +33,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   static const Color _bg = Color(0xFF0B0B0B);
   static const Color _surface = Color(0xFF1A1A1A);
 
+  Timer? _vibrationTimer;
+
   @override
   void initState() {
     super.initState();
@@ -44,14 +46,20 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
 
     _pulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 500),
     )..repeat(reverse: true);
 
-    // Start looping alarm immediately
+    // Start looping alarm immediately (loud square-wave siren)
     AlarmService().startAlarm();
 
-    // Vibration burst on arrival
+    // Immediate burst
     _triggerAlertBurst();
+
+    // Continuous vibration every 400ms — felt even with phone in pocket/mount
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 400), (t) {
+      if (!mounted) { t.cancel(); return; }
+      HapticFeedback.heavyImpact();
+    });
 
     // Countdown: auto-reject at 0
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -66,24 +74,22 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   }
 
   void _triggerAlertBurst() {
-    // Triple haptic + system beep for immediate physical alert
-    HapticFeedback.heavyImpact();
-    SystemSound.play(SystemSoundType.alert);
-    Future.delayed(const Duration(milliseconds: 120), () {
-      if (mounted) {
-        HapticFeedback.heavyImpact();
-        SystemSound.play(SystemSoundType.alert);
-      }
-    });
-    Future.delayed(const Duration(milliseconds: 240), () {
-      if (mounted) HapticFeedback.heavyImpact();
-    });
+    // 5× heavy haptic burst in first 600ms for immediate physical alert
+    for (int i = 0; i < 5; i++) {
+      Future.delayed(Duration(milliseconds: 80 * i), () {
+        if (mounted) {
+          HapticFeedback.heavyImpact();
+          if (i % 2 == 0) SystemSound.play(SystemSoundType.alert);
+        }
+      });
+    }
   }
 
   Future<void> _stopAndRespond(bool accepted) async {
     if (_responded) return;
     _responded = true;
     _countdownTimer?.cancel();
+    _vibrationTimer?.cancel();
     await AlarmService().stopAlarm();
     if (accepted) {
       widget.onAccept();
@@ -95,6 +101,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   Future<void> _autoReject() async {
     if (_responded) return;
     _responded = true;
+    _vibrationTimer?.cancel();
     await AlarmService().stopAlarm();
     widget.onReject();
   }
@@ -104,8 +111,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     _ringCtrl.dispose();
     _pulseCtrl.dispose();
     _countdownTimer?.cancel();
-    // If widget is disposed without responding (e.g. trip:taken event),
-    // stop the alarm so it doesn't keep playing.
+    _vibrationTimer?.cancel();
     if (!_responded) AlarmService().stopAlarm();
     super.dispose();
   }

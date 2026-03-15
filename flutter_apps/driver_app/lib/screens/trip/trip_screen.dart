@@ -43,13 +43,19 @@ class _TripScreenState extends State<TripScreen> {
     _trip = widget.trip;
     if (_trip != null) {
       _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
-      final lat = (_trip!['pickupLat'] as num?)?.toDouble();
-      final lng = (_trip!['pickupLng'] as num?)?.toDouble();
+      final lat = double.tryParse(_trip!['pickupLat']?.toString() ?? '');
+      final lng = double.tryParse(_trip!['pickupLng']?.toString() ?? '');
       if (lat != null && lng != null && lat != 0) _center = LatLng(lat, lng);
     }
     _startLocationUpdates();
     _loadCancelReasons();
     _listenForCancel();
+    // Auto-launch navigation to pickup when trip is accepted
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_status == 'accepted' || _status == 'driver_assigned') {
+        _openNavigation();
+      }
+    });
   }
 
   void _listenForCancel() {
@@ -1317,11 +1323,11 @@ class _TripScreenState extends State<TripScreen> {
   Future<void> _openNavigation() async {
     final toPickup = _status == 'accepted' || _status == 'driver_assigned';
     final targetLat = toPickup
-      ? ((_trip?['pickupLat'] as num?)?.toDouble() ?? (_trip?['pickup_lat'] as num?)?.toDouble() ?? 0)
-      : ((_trip?['destinationLat'] as num?)?.toDouble() ?? (_trip?['destination_lat'] as num?)?.toDouble() ?? 0);
+      ? (double.tryParse(_trip?['pickupLat']?.toString() ?? '') ?? double.tryParse(_trip?['pickup_lat']?.toString() ?? '') ?? 0.0)
+      : (double.tryParse(_trip?['destinationLat']?.toString() ?? '') ?? double.tryParse(_trip?['destination_lat']?.toString() ?? '') ?? 0.0);
     final targetLng = toPickup
-      ? ((_trip?['pickupLng'] as num?)?.toDouble() ?? (_trip?['pickup_lng'] as num?)?.toDouble() ?? 0)
-      : ((_trip?['destinationLng'] as num?)?.toDouble() ?? (_trip?['destination_lng'] as num?)?.toDouble() ?? 0);
+      ? (double.tryParse(_trip?['pickupLng']?.toString() ?? '') ?? double.tryParse(_trip?['pickup_lng']?.toString() ?? '') ?? 0.0)
+      : (double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? double.tryParse(_trip?['destination_lng']?.toString() ?? '') ?? 0.0);
     final targetAddress = toPickup
       ? (_trip?['pickupAddress']?.toString() ?? _trip?['pickup_address']?.toString() ?? 'Pickup')
       : (_trip?['destinationAddress']?.toString() ?? _trip?['destination_address']?.toString() ?? 'Destination');

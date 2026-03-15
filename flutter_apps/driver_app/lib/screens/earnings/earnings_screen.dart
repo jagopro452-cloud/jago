@@ -13,12 +13,17 @@ class EarningsScreen extends StatefulWidget {
 
 class _EarningsScreenState extends State<EarningsScreen>
     with SingleTickerProviderStateMixin {
-  static const _bg = Color(0xFF0B0B0B);
-  static const _surface = Color(0xFF1A1A1A);
-  static const _card = Color(0xFF222222);
-  static const _green = Color(0xFF10B981);
-  static const _blue = Color(0xFF2F80ED);
-  static const _amber = Color(0xFFF59E0B);
+  // Color system
+  static const _bg = Color(0xFF060A14);
+  static const _surface = Color(0xFF0F1923);
+  static const _card = Color(0xFF162030);
+  static const _border = Color(0xFF1E3050);
+  static const _primary = Color(0xFF00D4FF);
+  static const _green = Color(0xFF00E676);
+  static const _amber = Color(0xFFFFB300);
+  static const _red = Color(0xFFFF3D57);
+  static const _textSecondary = Color(0xFF8899BB);
+  static const _textHint = Color(0xFF445577);
 
   String _period = 'today';
   bool _loading = true;
@@ -117,16 +122,31 @@ class _EarningsScreenState extends State<EarningsScreen>
             SliverToBoxAdapter(child: _buildHeader()),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                 child: _buildTabs(),
               ),
             ),
             if (_loading)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(40),
+                  padding: const EdgeInsets.all(60),
                   child: Center(
-                      child: CircularProgressIndicator(color: _green)),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: 40, height: 40,
+                          child: CircularProgressIndicator(
+                            color: _green,
+                            strokeWidth: 2.5,
+                            backgroundColor: _border,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text('Loading earnings...',
+                            style: GoogleFonts.poppins(color: _textHint, fontSize: 13)),
+                      ],
+                    ),
+                  ),
                 ),
               )
             else
@@ -137,30 +157,29 @@ class _EarningsScreenState extends State<EarningsScreen>
                     padding: const EdgeInsets.all(16),
                     child: Column(children: [
                       _bigEarningCard(net),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       Row(children: [
                         Expanded(
                             child: _statCard('Gross Fare',
                                 '₹${gross.toStringAsFixed(0)}',
                                 Icons.monetization_on_rounded, _amber)),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                             child: _statCard('Commission',
                                 '-₹${commission.toStringAsFixed(0)}',
-                                Icons.percent_rounded, Colors.redAccent)),
+                                Icons.percent_rounded, _red)),
                       ]),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       Row(children: [
                         Expanded(
                             child: _statCard('Completed',
                                 '$completed trips',
                                 Icons.check_circle_rounded, _green)),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                             child: _statCard('Cancelled',
                                 '$cancelled trips',
-                                Icons.cancel_rounded,
-                                const Color(0xFFEF4444))),
+                                Icons.cancel_rounded, _red)),
                       ]),
                     ]),
                   ),
@@ -168,7 +187,7 @@ class _EarningsScreenState extends State<EarningsScreen>
               ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 child: _buildWeeklyChart(maxWeek),
               ),
             ),
@@ -180,34 +199,30 @@ class _EarningsScreenState extends State<EarningsScreen>
 
   Widget _buildHeader() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0D1B2A), Color(0xFF1A2E1A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+      decoration: BoxDecoration(
+        color: _surface,
+        border: Border(bottom: BorderSide(color: _border, width: 1)),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Row(children: [
             GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12)),
+                  color: _card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _border, width: 1),
                 ),
                 child: const Icon(Icons.arrow_back_ios_new_rounded,
                     color: Colors.white, size: 18),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('My Earnings',
                   style: GoogleFonts.poppins(
@@ -216,27 +231,34 @@ class _EarningsScreenState extends State<EarningsScreen>
                       fontWeight: FontWeight.w700)),
               Text('Track your income & trips',
                   style: GoogleFonts.poppins(
-                      color: Colors.white54, fontSize: 12)),
+                      color: _textSecondary, fontSize: 12)),
             ]),
             const Spacer(),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _green.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-                border:
-                    Border.all(color: _green.withValues(alpha: 0.3)),
+                color: _green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _green.withValues(alpha: 0.3)),
+                boxShadow: [
+                  BoxShadow(color: _green.withValues(alpha: 0.2), blurRadius: 12),
+                ],
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.trending_up_rounded,
-                    color: _green, size: 16),
-                const SizedBox(width: 4),
-                Text('Live',
+                Container(
+                  width: 7, height: 7,
+                  decoration: BoxDecoration(
+                    color: _green, shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.7), blurRadius: 6)],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text('LIVE',
                     style: GoogleFonts.poppins(
                         color: _green,
                         fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1)),
               ]),
             ),
           ]),
@@ -249,7 +271,10 @@ class _EarningsScreenState extends State<EarningsScreen>
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: _surface, borderRadius: BorderRadius.circular(14)),
+        color: _card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _border, width: 1),
+      ),
       child: Row(
         children: _tabs.map((t) {
           final active = _period == t['value'];
@@ -260,30 +285,28 @@ class _EarningsScreenState extends State<EarningsScreen>
                 _loadStats();
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
+                duration: const Duration(milliseconds: 220),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   gradient: active
-                      ? const LinearGradient(
-                          colors: [Color(0xFF0D9F6E), Color(0xFF10B981)])
+                      ? LinearGradient(
+                          colors: [_green.withValues(alpha: 0.25), _green.withValues(alpha: 0.1)],
+                          begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        )
                       : null,
                   color: active ? null : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: active ? Border.all(color: _green.withValues(alpha: 0.4), width: 1) : null,
                   boxShadow: active
-                      ? [
-                          BoxShadow(
-                              color: _green.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2))
-                        ]
+                      ? [BoxShadow(color: _green.withValues(alpha: 0.2), blurRadius: 10)]
                       : [],
                 ),
                 child: Text(t['label']!,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
-                        color: active ? Colors.white : Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                        color: active ? _green : _textHint,
+                        fontSize: 12,
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w600)),
               ),
             ),
           );
@@ -303,90 +326,96 @@ class _EarningsScreenState extends State<EarningsScreen>
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-            colors: [
-              _green.withValues(alpha: 0.2),
-              _blue.withValues(alpha: 0.1)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight),
+        color: _card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _green.withValues(alpha: 0.3), width: 1),
+        border: Border.all(color: _green.withValues(alpha: 0.35), width: 1),
+        boxShadow: [
+          BoxShadow(color: _green.withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 8)),
+          BoxShadow(color: _green.withValues(alpha: 0.05), blurRadius: 64, spreadRadius: 4),
+        ],
       ),
       child: Column(children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: _green.withValues(alpha: 0.15),
+            color: _green.withValues(alpha: 0.1),
             shape: BoxShape.circle,
+            border: Border.all(color: _green.withValues(alpha: 0.3)),
+            boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.3), blurRadius: 20)],
           ),
-          child: const Icon(Icons.account_balance_wallet_rounded,
-              color: _green, size: 28),
+          child: Icon(Icons.account_balance_wallet_rounded, color: _green, size: 30),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         Text('Net Earnings',
-            style: GoogleFonts.poppins(
-                color: Colors.white60, fontSize: 13)),
-        const SizedBox(height: 6),
-        Text('₹${net.toStringAsFixed(2)}',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 40,
-                fontWeight: FontWeight.w800,
-                height: 1.1)),
-        const SizedBox(height: 6),
+            style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [_green, const Color(0xFF00FFAA)],
+          ).createShader(bounds),
+          child: Text('₹${net.toStringAsFixed(2)}',
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  height: 1.0,
+                  letterSpacing: -1.5)),
+        ),
+        const SizedBox(height: 10),
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(8),
+            color: _surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _border),
           ),
           child: Text(periodLabel,
               style: GoogleFonts.poppins(
-                  color: Colors.white54,
+                  color: _textSecondary,
                   fontSize: 12,
-                  fontWeight: FontWeight.w500)),
+                  fontWeight: FontWeight.w600)),
         ),
       ]),
     );
   }
 
-  Widget _statCard(
-      String label, String value, IconData icon, Color color) {
+  Widget _statCard(String label, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.07), width: 1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12)),
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+          ),
           child: Icon(icon, color: color, size: 18),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
                   style: GoogleFonts.poppins(
-                      color: Colors.white54,
+                      color: _textHint,
                       fontSize: 10,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 3),
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5)),
+              const SizedBox(height: 4),
               Text(value,
                   style: GoogleFonts.poppins(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800)),
             ],
           ),
@@ -397,12 +426,11 @@ class _EarningsScreenState extends State<EarningsScreen>
 
   Widget _buildWeeklyChart(double maxWeek) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: _card,
-        borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.07), width: 1),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _border, width: 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -414,38 +442,46 @@ class _EarningsScreenState extends State<EarningsScreen>
                     fontWeight: FontWeight.w700)),
             Text('Last 7 days overview',
                 style: GoogleFonts.poppins(
-                    color: Colors.white38, fontSize: 11)),
+                    color: _textHint, fontSize: 11)),
           ]),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: _green.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _green.withValues(alpha: 0.25)),
+              color: _green.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _green.withValues(alpha: 0.3)),
+              boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.15), blurRadius: 12)],
             ),
             child: Text('₹${_weekTotal.toStringAsFixed(0)}',
                 style: GoogleFonts.poppins(
                     color: _green,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800)),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900)),
           ),
         ]),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
         if (_weekLoading)
-          const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator(color: _green)))
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: CircularProgressIndicator(
+                color: _green,
+                strokeWidth: 2,
+                backgroundColor: _border,
+              ),
+            ),
+          )
         else if (_weekDays.isEmpty)
           Center(
-            child: Text('No weekly data',
-                style: GoogleFonts.poppins(
-                    color: Colors.white38, fontSize: 13)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text('No weekly data',
+                  style: GoogleFonts.poppins(color: _textHint, fontSize: 13)),
+            ),
           )
         else
           SizedBox(
-            height: 130,
+            height: 140,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -464,39 +500,32 @@ class _EarningsScreenState extends State<EarningsScreen>
                         if (val > 0)
                           Text('₹${val.toInt()}',
                               style: GoogleFonts.poppins(
-                                  color: isToday ? _green : Colors.white38,
+                                  color: isToday ? _green : _textHint,
                                   fontSize: 8,
-                                  fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
+                                  fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 5),
                         Container(
-                          height: (frac * 90).clamp(4.0, 90.0),
+                          height: (frac * 95).clamp(4.0, 95.0),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: isToday
-                                  ? [
-                                      const Color(0xFF0D9F6E),
-                                      _green
-                                    ]
-                                  : [
-                                      _blue.withValues(alpha: 0.4),
-                                      _blue.withValues(alpha: 0.7)
-                                    ],
+                                  ? [_green.withValues(alpha: 0.6), _green]
+                                  : [_primary.withValues(alpha: 0.2), _primary.withValues(alpha: 0.5)],
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                             ),
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(6)),
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                            boxShadow: isToday ? [
+                              BoxShadow(color: _green.withValues(alpha: 0.4), blurRadius: 10),
+                            ] : [],
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         Text(d['day'] as String,
                             style: GoogleFonts.poppins(
-                                color:
-                                    isToday ? _green : Colors.white38,
+                                color: isToday ? _green : _textHint,
                                 fontSize: 10,
-                                fontWeight: isToday
-                                    ? FontWeight.w800
-                                    : FontWeight.w500)),
+                                fontWeight: isToday ? FontWeight.w800 : FontWeight.w500)),
                       ],
                     ),
                   ),

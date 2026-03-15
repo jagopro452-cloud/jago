@@ -31,6 +31,29 @@ void main() async {
     await Firebase.initializeApp();
     await FcmService().init();
   } catch (_) {}
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0B0B0B),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.error_outline, color: Color(0xFF2F80ED), size: 48),
+              const SizedBox(height: 16),
+              const Text('Something went wrong.\nPlease restart the app.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text(details.exceptionAsString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  };
   runApp(const JagoPilotApp());
 }
 
@@ -116,9 +139,11 @@ class JagoPilotApp extends StatelessWidget {
         background: bg,
         onPrimary: Colors.white,
         onSurface: Colors.white,
+        outline: Color(0xFF2A2A2A),
       ),
       scaffoldBackgroundColor: bg,
       cardColor: card,
+      dividerColor: const Color(0xFF2A2A2A),
       fontFamily: GoogleFonts.poppins().fontFamily,
       textTheme: GoogleFonts.poppinsTextTheme().apply(
         bodyColor: Colors.white,
@@ -151,18 +176,18 @@ class JagoPilotApp extends StatelessWidget {
         fillColor: card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF334155)),
+          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.poppins(color: const Color(0xFF64748B), fontSize: 14),
+        hintStyle: GoogleFonts.poppins(color: const Color(0xFF6B7280), fontSize: 14),
       ),
     );
   }

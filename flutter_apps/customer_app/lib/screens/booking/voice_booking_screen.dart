@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 
@@ -54,6 +55,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   _LangOption _selectedLang = _supportedLangs[0];
   List<LocaleName> _availableLocales = [];
+  double? _currentLat;
+  double? _currentLng;
+  String _currentAddress = 'Current Location';
 
   late AnimationController _pulseCtrl;
   late AnimationController _waveCtrl;
@@ -74,6 +78,32 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     _waveCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
       ..repeat(reverse: true);
     _initSpeech();
+    _fetchCurrentLocation();
+  }
+
+  Future<void> _fetchCurrentLocation() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      setState(() { _currentLat = pos.latitude; _currentLng = pos.longitude; });
+      // Reverse geocode for display
+      final key = ApiConfig.googleMapsApiKey;
+      if (key.isNotEmpty) {
+        final r = await http.get(Uri.parse(
+          'https://maps.googleapis.com/maps/api/geocode/json?latlng=${pos.latitude},${pos.longitude}&key=$key'));
+        if (r.statusCode == 200) {
+          final d = jsonDecode(r.body);
+          final results = d['results'] as List?;
+          if (results != null && results.isNotEmpty && mounted) {
+            setState(() => _currentAddress = results[0]['formatted_address'] ?? 'Current Location');
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -397,7 +427,12 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/voice-booking/parse'),
         headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({'text': text}),
+        body: jsonEncode({
+          'text': text,
+          if (_currentLat != null) 'currentLat': _currentLat,
+          if (_currentLng != null) 'currentLng': _currentLng,
+          'currentAddress': _currentAddress,
+        }),
       ).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);

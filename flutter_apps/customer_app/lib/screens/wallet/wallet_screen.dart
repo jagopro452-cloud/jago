@@ -170,15 +170,19 @@ class _WalletScreenState extends State<WalletScreen>
     double? selectedPreset;
     final customCtrl = TextEditingController();
 
+    final isDarkSheet = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          decoration: BoxDecoration(
+            color: isDarkSheet ? const Color(0xFF1A1A1A) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: isDarkSheet
+                ? const Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 1))
+                : null,
           ),
           padding: EdgeInsets.fromLTRB(
               24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
@@ -191,7 +195,7 @@ class _WalletScreenState extends State<WalletScreen>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: isDarkSheet ? const Color(0xFF2A2A2A) : Colors.grey.shade300,
                       borderRadius: BorderRadius.circular(2)),
                 ),
               ),
@@ -203,7 +207,7 @@ class _WalletScreenState extends State<WalletScreen>
                       style: GoogleFonts.poppins(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827))),
+                          color: isDarkSheet ? Colors.white : const Color(0xFF111827))),
                   IconButton(
                     icon: const Icon(Icons.close_rounded,
                         color: Color(0xFF9CA3AF)),
@@ -236,7 +240,7 @@ class _WalletScreenState extends State<WalletScreen>
                   style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF6B7280),
+                      color: const Color(0xFFA0A0A0),
                       letterSpacing: 0.5)),
               const SizedBox(height: 10),
               Wrap(
@@ -256,12 +260,12 @@ class _WalletScreenState extends State<WalletScreen>
                       decoration: BoxDecoration(
                         color: sel
                             ? const Color(0xFF2F80ED)
-                            : const Color(0xFFF3F6FB),
+                            : isDarkSheet ? const Color(0xFF242424) : const Color(0xFFF3F6FB),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: sel
                                 ? const Color(0xFF2F80ED)
-                                : const Color(0xFFE5E7EB)),
+                                : isDarkSheet ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB)),
                         boxShadow: sel
                             ? [
                                 BoxShadow(
@@ -278,7 +282,7 @@ class _WalletScreenState extends State<WalletScreen>
                               fontSize: 14,
                               color: sel
                                   ? Colors.white
-                                  : const Color(0xFF374151))),
+                                  : isDarkSheet ? Colors.white : const Color(0xFF374151))),
                     ),
                   );
                 }).toList(),
@@ -288,14 +292,14 @@ class _WalletScreenState extends State<WalletScreen>
                   style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF6B7280),
+                      color: const Color(0xFFA0A0A0),
                       letterSpacing: 0.5)),
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                    color: const Color(0xFFF3F6FB),
+                    color: isDarkSheet ? const Color(0xFF242424) : const Color(0xFFF3F6FB),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE5E7EB))),
+                    border: Border.all(color: isDarkSheet ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB))),
                 child: Row(children: [
                   Padding(
                     padding: const EdgeInsets.only(left: 16),
@@ -303,7 +307,7 @@ class _WalletScreenState extends State<WalletScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFF111827))),
+                            color: isDarkSheet ? Colors.white : const Color(0xFF111827))),
                   ),
                   Expanded(
                     child: TextField(
@@ -314,7 +318,7 @@ class _WalletScreenState extends State<WalletScreen>
                       style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFF111827)),
+                          color: isDarkSheet ? Colors.white : const Color(0xFF111827)),
                       decoration: InputDecoration(
                         hintText: 'Enter amount (min ₹10)',
                         hintStyle: GoogleFonts.poppins(
@@ -402,8 +406,9 @@ class _WalletScreenState extends State<WalletScreen>
         (_wallet?['history'] as List?) ??
         [];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F6FB),
+      backgroundColor: isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF3F6FB),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
@@ -419,11 +424,11 @@ class _WalletScreenState extends State<WalletScreen>
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
-                              color: const Color(0xFF111827))),
+                              color: isDark ? Colors.white : const Color(0xFF111827))),
                       const Spacer(),
                       Text('${transactions.length} records',
                           style: GoogleFonts.poppins(
-                              fontSize: 12, color: const Color(0xFF6B7280))),
+                              fontSize: 12, color: const Color(0xFFA0A0A0))),
                     ]),
                   ),
                 ),
@@ -616,13 +621,15 @@ class _WalletScreenState extends State<WalletScreen>
       },
     ];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        border: isDark ? Border.all(color: const Color(0xFF2A2A2A), width: 1) : null,
+        boxShadow: isDark ? null : [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 12,
@@ -636,11 +643,11 @@ class _WalletScreenState extends State<WalletScreen>
               style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827))),
+                  color: isDark ? Colors.white : const Color(0xFF111827))),
           const SizedBox(height: 4),
           Text('Powered by Razorpay — all methods accepted',
               style: GoogleFonts.poppins(
-                  fontSize: 11, color: const Color(0xFF9CA3AF))),
+                  fontSize: 11, color: const Color(0xFFA0A0A0))),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -653,7 +660,9 @@ class _WalletScreenState extends State<WalletScreen>
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: m['bg'] as Color,
+                        color: isDark
+                            ? (m['color'] as Color).withOpacity(0.15)
+                            : m['bg'] as Color,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(m['icon'] as IconData,
@@ -664,7 +673,7 @@ class _WalletScreenState extends State<WalletScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF374151))),
+                            color: isDark ? const Color(0xFFA0A0A0) : const Color(0xFF374151))),
                   ]),
                 ),
               );
@@ -676,6 +685,7 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildEmpty() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -684,21 +694,22 @@ class _WalletScreenState extends State<WalletScreen>
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(24)),
+                color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(24),
+                border: isDark ? Border.all(color: const Color(0xFF2A2A2A)) : null),
             child: const Icon(Icons.receipt_long_outlined,
                 size: 40, color: Color(0xFF2F80ED)),
           ),
           const SizedBox(height: 16),
           Text('No transactions yet',
               style: GoogleFonts.poppins(
-                  color: const Color(0xFF374151),
+                  color: isDark ? Colors.white : const Color(0xFF374151),
                   fontSize: 16,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text('Add money to get started',
               style: GoogleFonts.poppins(
-                  color: const Color(0xFF9CA3AF), fontSize: 13)),
+                  color: const Color(0xFFA0A0A0), fontSize: 13)),
         ],
       ),
     );
@@ -712,14 +723,23 @@ class _WalletScreenState extends State<WalletScreen>
     final isRazorpay = method.contains('razorpay');
     final date =
         t['date'] ?? t['created_at'] ?? t['createdAt'] ?? '';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        border: isDark
+            ? Border(
+                left: BorderSide(
+                  color: isCredit ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  width: 3,
+                ),
+              )
+            : null,
+        boxShadow: isDark ? null : [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
@@ -753,7 +773,7 @@ class _WalletScreenState extends State<WalletScreen>
                   style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: const Color(0xFF111827)),
+                      color: isDark ? Colors.white : const Color(0xFF111827)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
@@ -775,7 +795,7 @@ class _WalletScreenState extends State<WalletScreen>
                 ],
                 Text(date,
                     style: GoogleFonts.poppins(
-                        color: const Color(0xFF9CA3AF), fontSize: 11)),
+                        color: const Color(0xFFA0A0A0), fontSize: 11)),
               ]),
             ],
           ),
