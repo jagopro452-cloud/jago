@@ -22,6 +22,7 @@ const EnvSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 
   FAST2SMS_API_KEY: z.string().optional(),
+  TWO_FACTOR_API_KEY: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),

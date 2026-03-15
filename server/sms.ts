@@ -3,6 +3,25 @@ import { getConf } from "./config-db";
 
 type SmsResult = { success: boolean; provider: string; error?: string };
 
+async function sendVia2Factor(phone: string, otp: string): Promise<SmsResult> {
+  const apiKey = await getConf("TWO_FACTOR_API_KEY", "two_factor_api_key");
+  if (!apiKey) return { success: false, provider: "2factor", error: "No API key" };
+  const tenDigit = phone.replace(/\D/g, "").slice(-10);
+  try {
+    const url = `https://2factor.in/API/V1/${apiKey}/SMS/${tenDigit}/${otp}/AUTOGEN`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const data = (await res.json()) as any;
+    if (data.Status === "Success") {
+      console.log(`[SMS-2FACTOR] OTP sent to ${tenDigit}`);
+      return { success: true, provider: "2factor" };
+    }
+    console.warn(`[SMS-2FACTOR] Failed:`, data.Details);
+    return { success: false, provider: "2factor", error: data.Details };
+  } catch (err: any) {
+    return { success: false, provider: "2factor", error: err.message };
+  }
+}
+
 async function sendViaFast2Sms(phone: string, otp: string): Promise<SmsResult> {
   const apiKey = await getConf("FAST2SMS_API_KEY", "fast2sms_api_key");
   if (!apiKey) return { success: false, provider: "fast2sms", error: "No API key" };
@@ -16,7 +35,7 @@ async function sendViaFast2Sms(phone: string, otp: string): Promise<SmsResult> {
     });
     const otpData = (await otpRes.json()) as any;
     if (otpData.return === true) { console.log(`[SMS-FAST2SMS-OTP] OTP sent to ${tenDigit}`); return { success: true, provider: "fast2sms" }; }
-    console.warn(`[SMS-FAST2SMS-OTP] Failed, trying Quick SMS...`);
+    console.warn(`[SMS-FAST2SMS-OTP] Failed:`, otpData.message);
   } catch (_) {}
   try {
     const quickRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
@@ -46,11 +65,16 @@ async function sendViaTwilio(phone: string, otp: string): Promise<SmsResult> {
 }
 
 export async function sendOtpSms(phone: string, otp: string): Promise<SmsResult> {
+  // 1. Try 2Factor first (most reliable for India, no DLT needed)
+  const twoFactorKey = await getConf("TWO_FACTOR_API_KEY", "two_factor_api_key");
+  if (twoFactorKey) { const r = await sendVia2Factor(phone, otp); if (r.success) return r; }
+  // 2. Fallback: Fast2SMS
   const fast2smsKey = await getConf("FAST2SMS_API_KEY", "fast2sms_api_key");
   if (fast2smsKey) { const r = await sendViaFast2Sms(phone, otp); if (r.success) return r; }
+  // 3. Fallback: Twilio
   const twilioSid = await getConf("TWILIO_ACCOUNT_SID", "twilio_account_sid");
   if (twilioSid) { const r = await sendViaTwilio(phone, otp); if (r.success) return r; }
-  console.warn(`[SMS-NONE] No SMS provider configured. OTP not delivered to ${phone.slice(-4).padStart(phone.length, '*')} — set FAST2SMS_API_KEY or TWILIO credentials in admin settings.`);
+  console.warn(`[SMS-NONE] No SMS provider delivered OTP to ${phone.slice(-4).padStart(phone.length, '*')}`);
   return { success: false, provider: "none", error: "No SMS provider configured" };
 }
 
