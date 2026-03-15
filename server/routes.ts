@@ -4404,7 +4404,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(503).json({ message: "Payment gateway not configured. Add Razorpay keys in Admin → Configuration." });
       }
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({ amount: Math.round(parsedOrderAmount * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
@@ -7336,7 +7336,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
       if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ₹${payAmt} exceeds pending balance ₹${pendingAmt.toFixed(2)}` });
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({ amount: Math.round(payAmt * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
@@ -7512,7 +7512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({
         amount: Math.round(total * 100),
         currency: "INR",
@@ -7581,7 +7581,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100), currency: "INR",
         receipt: `dw_${Date.now().toString(36)}`,
@@ -8819,7 +8819,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
         currency: "INR",
@@ -8891,7 +8891,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({
         amount: Math.round(amt * 100),
         currency: "INR",
@@ -8983,7 +8983,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
               if (rzpKeyId && rzpKeySecret) {
                 const Razorpay = _require("razorpay");
-                const rzp = new Razorpay({ key_id: rzpKeyId, key_secret: rzpKeySecret });
+                const rzp = new Razorpay({ key_id: rzpKeyId, key_secret: rzpKeySecret, timeout: 15000 });
                 const fetched = await rzp.payments.fetch(paymentId);
                 const fetchedStatus  = String(fetched.status ?? "");
                 const fetchedOrderId = String(fetched.order_id ?? "");
@@ -10173,7 +10173,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const plan = camelize(planR.rows[0] as any) as any;
       // Check if Razorpay credentials exist
       const Razorpay = _require('razorpay');
-      const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+      const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET, timeout: 15000 });
       const amountPaise = Math.round(parseFloat(plan.price) * 100);
       const order = await razorpay.orders.create({ amount: amountPaise, currency: 'INR', receipt: `sub_${driver.id}_${planId}` });
       res.json({ success: true, orderId: order.id, amount: amountPaise, currency: 'INR', plan, keyId: process.env.RAZORPAY_KEY_ID });
