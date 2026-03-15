@@ -1311,6 +1311,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Razorpay connectivity diagnostic (no auth — safe, just pings API)
+  app.get("/api/health/razorpay", async (_req, res) => {
+    try {
+      const keyId     = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) return res.json({ status: "not_configured", keyId: false, keySecret: false });
+      const Razorpay = _require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 10000 });
+      // Fetch a minimal list — just to test connectivity & key validity
+      const result = await Promise.race([
+        rzp.orders.all({ count: 1 }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Razorpay API timeout after 10s")), 10000))
+      ]);
+      res.json({ status: "ok", keyId: keyId.slice(0, 10) + "...", ordersReachable: true });
+    } catch (e: any) {
+      res.json({ status: "error", message: e.message || String(e), keyId: (process.env.RAZORPAY_KEY_ID || "").slice(0, 10) + "..." });
+    }
+  });
+
   app.get("/api/ops/ready", requireOpsKey, async (_req, res) => {
     try {
       await rawDb.execute(rawSql`SELECT 1`);
