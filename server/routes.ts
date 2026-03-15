@@ -2391,6 +2391,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Skip paths handled by their own auth mechanism or that are truly public
     if (
       p === "/health"           ||  // public health check
+      p.startsWith("/diag/")    ||  // diagnostic endpoints
       p.startsWith("/ops/")     ||  // requireOpsKey
       p.startsWith("/app/")     ||  // mobile app routes — each has authApp
       p.startsWith("/admin/")   ||  // global admin middleware at line 1101
