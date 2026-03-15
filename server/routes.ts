@@ -1312,7 +1312,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Razorpay connectivity diagnostic (no auth — safe, just pings API)
-  app.get("/api/health/razorpay", async (_req, res) => {
+  app.get("/api/diag/razorpay", async (_req, res) => {
     try {
       const keyId     = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
