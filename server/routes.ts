@@ -6088,8 +6088,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(401).json({ message: "Auth failed" }); }
   }
 
+  // Role-specific guards — always used after authApp
+  function requireDriver(req: Request, res: Response, next: NextFunction) {
+    const user = (req as any).currentUser;
+    if (user?.userType !== "driver") return res.status(403).json({ message: "Driver access required" });
+    next();
+  }
+  function requireCustomer(req: Request, res: Response, next: NextFunction) {
+    const user = (req as any).currentUser;
+    if (user?.userType !== "customer") return res.status(403).json({ message: "Customer access required" });
+    next();
+  }
+
   // ── DRIVER: Go Online / Offline + Location Update ─────────────────────────
-  app.post("/api/app/driver/location", authApp, async (req, res) => {
+  app.post("/api/app/driver/location", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { lat, lng, heading = 0, speed = 0, isOnline } = req.body;
@@ -6110,7 +6122,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.patch("/api/app/driver/online-status", authApp, async (req, res) => {
+  app.patch("/api/app/driver/online-status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { isOnline } = req.body;
@@ -6243,7 +6255,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Get profile + wallet + current trip ───────────────────────────
-  app.get("/api/app/driver/profile", authApp, async (req, res) => {
+  app.get("/api/app/driver/profile", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
@@ -6296,7 +6308,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Incoming trip request (polling) ───────────────────────────────
-  app.get("/api/app/driver/incoming-trip", authApp, async (req, res) => {
+  app.get("/api/app/driver/incoming-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       // 1. Check if this driver has an active/accepted trip
@@ -6350,7 +6362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Accept trip ───────────────────────────────────────────────────
-  app.post("/api/app/driver/accept-trip", authApp, async (req, res) => {
+  app.post("/api/app/driver/accept-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
@@ -6464,7 +6476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Reject / skip trip ─────────────────────────────────────────────
-  app.post("/api/app/driver/reject-trip", authApp, async (req, res) => {
+  app.post("/api/app/driver/reject-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
@@ -6588,7 +6600,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Arrived at pickup ─────────────────────────────────────────────
-  app.post("/api/app/driver/arrived", authApp, async (req, res) => {
+  app.post("/api/app/driver/arrived", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
@@ -6652,7 +6664,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Start trip (arrived → on_the_way) ────────────────────────────
-  app.post("/api/app/driver/start-trip", authApp, async (req, res) => {
+  app.post("/api/app/driver/start-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId, pickupOtp } = req.body;
@@ -6695,7 +6707,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Complete trip ─────────────────────────────────────────────────
-  app.post("/api/app/driver/complete-trip", authApp, async (req, res) => {
+  app.post("/api/app/driver/complete-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId, actualFare, actualDistance, tips = 0 } = req.body;
@@ -7100,7 +7112,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Cancel trip ───────────────────────────────────────────────────
-  app.post("/api/app/driver/cancel-trip", authApp, async (req, res) => {
+  app.post("/api/app/driver/cancel-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { tripId, reason } = req.body;
@@ -7163,7 +7175,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Trip history ──────────────────────────────────────────────────
-  app.get("/api/app/driver/trips", authApp, async (req, res) => {
+  app.get("/api/app/driver/trips", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { status, limit = 20, offset = 0 } = req.query;
@@ -7209,7 +7221,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Get wallet summary ─────────────────────────────────────────────
-  app.get("/api/app/driver/wallet", authApp, async (req, res) => {
+  app.get("/api/app/driver/wallet", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
@@ -7271,7 +7283,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Commission settlement status (detailed breakdown) ────────────────
-  app.get("/api/app/driver/settlement-status", authApp, async (req, res) => {
+  app.get("/api/app/driver/settlement-status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
@@ -7445,7 +7457,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Subscription status & purchase ───────────────────────────────
-  app.get("/api/app/driver/subscription", authApp, async (req, res) => {
+  app.get("/api/app/driver/subscription", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const modelR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
@@ -7485,7 +7497,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/subscription/create-order", authApp, async (req, res) => {
+  app.post("/api/app/driver/subscription/create-order", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { planId } = req.body;
@@ -7518,7 +7530,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/subscription/verify-payment", authApp, async (req, res) => {
+  app.post("/api/app/driver/subscription/verify-payment", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId } = req.body;
@@ -7559,7 +7571,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/wallet/create-order", authApp, async (req, res) => {
+  app.post("/api/app/driver/wallet/create-order", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { amount } = req.body;
@@ -7585,7 +7597,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/wallet/verify-payment", authApp, async (req, res) => {
+  app.post("/api/app/driver/wallet/verify-payment", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
@@ -7632,7 +7644,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Get profile ─────────────────────────────────────────────────
-  app.get("/api/app/customer/profile", authApp, async (req, res) => {
+  app.get("/api/app/customer/profile", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
@@ -7661,7 +7673,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Book a ride ─────────────────────────────────────────────────
-  app.post("/api/app/customer/book-ride", authApp, async (req, res) => {
+  app.post("/api/app/customer/book-ride", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const {
@@ -8752,7 +8764,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Wallet balance + transactions ───────────────────────────────
-  app.get("/api/app/customer/wallet", authApp, async (req, res) => {
+  app.get("/api/app/customer/wallet", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
@@ -8797,7 +8809,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
-  app.post("/api/app/customer/wallet/create-order", authApp, async (req, res) => {
+  app.post("/api/app/customer/wallet/create-order", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { amount } = req.body;
@@ -8828,7 +8840,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Verify & credit wallet ───────────────────────────
-  app.post("/api/app/customer/wallet/verify-payment", authApp, async (req, res) => {
+  app.post("/api/app/customer/wallet/verify-payment", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
@@ -8869,7 +8881,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Create order for ride payment ────────────────────
-  app.post("/api/app/customer/ride/create-order", authApp, async (req, res) => {
+  app.post("/api/app/customer/ride/create-order", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { amount } = req.body;
@@ -8900,7 +8912,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Verify ride payment ──────────────────────────────
-  app.post("/api/app/customer/ride/verify-payment", authApp, async (req, res) => {
+  app.post("/api/app/customer/ride/verify-payment", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
@@ -9567,7 +9579,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Get KYC status ────────────────────────────────────────────────
-  app.get("/api/app/driver/kyc/status", authApp, async (req, res) => {
+  app.get("/api/app/driver/kyc/status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const docs = await rawDb.execute(rawSql`
@@ -9679,7 +9691,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Earnings summary ──────────────────────────────────────────────
-  app.get("/api/app/driver/earnings", authApp, async (req, res) => {
+  app.get("/api/app/driver/earnings", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { period = "today" } = req.query;
