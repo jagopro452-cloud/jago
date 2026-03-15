@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -466,6 +468,104 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   Widget _buildStatusHeader(Map<String, dynamic> info) {
     final color = info['color'] as Color;
+
+    if (_status == 'searching') {
+      return AnimatedBuilder(
+        animation: _pulseCtrl,
+        builder: (_, __) {
+          final pulse = _pulseCtrl.value;
+          return Column(children: [
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 120,
+              height: 120,
+              child: Stack(alignment: Alignment.center, children: [
+                // Outer pulse ring
+                Opacity(
+                  opacity: (1 - pulse).clamp(0.0, 1.0) * 0.25,
+                  child: Container(
+                    width: 100 + pulse * 20,
+                    height: 100 + pulse * 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: color, width: 1.5),
+                    ),
+                  ),
+                ),
+                // Middle ring
+                Opacity(
+                  opacity: pulse * 0.35,
+                  child: Container(
+                    width: 80 + pulse * 10,
+                    height: 80 + pulse * 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color.withValues(alpha: 0.08),
+                      border: Border.all(color: color, width: 1),
+                    ),
+                  ),
+                ),
+                // Inner circle with rotating dots
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [
+                      color.withValues(alpha: 0.25),
+                      color.withValues(alpha: 0.08),
+                    ]),
+                    border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
+                  ),
+                  child: Icon(Icons.search_rounded, color: color, size: 28),
+                ),
+                // Orbiting dot
+                Transform.rotate(
+                  angle: pulse * 2 * math.pi,
+                  child: Transform.translate(
+                    offset: const Offset(0, -36),
+                    child: Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6)],
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            Text('Finding your Pilot',
+              style: GoogleFonts.poppins(
+                fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+            const SizedBox(height: 4),
+            Text('Searching for available pilots near you...',
+              style: GoogleFonts.poppins(
+                color: const Color(0xFF9CA3AF), fontSize: 12),
+              textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.timer_outlined, color: Colors.orange, size: 13),
+                const SizedBox(width: 5),
+                Text('Est. wait: 3–5 min',
+                  style: GoogleFonts.poppins(
+                    color: Colors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            const SizedBox(height: 4),
+          ]);
+        },
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -474,41 +574,19 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
       ),
       child: Row(children: [
-        if (_status == 'searching')
-          AnimatedBuilder(
-            animation: _pulseCtrl,
-            builder: (_, __) => Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.1 + _pulseCtrl.value * 0.1),
-              ),
-              child: Icon(info['icon'] as IconData, color: color, size: 22)),
-          )
-        else
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(info['icon'] as IconData, color: color, size: 22)),
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          child: Icon(info['icon'] as IconData, color: color, size: 22)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(info['label'] as String,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-          if (_status == 'searching') ...[
-            Text('Searching for available pilots near you...',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-            const SizedBox(height: 2),
-            Text('Estimated wait: 3–5 min',
-              style: TextStyle(color: Colors.orange[700], fontSize: 11, fontWeight: FontWeight.w600)),
-          ],
-          if (_driverLatLng != null && _status != 'searching' && _status != 'completed' && _status != 'cancelled')
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+          if (_driverLatLng != null && _status != 'completed' && _status != 'cancelled')
             Text('Live tracking active 📍',
-              style: TextStyle(color: _green, fontSize: 11, fontWeight: FontWeight.w600)),
+              style: GoogleFonts.poppins(color: _green, fontSize: 11, fontWeight: FontWeight.w600)),
         ])),
-        if (_status == 'searching')
-          SizedBox(width: 20, height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: color))
-        else if (_status != 'completed' && _status != 'cancelled')
+        if (_status != 'completed' && _status != 'cancelled')
           GestureDetector(
             onTap: _shareRide,
             child: Container(
@@ -519,7 +597,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.share_rounded, color: Color(0xFF2F80ED), size: 15),
                 const SizedBox(width: 4),
-                const Text('Share', style: TextStyle(color: Color(0xFF2F80ED), fontSize: 11, fontWeight: FontWeight.w700)),
+                Text('Share', style: GoogleFonts.poppins(color: const Color(0xFF2F80ED), fontSize: 11, fontWeight: FontWeight.w700)),
               ]),
             ),
           ),
@@ -797,79 +875,167 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   Widget _buildCompletedCard(dynamic actualFare) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
+    final tId = _trip?['id']?.toString() ?? widget.tripId;
+    final dist = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'];
+    final vehicle = _trip?['vehicleName'] ?? _trip?['vehicle_name'];
+
     return Column(children: [
+      // Success banner
       Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: _green.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _green.withValues(alpha: 0.2), width: 1),
+          gradient: LinearGradient(
+            colors: [_green.withValues(alpha: 0.08), _green.withValues(alpha: 0.03)],
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _green.withValues(alpha: 0.25), width: 1.5),
         ),
         child: Column(children: [
           Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: _green.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 32)),
-          const SizedBox(height: 10),
-          Text('Trip Completed! 🎉',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: isDark ? Colors.white : const Color(0xFF111827))),
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0D9F6E), Color(0xFF16A34A)]),
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(
+                color: const Color(0xFF16A34A).withValues(alpha: 0.35),
+                blurRadius: 16, offset: const Offset(0, 4))],
+            ),
+            child: const Icon(Icons.check_rounded, color: Colors.white, size: 30)),
+          const SizedBox(height: 12),
+          Text('Trip Completed!',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w800, fontSize: 18,
+              color: isDark ? Colors.white : const Color(0xFF111827))),
           if (actualFare != null) ...[
-            const SizedBox(height: 4),
-            Text('₹$actualFare',
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF16A34A))),
-          ],
-          if (_rated == 0) ...[
-            const SizedBox(height: 16),
-            const Text('Rate your Pilot',
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (int i = 1; i <= 5; i++)
-                GestureDetector(
-                  onTap: () => _rateDriver(i),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Icon(Icons.star_rounded,
-                      color: i <= _rated ? Colors.amber : Colors.grey[200], size: 38))),
-            ]),
-          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: _green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text('₹$actualFare',
+                style: GoogleFonts.poppins(
+                  fontSize: 32, fontWeight: FontWeight.w900,
+                  color: const Color(0xFF16A34A)))),
+          ],
+          // Trip details chips
+          if (dist != null || vehicle != null) ...[
             const SizedBox(height: 12),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.favorite_rounded, color: Color(0xFF2F80ED), size: 16),
-              const SizedBox(width: 6),
-              Text('Thanks for your rating! 🙏',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w500)),
+            Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [
+              if (dist != null)
+                _completedChip(Icons.route_rounded, '$dist km', const Color(0xFF6B7280)),
+              if (vehicle != null)
+                _completedChip(Icons.electric_bike, vehicle.toString(), _blue),
             ]),
           ],
+          const SizedBox(height: 16),
+          // Rating section
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: _rated == 0
+                ? Column(children: [
+                    Text('How was your ride with $dName?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13, color: const Color(0xFF374151),
+                        fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center),
+                    const SizedBox(height: 10),
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      for (int i = 1; i <= 5; i++)
+                        GestureDetector(
+                          onTap: () => _rateDriver(i),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Icon(Icons.star_rounded,
+                              color: i <= _rated
+                                ? Colors.amber
+                                : (isDark ? Colors.white12 : Colors.grey.shade200),
+                              size: 40))),
+                    ]),
+                  ])
+                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Row(children: [
+                      for (int i = 1; i <= 5; i++)
+                        Icon(Icons.star_rounded,
+                          color: i <= _rated ? Colors.amber : Colors.grey.shade300,
+                          size: 24),
+                    ]),
+                    const SizedBox(width: 10),
+                    Text('Thanks! 🙏',
+                      style: GoogleFonts.poppins(
+                        color: _green, fontSize: 13, fontWeight: FontWeight.w700)),
+                  ]),
+          ),
         ]),
       ),
-      const SizedBox(height: 12),
-      Builder(builder: (ctx) {
-        final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
-        final tId = _trip?['id']?.toString() ?? widget.tripId;
-        return OutlinedButton.icon(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(
-            builder: (_) => TipDriverScreen(tripId: tId, driverName: dName))),
-          icon: const Icon(Icons.volunteer_activism_rounded, color: Color(0xFF16A34A), size: 18),
-          label: const Text('Tip your Pilot 💚', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 13)),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 46),
-            side: const BorderSide(color: Color(0xFF16A34A), width: 1.5),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-        );
-      }),
+      const SizedBox(height: 10),
+      // Tip button
+      OutlinedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => TipDriverScreen(tripId: tId, driverName: dName))),
+        icon: const Icon(Icons.volunteer_activism_rounded,
+          color: Color(0xFF16A34A), size: 18),
+        label: Text('Tip your Pilot',
+          style: GoogleFonts.poppins(
+            color: const Color(0xFF16A34A),
+            fontWeight: FontWeight.w700, fontSize: 13)),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 46),
+          side: const BorderSide(color: Color(0xFF16A34A), width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+      ),
       const SizedBox(height: 8),
       SizedBox(
         width: double.infinity, height: 52,
-        child: ElevatedButton(
-          onPressed: () => Navigator.pushAndRemoveUntil(context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _blue, foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-          child: const Text('Done →', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED)]),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(
+              color: _blue.withValues(alpha: 0.35),
+              blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: ElevatedButton(
+            onPressed: () => Navigator.pushAndRemoveUntil(context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 0),
+            child: Text('Book Another Ride',
+              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
         )),
     ]);
+  }
+
+  Widget _completedChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: GoogleFonts.poppins(
+          fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ]),
+    );
   }
 
   Widget _buildCancelledCard() {

@@ -34,7 +34,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late Animation<double> _heroScale;
 
   static const _blue = Color(0xFF2F80ED);
-  static const _blueDark = Color(0xFF1A6FE0);
   static const _navy = Color(0xFF0B0B0B);
 
   @override
@@ -292,120 +291,114 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  // ── Delivery illustration ────────────────────────────────────────────────
+  // ── Hero illustration (clean, no emojis) ────────────────────────────────
   Widget _buildIllustration(Size size) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(20, 48, 20, 0),
       decoration: BoxDecoration(
-        color: const Color(0xFFEBF4FF),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED), Color(0xFF56CCF2)],
+        ),
         borderRadius: BorderRadius.circular(28),
       ),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Decorative dots — top left
+          // Background circles
           Positioned(
-            top: 18, left: 22,
-            child: _dot(8, _blue.withValues(alpha: 0.25)),
+            top: -30, right: -30,
+            child: Container(width: 130, height: 130,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.07))),
           ),
           Positioned(
-            top: 32, left: 38,
-            child: _dot(5, _blue.withValues(alpha: 0.15)),
-          ),
-          // Decorative dots — top right
-          Positioned(
-            top: 14, right: 28,
-            child: _dot(10, const Color(0xFF56CCF2).withValues(alpha: 0.35)),
-          ),
-          Positioned(
-            top: 34, right: 18,
-            child: _dot(6, _blue.withValues(alpha: 0.18)),
-          ),
-          // Decorative dots — bottom
-          Positioned(
-            bottom: 30, left: 50,
-            child: _dot(7, const Color(0xFF56CCF2).withValues(alpha: 0.25)),
-          ),
-          Positioned(
-            bottom: 20, right: 60,
-            child: _dot(5, _blue.withValues(alpha: 0.2)),
+            bottom: -20, left: -20,
+            child: Container(width: 100, height: 100,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06))),
           ),
 
-          // Curved arc behind center parcel
+          // Route path — dotted line
           Positioned(
-            bottom: 24, left: 0, right: 0,
+            bottom: 52, left: size.width * 0.08, right: size.width * 0.08,
+            child: SizedBox(
+              height: 2,
+              child: CustomPaint(painter: _DashedLinePainter(), size: Size.infinite),
+            ),
+          ),
+
+          // Location pin — left (pickup)
+          Positioned(
+            left: size.width * 0.08,
+            bottom: 36,
+            child: _locationPin(const Color(0xFF4ADE80), Icons.my_location_rounded),
+          ),
+
+          // Car icon — center
+          Positioned(
+            bottom: 30, left: 0, right: 0,
             child: Center(
               child: Container(
-                width: size.width * 0.42,
-                height: size.width * 0.42,
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _blue.withValues(alpha: 0.06),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
+                child: const Icon(Icons.directions_car_filled_rounded,
+                  color: Color(0xFF1A6FE0), size: 32),
               ),
             ),
           ),
 
-          // Bike — left
+          // Location pin — right (drop)
           Positioned(
-            left: 20,
+            right: size.width * 0.08,
             bottom: 36,
-            child: Transform.rotate(
-              angle: -0.08,
-              child: const Text('🏍️', style: TextStyle(fontSize: 40)),
-            ),
+            child: _locationPin(const Color(0xFFEF4444), Icons.location_on_rounded),
           ),
 
-          // Truck — right
-          Positioned(
-            right: 16,
-            bottom: 40,
-            child: const Text('🚛', style: TextStyle(fontSize: 36)),
-          ),
-
-          // Large parcel — center
+          // Center top: JAGO brand
           Center(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 8),
-                const Text('📦', style: TextStyle(fontSize: 60)),
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
                 Text(
                   'JAGO',
                   style: GoogleFonts.poppins(
-                    fontSize: 22,
+                    fontSize: 28,
                     fontWeight: FontWeight.w900,
-                    color: _blue,
-                    letterSpacing: 1.5,
+                    color: Colors.white,
+                    letterSpacing: 5,
                   ),
                 ),
-                Text(
-                  'Your Rides & Deliveries',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: _blue.withValues(alpha: 0.6),
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Rides  •  Delivery  •  Intercity',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          // Speed lines around bike
-          Positioned(
-            left: 60,
-            bottom: 52,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _speedLine(20),
-                const SizedBox(height: 4),
-                _speedLine(14),
-                const SizedBox(height: 4),
-                _speedLine(18),
               ],
             ),
           ),
@@ -414,18 +407,25 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _dot(double size, Color color) => Container(
-    width: size, height: size,
-    decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-  );
-
-  Widget _speedLine(double width) => Container(
-    width: width, height: 2,
-    decoration: BoxDecoration(
-      color: _blue.withValues(alpha: 0.2),
-      borderRadius: BorderRadius.circular(1),
-    ),
-  );
+  Widget _locationPin(Color color, IconData icon) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          child: Icon(icon, color: Colors.white, size: 16),
+        ),
+        Container(width: 2, height: 6, color: color.withValues(alpha: 0.5)),
+        Container(width: 6, height: 6,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+      ],
+    );
+  }
 
   // ── Form widgets ─────────────────────────────────────────────────────────
   Widget _buildPhoneField() {
@@ -571,4 +571,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       ),
     ]);
   }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    const dashWidth = 6.0;
+    const dashSpace = 5.0;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
+      x += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

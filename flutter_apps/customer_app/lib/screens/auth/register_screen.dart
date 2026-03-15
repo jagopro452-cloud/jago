@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../services/auth_service.dart';
 import '../home/home_screen.dart';
 
@@ -18,17 +19,20 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   bool _loading = false;
   bool _showPassword = false;
   bool _showConfirm = false;
-  late AnimationController _animCtrl;
-  late Animation<double> _fadeAnim;
+
+  late AnimationController _slideCtrl;
+  late Animation<Offset> _slideAnim;
 
   static const Color _blue = Color(0xFF2F80ED);
+  static const Color _navy = Color(0xFF0B0B0B);
 
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
-    _animCtrl.forward();
+    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
+    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
+    _slideCtrl.forward();
   }
 
   @override
@@ -38,16 +42,19 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
-    _animCtrl.dispose();
+    _slideCtrl.dispose();
     super.dispose();
   }
 
   void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
-      backgroundColor: error ? const Color(0xFFE53935) : _blue,
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+      backgroundColor: error ? const Color(0xFFEF4444) : _blue,
       behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 3),
     ));
   }
 
@@ -65,7 +72,13 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     if (!mounted) return;
     setState(() => _loading = false);
     if (res['success'] == true) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      Navigator.pushAndRemoveUntil(context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const HomeScreen(),
+          transitionDuration: const Duration(milliseconds: 400),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        ),
+        (_) => false);
     } else {
       _showSnack(res['message'] ?? 'Registration failed. Try again.', error: true);
     }
@@ -80,47 +93,157 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1A1A2E)), onPressed: () => Navigator.pop(context)),
-          title: const Text('Create Account', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 17)),
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0B0B0B), size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Create Account',
+            style: GoogleFonts.poppins(
+              color: _navy,
+              fontWeight: FontWeight.w700,
+              fontSize: 17,
+            ),
+          ),
+          centerTitle: true,
         ),
-        body: FadeTransition(
-          opacity: _fadeAnim,
+        body: SlideTransition(
+          position: _slideAnim,
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Join JAGO Today', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.grey[900])),
+                // Header
                 const SizedBox(height: 4),
-                Text('Fast, safe rides at your fingertips', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+                Text(
+                  'Join JAGO Today',
+                  style: GoogleFonts.poppins(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Fast, safe rides at your fingertips',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
                 const SizedBox(height: 28),
-                _buildLabel('Full Name *'),
+
+                _buildLabel('Full Name'),
                 const SizedBox(height: 8),
-                _buildInput(controller: _nameCtrl, hint: 'Enter your full name', icon: Icons.person_rounded, textCap: TextCapitalization.words),
+                _buildInput(
+                  controller: _nameCtrl,
+                  hint: 'Enter your full name',
+                  icon: Icons.person_outline_rounded,
+                  textCap: TextCapitalization.words,
+                ),
                 const SizedBox(height: 16),
-                _buildLabel('Phone Number *'),
+
+                _buildLabel('Phone Number'),
                 const SizedBox(height: 8),
                 _buildPhoneInput(),
                 const SizedBox(height: 16),
+
                 _buildLabel('Email (Optional)'),
                 const SizedBox(height: 8),
-                _buildInput(controller: _emailCtrl, hint: 'Enter your email', icon: Icons.email_outlined, keyboard: TextInputType.emailAddress),
+                _buildInput(
+                  controller: _emailCtrl,
+                  hint: 'your@email.com',
+                  icon: Icons.mail_outline_rounded,
+                  keyboard: TextInputType.emailAddress,
+                ),
                 const SizedBox(height: 16),
-                _buildLabel('Password *'),
+
+                _buildLabel('Password'),
                 const SizedBox(height: 8),
-                _buildPasswordInput(ctrl: _passwordCtrl, hint: 'Create a password', show: _showPassword, onToggle: () => setState(() => _showPassword = !_showPassword)),
+                _buildPasswordInput(
+                  ctrl: _passwordCtrl,
+                  hint: 'Create a strong password',
+                  show: _showPassword,
+                  onToggle: () => setState(() => _showPassword = !_showPassword),
+                ),
                 const SizedBox(height: 16),
-                _buildLabel('Confirm Password *'),
+
+                _buildLabel('Confirm Password'),
                 const SizedBox(height: 8),
-                _buildPasswordInput(ctrl: _confirmCtrl, hint: 'Re-enter password', show: _showConfirm, onToggle: () => setState(() => _showConfirm = !_showConfirm)),
+                _buildPasswordInput(
+                  ctrl: _confirmCtrl,
+                  hint: 'Re-enter your password',
+                  show: _showConfirm,
+                  onToggle: () => setState(() => _showConfirm = !_showConfirm),
+                ),
                 const SizedBox(height: 32),
-                _buildRegisterBtn(),
+
+                // Create account button
+                SizedBox(
+                  width: double.infinity,
+                  height: 58,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: _loading ? null : const LinearGradient(
+                        colors: [Color(0xFF56CCF2), Color(0xFF1A6FE0)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      color: _loading ? _blue.withValues(alpha: 0.4) : null,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: _loading ? [] : [
+                        BoxShadow(
+                          color: _blue.withValues(alpha: 0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _register,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        disabledBackgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        elevation: 0,
+                      ),
+                      child: _loading
+                        ? const SizedBox(width: 24, height: 24,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                        : Text(
+                            'Create Account',
+                            style: GoogleFonts.poppins(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 20),
+
+                // Login link
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text('Already have an account? ', style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                  Text(
+                    'Already have an account?  ',
+                    style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14),
+                  ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Text('Login', style: TextStyle(color: _blue, fontWeight: FontWeight.w800, fontSize: 14)),
+                    child: Text(
+                      'Login',
+                      style: GoogleFonts.poppins(
+                        color: _blue,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ]),
               ],
@@ -131,21 +254,41 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildLabel(String text) => Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[700]));
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.poppins(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: const Color(0xFF475569),
+      ),
+    );
+  }
 
-  Widget _buildInput({required TextEditingController controller, required String hint, required IconData icon, TextCapitalization textCap = TextCapitalization.none, TextInputType keyboard = TextInputType.text}) {
+  Widget _buildInput({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextCapitalization textCap = TextCapitalization.none,
+    TextInputType keyboard = TextInputType.text,
+  }) {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+      ),
       child: TextField(
         controller: controller,
         keyboardType: keyboard,
         textCapitalization: textCap,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
         decoration: InputDecoration(
           hintText: hint,
+          hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          prefixIcon: Icon(icon, color: Colors.grey[400]),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
         ),
       ),
     );
@@ -153,57 +296,68 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
   Widget _buildPhoneInput() {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+      ),
       child: Row(children: [
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('+91', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1A1A2E)))),
-        Container(width: 1, height: 24, color: Colors.grey[300]),
-        Expanded(child: TextField(
-          controller: _phoneCtrl,
-          keyboardType: TextInputType.phone,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          decoration: const InputDecoration(hintText: 'Enter 10-digit number', border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
-        )),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          decoration: const BoxDecoration(
+            border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+          ),
+          child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _blue)),
+        ),
+        Expanded(
+          child: TextField(
+            controller: _phoneCtrl,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
+            decoration: InputDecoration(
+              hintText: '10-digit mobile number',
+              hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            ),
+          ),
+        ),
       ]),
     );
   }
 
-  Widget _buildPasswordInput({required TextEditingController ctrl, required String hint, required bool show, required VoidCallback onToggle}) {
+  Widget _buildPasswordInput({
+    required TextEditingController ctrl,
+    required String hint,
+    required bool show,
+    required VoidCallback onToggle,
+  }) {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+      ),
       child: TextField(
         controller: ctrl,
         obscureText: !show,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
         decoration: InputDecoration(
           hintText: hint,
+          hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          prefixIcon: Icon(Icons.lock_outline_rounded, color: Colors.grey[400]),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF94A3B8), size: 20),
           suffixIcon: IconButton(
-            icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.grey[400]),
+            icon: Icon(
+              show ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: const Color(0xFF94A3B8),
+              size: 20,
+            ),
             onPressed: onToggle,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildRegisterBtn() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _loading ? null : _register,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _blue, foregroundColor: Colors.white,
-          disabledBackgroundColor: _blue.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 0,
-        ),
-        child: _loading
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-            : const Text('Create Account', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
       ),
     );
   }

@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/auth_service.dart';
 import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
@@ -15,9 +15,23 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _fadeCtrl;
-  late Animation<double> _fadeAnim;
+class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+  // Logo scale animation
+  late AnimationController _logoCtrl;
+  late Animation<double> _logoScale;
+  late Animation<double> _logoOpacity;
+
+  // Text slide-up animation
+  late AnimationController _textCtrl;
+  late Animation<Offset> _textSlide;
+  late Animation<double> _textOpacity;
+
+  // Bottom content fade
+  late AnimationController _bottomCtrl;
+  late Animation<double> _bottomOpacity;
+
+  // Loading dots pulse
+  late AnimationController _dotCtrl;
 
   static const Color _blue = Color(0xFF2F80ED);
 
@@ -26,26 +40,55 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
     ));
 
-    _fadeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
+    // Logo: scale + fade in
+    _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _logoScale = Tween<double>(begin: 0.55, end: 1.0)
+        .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack));
+    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeIn)));
 
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) _fadeCtrl.forward();
-    });
+    // Text: slide up + fade
+    _textCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOutCubic));
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeIn));
 
+    // Bottom footer
+    _bottomCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _bottomOpacity = Tween<double>(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _bottomCtrl, curve: Curves.easeIn));
+
+    // Dots looping pulse
+    _dotCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat();
+
+    _runSequence();
     _navigate();
+  }
+
+  Future<void> _runSequence() async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+    _logoCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 450));
+    if (!mounted) return;
+    _textCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 450));
+    if (!mounted) return;
+    _bottomCtrl.forward();
   }
 
   @override
   void dispose() {
-    _fadeCtrl.dispose();
+    _logoCtrl.dispose();
+    _textCtrl.dispose();
+    _bottomCtrl.dispose();
+    _dotCtrl.dispose();
     super.dispose();
   }
 
@@ -90,105 +133,153 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0D1B3E),
       body: Stack(
         children: [
-          // Blue gradient accent — top edge
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+          // ── Dark blue deep gradient background ──
+          Positioned.fill(
             child: Container(
-              height: size.height * 0.18,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF2F80ED), Colors.white],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0D1B3E), Color(0xFF1A3A70), Color(0xFF0D1B3E)],
+                  stops: [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
-          // Blue gradient accent — bottom edge
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: size.height * 0.14,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Color(0xFF2F80ED), Colors.white],
+
+          // ── Radial glow behind logo ──
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _logoCtrl,
+              builder: (_, __) => Opacity(
+                opacity: (_logoOpacity.value * 0.35).clamp(0.0, 1.0),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(0, -0.15),
+                      radius: 0.55,
+                      colors: [Color(0xFF2F80ED), Colors.transparent],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // Center content
+
+          // ── Decorative circles ──
+          Positioned(
+            top: -80, right: -60,
+            child: Container(
+              width: 220, height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.03),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: size.height * 0.22, left: -80,
+            child: Container(
+              width: 180, height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.03),
+              ),
+            ),
+          ),
+
+          // ── Center: Logo + Text ──
           Center(
-            child: FadeTransition(
-              opacity: _fadeAnim,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Pilot logo with blue drop shadow
-                  Container(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Logo
+                AnimatedBuilder(
+                  animation: _logoCtrl,
+                  builder: (_, child) => Opacity(
+                    opacity: _logoOpacity.value,
+                    child: Transform.scale(scale: _logoScale.value, child: child),
+                  ),
+                  child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
-                          color: _blue.withValues(alpha: 0.28),
-                          blurRadius: 36,
-                          spreadRadius: 2,
-                          offset: const Offset(0, 10),
+                          color: _blue.withValues(alpha: 0.5),
+                          blurRadius: 50,
+                          spreadRadius: 6,
+                          offset: const Offset(0, 12),
                         ),
                       ],
                     ),
                     child: Image.asset(
                       'assets/images/pilot_logo.png',
-                      width: 200,
+                      width: 110,
                       fit: BoxFit.contain,
+                      color: Colors.white,
                       errorBuilder: (_, __, ___) => _buildFallbackLogo(),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // JAGO Pilot bold blue text
-                  Text(
-                    'JAGO Pilot',
-                    style: GoogleFonts.poppins(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: _blue,
-                      letterSpacing: 3,
+                ),
+
+                const SizedBox(height: 28),
+
+                // Text with slide+fade
+                SlideTransition(
+                  position: _textSlide,
+                  child: FadeTransition(
+                    opacity: _textOpacity,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'JAGO Pilot',
+                          style: GoogleFonts.poppins(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 4,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Drive. Deliver. Earn.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.55),
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  // Tagline in grey
-                  Text(
-                    'Drive. Deliver. Earn.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: const Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+
+                const SizedBox(height: 48),
+
+                // Loading dots
+                AnimatedBuilder(
+                  animation: _dotCtrl,
+                  builder: (_, __) => _buildLoadingDots(),
+                ),
+              ],
             ),
           ),
-          // Bottom: Mindwhile IT Solutions Pvt Ltd
+
+          // ── Bottom footer ──
           Positioned(
-            bottom: 48,
-            left: 0,
-            right: 0,
+            bottom: 36, left: 0, right: 0,
             child: FadeTransition(
-              opacity: _fadeAnim,
+              opacity: _bottomOpacity,
               child: Text(
                 'Mindwhile IT Solutions Pvt Ltd',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
-                  color: const Color(0xFFCBD5E1),
+                  color: Colors.white.withValues(alpha: 0.3),
                   fontSize: 11,
                   letterSpacing: 0.8,
                   fontWeight: FontWeight.w400,
@@ -201,21 +292,50 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildLoadingDots() {
+    final t = _dotCtrl.value;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        final phase = (t - i * 0.25).clamp(0.0, 1.0);
+        final pulse = math.sin(phase * math.pi);
+        final dotSize = 5.0 + pulse * 3.0;
+        final opacity = 0.25 + pulse * 0.75;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Container(
+            width: dotSize,
+            height: dotSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: opacity),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
   Widget _buildFallbackLogo() {
     return Container(
-      width: 200,
-      height: 200,
+      width: 110,
+      height: 110,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2F80ED), Color(0xFF1A3A70)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.5),
       ),
       child: Center(
         child: Text(
           'P',
           style: GoogleFonts.poppins(
-            fontSize: 100,
+            fontSize: 64,
             fontWeight: FontWeight.w900,
-            color: _blue,
+            color: Colors.white,
             height: 1,
           ),
         ),

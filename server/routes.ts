@@ -1206,6 +1206,43 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
     `).catch(() => {});
 
+    // ── Customer payment ledger: records every wallet topup / ride payment ──────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS customer_payments (
+        id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id          UUID        NOT NULL,
+        amount               NUMERIC(12,2) NOT NULL DEFAULT 0,
+        payment_type         VARCHAR(60)  NOT NULL DEFAULT 'wallet_topup',
+        razorpay_order_id    VARCHAR(120),
+        razorpay_payment_id  VARCHAR(120),
+        status               VARCHAR(30)  NOT NULL DEFAULT 'pending',
+        failure_reason       TEXT,
+        description          TEXT,
+        verified_at          TIMESTAMP,
+        created_at           TIMESTAMP    NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_customer ON customer_payments(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_order    ON customer_payments(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_payment  ON customer_payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_status   ON customer_payments(status);
+    `).catch(() => {});
+
+    // ── Razorpay webhook audit log ────────────────────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
+        id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id    VARCHAR(120) NOT NULL,
+        event_type  VARCHAR(80)  NOT NULL,
+        payload     JSONB,
+        processed   BOOLEAN      NOT NULL DEFAULT false,
+        error_msg   TEXT,
+        created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_rzp_webhook_event_id   ON razorpay_webhook_logs(event_id);
+      CREATE INDEX        IF NOT EXISTS idx_rzp_webhook_event_type  ON razorpay_webhook_logs(event_type);
+      CREATE INDEX        IF NOT EXISTS idx_rzp_webhook_created     ON razorpay_webhook_logs(created_at DESC);
+    `).catch(() => {});
+
     // ── Performance indexes for high-traffic queries ──────────────────────────
     await rawDb.execute(rawSql`
       CREATE INDEX IF NOT EXISTS idx_trip_requests_customer_status ON trip_requests(customer_id, current_status);
@@ -4384,12 +4421,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/driver-wallet/:id/verify-payment", authApp, async (req, res) => {
     try {
       const { id } = req.params;
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keySecret) return res.status(503).json({ message: "Payment verification not configured — contact support" });
-      const body = razorpayOrderId + "|" + razorpayPaymentId;
-      const expectedSig = crypto.createHmac("sha256", keySecret).update(body).digest("hex");
-      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      // Timing-safe HMAC verification
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
 
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
@@ -4404,7 +4444,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
       const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
       const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
-      const paidAmt        = parseFloat(String(amount));
+      // Amount from DB — never trust client-sent amount
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      const paidAmt = parseFloat((pendingRec.rows[0] as any).amount);
 
       // Proportionally reduce commission vs GST (or reduce from commission first)
       const gstReduction  = Math.min(prevGst, paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05));
@@ -7462,6 +7507,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         receipt: `sub_${Date.now().toString(36)}`,
         notes: { driver_id: driver.id, plan_id: planId, plan_name: plan.name }
       });
+      // Persist pending record so verify-payment can cross-check amount from DB
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${driver.id}::uuid, ${total}, 'subscription', ${order.id}, 'pending',
+                ${'Subscription: ' + plan.name + ' (' + plan.durationDays + ' days)'})
+        ON CONFLICT DO NOTHING
+      `).catch(() => {});
       res.json({ order, keyId, amount: total, planFee: parseFloat(plan.price), gst, plan });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7470,12 +7522,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId } = req.body;
-      if (!razorpayOrderId || !razorpayPaymentId || !planId) return res.status(400).json({ message: "Missing required fields" });
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !planId) return res.status(400).json({ message: "Missing required fields" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret && razorpaySignature) {
-        const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      // Timing-safe HMAC verification — prevents timing-oracle attacks
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
+      // Verify amount against the pending record we stored at create-order time
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
       const planR = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE id=${planId}::uuid`);
       if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
       const plan = camelize(planR.rows[0]) as any;
@@ -7487,9 +7546,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${driver.id}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${plan.price}, 'paid', true)
         RETURNING *
       `);
+      // Mark the pending driver_payment record as completed (created at create-order time)
       await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, razorpay_payment_id, status, description)
-        VALUES (${driver.id}::uuid, ${plan.price}, 'subscription', ${razorpayOrderId}, ${razorpayPaymentId}, 'completed', ${`Subscription: ${plan.name} (${plan.durationDays} days)`})
+        UPDATE driver_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid
       `).catch(() => {});
       await rawDb.execute(rawSql`
         INSERT INTO admin_revenue (driver_id, amount, revenue_type, breakdown)
@@ -7515,6 +7575,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         receipt: `dw_${Date.now().toString(36)}`,
         notes: { driver_id: driver.id, purpose: "wallet_recharge" }
       });
+      // Persist pending record so verify-payment can cross-check amount from DB
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${driver.id}::uuid, ${amt}, 'wallet_topup', ${order.id}, 'pending', 'Wallet recharge via Razorpay')
+        ON CONFLICT DO NOTHING
+      `).catch(() => {});
       res.json({ order, keyId, amount: amt });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7522,19 +7588,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/wallet/verify-payment", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
-      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      // Timing-safe HMAC verification
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
       // Idempotency: reject duplicate payment IDs
       const dupCheck = await rawDb.execute(rawSql`
         SELECT id FROM driver_payments WHERE razorpay_payment_id=${razorpayPaymentId} AND status='completed' LIMIT 1
       `);
       if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret && razorpaySignature) {
-        const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
-      const amt = parseFloat(amount);
+      // Amount from DB — never trust client-sent amount
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      const amt = parseFloat((pendingRec.rows[0] as any).amount);
       const wUpd = await rawDb.execute(rawSql`
         UPDATE users SET wallet_balance = wallet_balance + ${amt}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amt})
         WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
@@ -7549,9 +7622,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
         autoUnlocked = true;
       }
+      // Mark the pending driver_payment record as completed
       await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, razorpay_payment_id, status, description)
-        VALUES (${driver.id}::uuid, ${amt}, 'wallet_topup', ${razorpayOrderId}, ${razorpayPaymentId}, 'completed', ${`Wallet recharge via Razorpay`})
+        UPDATE driver_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid
       `).catch(() => {});
       res.json({ success: true, newBalance, autoUnlocked, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -8740,6 +8814,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         receipt: `w_${Date.now().toString(36)}`,
         notes: { customer_id: customer.id, purpose: "wallet_topup" }
       });
+      // Persist pending record so verify-payment can cross-check amount from DB
+      await rawDb.execute(rawSql`
+        INSERT INTO customer_payments (customer_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${customer.id}::uuid, ${amt}, 'wallet_topup', ${order.id}, 'pending', 'Wallet topup via Razorpay')
+        ON CONFLICT DO NOTHING
+      `).catch(() => {});
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
       console.error("[wallet-order]", e.message || e);
@@ -8751,26 +8831,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/customer/wallet/verify-payment", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
-      if (!razorpayOrderId || !razorpayPaymentId) return res.status(400).json({ message: "Missing payment details" });
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      // Timing-safe HMAC verification
+      const expectedSig = crypto.createHmac("sha256", keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
       // Idempotency: reject duplicate payment IDs
       const dupCheck = await rawDb.execute(rawSql`
         SELECT id FROM transactions WHERE ref_transaction_id=${razorpayPaymentId} AND transaction_type='wallet_recharge' LIMIT 1
       `);
       if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (keySecret) {
-        const expectedSig = crypto.createHmac("sha256", keySecret)
-          .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-        if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      }
-      const amt = parseFloat(amount);
+      // Amount from DB — never trust client-sent amount
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      const amt = parseFloat((pendingRec.rows[0] as any).amount);
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
       const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
       const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || "0");
       await rawDb.execute(rawSql`
         INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
+      `).catch(() => {});
+      // Mark the pending customer_payment record as completed
+      await rawDb.execute(rawSql`
+        UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid
       `).catch(() => {});
       res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -8794,6 +8886,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         receipt: `r_${Date.now().toString(36)}`,
         notes: { customer_id: customer.id, purpose: "ride_payment" }
       });
+      // Persist pending record so verify-payment can cross-check amount from DB
+      await rawDb.execute(rawSql`
+        INSERT INTO customer_payments (customer_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${customer.id}::uuid, ${amt}, 'ride_payment', ${order.id}, 'pending', 'Ride payment via Razorpay')
+        ON CONFLICT DO NOTHING
+      `).catch(() => {});
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
       const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
@@ -8804,100 +8902,572 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── CUSTOMER: Razorpay – Verify ride payment ──────────────────────────────
   app.post("/api/app/customer/ride/verify-payment", authApp, async (req, res) => {
     try {
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      const customer = (req as any).currentUser;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
-      res.json({ success: true, paymentId: razorpayPaymentId, amount: parseFloat(amount) });
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
+      // Amount from DB — never trust client-sent amount
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      const verifiedAmt = parseFloat((pendingRec.rows[0] as any).amount);
+      // Mark as completed
+      await rawDb.execute(rawSql`
+        UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid
+      `).catch(() => {});
+      res.json({ success: true, paymentId: razorpayPaymentId, amount: verifiedAmt });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── RAZORPAY WEBHOOK (server-side async payment confirmation) ─────────────
-  app.post("/api/webhooks/razorpay", async (req, res) => {
+  // ── RAZORPAY WEBHOOK ─────────────────────────────────────────────────────────
+  // Canonical URL : POST /api/app/razorpay/webhook
+  // Legacy alias  : POST /api/webhooks/razorpay
+  //
+  // Security    : HMAC-SHA256 (X-Razorpay-Signature) with timing-safe compare
+  // Idempotency : razorpay_webhook_logs UNIQUE(event_id) — duplicate → 200, skip
+  // Performance : HTTP 200 returned before DB processing (setImmediate async)
+  // Events      : payment.authorized/captured/failed
+  //               subscription.authenticated/activated/pending/charged/
+  //                            halted/resumed/cancelled
+  //               refund.created/processed
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // ── Async event processor (runs after 200 is sent) ─────────────────────────
+  const _processRazorpayEvent = async (eventId: string, eventType: string, event: any): Promise<void> => {
+    const tag = `[WEBHOOK:${eventType}]`;
+    const payEnt  = event?.payload?.payment?.entity;
+    const subEnt  = event?.payload?.subscription?.entity;
+    const refEnt  = event?.payload?.refund?.entity;
+
     try {
-      const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-      if (!webhookSecret) {
-        console.error("[webhook] RAZORPAY_WEBHOOK_SECRET not configured — rejecting webhook");
-        return res.status(503).json({ message: "Webhook not configured" });
-      }
-      const signature = req.headers['x-razorpay-signature'] as string;
-      if (!signature) return res.status(400).json({ message: "Missing webhook signature header" });
-      const rawBody = (req as any).rawBody;
-      const body = rawBody ? rawBody.toString() : JSON.stringify(req.body);
-      const expectedSig = crypto.createHmac("sha256", webhookSecret).update(body).digest("hex");
-      if (expectedSig !== signature) return res.status(400).json({ message: "Invalid webhook signature" });
+      switch (eventType) {
 
-      const event = req.body;
-      const eventType: string = event?.event || '';
+        // ── payment.authorized / payment.captured ──────────────────────────
+        case "payment.authorized":
+        case "payment.captured": {
+          if (!payEnt) { console.warn(`${tag} missing payment entity`); break; }
 
-      if (eventType === 'payment.captured') {
-        const payment = event?.payload?.payment?.entity;
-        if (payment) {
-          const orderId = payment.order_id;
-          const paymentId = payment.id;
-          const amount = payment.amount / 100; // Convert from paise
+          const orderId   = String(payEnt.order_id  ?? "");
+          const paymentId = String(payEnt.id        ?? "");
+          const amount    = (payEnt.amount ?? 0) / 100; // paise → rupees
 
-          // Find and complete the payment record
-          const paymentR = await rawDb.execute(rawSql`
-            SELECT * FROM driver_payments WHERE razorpay_order_id=${orderId} AND status='pending'
-          `);
-          if (paymentR.rows.length) {
-            const rec = camelize(paymentR.rows[0]) as any;
-            await rawDb.execute(rawSql`
-              UPDATE driver_payments SET status='completed', razorpay_payment_id=${paymentId}, verified_at=NOW()
-              WHERE razorpay_order_id=${orderId}
-            `);
-            // PAYMENT GATE: if trip was held at payment_pending, now complete it
-            if (rec.tripId) {
-              await rawDb.execute(rawSql`
-                UPDATE trip_requests SET current_status='completed', completed_at=NOW(), payment_status='paid', updated_at=NOW()
-                WHERE id=${rec.tripId}::uuid AND current_status='payment_pending'
-              `);
-              if (io) {
-                io.to(`user:${rec.customerId ?? ''}`).emit("trip:completed", {
-                  tripId: rec.tripId,
-                  message: "Payment confirmed. Trip complete.",
-                });
+          console.info(`${tag} orderId=${orderId} paymentId=${paymentId} ₹${amount}`);
+
+          // ── Defense-in-depth: verify with Razorpay API for payment.captured ──
+          // Confirms status=captured, amount, and order_id from Razorpay directly.
+          // This prevents replay attacks where an authorized event is replayed as captured.
+          if (eventType === "payment.captured") {
+            try {
+              const rzpKeyId     = process.env.RAZORPAY_KEY_ID;
+              const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+              if (rzpKeyId && rzpKeySecret) {
+                const Razorpay = _require("razorpay");
+                const rzp = new Razorpay({ key_id: rzpKeyId, key_secret: rzpKeySecret });
+                const fetched = await rzp.payments.fetch(paymentId);
+                const fetchedStatus  = String(fetched.status ?? "");
+                const fetchedOrderId = String(fetched.order_id ?? "");
+                const fetchedAmount  = (fetched.amount ?? 0) / 100;
+                if (fetchedStatus !== "captured") {
+                  console.error(`${tag} API verification FAILED: status=${fetchedStatus} expected=captured`);
+                  await rawDb.execute(rawSql`
+                    UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: status=' + fetchedStatus}
+                    WHERE event_id=${eventId}
+                  `).catch(() => {});
+                  break;
+                }
+                if (fetchedOrderId && orderId && fetchedOrderId !== orderId) {
+                  console.error(`${tag} API verification FAILED: order_id mismatch fetched=${fetchedOrderId} event=${orderId}`);
+                  await rawDb.execute(rawSql`
+                    UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: order_id mismatch'}
+                    WHERE event_id=${eventId}
+                  `).catch(() => {});
+                  break;
+                }
+                if (Math.abs(fetchedAmount - amount) > 0.5) {
+                  console.error(`${tag} API verification FAILED: amount mismatch fetched=${fetchedAmount} event=${amount}`);
+                  await rawDb.execute(rawSql`
+                    UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: amount mismatch'}
+                    WHERE event_id=${eventId}
+                  `).catch(() => {});
+                  break;
+                }
+                console.info(`${tag} API verification OK paymentId=${paymentId}`);
               }
+            } catch (apiErr: any) {
+              console.warn(`${tag} Razorpay API verify error (proceeding with webhook data): ${apiErr.message}`);
+              // Non-fatal: if the API call fails (network/timeout), proceed with the webhook payload
+              // which was already HMAC-verified at the HTTP layer
             }
-            // Credit wallet
-            const updated = await rawDb.execute(rawSql`
-              UPDATE users SET wallet_balance = wallet_balance + ${rec.amount}
-              WHERE id = ${rec.driverId}::uuid RETURNING wallet_balance, is_locked
+          }
+
+          // ── A) Driver payment (wallet topup, subscription, commission) ────
+          {
+            const dpRows = await rawDb.execute(rawSql`
+              SELECT * FROM driver_payments
+              WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+              LIMIT 1
             `);
-            if (updated.rows.length) {
-              const row: any = updated.rows[0];
-              const newBalance = parseFloat(row.wallet_balance);
-              const threshR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold'`);
-              const thresh = parseFloat((threshR.rows[0] as any)?.value || '-100');
-              if (newBalance > thresh && row.is_locked) {
-                await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${rec.driverId}::uuid`);
-              }
-              // Notify driver via socket
-              if (io) {
-                io.to(`user:${rec.driverId}`).emit("wallet:recharged", { amount: rec.amount, newBalance });
+            if (dpRows.rows.length) {
+              const rec = camelize(dpRows.rows[0]) as any;
+
+              // Idempotency: abort if already completed
+              const done = await rawDb.execute(rawSql`
+                SELECT id FROM driver_payments
+                WHERE razorpay_order_id = ${orderId} AND status = 'completed'
+                LIMIT 1
+              `);
+              if (!done.rows.length) {
+                // Mark payment completed
+                await rawDb.execute(rawSql`
+                  UPDATE driver_payments
+                  SET status = 'completed',
+                      razorpay_payment_id = ${paymentId},
+                      verified_at  = NOW(),
+                      updated_at   = NOW()
+                  WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+                `);
+                console.info(`${tag} driver_payments completed orderId=${orderId}`);
+
+                // Activate subscription if this payment was for a plan
+                if (rec.paymentType === "subscription") {
+                  const planRows = await rawDb.execute(rawSql`
+                    SELECT * FROM subscription_plans WHERE id = ${rec.planId ?? ""}::uuid LIMIT 1
+                  `).catch(() => ({ rows: [] as any[] }));
+                  const plan = planRows.rows.length ? camelize(planRows.rows[0]) as any : null;
+                  const days   = plan?.durationDays ?? 30;
+                  const start  = new Date().toISOString().split("T")[0];
+                  const end    = new Date(Date.now() + days * 86_400_000).toISOString().split("T")[0];
+
+                  await rawDb.execute(rawSql`
+                    UPDATE driver_subscriptions
+                    SET is_active = false, subscription_status = 'replaced', updated_at = NOW()
+                    WHERE driver_id = ${rec.driverId}::uuid AND is_active = true
+                  `);
+                  await rawDb.execute(rawSql`
+                    INSERT INTO driver_subscriptions
+                      (driver_id, plan_id, start_date, end_date, amount,
+                       payment_status, is_active, razorpay_order_id,
+                       razorpay_payment_id, subscription_status, updated_at)
+                    VALUES
+                      (${rec.driverId}::uuid, ${rec.planId ?? null}::uuid,
+                       ${start}, ${end}, ${rec.amount},
+                       'paid', true,
+                       ${orderId}, ${paymentId}, 'active', NOW())
+                  `);
+                  if (io) io.to(`user:${rec.driverId}`).emit("subscription:activated", { validUntil: end });
+                  console.info(`${tag} subscription activated driver=${rec.driverId} until ${end}`);
+                }
+
+                // Complete trip held at payment_pending
+                if (rec.tripId) {
+                  await rawDb.execute(rawSql`
+                    UPDATE trip_requests
+                    SET current_status = 'completed',
+                        completed_at   = NOW(),
+                        payment_status = 'paid',
+                        updated_at     = NOW()
+                    WHERE id = ${rec.tripId}::uuid AND current_status = 'payment_pending'
+                  `);
+                  if (io) {
+                    io.to(`user:${rec.customerId ?? ""}`).emit("trip:completed", {
+                      tripId: rec.tripId,
+                      message: "Payment confirmed. Trip completed.",
+                    });
+                  }
+                  console.info(`${tag} trip ${rec.tripId} completed`);
+                }
+
+                // Credit driver wallet
+                const wRow = await rawDb.execute(rawSql`
+                  UPDATE users
+                  SET wallet_balance = wallet_balance + ${rec.amount}, updated_at = NOW()
+                  WHERE id = ${rec.driverId}::uuid
+                  RETURNING wallet_balance, is_locked
+                `);
+                if (wRow.rows.length) {
+                  const row = wRow.rows[0] as any;
+                  const newBal = parseFloat(row.wallet_balance);
+                  const thr = await rawDb.execute(rawSql`
+                    SELECT value FROM revenue_model_settings
+                    WHERE key_name = 'auto_lock_threshold' LIMIT 1
+                  `).catch(() => ({ rows: [] as any[] }));
+                  const thresh = parseFloat((thr.rows[0] as any)?.value ?? "-100");
+                  if (newBal >= thresh && row.is_locked) {
+                    await rawDb.execute(rawSql`
+                      UPDATE users
+                      SET is_locked = false, lock_reason = NULL, locked_at = NULL, updated_at = NOW()
+                      WHERE id = ${rec.driverId}::uuid
+                    `);
+                    console.info(`${tag} driver ${rec.driverId} auto-unlocked (bal=₹${newBal})`);
+                  }
+                  if (io) io.to(`user:${rec.driverId}`).emit("wallet:recharged", { amount: rec.amount, newBalance: newBal });
+                }
+
+                // Admin revenue record
+                await rawDb.execute(rawSql`
+                  INSERT INTO admin_revenue (driver_id, amount, revenue_type, breakdown)
+                  VALUES (
+                    ${rec.driverId}::uuid, ${rec.amount},
+                    ${rec.paymentType === "subscription" ? "subscription_purchase" : "driver_payment"},
+                    ${JSON.stringify({ orderId, paymentId, paymentType: rec.paymentType })}::jsonb
+                  )
+                `).catch(() => {});
               }
             }
           }
+
+          // ── B) Customer wallet topup / ride payment ───────────────────────
+          {
+            const cpRows = await rawDb.execute(rawSql`
+              SELECT * FROM customer_payments
+              WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+              LIMIT 1
+            `).catch(() => ({ rows: [] as any[] }));
+            if (cpRows.rows.length) {
+              const rec = camelize(cpRows.rows[0]) as any;
+              const done = await rawDb.execute(rawSql`
+                SELECT id FROM customer_payments
+                WHERE razorpay_order_id = ${orderId} AND status = 'completed'
+                LIMIT 1
+              `).catch(() => ({ rows: [] as any[] }));
+              if (!done.rows.length) {
+                await rawDb.execute(rawSql`
+                  UPDATE customer_payments
+                  SET status = 'completed',
+                      razorpay_payment_id = ${paymentId},
+                      verified_at = NOW()
+                  WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+                `);
+                await rawDb.execute(rawSql`
+                  UPDATE users
+                  SET wallet_balance = wallet_balance + ${rec.amount}, updated_at = NOW()
+                  WHERE id = ${rec.customerId}::uuid
+                `);
+                if (io) io.to(`user:${rec.customerId}`).emit("wallet:recharged", { amount: rec.amount });
+                console.info(`${tag} customer wallet credited customer=${rec.customerId} ₹${rec.amount}`);
+              }
+            }
+          }
+          break;
         }
-      } else if (eventType === 'payment.failed') {
-        const payment = event?.payload?.payment?.entity;
-        if (payment?.order_id) {
+
+        // ── payment.failed ─────────────────────────────────────────────────
+        case "payment.failed": {
+          if (!payEnt) { console.warn(`${tag} missing payment entity`); break; }
+          const orderId    = String(payEnt.order_id ?? "");
+          const failReason = String(
+            payEnt.error_description ?? payEnt.error_reason ?? "Payment failed"
+          ).slice(0, 500);
+          console.warn(`${tag} orderId=${orderId} reason="${failReason}"`);
+
           await rawDb.execute(rawSql`
-            UPDATE driver_payments SET status='failed' WHERE razorpay_order_id=${payment.order_id} AND status='pending'
-          `);
+            UPDATE driver_payments
+            SET status = 'failed', failure_reason = ${failReason}, updated_at = NOW()
+            WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+          `).catch(() => {});
+          await rawDb.execute(rawSql`
+            UPDATE customer_payments
+            SET status = 'failed', failure_reason = ${failReason}
+            WHERE razorpay_order_id = ${orderId} AND status = 'pending'
+          `).catch(() => {});
+          console.error(`[WEBHOOK:ALERT] Payment failed orderId=${orderId} — "${failReason}"`);
+          break;
         }
+
+        // ── subscription.authenticated / subscription.pending ──────────────
+        // Informational events — logged, no DB action required
+        case "subscription.authenticated":
+        case "subscription.pending":
+          console.info(`${tag} subscription=${subEnt?.id ?? "?"} — logged only`);
+          break;
+
+        // ── subscription.activated / subscription.charged ──────────────────
+        // Mark subscription ACTIVE, update billing cycle dates
+        case "subscription.activated":
+        case "subscription.charged": {
+          if (!subEnt) { console.warn(`${tag} missing subscription entity`); break; }
+          const rzpSubId  = String(subEnt.id ?? "");
+          const driverId  = String(subEnt.notes?.driver_id ?? "");
+          const cycleStart = subEnt.current_start
+            ? new Date(subEnt.current_start * 1000).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0];
+          const cycleEnd   = subEnt.current_end
+            ? new Date(subEnt.current_end * 1000).toISOString().split("T")[0]
+            : new Date(Date.now() + 30 * 86_400_000).toISOString().split("T")[0];
+
+          if (driverId) {
+            // Deactivate existing subs that belong to this driver (but not this rzp sub)
+            await rawDb.execute(rawSql`
+              UPDATE driver_subscriptions
+              SET is_active = false, subscription_status = 'replaced', updated_at = NOW()
+              WHERE driver_id = ${driverId}::uuid
+                AND is_active = true
+                AND (razorpay_subscription_id IS NULL OR razorpay_subscription_id != ${rzpSubId})
+            `);
+            // Upsert the active subscription record
+            const upsert = await rawDb.execute(rawSql`
+              UPDATE driver_subscriptions
+              SET is_active = true, payment_status = 'paid',
+                  subscription_status = 'active',
+                  start_date = ${cycleStart}, end_date = ${cycleEnd},
+                  updated_at = NOW()
+              WHERE driver_id = ${driverId}::uuid
+                AND razorpay_subscription_id = ${rzpSubId}
+              RETURNING id
+            `);
+            if (!upsert.rows.length) {
+              await rawDb.execute(rawSql`
+                INSERT INTO driver_subscriptions
+                  (driver_id, start_date, end_date, payment_status, is_active,
+                   razorpay_subscription_id, subscription_status, updated_at)
+                VALUES
+                  (${driverId}::uuid, ${cycleStart}, ${cycleEnd}, 'paid', true,
+                   ${rzpSubId}, 'active', NOW())
+              `);
+            }
+            if (io) io.to(`user:${driverId}`).emit("subscription:activated", { validUntil: cycleEnd });
+            console.info(`${tag} sub ${rzpSubId} activated driver=${driverId} until ${cycleEnd}`);
+          } else {
+            // No driver_id in notes — update by razorpay_subscription_id only
+            await rawDb.execute(rawSql`
+              UPDATE driver_subscriptions
+              SET is_active = true, payment_status = 'paid',
+                  subscription_status = 'active',
+                  start_date = ${cycleStart}, end_date = ${cycleEnd},
+                  updated_at = NOW()
+              WHERE razorpay_subscription_id = ${rzpSubId}
+            `);
+            console.info(`${tag} sub ${rzpSubId} activated (no driver_id in notes)`);
+          }
+          break;
+        }
+
+        // ── subscription.halted ────────────────────────────────────────────
+        // Payment retry failed — disable driver access until payment succeeds
+        case "subscription.halted": {
+          if (!subEnt) break;
+          const rzpSubId = String(subEnt.id ?? "");
+          const driverId = String(subEnt.notes?.driver_id ?? "");
+          if (driverId) {
+            await rawDb.execute(rawSql`
+              UPDATE driver_subscriptions
+              SET is_active = false, subscription_status = 'halted', updated_at = NOW()
+              WHERE driver_id = ${driverId}::uuid
+            `);
+            if (io) io.to(`user:${driverId}`).emit("subscription:halted", {
+              message: "Subscription payment failed. Please update payment method.",
+            });
+          } else {
+            await rawDb.execute(rawSql`
+              UPDATE driver_subscriptions
+              SET is_active = false, subscription_status = 'halted', updated_at = NOW()
+              WHERE razorpay_subscription_id = ${rzpSubId}
+            `);
+          }
+          console.warn(`${tag} sub ${rzpSubId} halted — access disabled`);
+          break;
+        }
+
+        // ── subscription.resumed ───────────────────────────────────────────
+        case "subscription.resumed": {
+          if (!subEnt) break;
+          const rzpSubId = String(subEnt.id ?? "");
+          await rawDb.execute(rawSql`
+            UPDATE driver_subscriptions
+            SET is_active = true, subscription_status = 'active', updated_at = NOW()
+            WHERE razorpay_subscription_id = ${rzpSubId}
+          `);
+          console.info(`${tag} sub ${rzpSubId} resumed`);
+          break;
+        }
+
+        // ── subscription.cancelled ─────────────────────────────────────────
+        // Keep is_active = true so driver retains access until end_date
+        case "subscription.cancelled": {
+          if (!subEnt) break;
+          const rzpSubId = String(subEnt.id ?? "");
+          const driverId = String(subEnt.notes?.driver_id ?? "");
+          await rawDb.execute(rawSql`
+            UPDATE driver_subscriptions
+            SET subscription_status = 'cancelled', updated_at = NOW()
+            WHERE razorpay_subscription_id = ${rzpSubId}
+          `);
+          if (driverId && io) {
+            io.to(`user:${driverId}`).emit("subscription:cancelled", {
+              message: "Subscription cancelled. Access continues until expiry date.",
+            });
+          }
+          console.info(`${tag} sub ${rzpSubId} cancelled — access retained until end_date`);
+          break;
+        }
+
+        // ── refund.created / refund.processed ─────────────────────────────
+        case "refund.created":
+        case "refund.processed": {
+          if (!refEnt) { console.warn(`${tag} missing refund entity`); break; }
+          const refundId  = String(refEnt.id          ?? "");
+          const refundAmt = (refEnt.amount             ?? 0) / 100;
+          const paymentId = String(refEnt.payment_id  ?? "");
+          console.info(`${tag} refundId=${refundId} paymentId=${paymentId} ₹${refundAmt}`);
+
+          if (eventType === "refund.processed") {
+            // Find a matching approved refund_request and credit customer wallet
+            const rrRows = await rawDb.execute(rawSql`
+              SELECT * FROM refund_requests
+              WHERE status = 'approved' AND amount = ${refundAmt}
+              ORDER BY created_at DESC LIMIT 1
+            `).catch(() => ({ rows: [] as any[] }));
+            if (rrRows.rows.length) {
+              const rr = camelize(rrRows.rows[0]) as any;
+              await rawDb.execute(rawSql`
+                UPDATE refund_requests
+                SET status = 'completed',
+                    admin_note = 'Processed via Razorpay webhook',
+                    approved_at = NOW()
+                WHERE id = ${rr.id}::uuid
+              `);
+              if (rr.paymentMethod === "wallet" && rr.customerId) {
+                await rawDb.execute(rawSql`
+                  UPDATE users
+                  SET wallet_balance = wallet_balance + ${refundAmt}, updated_at = NOW()
+                  WHERE id = ${rr.customerId}::uuid
+                `);
+                if (io) io.to(`user:${rr.customerId}`).emit("wallet:recharged", {
+                  amount: refundAmt,
+                  reason: "Refund processed",
+                });
+                console.info(`${tag} wallet credited ₹${refundAmt} for refund customer=${rr.customerId}`);
+              }
+            }
+          }
+          break;
+        }
+
+        default:
+          console.info(`[WEBHOOK] Unhandled event type: ${eventType} — logged only`);
       }
 
-      res.json({ success: true });
-    } catch (e: any) {
-      console.error("[WEBHOOK] Razorpay webhook error:", e.message);
-      res.status(500).json({ message: safeErrMsg(e) });
+      // Mark as successfully processed in audit log
+      await rawDb.execute(rawSql`
+        UPDATE razorpay_webhook_logs SET processed = true WHERE event_id = ${eventId}
+      `).catch(() => {});
+      console.info(`[WEBHOOK] ${eventType} (${eventId}) ✓ done`);
+
+    } catch (procErr: any) {
+      console.error(`[WEBHOOK] Processing error [${eventType}] id=${eventId}:`, procErr.message);
+      await rawDb.execute(rawSql`
+        UPDATE razorpay_webhook_logs
+        SET error_msg = ${String(procErr.message ?? "unknown").slice(0, 500)}
+        WHERE event_id = ${eventId}
+      `).catch(() => {});
     }
-  });
+  };
+
+  // ── Shared request handler (used by both URLs) ───────────────────────────
+  const _razorpayWebhookHandler = async (req: Request, res: Response): Promise<void> => {
+    const tag = "[WEBHOOK]";
+
+    // ── 1. Secret guard ──────────────────────────────────────────────────────
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error(`${tag} RAZORPAY_WEBHOOK_SECRET not configured`);
+      res.status(503).json({ message: "Webhook not configured" });
+      return;
+    }
+
+    // ── 2. Signature verification (timing-safe) ──────────────────────────────
+    const sigHeader = req.headers["x-razorpay-signature"];
+    const signature = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader ?? "";
+    if (!signature) {
+      console.warn(`${tag} missing X-Razorpay-Signature from ${req.ip}`);
+      res.status(400).json({ message: "Missing webhook signature" });
+      return;
+    }
+
+    const rawBody  = (req as any).rawBody;
+    const bodyStr  = rawBody ? (rawBody as Buffer).toString() : JSON.stringify(req.body);
+    const expected = crypto.createHmac("sha256", webhookSecret).update(bodyStr).digest("hex");
+
+    let sigValid = false;
+    try {
+      // timingSafeEqual requires same-length buffers
+      const eBuf = Buffer.from(expected, "hex");
+      const sBuf = Buffer.from(signature, "hex");
+      sigValid = eBuf.length === sBuf.length && crypto.timingSafeEqual(eBuf, sBuf);
+    } catch (_) {
+      sigValid = false;
+    }
+
+    if (!sigValid) {
+      console.warn(`${tag} invalid signature from ${req.ip} — rejected`);
+      // Log the bad attempt for security audit (best-effort)
+      rawDb.execute(rawSql`
+        INSERT INTO razorpay_webhook_logs
+          (event_id, event_type, payload, processed, error_msg)
+        VALUES (
+          ${"invalid_sig_" + Date.now().toString(36)},
+          ${"INVALID_SIGNATURE"},
+          ${JSON.stringify({ ip: req.ip, ua: req.headers["user-agent"] })}::jsonb,
+          false,
+          ${"Signature mismatch — rejected"}
+        )
+      `).catch(() => {});
+      res.status(400).json({ message: "Invalid webhook signature" });
+      return;
+    }
+
+    // ── 3. Parse event ────────────────────────────────────────────────────────
+    const event      = req.body;
+    const eventId    = String(event?.id ?? `rzp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    const eventType  = String(event?.event ?? "unknown");
+
+    // ── 4. Idempotency via razorpay_webhook_logs ──────────────────────────────
+    // INSERT … ON CONFLICT DO NOTHING: if 0 rows returned, event already logged
+    try {
+      const ins = await rawDb.execute(rawSql`
+        INSERT INTO razorpay_webhook_logs (event_id, event_type, payload, processed)
+        VALUES (
+          ${eventId},
+          ${eventType},
+          ${JSON.stringify(event?.payload ?? {})}::jsonb,
+          false
+        )
+        ON CONFLICT (event_id) DO NOTHING
+        RETURNING id
+      `);
+      if (!ins.rows.length) {
+        console.info(`${tag} duplicate event ${eventId} (${eventType}) — skipped`);
+        res.json({ success: true, duplicate: true });
+        return;
+      }
+    } catch (logErr: any) {
+      // Log table error is non-fatal — never block Razorpay on infra issues
+      console.error(`${tag} webhook log insert failed:`, logErr.message);
+    }
+
+    // ── 5. Acknowledge Razorpay immediately (< 5 s SLA) ──────────────────────
+    res.json({ success: true });
+
+    // ── 6. Process event asynchronously ──────────────────────────────────────
+    setImmediate(() => {
+      _processRazorpayEvent(eventId, eventType, event).catch((e) =>
+        console.error(`${tag} unhandled async error [${eventType}]:`, e?.message)
+      );
+    });
+  };
+
+  // Register both URLs — Razorpay dashboard URL + legacy alias
+  app.post("/api/app/razorpay/webhook",  _razorpayWebhookHandler);
+  app.post("/api/webhooks/razorpay",     _razorpayWebhookHandler);
 
   // ── CUSTOMER: Update profile ──────────────────────────────────────────────
   app.patch("/api/app/customer/profile", authApp, async (req, res) => {
