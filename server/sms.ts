@@ -8,14 +8,15 @@ async function sendVia2Factor(phone: string, otp: string): Promise<SmsResult> {
   if (!apiKey) return { success: false, provider: "2factor", error: "No API key" };
   const tenDigit = phone.replace(/\D/g, "").slice(-10);
   try {
-    const url = `https://2factor.in/API/V1/${apiKey}/SMS/${tenDigit}/${otp}/AUTOGEN`;
+    // Correct URL: send our own OTP via SMS (no AUTOGEN — that generates 2Factor's own OTP)
+    const url = `https://2factor.in/API/V1/${apiKey}/SMS/${tenDigit}/${otp}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = (await res.json()) as any;
     if (data.Status === "Success") {
-      console.log(`[SMS-2FACTOR] OTP sent to ${tenDigit}`);
+      console.log(`[SMS-2FACTOR] OTP sent via SMS to ${tenDigit}`);
       return { success: true, provider: "2factor" };
     }
-    console.warn(`[SMS-2FACTOR] Failed:`, data.Details);
+    console.warn(`[SMS-2FACTOR] SMS failed:`, data.Details);
     return { success: false, provider: "2factor", error: data.Details };
   } catch (err: any) {
     return { success: false, provider: "2factor", error: err.message };
