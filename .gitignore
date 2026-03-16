@@ -5,6 +5,11 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
+# Android release signing — NEVER commit these
+key.properties
+*.jks
+*.keystore
+
 # Flutter & Android build SDKs (large, not needed in repo)
 .flutter-sdk/
 .android-sdk/

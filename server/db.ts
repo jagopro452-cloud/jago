@@ -8,16 +8,13 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
 
-// Disable TLS cert chain verification for cloud DBs (Neon, Supabase, etc.)
-// These providers use intermediate CAs that can trigger "self-signed cert in chain" errors
+// Cloud DBs (Neon, Supabase, Railway) use intermediate CAs that trigger Node.js SSL errors.
+// Fix: disable cert rejection at pool level only (not globally — global setting breaks all HTTPS).
 const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
-if (!isLocalDb) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isLocalDb ? false : { rejectUnauthorized: false, checkServerIdentity: () => undefined },
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
