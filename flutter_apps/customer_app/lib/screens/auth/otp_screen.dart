@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
@@ -26,8 +27,8 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   late AnimationController _slideCtrl;
   late Animation<Offset> _slideAnim;
 
-  static const Color _blue = Color(0xFF2F80ED);
-  static const Color _navy = Color(0xFF0B0B0B);
+  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _navy = JT.textPrimary;
 
   @override
   void initState() {
@@ -122,7 +123,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)],
+                    colors: [JT.primary, Color(0xFF1A6FE0)],
                   ),
                 ),
                 child: Stack(

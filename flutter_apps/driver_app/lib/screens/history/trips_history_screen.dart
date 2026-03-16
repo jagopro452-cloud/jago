@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class TripsHistoryScreen extends StatefulWidget {
@@ -27,16 +28,16 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   int _cancelledCount = 0;
 
   // Color system
-  static const Color _bg = Color(0xFF060A14);
-  static const Color _surface = Color(0xFF0F1923);
-  static const Color _card = Color(0xFF162030);
-  static const Color _border = Color(0xFF1E3050);
-  static const Color _primary = Color(0xFF00D4FF);
-  static const Color _green = Color(0xFF00E676);
-  static const Color _amber = Color(0xFFFFB300);
-  static const Color _red = Color(0xFFFF3D57);
-  static const Color _textSecondary = Color(0xFF8899BB);
-  static const Color _textHint = Color(0xFF445577);
+  static const Color _bg = Color(0xFFFFFFFF);
+  static const Color _surface = Color(0xFFF7FAFF);
+  static const Color _card = JT.surfaceAlt;
+  static const Color _border = JT.border;
+  static const Color _primary = Color(0xFF2F7BFF);
+  static const Color _green = JT.success;
+  static const Color _amber = JT.warning;
+  static const Color _red = JT.error;
+  static const Color _textSecondary = JT.textSecondary;
+  static const Color _textHint = JT.iconInactive;
 
   @override
   void initState() {
@@ -188,7 +189,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 type == 'parcel' ? 'Parcel Delivery' : 'Ride',
-                style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 3),
               Text(_formatDate(t['createdAt']?.toString()),
@@ -319,7 +320,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 18),
           Text('Earnings Receipt', style: GoogleFonts.poppins(
-              color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+              color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(r['receiptNo'] ?? '', style: GoogleFonts.poppins(color: _textHint, fontSize: 12)),
           const SizedBox(height: 20),
@@ -379,7 +380,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
     return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text(label, style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
       Text(value, style: GoogleFonts.poppins(
-        color: highlight ?? Colors.white,
+        color: highlight ?? JT.textPrimary,
         fontSize: bold ? 15 : 13,
         fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
     ]);
@@ -400,7 +401,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 11, fontWeight: FontWeight.w600)),
         const SizedBox(height: 3),
-        Text(value, style: GoogleFonts.poppins(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(value, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
       ])),
     ]);
   }
@@ -418,7 +419,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       ),
       const SizedBox(height: 8),
       Text(value, style: GoogleFonts.poppins(
-          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+          color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w800)),
       const SizedBox(height: 2),
       Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10)),
     ]));
@@ -442,12 +443,12 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             pinned: true,
             backgroundColor: _bg,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+              icon: Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
             title: Text('My Trips',
               style: GoogleFonts.poppins(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                  color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 18)),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 color: _bg,
@@ -480,7 +481,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   controller: _tabCtrl,
                   indicatorColor: _primary,
                   indicatorWeight: 2,
-                  labelColor: Colors.white,
+                  labelColor: JT.textPrimary,
                   unselectedLabelColor: _textHint,
                   labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12),
                   unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 12),
@@ -511,7 +512,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   setState(() => _searchQuery = v);
                   _applyFilter();
                 },
-                style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Search by pickup or destination...',
                   hintStyle: GoogleFonts.poppins(color: _textHint, fontSize: 13),
@@ -623,7 +624,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         t['destinationAddress']?.toString() ?? 'Destination',
                                         maxLines: 1, overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.poppins(
-                                          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                          color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                                       ),
                                       const SizedBox(height: 4),
                                       Row(children: [

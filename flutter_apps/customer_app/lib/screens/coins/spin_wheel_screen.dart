@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -13,7 +14,7 @@ class SpinWheelScreen extends StatefulWidget {
 
 class _SpinWheelScreenState extends State<SpinWheelScreen>
     with SingleTickerProviderStateMixin {
-  static const _blue = Color(0xFF2F80ED);
+  static const _blue = JT.primary;
 
   bool _loading = true;
   bool _spinning = false;
@@ -182,9 +183,9 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: JT.textPrimary,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B0B0B),
+        backgroundColor: JT.textPrimary,
         foregroundColor: Colors.white,
         title: const Text('Daily Spin', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
@@ -238,7 +239,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
               duration: const Duration(milliseconds: 200),
               width: 160, height: 56,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF56CCF2)]),
+                gradient: const LinearGradient(colors: [JT.primary, Color(0xFF56CCF2)]),
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 2)],
               ),

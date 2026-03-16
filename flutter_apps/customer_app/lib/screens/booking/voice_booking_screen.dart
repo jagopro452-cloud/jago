@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -62,11 +63,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   late AnimationController _pulseCtrl;
   late AnimationController _waveCtrl;
 
-  static const Color _bg      = Color(0xFF0B0B0B);
-  static const Color _surface = Color(0xFF1A1A1A);
+  static const Color _bg      = JT.textPrimary;
+  static const Color _surface = JT.surface;
   static const Color _blue    = Color(0xFF1B4DCC);
   static const Color _yellow  = Color(0xFFFBBC04);
-  static const Color _primary  = Color(0xFF2F80ED);
+  static const Color _primary  = JT.primary;
 
   // ─── Life-cycle ──────────────────────────────────────────────────────────
 

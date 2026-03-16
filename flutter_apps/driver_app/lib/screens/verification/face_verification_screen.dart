@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
@@ -118,7 +119,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
   Widget build(BuildContext context) {
     if (_submitted) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0B0B0B),
+        backgroundColor: JT.textPrimary,
         body: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withValues(alpha: 0.2), shape: BoxShape.circle),
@@ -133,9 +134,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: JT.textPrimary,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B0B0B),
+        backgroundColor: JT.textPrimary,
         title: const Text('Safety Verification', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         automaticallyImplyLeading: false,

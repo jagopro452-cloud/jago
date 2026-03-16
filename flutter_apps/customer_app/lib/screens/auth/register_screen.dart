@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../home/home_screen.dart';
 
@@ -23,8 +24,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   late AnimationController _slideCtrl;
   late Animation<Offset> _slideAnim;
 
-  static const Color _blue = Color(0xFF2F80ED);
-  static const Color _navy = Color(0xFF0B0B0B);
+  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _navy = JT.textPrimary;
 
   @override
   void initState() {
@@ -95,7 +96,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0B0B0B), size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
           title: Text(

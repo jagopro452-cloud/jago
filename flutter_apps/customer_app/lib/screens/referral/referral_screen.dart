@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
@@ -18,7 +19,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   double _totalEarned = 0;
   List<dynamic> _referrals = [];
 
-  static const Color _blue = Color(0xFF2F80ED);
+  static const Color _blue = Color(0xFF2F7BFF);
 
   @override
   void initState() {
@@ -80,11 +81,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF0F4FF);
-    final cardBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
+    
+    final bg = JT.bgSoft;
+    final cardBg = Colors.white;
+    final textColor = JT.textPrimary;
+    final subColor = JT.textSecondary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -95,7 +96,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         elevation: 0,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+          ? const Center(child: CircularProgressIndicator(color: JT.primary))
           : RefreshIndicator(
               onRefresh: _fetchReferral,
               color: _blue,
@@ -110,7 +111,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       width: double.infinity,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF2F80ED), Color(0xFF0052CC)],
+                          colors: [JT.primary, Color(0xFF0052CC)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -231,7 +232,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _referrals.length,
-                          separatorBuilder: (_, __) => Divider(height: 1, color: isDark ? Colors.white12 : Colors.grey.shade200),
+                          separatorBuilder: (_, __) => Divider(height: 1, color: JT.border),
                           itemBuilder: (_, i) {
                             final r = _referrals[i] as Map<String, dynamic>;
                             final status = r['status']?.toString() ?? 'pending';

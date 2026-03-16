@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -22,7 +23,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   late AnimationController _headerCtrl;
   late Animation<double> _headerAnim;
 
-  static const Color _blue = Color(0xFF2F80ED);
+  static const Color _blue = Color(0xFF2F7BFF);
   static const Color _navy = Color(0xFF0F172A);
 
   @override
@@ -73,7 +74,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
 
   Future<void> _showReceipt(BuildContext ctx, String tripId) async {
     showDialog(context: ctx, barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED))));
+      builder: (_) => const Center(child: CircularProgressIndicator(color: JT.primary)));
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.tripReceipt(tripId)), headers: headers);
@@ -131,7 +132,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)],
+                colors: [JT.primary, Color(0xFF1A6FE0)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
@@ -197,7 +198,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 // Driver & vehicle row
                 if (driver['name'] != null || vehicle['name'] != null)
                   Row(children: [
-                    if (driver['name'] != null) Expanded(child: _infoChip(Icons.person_rounded, driver['name'], const Color(0xFF2F80ED))),
+                    if (driver['name'] != null) Expanded(child: _infoChip(Icons.person_rounded, driver['name'], JT.primary)),
                     if (driver['name'] != null && vehicle['name'] != null) const SizedBox(width: 10),
                     if (vehicle['name'] != null) Expanded(child: _infoChip(Icons.directions_car_rounded, '${vehicle['name']} ${vehicle['number'] ?? ''}', const Color(0xFF7C3AED))),
                   ]),
@@ -311,7 +312,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED), Color(0xFF56CCF2)],
+                  colors: [Color(0xFF1A6FE0), JT.primary, Color(0xFF56CCF2)],
                 ),
               ),
               child: SafeArea(
@@ -365,7 +366,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           // ── List ──
           Expanded(
             child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+              ? const Center(child: CircularProgressIndicator(color: JT.primary))
               : filtered.isEmpty
                 ? _buildEmpty()
                 : RefreshIndicator(
@@ -437,7 +438,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             color: const Color(0xFFEBF4FF),
             borderRadius: BorderRadius.circular(24),
           ),
-          child: const Icon(Icons.receipt_long_outlined, size: 40, color: Color(0xFF2F80ED)),
+          child: const Icon(Icons.receipt_long_outlined, size: 40, color: JT.primary),
         ),
         const SizedBox(height: 16),
         Text(
@@ -470,7 +471,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: const Color(0xFF2F80ED).withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 3))],
       ),
       child: Column(children: [
         Padding(

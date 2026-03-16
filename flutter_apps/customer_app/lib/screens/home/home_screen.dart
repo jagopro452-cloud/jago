@@ -60,11 +60,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _bannerPageCtrl = PageController();
 
   // Brand colors — mapped to JT design system
-  static const Color _primary = JT.primary;
+  static const Color _primary = Color(0xFF2F7BFF);
   static const Color _secondary = JT.secondary;
   static const Color _lightAccent = JT.secondary;
-  static const Color _darkBg = Color(0xFF0B0B0B);
-  static const Color _darkCard = Color(0xFF1A1A1A);
+  static const Color _darkBg = JT.textPrimary;
+  static const Color _darkCard = JT.surface;
   static const Color _lightBg = JT.bg;
   static const Color _lightCard = JT.surfaceAlt;
 
@@ -578,12 +578,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldBg = isDark ? const Color(0xFF0B0B0B) : JT.bg;
+    const isDark = false; // light-only theme
+    final scaffoldBg = JT.bg;
 
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarIconBrightness: Brightness.dark,
     ));
 
     return Scaffold(
@@ -592,10 +592,10 @@ class _HomeScreenState extends State<HomeScreen> {
       drawer: _buildDrawer(isDark),
       body: SafeArea(
         child: Column(children: [
-          _buildTopBar(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft, isDark ? Colors.white : JT.textPrimary),
+          _buildTopBar(isDark, JT.bgSoft, JT.textPrimary),
           Expanded(
             child: _homeLoading
-              ? _buildSkeletonLoader(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft)
+              ? _buildSkeletonLoader(isDark, JT.bgSoft)
               : RefreshIndicator(
                   color: JT.primary,
                   onRefresh: () async {
@@ -605,7 +605,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       if (_activeTrip != null) _buildActiveTripBanner(isDark),
-                      _buildSearchBar(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft, isDark ? Colors.white : JT.textPrimary),
+                      _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
                       _buildServiceIcons(isDark),
                       _buildBannerCarousel(isDark),
                       _buildSavedPlaces(isDark),
@@ -615,7 +615,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
           ),
-          _buildBottomNav(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bg, isDark ? Colors.white : JT.textPrimary),
+          _buildBottomNav(isDark, JT.bg, JT.textPrimary),
         ]),
       ),
     );
@@ -1002,7 +1002,7 @@ class _HomeScreenState extends State<HomeScreen> {
               margin: EdgeInsets.only(right: isFirst ? 8 : 0),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
+                color: isDark ? JT.surface : JT.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JT.border),
                 boxShadow: JT.cardShadow,
@@ -1011,7 +1011,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Icon(icon, color: JT.primary, size: 18),
                 const SizedBox(width: 8),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : JT.textPrimary)),
+                  Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: JT.textPrimary)),
                   Text(address, style: GoogleFonts.poppins(fontSize: 10, color: isDark ? Colors.white54 : JT.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ])),
               ]),
@@ -1046,7 +1046,7 @@ class _HomeScreenState extends State<HomeScreen> {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
+                color: isDark ? JT.surface : JT.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: isDark ? Colors.white12 : JT.border),
                 boxShadow: isDark ? null : JT.cardShadow,
@@ -1054,7 +1054,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(children: [
                 Icon(Icons.history_rounded, color: JT.primary, size: 18),
                 const SizedBox(width: 12),
-                Expanded(child: Text(dest.split(',').first, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : JT.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: Text(dest.split(',').first, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
                 if (fare.isNotEmpty) Text('₹$fare', style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
               ]),
             ),
@@ -1208,7 +1208,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── DRAWER ───────────────────────────────────────────────────────────────
   Widget _buildDrawer(bool isDark) {
     final drawerBg = isDark ? _darkBg : JT.bg;
-    final textColor = isDark ? Colors.white : JT.textPrimary;
+    final textColor = JT.textPrimary;
     return Drawer(
       backgroundColor: drawerBg,
       child: SafeArea(
@@ -1282,7 +1282,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   bool _loading = false;
   Timer? _debounce;
 
-  static const Color _primary = JT.primary;
+  static const Color _primary = Color(0xFF2F7BFF);
 
   @override
   void initState() {
@@ -1358,12 +1358,13 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
+    const isDark = false;
     final query = _ctrl.text;
     final items = query.length >= 3 ? _results : _nearby;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
-    final inputBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F8FF);
-    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
+
+    final sheetBg = isDark ? JT.textPrimary : Colors.white;
+    final inputBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
+    final textColor = isDark ? Colors.white : JT.textPrimary;
     final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -1466,7 +1467,7 @@ class _AllServicesSheet extends StatelessWidget {
     required this.onServiceTap,
   });
 
-  static const Color _primary = JT.primary;
+  static const Color _primary = Color(0xFF2F7BFF);
 
   @override
   Widget build(BuildContext context) {
@@ -1489,10 +1490,10 @@ class _AllServicesSheet extends StatelessWidget {
         }).toList()
       : allServices;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F8FF);
-    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
+    const isDark = false;
+    final sheetBg = isDark ? JT.textPrimary : Colors.white;
+    final cardBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
+    final textColor = isDark ? Colors.white : JT.textPrimary;
     final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
 
     return Container(
@@ -1602,7 +1603,7 @@ class _TutorialTip extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0B0B0B))),
+              Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: JT.textPrimary)),
               const SizedBox(height: 2),
               Text(desc, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF64748B), height: 1.4)),
             ],

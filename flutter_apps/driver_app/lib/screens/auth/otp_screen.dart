@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
@@ -28,7 +29,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   late AnimationController _slideCtrl;
   late Animation<Offset> _slideAnim;
 
-  static const Color _blue = Color(0xFF2F80ED);
+  static const Color _blue = Color(0xFF2F7BFF);
 
   @override
   void initState() {
@@ -177,7 +178,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             width: 72, height: 72,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF2F80ED), Color(0xFF1A3A70)],
+                                colors: [JT.primary, Color(0xFF1A3A70)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
@@ -389,7 +390,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               gradient: _loading ? null : const LinearGradient(
-                                colors: [Color(0xFF2F80ED), Color(0xFF0D3F8F)],
+                                colors: [JT.primary, Color(0xFF0D3F8F)],
                                 begin: Alignment.centerLeft,
                                 end: Alignment.centerRight,
                               ),

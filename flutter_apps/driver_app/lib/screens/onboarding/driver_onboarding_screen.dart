@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,25 +20,25 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   late Animation<Offset> _slideAnim;
 
   // Color system
-  static const _bg = Color(0xFF060A14);
-  static const _surface = Color(0xFF0F1923);
+  static const _bg = Color(0xFFFFFFFF);
+  static const _surface = JT.bgSoft;
   static const _card = Color(0xFF162030);
   static const _border = Color(0xFF1E3050);
-  static const _primary = Color(0xFF00D4FF);
+  static const _primary = Color(0xFF2F7BFF);
   static const _green = Color(0xFF00E676);
   static const _amber = Color(0xFFFFB300);
   static const _red = Color(0xFFFF3D57);
-  static const _textSecondary = Color(0xFF8899BB);
+  static const _textSecondary = JT.textSecondary;
 
   static const _slides = [
     _Slide(
       icon: Icons.directions_car_rounded,
-      neonColor: Color(0xFF00D4FF),
+      neonColor: JT.primary,
       label: 'RIDES',
       title: 'Accept Rides\nInstantly',
       subtitle: 'Go online with one tap. See trip details before accepting — you\'re always in control.',
       features: ['One-tap online / offline', 'Preview trip before accepting', 'Choose trips on your route'],
-      gradient: [Color(0xFF060A14), Color(0xFF0A1E30)],
+      gradient: [JT.bg, Color(0xFF0A1E30)],
     ),
     _Slide(
       icon: Icons.map_rounded,
@@ -46,7 +47,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       title: 'Navigate\nEvery Trip',
       subtitle: 'Built-in navigation guides you door-to-door. Start and complete trips with simple taps.',
       features: ['Turn-by-turn navigation', 'Live trip status updates', 'Simple start & end flow'],
-      gradient: [Color(0xFF060A14), Color(0xFF0A1E18)],
+      gradient: [JT.bg, Color(0xFF0A1E18)],
     ),
     _Slide(
       icon: Icons.account_balance_wallet_rounded,
@@ -55,7 +56,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       title: 'Track Your\nEarnings',
       subtitle: 'Earnings updated after every trip. View daily/weekly totals. Withdraw to bank anytime.',
       features: ['Instant earnings per trip', 'Daily & weekly summaries', 'Easy bank withdrawal'],
-      gradient: [Color(0xFF060A14), Color(0xFF1E1200)],
+      gradient: [JT.bg, Color(0xFF1E1200)],
     ),
     _Slide(
       icon: Icons.verified_user_rounded,
@@ -64,7 +65,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       title: 'Safety First,\nAlways',
       subtitle: 'Verify customer OTP before every trip. Keep documents updated. SOS button always ready.',
       features: ['Verify OTP before start', 'Keep documents updated', 'SOS emergency button'],
-      gradient: [Color(0xFF060A14), Color(0xFF1E0810)],
+      gradient: [JT.bg, Color(0xFF1E0810)],
     ),
   ];
 
@@ -73,7 +74,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
     ));
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
@@ -115,7 +116,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
     final size = MediaQuery.of(context).size;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
+      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark),
       child: Scaffold(
         backgroundColor: _bg,
         body: AnimatedContainer(
@@ -311,7 +312,7 @@ class _SlidePage extends StatelessWidget {
 
               // Subtitle
               Text(slide.subtitle, style: GoogleFonts.poppins(
-                color: const Color(0xFF8899BB),
+                color: JT.textSecondary,
                 fontSize: 15, fontWeight: FontWeight.w400, height: 1.65,
               )),
 

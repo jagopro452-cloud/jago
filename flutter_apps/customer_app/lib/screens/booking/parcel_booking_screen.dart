@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
@@ -65,10 +66,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
   bool _loading = true;
   bool _bookingLoading = false;
 
-  static const Color _blue = Color(0xFF2F80ED);
-  static const Color _dark = Color(0xFF1A1A1A);
-  static const Color _lightBg = Color(0xFFF7F8FA);
-  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _dark = JT.surface;
+  static const Color _lightBg = JT.bgSoft;
+  static const Color _border = JT.border;
 
   @override
   void initState() {
@@ -938,7 +939,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen> {
           decoration: BoxDecoration(
             gradient: canBook
                 ? const LinearGradient(
-                    colors: [Color(0xFF5BA8FF), Color(0xFF2F80ED)],
+                    colors: [Color(0xFF5BA8FF), JT.primary],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
@@ -1005,10 +1006,10 @@ class _DestSearchSheetState extends State<_DestSearchSheet> {
   bool _searching = false;
   Timer? _debounce;
 
-  static const Color _blue = Color(0xFF2F80ED);
-  static const Color _dark = Color(0xFF1A1A1A);
-  static const Color _lightBg = Color(0xFFF7F8FA);
-  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _dark = JT.surface;
+  static const Color _lightBg = JT.bgSoft;
+  static const Color _border = JT.border;
 
   @override
   void dispose() {

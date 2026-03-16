@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -46,8 +47,8 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF0B0B0B)), onPressed: () => Navigator.pop(context)),
-        title: const Text('Scheduled Rides', style: TextStyle(color: Color(0xFF0B0B0B), fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
+        title: const Text('Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(icon: const Icon(Icons.add_circle, color: Color(0xFF2563EB)), onPressed: _scheduleNew),
         ],
@@ -75,7 +76,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(width: 80, height: 80, decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle), child: const Icon(Icons.schedule, color: Color(0xFF2563EB), size: 40)),
       const SizedBox(height: 16),
-      const Text('No Scheduled Rides', style: TextStyle(color: Color(0xFF0B0B0B), fontWeight: FontWeight.bold, fontSize: 18)),
+      const Text('No Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
       const SizedBox(height: 8),
       const Text('Schedule rides in advance for\nhassle-free travel', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
     ]));
@@ -98,7 +99,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
             Text(DateFormat('dd MMM, hh:mm a').format(scheduledAt), style: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
         const SizedBox(height: 12),
-        Row(children: [const Icon(Icons.my_location, color: Color(0xFF2563EB), size: 16), const SizedBox(width: 8), Expanded(child: Text(ride['pickupAddress'] ?? '', style: const TextStyle(color: Color(0xFF0B0B0B), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+        Row(children: [const Icon(Icons.my_location, color: Color(0xFF2563EB), size: 16), const SizedBox(width: 8), Expanded(child: Text(ride['pickupAddress'] ?? '', style: const TextStyle(color: JT.textPrimary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis))]),
         const SizedBox(height: 6),
         Row(children: [const Icon(Icons.location_on, color: Color(0xFFEF4444), size: 16), const SizedBox(width: 8), Expanded(child: Text(ride['destinationAddress'] ?? '', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis))]),
         const Divider(height: 16, color: Color(0xFFE2E8F0)),
@@ -178,7 +179,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       child: Padding(
         padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Schedule a Ride', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Color(0xFF0B0B0B))),
+          const Text('Schedule a Ride', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: JT.textPrimary)),
           const SizedBox(height: 16),
           _field(Icons.my_location, const Color(0xFF2563EB), _pickupCtrl, 'Pickup location', readOnly: true),
           const SizedBox(height: 10),
@@ -194,7 +195,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 const SizedBox(width: 12),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Pickup Time', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-                  Text(DateFormat('dd MMM yyyy, hh:mm a').format(_selectedDate), style: const TextStyle(color: Color(0xFF0B0B0B), fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(DateFormat('dd MMM yyyy, hh:mm a').format(_selectedDate), style: const TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
                 ]),
                 const Spacer(),
                 const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
@@ -228,7 +229,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
       child: Row(children: [
         Padding(padding: const EdgeInsets.only(left: 12), child: Icon(icon, color: color, size: 18)),
-        Expanded(child: TextField(controller: ctrl, readOnly: readOnly, style: const TextStyle(fontSize: 14, color: Color(0xFF0B0B0B)), decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Color(0xFF94A3B8)), border: InputBorder.none, contentPadding: const EdgeInsets.all(12)))),
+        Expanded(child: TextField(controller: ctrl, readOnly: readOnly, style: const TextStyle(fontSize: 14, color: JT.textPrimary), decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Color(0xFF94A3B8)), border: InputBorder.none, contentPadding: const EdgeInsets.all(12)))),
       ]),
     );
   }

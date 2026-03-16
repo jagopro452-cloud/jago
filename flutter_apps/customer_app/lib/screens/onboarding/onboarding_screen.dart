@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,8 +21,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
   static const _slides = [
     _Slide(
       icon: Icons.directions_car_rounded,
-      iconBg: Color(0xFF2F80ED),
-      gradient: [Color(0xFF0A1628), Color(0xFF1A3A6E)],
+      iconBg: JT.primary,
+      gradient: [JT.bg, Color(0xFF1A3A6E)],
       label: 'RIDES',
       title: 'Book a Ride\nAnywhere',
       subtitle: 'Auto, Bike, Car — real-time tracking, instant booking, cashless payments.',
@@ -61,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
     ));
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
@@ -103,7 +104,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
     final size = MediaQuery.of(context).size;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
+      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark),
       child: Scaffold(
         body: AnimatedContainer(
           duration: const Duration(milliseconds: 450),

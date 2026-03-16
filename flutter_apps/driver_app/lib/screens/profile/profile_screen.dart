@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/auth_service.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../main.dart' show themeNotifier, saveThemePreference;
 import '../../services/localization_service.dart';
 import '../auth/login_screen.dart';
@@ -39,15 +40,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _savingName = false;
 
   // Color system
-  static const Color _bg = Color(0xFF060A14);
-  static const Color _surface = Color(0xFF0F1923);
+  static const Color _bg = Color(0xFFFFFFFF);
+  static const Color _surface = Color(0xFFF7FAFF);
   static const Color _card = Color(0xFF162030);
-  static const Color _border = Color(0xFF1E3050);
-  static const Color _primary = Color(0xFF00D4FF);
+  static const Color _border = Color(0xFFDDE8FF);
+  static const Color _primary = Color(0xFF2F7BFF);
   static const Color _green = Color(0xFF00E676);
   static const Color _amber = Color(0xFFFFB300);
   static const Color _red = Color(0xFFFF3D57);
-  static const Color _textSecondary = Color(0xFF8899BB);
+  static const Color _textSecondary = Color(0xFF6B7FA8);
   static const Color _textHint = Color(0xFF445577);
 
   @override
@@ -506,23 +507,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             actions: [
               IconButton(
                 onPressed: () {
-                  final isDark = themeNotifier.value == ThemeMode.dark;
-                  saveThemePreference(isDark ? 'light' : 'dark');
+                  saveThemePreference('light');
                   AuthService.getHeaders().then((headers) {
                     http.patch(
                       Uri.parse('${ApiConfig.baseUrl}/api/app/driver/theme'),
                       headers: {...headers, 'Content-Type': 'application/json'},
-                      body: jsonEncode({'theme': isDark ? 'light' : 'dark'}),
+                      body: jsonEncode({'theme': 'light'}),
                     ).catchError((_) => http.Response('', 500));
                   });
                 },
-                icon: ValueListenableBuilder<ThemeMode>(
-                  valueListenable: themeNotifier,
-                  builder: (_, mode, __) => Icon(
-                    mode == ThemeMode.dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                    color: _textSecondary, size: 22,
-                  ),
-                ),
+                icon: const Icon(Icons.settings_outlined,
+                    color: Color(0xFF6B7FA8), size: 22),
               ),
               GestureDetector(
                 onTap: _showEditNameSheet,
@@ -540,9 +535,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [_surface, _bg],
+                    colors: [Color(0xFF4FA9FF), Color(0xFF2F7BFF)],
                     begin: Alignment.topCenter, end: Alignment.bottomCenter,
                   ),
                 ),
@@ -728,33 +723,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _menuCard(children: [
                   _buildDriverLanguageTile(),
                   _divider(),
-                  ValueListenableBuilder<ThemeMode>(
-                    valueListenable: themeNotifier,
-                    builder: (_, mode, __) {
-                      final isDark = mode == ThemeMode.dark;
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        leading: Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                              color: const Color(0xFF8B5CF6), size: 20),
-                        ),
-                        title: Text(isDark ? 'Dark Mode' : 'Light Mode',
-                          style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: Text(isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-                          style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
-                        trailing: Switch(
-                          value: isDark,
-                          onChanged: (val) => saveThemePreference(val ? 'dark' : 'light'),
-                          activeColor: _primary,
-                          trackColor: WidgetStateProperty.all(_border),
-                        ),
-                      );
-                    },
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.settings_outlined,
+                          color: Color(0xFF8B5CF6), size: 20),
+                    ),
+                    title: Text('App Settings',
+                      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                    subtitle: Text('Preferences',
+                      style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7FA8)),
                   ),
                   _divider(),
                   _menuTile(Icons.headset_mic_rounded, 'Help & Support', _primary, _showSupportSheet),

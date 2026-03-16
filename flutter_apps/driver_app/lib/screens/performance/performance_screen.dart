@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
@@ -52,9 +53,9 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: JT.textPrimary,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B0B0B),
+        backgroundColor: JT.textPrimary,
         title: const Text('My Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),

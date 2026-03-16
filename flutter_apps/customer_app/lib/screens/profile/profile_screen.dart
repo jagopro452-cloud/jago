@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/localization_service.dart';
@@ -79,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Profile updated successfully'),
-          backgroundColor: Color(0xFF2F80ED)));
+          backgroundColor: JT.primary));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(res['message'] ?? 'Update failed'),
@@ -199,14 +200,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     final scaffoldBg =
-        isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF5F5F5);
-    final cardBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF111827);
-    final subColor = isDark ? Colors.white54 : const Color(0xFF6B7280);
-    final divColor = isDark ? Colors.white10 : const Color(0xFFEEEEEE);
-    final accentColor = const Color(0xFF2F80ED);
+        JT.bgSoft;
+    final cardBg = Colors.white;
+    final textColor = JT.textPrimary;
+    final subColor = JT.textSecondary;
+    final divColor = JT.border;
+    final accentColor = JT.primary;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -297,10 +298,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 14),
                     if (_editing) ...[
-                      _editField('Full Name', _nameCtrl, textColor, isDark),
+                      _editField('Full Name', _nameCtrl, textColor),
                       const SizedBox(height: 10),
                       _editField('Email Address', _emailCtrl, textColor,
-                          isDark,
                           keyboard: TextInputType.emailAddress),
                     ] else ...[
                       Text(_name,
@@ -342,14 +342,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(children: [
                     _statCard('Wallet', '₹${_walletBalance.toStringAsFixed(0)}',
                         Icons.account_balance_wallet_outlined,
-                        accentColor, isDark),
+                        accentColor),
                     _statCard('Loyalty Points', '$_loyaltyPoints pts',
-                        Icons.stars_rounded, Colors.amber, isDark),
+                        Icons.stars_rounded, Colors.amber),
                     _statCard('Trips', '$_completedTrips',
                         Icons.directions_car_rounded,
-                        Colors.green, isDark),
+                        Colors.green),
                     _statCard('Spent', '₹${_totalSpent.toStringAsFixed(0)}',
-                        Icons.receipt_long_outlined, Colors.purple, isDark),
+                        Icons.receipt_long_outlined, Colors.purple),
                   ]),
                 ),
                 const SizedBox(height: 12),
@@ -410,19 +410,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.grey.shade100,
+                          color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8)),
-                      child: Icon(
-                          isDark
-                              ? Icons.light_mode_outlined
-                              : Icons.dark_mode_outlined,
-                          color: isDark ? Colors.amber : Colors.indigo,
-                          size: 20),
+                      child: const Icon(Icons.settings_outlined,
+                          color: Colors.indigo, size: 20),
                     ),
-                    title: Text(
-                        isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                    title: Text('Settings',
                         style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
@@ -430,8 +423,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     trailing: Icon(Icons.chevron_right,
                         color: subColor, size: 20),
                     onTap: () async {
-                      await saveThemePreference(
-                          isDark ? 'light' : 'dark');
+                      await saveThemePreference('light');
                     },
                   ),
                 ], cardBg),
@@ -486,12 +478,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _editField(String label, TextEditingController ctrl, Color textColor,
-      bool isDark,
       {TextInputType keyboard = TextInputType.text}) {
-    final fieldBg =
-        isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA);
-    final borderColor =
-        isDark ? Colors.white12 : const Color(0xFFE5E9F0);
+    const fieldBg = Color(0xFFF5F7FA);
+    const borderColor = Color(0xFFE5E9F0);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
           style: TextStyle(
@@ -519,28 +508,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ]);
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color,
-      bool isDark) {
+  Widget _statCard(String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Column(children: [
         Container(
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-              color: color.withValues(alpha: isDark ? 0.15 : 0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, color: color, size: 18),
         ),
         const SizedBox(height: 6),
         Text(value,
-            style: TextStyle(
+            style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13,
-                color: isDark ? Colors.white : const Color(0xFF111827))),
+                color: Color(0xFF111827))),
         Text(label,
-            style: TextStyle(
-                fontSize: 10,
-                color: isDark ? Colors.white38 : Colors.grey.shade500)),
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
       ]),
     );
   }
@@ -555,10 +541,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: const Color(0xFF2F80ED).withValues(alpha: 0.1),
+          color: JT.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.translate_rounded, color: Color(0xFF2F80ED), size: 20),
+        child: const Icon(Icons.translate_rounded, color: JT.primary, size: 20),
       ),
       title: Text(L.tr('language_settings'),
         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
@@ -597,7 +583,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(color: subColor.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 16),
                 Row(children: [
-                  const Icon(Icons.translate_rounded, color: Color(0xFF2F80ED), size: 22),
+                  const Icon(Icons.translate_rounded, color: JT.primary, size: 22),
                   const SizedBox(width: 10),
                   Text(L.tr('choose_language'),
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
@@ -624,11 +610,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
                           color: isSelected
-                            ? const Color(0xFF2F80ED).withValues(alpha: 0.08)
-                            : const Color(0xFF2F80ED).withValues(alpha: 0.02),
+                            ? JT.primary.withValues(alpha: 0.08)
+                            : JT.primary.withValues(alpha: 0.02),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isSelected ? const Color(0xFF2F80ED) : subColor.withValues(alpha: 0.15),
+                            color: isSelected ? JT.primary : subColor.withValues(alpha: 0.15),
                             width: isSelected ? 1.5 : 1,
                           ),
                         ),
@@ -638,7 +624,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(lang['name']!,
                               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
-                                color: isSelected ? const Color(0xFF2F80ED) : textColor)),
+                                color: isSelected ? JT.primary : textColor)),
                             Text(lang['nativeName']!,
                               style: TextStyle(fontSize: 12, color: subColor)),
                           ])),
@@ -646,7 +632,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF2F80ED),
+                                color: JT.primary,
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Icon(Icons.check, color: Colors.white, size: 14),

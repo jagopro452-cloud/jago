@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import 'pending_verification_screen.dart';
 
@@ -55,9 +56,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   File? _selfiePhoto;
 
   final _picker = ImagePicker();
-  static const Color _primary = Color(0xFF2F80ED);
-  static const Color _bg = Color(0xFF0B0B0B);
-  static const Color _surface = Color(0xFF1A1A1A);
 
   @override
   void initState() {
@@ -86,7 +84,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: error ? Colors.red : _primary,
+      backgroundColor: error ? JT.error : JT.primary,
       behavior: SnackBarBehavior.floating,
     ));
   }
@@ -200,13 +198,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: JT.bg,
       appBar: AppBar(
-        backgroundColor: _bg, elevation: 0,
-        title: Text('Step ${_currentStep + 1} of 6', style: const TextStyle(fontSize: 16)),
+        backgroundColor: JT.bg,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: JT.textPrimary),
+        title: Text('Step ${_currentStep + 1} of 6', style: JT.body.copyWith(color: JT.textPrimary)),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
-          child: LinearProgressIndicator(value: (_currentStep + 1) / 6, backgroundColor: Colors.white12, valueColor: const AlwaysStoppedAnimation(_primary)),
+          child: LinearProgressIndicator(
+            value: (_currentStep + 1) / 6,
+            backgroundColor: JT.border,
+            valueColor: const AlwaysStoppedAnimation(JT.primary),
+          ),
         ),
       ),
       body: PageView(
@@ -224,6 +232,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _buildBottomNav() {
     return Container(
       padding: const EdgeInsets.all(24),
+      color: JT.bg,
       child: Row(
         children: [
           if (_currentStep > 0)
@@ -233,8 +242,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
                   setState(() => _currentStep--);
                 },
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                child: const Text('Back', style: TextStyle(color: Colors.white)),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: JT.border),
+                  foregroundColor: JT.textPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('Back', style: JT.body.copyWith(color: JT.textPrimary)),
               ),
             ),
           if (_currentStep > 0) const SizedBox(width: 16),
@@ -276,8 +290,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
                 setState(() => _currentStep++);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(_currentStep == 5 ? 'Submit Application' : 'Next'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: JT.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _loading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Text(_currentStep == 5 ? 'Submit Application' : 'Next'),
             ),
           ),
         ],
@@ -299,7 +320,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Widget _buildStep2() {
     return _stepContainer('Security', 'Set a strong password', [
-      _input('Password', _passwordCtrl, Icons.lock, obscure: !_showPassword, suffix: IconButton(icon: Icon(_showPassword ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => _showPassword = !_showPassword))),
+      _input('Password', _passwordCtrl, Icons.lock, obscure: !_showPassword, suffix: IconButton(icon: Icon(_showPassword ? Icons.visibility : Icons.visibility_off, color: JT.iconInactive), onPressed: () => setState(() => _showPassword = !_showPassword))),
       const SizedBox(height: 16),
       _input('Confirm Password', _confirmCtrl, Icons.lock, obscure: true),
     ]);
@@ -353,13 +374,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
           onTap: () => _pickImage('selfie'),
           child: Container(
             width: 200, height: 200,
-            decoration: BoxDecoration(color: _surface, shape: BoxShape.circle, border: Border.all(color: _primary, width: 2), image: _selfiePhoto != null ? DecorationImage(image: FileImage(_selfiePhoto!), fit: BoxFit.cover) : null),
-            child: _selfiePhoto == null ? const Icon(Icons.camera_alt, size: 50, color: Colors.white24) : null,
+            decoration: BoxDecoration(
+              color: JT.surfaceAlt,
+              shape: BoxShape.circle,
+              border: Border.all(color: JT.primary, width: 2),
+              image: _selfiePhoto != null
+                  ? DecorationImage(image: FileImage(_selfiePhoto!), fit: BoxFit.cover)
+                  : null,
+            ),
+            child: _selfiePhoto == null
+                ? Icon(Icons.camera_alt, size: 50, color: JT.iconInactive)
+                : null,
           ),
         ),
       ),
       const SizedBox(height: 24),
-      const Text('Make sure your face is clearly visible without glasses or hats.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54)),
+      Text(
+        'Make sure your face is clearly visible without glasses or hats.',
+        textAlign: TextAlign.center,
+        style: JT.body,
+      ),
     ]);
   }
 
@@ -369,9 +403,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+          Text(title, style: JT.h1),
           const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          Text(subtitle, style: JT.body),
           const SizedBox(height: 32),
           ...children,
         ],
@@ -389,19 +423,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
           enabled: true,
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-          style: const TextStyle(color: Colors.white),
+          style: JT.bodyPrimary,
           decoration: InputDecoration(
             labelText: 'Phone Number',
-            labelStyle: const TextStyle(color: Colors.white54),
-            prefixIcon: const Icon(Icons.phone, color: _primary),
-            filled: true, fillColor: _surface,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            labelStyle: JT.body,
+            prefixIcon: const Icon(Icons.phone, color: JT.primary),
+            filled: true,
+            fillColor: JT.surfaceAlt,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JT.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JT.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JT.primary, width: 1.5)),
           ),
         ),
         if (_phoneCtrl.text.isNotEmpty && _phoneCtrl.text.length < 10)
-          const Padding(
-            padding: EdgeInsets.only(top: 4, left: 12),
-            child: Text('Enter a valid 10-digit phone number', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 12),
+            child: Text('Enter a valid 10-digit phone number', style: JT.caption.copyWith(color: JT.error)),
           ),
       ],
     );
@@ -410,25 +447,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _input(String label, TextEditingController ctrl, IconData icon, {bool readOnly = false, bool obscure = false, Widget? suffix, TextInputType keyboard = TextInputType.text}) {
     return TextField(
       controller: ctrl, readOnly: readOnly, obscureText: obscure, keyboardType: keyboard,
-      style: const TextStyle(color: Colors.white),
+      style: JT.bodyPrimary,
       decoration: InputDecoration(
-        labelText: label, labelStyle: const TextStyle(color: Colors.white54),
-        prefixIcon: Icon(icon, color: _primary),
+        labelText: label,
+        labelStyle: JT.body,
+        prefixIcon: Icon(icon, color: JT.primary),
         suffixIcon: suffix,
-        filled: true, fillColor: _surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        filled: true,
+        fillColor: JT.surfaceAlt,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JT.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JT.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JT.primary, width: 1.5)),
       ),
     );
   }
 
   Widget _datePicker(String label, DateTime? value, Function(DateTime) onPick) {
     return ListTile(
-      tileColor: _surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      leading: const Icon(Icons.calendar_month, color: _primary),
-      title: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-      subtitle: Text(value == null ? 'Select Date' : DateFormat('dd MMM yyyy').format(value), style: const TextStyle(color: Colors.white, fontSize: 16)),
+      tileColor: JT.surfaceAlt,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: JT.border),
+      ),
+      leading: const Icon(Icons.calendar_month, color: JT.primary),
+      title: Text(label, style: JT.caption),
+      subtitle: Text(
+        value == null ? 'Select Date' : DateFormat('dd MMM yyyy').format(value),
+        style: JT.bodyPrimary,
+      ),
       onTap: () async {
-        final d = await showDatePicker(context: context, initialDate: DateTime.now().subtract(const Duration(days: 6570)), firstDate: DateTime(1950), lastDate: DateTime.now());
+        final d = await showDatePicker(
+          context: context,
+          initialDate: DateTime.now().subtract(const Duration(days: 6570)),
+          firstDate: DateTime(1950),
+          lastDate: DateTime.now(),
+        );
         if (d != null) onPick(d);
       },
     );
@@ -436,10 +489,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Widget _imageTile(String label, File? file, VoidCallback onTap) {
     return ListTile(
-      tileColor: _surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      leading: const Icon(Icons.image, color: _primary),
-      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
-      trailing: file != null ? const Icon(Icons.check_circle, color: Colors.green) : const Text('Upload', style: TextStyle(color: _primary)),
+      tileColor: JT.surfaceAlt,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: JT.border),
+      ),
+      leading: const Icon(Icons.image, color: JT.primary),
+      title: Text(label, style: JT.bodyPrimary),
+      trailing: file != null
+          ? Icon(Icons.check_circle, color: JT.success)
+          : Text('Upload', style: JT.body.copyWith(color: JT.primary)),
       onTap: onTap,
     );
   }
@@ -447,15 +506,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _dropdown(String label, String value, List<String> options, Function(String?) onChange) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: JT.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JT.border),
+      ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: value, isExpanded: true, dropdownColor: _surface,
-          items: options.map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)))).toList(),
+          value: value,
+          isExpanded: true,
+          dropdownColor: JT.surface,
+          items: options.map((s) => DropdownMenuItem(
+            value: s,
+            child: Text(s.toUpperCase(), style: JT.bodyPrimary),
+          )).toList(),
           onChanged: onChange,
         ),
       ),
     );
   }
 }
-

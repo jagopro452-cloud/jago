@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import 'register_screen.dart';
 import '../home/home_screen.dart';
@@ -63,14 +64,14 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
     final rejectionNote = _data?['rejectionNote'] ?? _data?['rejection_note'];
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: JT.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Verification', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+        title: Text('Verification', style: TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
         actions: [
           IconButton(
-            icon: Icon(Icons.logout, color: Theme.of(context).textTheme.bodyLarge?.color),
+            icon: Icon(Icons.logout, color: JT.textPrimary),
             onPressed: () async {
               await AuthService.logout();
               if (!mounted) return;
@@ -79,24 +80,24 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
           )
         ],
       ),
-      body: _loading 
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+      body: _loading
+        ? Center(child: CircularProgressIndicator(color: JT.primary))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                Center(child: Image.asset('assets/images/pilot_logo.png', height: 80, errorBuilder: (_, __, ___) => const Icon(Icons.verified_user, size: 80, color: Color(0xFF2F80ED)))),
+                Center(child: Image.asset('assets/images/pilot_logo.png', height: 80, errorBuilder: (_, __, ___) => Icon(Icons.verified_user, size: 80, color: JT.primary))),
                 const SizedBox(height: 32),
                 Text(
                   status == 'approved' ? 'Account Approved!' : (status == 'rejected' ? 'Verification Rejected' : 'Account Under Review'),
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: JT.textPrimary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Hello $name, your account is currently being verified by our team.',
-                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.6)),
+                  style: TextStyle(color: JT.textSecondary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
@@ -117,7 +118,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
                 const SizedBox(height: 32),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Document Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                  child: Text('Document Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
                 ),
                 const SizedBox(height: 16),
                 ...docs.map((doc) => _buildDocTile(doc)).toList(),
@@ -174,10 +175,10 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: JT.surfaceAlt, borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(Icons.description, color: statusColor),
-        title: Text(labels[type] ?? type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text(labels[type] ?? type, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w600)),
         subtitle: note != null ? Text(note, style: TextStyle(color: Colors.red.shade300, fontSize: 12)) : null,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

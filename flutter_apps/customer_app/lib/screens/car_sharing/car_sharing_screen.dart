@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -12,7 +13,7 @@ class CarSharingScreen extends StatefulWidget {
 
 class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerProviderStateMixin {
   static const _bg = Color(0xFFF8FAFC);
-  static const _blue = Color(0xFF2F80ED);
+  static const _blue = JT.primary;
   static const _green = Color(0xFF10B981);
   static const _amber = Color(0xFFD97706);
 
@@ -136,7 +137,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
   }
 
   Widget _buildRidesList() {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)));
+    if (_loading) return const Center(child: CircularProgressIndicator(color: JT.primary));
     if (_rides.isEmpty) return _empty('No shared rides available', '🚗', 'Check back later or post your own!');
     return RefreshIndicator(
       onRefresh: _loadRides,
@@ -149,7 +150,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
   }
 
   Widget _buildMyBookings() {
-    if (_myLoading) return const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)));
+    if (_myLoading) return const Center(child: CircularProgressIndicator(color: JT.primary));
     if (_myBookings.isEmpty) return _empty('No bookings yet', '🎫', 'Book a seat on an available shared ride!');
     return RefreshIndicator(
       onRefresh: _loadMyBookings,

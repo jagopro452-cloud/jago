@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -17,9 +18,9 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
   String _selectedModel = 'commission';
   bool _isLoading = false;
 
-  final Color _darkBg = const Color(0xFF0B0B0B);
-  final Color _primary = const Color(0xFF2F80ED);
-  final Color _surface = const Color(0xFF1A1A1A);
+  final Color _darkBg = JT.textPrimary;
+  final Color _primary = JT.primary;
+  final Color _surface = JT.surface;
   final Color _gold = const Color(0xFFFFD700);
 
   Future<void> _continue() async {
@@ -234,7 +235,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
               : _surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? _primary : Colors.white.withValues(alpha: 0.1),
+            color: isSelected ? _primary : JT.surfaceAlt,
             width: 2,
           ),
           boxShadow: isSelected ? [
@@ -332,7 +333,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                 right: 0,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: Color(0xFF2F80ED),
+                    color: JT.primary,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check, color: Colors.white, size: 20),

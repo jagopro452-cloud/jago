@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sms_autofill/sms_autofill.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../home/home_screen.dart';
 import 'register_screen.dart';
@@ -31,9 +32,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late Animation<Offset> _cardSlide;
   late AnimationController _logoCtrl;
   late Animation<double> _logoFade;
-
-  static const _blue = Color(0xFF2F80ED);
-  static const _dark = Color(0xFF0A1628);
 
   @override
   void initState() {
@@ -69,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
-      backgroundColor: error ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+      backgroundColor: error ? JT.error : JT.success,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -140,27 +138,27 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final size = MediaQuery.of(context).size;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
+      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark),
       child: Scaffold(
-        backgroundColor: _blue,
+        backgroundColor: JT.bg,
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
-            // Blue background
+            // Blue gradient top section
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [_blue, const Color(0xFF1565D8), Colors.white],
+                    colors: [JT.primary, JT.secondary, JT.bg],
                     stops: const [0.0, 0.45, 0.45],
                   ),
                 ),
               ),
             ),
 
-            // ── Top brand area ──
+            // Top brand area
             Positioned(
               top: 0, left: 0, right: 0,
               height: size.height * 0.42,
@@ -200,10 +198,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Text('JAGO', style: GoogleFonts.poppins(
-                        fontSize: 22, fontWeight: FontWeight.w900,
-                        color: Colors.white, letterSpacing: 4,
-                      )),
+                      JT.logoWhite(height: 28),
                       const SizedBox(height: 4),
                       Text('Your ride, your way', style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.w400,
@@ -216,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
             ),
 
-            // ── Bottom white card ──
+            // Bottom white card
             Positioned(
               bottom: 0, left: 0, right: 0,
               child: SlideTransition(
@@ -224,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 child: Container(
                   constraints: BoxConstraints(maxHeight: size.height * 0.64),
                   decoration: const BoxDecoration(
-                    color: Colors.white,
+                    color: JT.surface,
                     borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                   ),
                   child: SingleChildScrollView(
@@ -238,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         margin: const EdgeInsets.only(top: 12, bottom: 24),
                         width: 36, height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE2E8F0),
+                          color: JT.border,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       )),
@@ -247,7 +242,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       Text(
                         _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
                         style: GoogleFonts.poppins(
-                          fontSize: 26, fontWeight: FontWeight.w800, color: _dark,
+                          fontSize: 26, fontWeight: FontWeight.w800, color: JT.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -256,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                           ? 'Sent to +91 ${_phoneCtrl.text}'
                           : (_usePassword ? 'Login with your password' : 'Enter your mobile number'),
                         style: GoogleFonts.poppins(
-                          fontSize: 13, color: const Color(0xFF94A3B8),
+                          fontSize: 13, color: JT.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 28),
@@ -272,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             child: GestureDetector(
                               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
                               child: Text('Forgot Password?', style: GoogleFonts.poppins(
-                                color: _blue, fontWeight: FontWeight.w600, fontSize: 13,
+                                color: JT.primary, fontWeight: FontWeight.w600, fontSize: 13,
                               )),
                             ),
                           ),
@@ -286,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             onTap: () => setState(() { _usePassword = !_usePassword; }),
                             child: Text(
                               _usePassword ? 'Use OTP instead' : 'Use Password instead',
-                              style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600, fontSize: 13),
                             ),
                           ),
                         ),
@@ -296,11 +291,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         Center(
                           child: _seconds > 0
                             ? Text('Resend in ${_seconds}s', style: GoogleFonts.poppins(
-                                color: const Color(0xFF94A3B8), fontSize: 13))
+                                color: JT.textSecondary, fontSize: 13))
                             : GestureDetector(
                                 onTap: () { setState(() { _otpSent = false; _otpCtrl.clear(); }); _sendOtp(); },
                                 child: Text('Resend OTP', style: GoogleFonts.poppins(
-                                  color: _blue, fontWeight: FontWeight.w700, fontSize: 13)),
+                                  color: JT.primary, fontWeight: FontWeight.w700, fontSize: 13)),
                               ),
                         ),
                         const SizedBox(height: 28),
@@ -310,28 +305,28 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                           child: GestureDetector(
                             onTap: () => setState(() { _otpSent = false; _otpCtrl.clear(); }),
                             child: Text('← Change Number', style: GoogleFonts.poppins(
-                              color: const Color(0xFF94A3B8), fontWeight: FontWeight.w500, fontSize: 13)),
+                              color: JT.textSecondary, fontWeight: FontWeight.w500, fontSize: 13)),
                           ),
                         ),
                       ],
 
                       const SizedBox(height: 28),
                       Row(children: [
-                        const Expanded(child: Divider(color: Color(0xFFF1F5F9), thickness: 1.5)),
+                        Expanded(child: Divider(color: JT.border, thickness: 1.5)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Text('or', style: GoogleFonts.poppins(color: const Color(0xFFCBD5E1), fontSize: 13)),
+                          child: Text('or', style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 13)),
                         ),
-                        const Expanded(child: Divider(color: Color(0xFFF1F5F9), thickness: 1.5)),
+                        Expanded(child: Divider(color: JT.border, thickness: 1.5)),
                       ]),
                       const SizedBox(height: 20),
                       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Text("Don't have an account?  ", style: GoogleFonts.poppins(
-                          color: const Color(0xFF94A3B8), fontSize: 14)),
+                          color: JT.textSecondary, fontSize: 14)),
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                           child: Text('Create Account', style: GoogleFonts.poppins(
-                            color: _blue, fontWeight: FontWeight.w800, fontSize: 14)),
+                            color: JT.primary, fontWeight: FontWeight.w800, fontSize: 14)),
                         ),
                       ]),
                     ]),
@@ -348,12 +343,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildPhoneField() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: JT.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _blue.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: JT.primary.withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: _blue.withValues(alpha: 0.06),
+            color: JT.primary.withValues(alpha: 0.06),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -363,15 +358,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.08),
+            color: JT.primary.withValues(alpha: 0.08),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(14),
               bottomLeft: Radius.circular(14),
             ),
-            border: Border(right: BorderSide(color: _blue.withValues(alpha: 0.2), width: 1.5)),
+            border: Border(right: BorderSide(color: JT.primary.withValues(alpha: 0.2), width: 1.5)),
           ),
           child: Text('+91', style: GoogleFonts.poppins(
-            fontSize: 16, fontWeight: FontWeight.w800, color: _blue)),
+            fontSize: 16, fontWeight: FontWeight.w800, color: JT.primary)),
         ),
         Expanded(
           child: TextField(
@@ -379,10 +374,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             focusNode: _phoneFocus,
             keyboardType: TextInputType.phone,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _dark),
+            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: JT.textPrimary),
             decoration: InputDecoration(
               hintText: 'Mobile number',
-              hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFFCBD5E1)),
+              hintStyle: GoogleFonts.poppins(fontSize: 14, color: JT.iconInactive),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             ),
@@ -395,23 +390,23 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildPasswordField() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: JT.bgSoft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        border: Border.all(color: JT.border, width: 1.5),
       ),
       child: TextField(
         controller: _passwordCtrl,
         obscureText: !_showPassword,
-        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _dark),
+        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: JT.textPrimary),
         decoration: InputDecoration(
           hintText: 'Password',
-          hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFFCBD5E1)),
+          hintStyle: GoogleFonts.poppins(fontSize: 14, color: JT.iconInactive),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFFCBD5E1), size: 20),
+          prefixIcon: const Icon(Icons.lock_outline_rounded, color: JT.iconInactive, size: 20),
           suffixIcon: IconButton(
             icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: const Color(0xFFCBD5E1), size: 20),
+              color: JT.iconInactive, size: 20),
             onPressed: () => setState(() => _showPassword = !_showPassword),
           ),
         ),
@@ -422,9 +417,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildOtpField() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: JT.bgSoft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _blue.withValues(alpha: 0.4), width: 2),
+        border: Border.all(color: JT.primary.withValues(alpha: 0.4), width: 2),
       ),
       child: PinFieldAutoFill(
         controller: _otpCtrl,
@@ -433,7 +428,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         decoration: UnderlineDecoration(
           textStyle: GoogleFonts.poppins(
             fontSize: 28, fontWeight: FontWeight.w900,
-            letterSpacing: 4, color: _dark,
+            letterSpacing: 4, color: JT.textPrimary,
           ),
           colorBuilder: FixedColorBuilder(Colors.transparent),
         ),
@@ -449,23 +444,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildButton(String label, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 58,
-      child: ElevatedButton(
-        onPressed: _loading ? null : onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _loading ? _blue.withValues(alpha: 0.4) : _blue,
-          foregroundColor: Colors.white,
-          elevation: _loading ? 0 : 6,
-          shadowColor: _blue.withValues(alpha: 0.4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        ),
-        child: _loading
-          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-          : Text(label, style: GoogleFonts.poppins(
-              fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.3)),
-      ),
-    );
+    return JT.gradientButton(label: label, onTap: onTap, loading: _loading);
   }
 }

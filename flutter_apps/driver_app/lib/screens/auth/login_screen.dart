@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sms_autofill/sms_autofill.dart';
@@ -31,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late AnimationController _logoCtrl;
   late Animation<double> _logoFade;
 
-  static const _blue = Color(0xFF2F80ED);
+  static const _blue = JT.primary;
   static const _dark = Color(0xFF080F1E);
 
   @override
@@ -137,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final size = MediaQuery.of(context).size;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
+      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark),
       child: Scaffold(
         backgroundColor: _blue,
         resizeToAvoidBottomInset: true,

@@ -39,7 +39,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   final FlutterTts _tts = FlutterTts();
   String _lastAnnouncedStatus = '';
 
-  static const Color _blue = JT.primary;
+  static const Color _blue = Color(0xFF2F7BFF);
   static const Color _green = JT.success;
 
   @override
@@ -328,27 +328,27 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       'Changed travel plans',
       'Other reason',
     ];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF0B0B0B) : Colors.white,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: isDark ? Colors.white24 : Colors.grey[200], borderRadius: BorderRadius.circular(2))),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Row(children: [
             Container(padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 20)),
             const SizedBox(width: 12),
-            Text('Cancel Reason', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDark ? Colors.white : const Color(0xFF111827))),
+            Text('Cancel Reason', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
           ]),
           const SizedBox(height: 16),
           ...reasons.map((r) => ListTile(
-            title: Text(r, style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : const Color(0xFF374151), fontWeight: FontWeight.w500)),
+            title: Text(r, style: TextStyle(fontSize: 14, color: JT.textSecondary, fontWeight: FontWeight.w500)),
             leading: Icon(Icons.chevron_right_rounded, color: Colors.grey[400], size: 18),
             contentPadding: EdgeInsets.zero,
             dense: true,
@@ -362,6 +362,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    const isDark = false;
+    const isDarkSheet = false;
     final statusInfo = _getStatusInfo(_status);
     final trip = _trip;
     final otp = trip?['pickupOtp']?.toString() ?? trip?['pickup_otp']?.toString();
@@ -372,13 +374,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final actualFare = trip?['actualFare'] ?? trip?['actual_fare'];
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? const Color(0xFF0B0B0B) : JT.surface;
+    
+    final panelBg = isDark ? JT.textPrimary : JT.surface;
 
     return PopScope(
       canPop: _status == 'completed' || _status == 'cancelled',
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0B0B0B) : JT.bg,
+        backgroundColor: isDark ? JT.textPrimary : JT.bg,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -403,7 +405,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 40, height: 4,
                   margin: const EdgeInsets.only(top: 10, bottom: 4),
-                  decoration: BoxDecoration(color: isDark ? Colors.white24 : Colors.grey[200], borderRadius: BorderRadius.circular(2))),
+                  decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2))),
                 Flexible(
                   child: SingleChildScrollView(
                     physics: const ClampingScrollPhysics(),
@@ -623,12 +625,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF2F80ED).withValues(alpha: 0.1),
+                color: JT.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.share_rounded, color: Color(0xFF2F80ED), size: 15),
+                const Icon(Icons.share_rounded, color: JT.primary, size: 15),
                 const SizedBox(width: 4),
-                Text('Share', style: GoogleFonts.poppins(color: const Color(0xFF2F80ED), fontSize: 11, fontWeight: FontWeight.w700)),
+                Text('Share', style: GoogleFonts.poppins(color: JT.primary, fontSize: 11, fontWeight: FontWeight.w700)),
               ]),
             ),
           ),
@@ -637,13 +639,14 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildDriverCard(String name, String? phone, dynamic rating, [String? photoUrl]) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const isDark = false;
+    
     final driverModel = _trip?['driverVehicleModel'] ?? '';
     final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
     final vehicleName = _trip?['vehicleName'] ?? '';
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
+        color: isDark ? JT.surface : JT.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isDark ? Colors.white12 : JT.border, width: 1.5),
         boxShadow: JT.cardShadow,
@@ -676,13 +679,13 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
-                color: isDark ? Colors.white : const Color(0xFF0B0B0B), letterSpacing: -0.3)),
+                color: isDark ? Colors.white : JT.textPrimary, letterSpacing: -0.3)),
               const SizedBox(height: 3),
               Row(children: [
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
                 const SizedBox(width: 3),
                 Text(rating?.toString() ?? '5.0',
-                  style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF374151), fontSize: 12, fontWeight: FontWeight.w700)),
+                  style: TextStyle(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w700)),
                 if (vehicleName.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Container(
@@ -789,7 +792,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     } else {
       await Clipboard.setData(ClipboardData(text: shareText));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Share text copied! Paste in WhatsApp'), backgroundColor: Color(0xFF2F80ED)));
+        const SnackBar(content: Text('Share text copied! Paste in WhatsApp'), backgroundColor: JT.primary));
     }
   }
 
@@ -910,7 +913,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCompletedCard(dynamic actualFare) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const isDark = false;
+    
     final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
     final tId = _trip?['id']?.toString() ?? widget.tripId;
     final dist = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'];
@@ -945,7 +949,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           Text('Trip Completed!',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w800, fontSize: 18,
-              color: isDark ? Colors.white : const Color(0xFF111827))),
+              color: JT.textPrimary)),
           if (actualFare != null) ...[
             const SizedBox(height: 8),
             Container(
@@ -1059,7 +1063,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCancelledCard() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Column(children: [
       Container(
         padding: const EdgeInsets.all(16),
@@ -1074,7 +1078,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 22)),
           const SizedBox(width: 12),
           Expanded(child: Text('Trip cancelled. Sorry for the inconvenience.',
-            style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF374151), fontSize: 13, fontWeight: FontWeight.w500))),
+            style: TextStyle(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w500))),
         ]),
       ),
       const SizedBox(height: 12),

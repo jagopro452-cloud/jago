@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../config/api_config.dart';
@@ -33,9 +34,9 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
   Map<String, dynamic>? _pendingBreakdown;
   String? _pendingInsurancePlanId;
 
-  static const Color _bg = Color(0xFF060A14);
-  static const Color _cyan = Color(0xFF00D4FF);
-  static const Color _surface = Color(0xFF0D1526);
+  static const Color _bg = Color(0xFFFFFFFF);
+  static const Color _cyan = Color(0xFF2F7BFF);
+  static const Color _surface = Color(0xFFFFFFFF);
   static const Color _card = Color(0xFF111827);
   static const Color _gold = Color(0xFFFFD700);
 
@@ -207,7 +208,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
       isScrollControlled: true,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0D1526),
+          color: JT.bg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
@@ -218,7 +219,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Center(
               child: Container(
                 width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const SizedBox(height: 20),
@@ -229,7 +230,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             const SizedBox(height: 4),
             Text(
               _selectedPlan?['name'] ?? '',
-              style: const TextStyle(color: Color(0xFF00D4FF), fontSize: 14),
+              style: const TextStyle(color: JT.primary, fontSize: 14),
             ),
             const SizedBox(height: 20),
             const Divider(color: Colors.white10),
@@ -250,7 +251,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 const Text('Total', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 Text(
                   '₹${total.toStringAsFixed(0)}',
-                  style: const TextStyle(color: Color(0xFF00D4FF), fontSize: 22, fontWeight: FontWeight.w900),
+                  style: const TextStyle(color: JT.primary, fontSize: 22, fontWeight: FontWeight.w900),
                 ),
               ],
             ),
@@ -261,7 +262,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context, false),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white24),
+                      side: const BorderSide(color: JT.border),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -273,7 +274,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                   flex: 2,
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFF00D4FF), Color(0xFF0091FF)]),
+                      gradient: const LinearGradient(colors: [JT.primary, JT.primary]),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: ElevatedButton(
@@ -286,7 +287,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       ),
                       child: Text(
                         'Pay ₹${total.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF060A14)),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: JT.bg),
                       ),
                     ),
                   ),
@@ -387,10 +388,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Container(
               width: 64, height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xFF00D4FF).withValues(alpha: 0.15),
+                color: JT.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF00D4FF), size: 36),
+              child: const Icon(Icons.check_circle_rounded, color: JT.primary, size: 36),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -400,14 +401,14 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             const SizedBox(height: 8),
             Text(
               planName,
-              style: const TextStyle(color: Color(0xFF00D4FF), fontSize: 14),
+              style: const TextStyle(color: JT.primary, fontSize: 14),
             ),
             if (validUntilStr.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF060A14),
+                  color: JT.bg,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -419,7 +420,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     if (daysLeft > 0)
                       Text(
                         '$daysLeft days remaining',
-                        style: const TextStyle(color: Color(0xFF00D4FF), fontSize: 13, fontWeight: FontWeight.w600),
+                        style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                   ],
                 ),
@@ -436,7 +437,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
               width: double.infinity,
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF00D4FF), Color(0xFF0091FF)]),
+                  gradient: const LinearGradient(colors: [JT.primary, JT.primary]),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ElevatedButton(
@@ -455,7 +456,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                   ),
                   child: const Text(
                     'Start Earning',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF060A14)),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: JT.bg),
                   ),
                 ),
               ),
@@ -486,7 +487,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00D4FF)))
+          ? const Center(child: CircularProgressIndicator(color: JT.primary))
           : Column(
               children: [
                 const SizedBox(height: 8),
@@ -541,7 +542,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     final isBestValue = name.toLowerCase().contains('month') || name.toLowerCase().contains('basic');
 
     final accentColor = isBestValue ? _gold : _cyan;
-    final borderColor = isSelected ? accentColor : Colors.white12;
+    final borderColor = isSelected ? accentColor : JT.border;
 
     return GestureDetector(
       onTap: () => setState(() {
@@ -645,10 +646,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 decoration: BoxDecoration(
                   color: isSelected ? accentColor : Colors.transparent,
                   shape: BoxShape.circle,
-                  border: Border.all(color: isSelected ? accentColor : Colors.white24, width: 1.5),
+                  border: Border.all(color: isSelected ? accentColor : JT.border, width: 1.5),
                 ),
                 child: isSelected
-                    ? const Icon(Icons.check, color: Color(0xFF060A14), size: 14)
+                    ? const Icon(Icons.check, color: JT.bg, size: 14)
                     : null,
               ),
             ),
@@ -685,7 +686,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
               color: _card,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _selectedInsurancePlanId == null ? Colors.white38 : Colors.white12,
+                color: _selectedInsurancePlanId == null ? Colors.white38 : JT.border,
                 width: 1.5,
               ),
             ),
@@ -698,12 +699,12 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     color: _selectedInsurancePlanId == null ? Colors.white : Colors.transparent,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: _selectedInsurancePlanId == null ? Colors.white : Colors.white24,
+                      color: _selectedInsurancePlanId == null ? Colors.white : JT.border,
                       width: 1.5,
                     ),
                   ),
                   child: _selectedInsurancePlanId == null
-                      ? const Icon(Icons.check, color: Color(0xFF060A14), size: 12)
+                      ? const Icon(Icons.check, color: JT.bg, size: 12)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -737,7 +738,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
           color: _card,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? const Color(0xFF00D4FF) : Colors.white12,
+            color: isSelected ? JT.primary : JT.border,
             width: 1.5,
           ),
         ),
@@ -750,12 +751,12 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 color: isSelected ? _cyan : Colors.transparent,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? _cyan : Colors.white24,
+                  color: isSelected ? _cyan : JT.border,
                   width: 1.5,
                 ),
               ),
               child: isSelected
-                  ? const Icon(Icons.check, color: Color(0xFF060A14), size: 12)
+                  ? const Icon(Icons.check, color: JT.bg, size: 12)
                   : null,
             ),
             const SizedBox(width: 12),
@@ -777,12 +778,12 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF00D4FF).withValues(alpha: 0.12),
+                color: JT.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '+₹${premium.toStringAsFixed(0)}',
-                style: const TextStyle(color: Color(0xFF00D4FF), fontSize: 13, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -831,7 +832,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: const BoxDecoration(
-        color: Color(0xFF0D1526),
+        color: JT.bg,
         boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 16, offset: Offset(0, -4))],
       ),
       child: Column(
@@ -850,11 +851,11 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             height: 54,
             child: Container(
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF00D4FF), Color(0xFF0091FF)]),
+                gradient: const LinearGradient(colors: [JT.primary, JT.primary]),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF00D4FF).withValues(alpha: 0.25),
+                    color: JT.primary.withValues(alpha: 0.25),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
@@ -871,11 +872,11 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 child: _isPaying
                     ? const SizedBox(
                         width: 22, height: 22,
-                        child: CircularProgressIndicator(color: Color(0xFF060A14), strokeWidth: 2.5),
+                        child: CircularProgressIndicator(color: JT.bg, strokeWidth: 2.5),
                       )
                     : const Text(
                         'Continue to Payment',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF060A14)),
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: JT.bg),
                       ),
               ),
             ),

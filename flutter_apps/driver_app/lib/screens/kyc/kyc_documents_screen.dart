@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import 'dart:convert';
 
@@ -66,14 +67,14 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       final response = await request.send();
       if (response.statusCode == 200) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document uploaded! Under review.'), backgroundColor: Color(0xFF2563EB)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Document uploaded! Under review.'), backgroundColor: JT.primary));
         await _loadDocuments();
       } else {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Please try again.'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Upload failed. Please try again.'), backgroundColor: JT.error));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Try again.'), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Upload failed. Try again.'), backgroundColor: JT.error));
     } finally {
       if (mounted) setState(() => _uploading[docType] = false);
     }
@@ -82,14 +83,14 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: JT.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B0B0B),
-        title: const Text('KYC Documents', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        backgroundColor: JT.bg,
+        title: Text('KYC Documents', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: Icon(Icons.arrow_back, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
+          ? Center(child: CircularProgressIndicator(color: JT.primary))
           : Column(
               children: [
                 _buildHeader(),
@@ -114,7 +115,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF2563EB)]),
+        gradient: JT.grad,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(children: [
@@ -125,14 +126,14 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
           ]),
           Container(
             width: 56, height: 56,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white24),
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: JT.border),
             child: Center(child: Text('${((approved / total) * 100).round()}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))),
           ),
         ]),
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(value: approved / total, backgroundColor: Colors.white24, valueColor: const AlwaysStoppedAnimation(Colors.white), minHeight: 6),
+          child: LinearProgressIndicator(value: approved / total, backgroundColor: JT.border, valueColor: const AlwaysStoppedAnimation(Colors.white), minHeight: 6),
         ),
         const SizedBox(height: 8),
         Text('$uploaded uploaded, ${total - uploaded} pending', style: const TextStyle(color: Colors.white70, fontSize: 12)),
@@ -170,21 +171,21 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF091629),
+        color: JT.bgSoft,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withValues(alpha: 0.3) : const Color(0xFF1E3A5F)),
+        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withValues(alpha: 0.3) : JT.border),
       ),
       child: Row(
         children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: const Color(0xFF1E3A5F), borderRadius: BorderRadius.circular(12)),
-            child: Icon(doc['icon'] as IconData, color: const Color(0xFF3B82F6), size: 22),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(12)),
+            child: Icon(doc['icon'] as IconData, color: JT.primary, size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(doc['label'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(doc['label'] as String, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 2),
               Row(children: [
                 Icon(statusIcon, size: 13, color: statusColor),
@@ -200,7 +201,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isUploading ? const Color(0xFF1E3A5F) : const Color(0xFF2563EB),
+                  color: isUploading ? JT.border : JT.primary,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: isUploading
@@ -209,7 +210,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
               ),
             )
           else
-            const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 28),
+            Icon(Icons.check_circle, color: JT.success, size: 28),
         ],
       ),
     );

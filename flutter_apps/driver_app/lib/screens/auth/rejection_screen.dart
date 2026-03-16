@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../config/jago_theme.dart';
 import 'register_screen.dart';
 
 class RejectionScreen extends StatelessWidget {
@@ -11,11 +12,11 @@ class RejectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: JT.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Application Rejected', style: TextStyle(color: Colors.white)),
+        title: Text('Application Rejected', style: TextStyle(color: JT.textPrimary)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -24,14 +25,14 @@ class RejectionScreen extends StatelessWidget {
           children: [
             const Center(child: Icon(Icons.error_outline, size: 80, color: Color(0xFFEF4444))),
             const SizedBox(height: 24),
-            const Text('Your application was not approved', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text('Your application was not approved', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: JT.textPrimary)),
             const SizedBox(height: 8),
             Text(
               reason ?? 'Please review the comments below and re-upload the necessary documents.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 15),
+              style: TextStyle(color: JT.textSecondary, fontSize: 15),
             ),
             const SizedBox(height: 32),
-            const Text('Rejected Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text('Rejected Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
             const SizedBox(height: 16),
             ...rejectedDocs.map((doc) => _buildRejectedDocCard(doc)).toList(),
             const SizedBox(height: 40),
@@ -40,7 +41,7 @@ class RejectionScreen extends StatelessWidget {
               height: 56,
               child: ElevatedButton(
                 onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2F80ED), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 child: const Text('Re-upload Documents', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
@@ -50,8 +51,8 @@ class RejectionScreen extends StatelessWidget {
               height: 56,
               child: OutlinedButton(
                 onPressed: () => _launchWhatsApp(),
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: const Text('Contact Support', style: TextStyle(color: Colors.white)),
+                style: OutlinedButton.styleFrom(side: BorderSide(color: JT.border), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                child: Text('Contact Support', style: TextStyle(color: JT.textPrimary)),
               ),
             ),
           ],
@@ -73,7 +74,7 @@ class RejectionScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(doc['docType']?.toString().toUpperCase() ?? 'DOCUMENT', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(doc['docType']?.toString().toUpperCase() ?? 'DOCUMENT', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text(doc['adminNote'] ?? 'No reason provided', style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13)),
         ],

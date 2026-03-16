@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -39,7 +40,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       context: context,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: const Text('Add Emergency Contact', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0B0B0B))),
+          title: const Text('Add Emergency Contact', style: TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person))),
             const SizedBox(height: 10),
@@ -87,8 +88,8 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF0B0B0B)), onPressed: () => Navigator.pop(context)),
-        title: const Text('Emergency Contacts', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0B0B0B))),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
+        title: const Text('Emergency Contacts', style: TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
         actions: [if (_contacts.length < 3) IconButton(icon: const Icon(Icons.add, color: Color(0xFF2563EB)), onPressed: _addContact)],
       ),
       body: Column(
@@ -136,7 +137,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                       Container(width: 48, height: 48, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFEF2F2)), child: const Icon(Icons.person, color: Colors.red, size: 24)),
                       const SizedBox(width: 12),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(c['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0B0B0B), fontSize: 15)),
+                        Text(c['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary, fontSize: 15)),
                         Text('+91 ${c['phone'] ?? ''}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                         Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6)), child: Text(c['relation'] ?? '', style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11))),
                       ])),

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
@@ -15,7 +16,7 @@ class _OffersScreenState extends State<OffersScreen> {
   List<dynamic> _offers = [];
   bool _loading = true;
 
-  static const Color _blue = Color(0xFF2F80ED);
+  static const Color _blue = Color(0xFF2F7BFF);
 
   @override
   void initState() {
@@ -72,10 +73,10 @@ class _OffersScreenState extends State<OffersScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF0B0B0B), size: 20),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: JT.textPrimary, size: 20),
         ),
         title: const Text('Offers & Coupons',
-            style: TextStyle(color: Color(0xFF0B0B0B), fontSize: 18, fontWeight: FontWeight.w800)),
+            style: TextStyle(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
         centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -83,7 +84,7 @@ class _OffersScreenState extends State<OffersScreen> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+          ? const Center(child: CircularProgressIndicator(color: JT.primary))
           : _offers.isEmpty
               ? _buildEmpty()
               : RefreshIndicator(
@@ -106,7 +107,7 @@ class _OffersScreenState extends State<OffersScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1565C0), Color(0xFF2F80ED)],
+          colors: [Color(0xFF1565C0), JT.primary],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
@@ -175,7 +176,7 @@ class _OffersScreenState extends State<OffersScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0B0B0B))),
+                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary)),
                 if (desc != null && desc.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
@@ -183,7 +184,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 const SizedBox(height: 6),
                 Row(children: [
                   if (double.tryParse(minAmount) != null && double.parse(minAmount) > 0) ...[
-                    _tag('Min ₹$minAmount', const Color(0xFFEFF6FF), const Color(0xFF2F80ED)),
+                    _tag('Min ₹$minAmount', const Color(0xFFEFF6FF), JT.primary),
                     const SizedBox(width: 6),
                   ],
                   if (maxDiscount != null && maxDiscount.toString() != '0') ...[

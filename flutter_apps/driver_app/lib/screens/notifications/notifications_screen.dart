@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -15,8 +16,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<dynamic> _notifications = [];
 
   static const Color _blue = Color(0xFF2563EB);
-  static const Color _surface = Color(0xFF1A1A1A);
-  static const Color _bg = Color(0xFF0B0B0B);
+  static const Color _surface = JT.surface;
+  static const Color _bg = JT.textPrimary;
 
   @override
   void initState() {

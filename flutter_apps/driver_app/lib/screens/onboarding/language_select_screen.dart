@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../config/jago_theme.dart';
 import '../../services/localization_service.dart';
 import '../auth/login_screen.dart';
 
@@ -16,9 +17,9 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
-  static const _primary = Color(0xFF2F80ED);
-  static const _navy = Color(0xFF0B0B0B);
-  static const _surface = Color(0xFF1A1A1A);
+  static const _primary = Color(0xFF2F7BFF);
+  static const _navy = Color(0xFF0F1829);
+  static const _surface = Color(0xFFFFFFFF);
 
   @override
   void initState() {
@@ -50,11 +51,11 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? _surface : Colors.white;
-    final cardBg = isDark ? const Color(0xFF0A172F) : const Color(0xFFF9FAFB);
-    final textMain = isDark ? Colors.white : const Color(0xFF111827);
-    final textSub = isDark ? Colors.white54 : Colors.grey.shade500;
+    
+    final sheetBg = Colors.white;
+    final cardBg = const Color(0xFFF9FAFB);
+    final textMain = const Color(0xFF111827);
+    final textSub = Colors.grey.shade500;
 
     return Scaffold(
       backgroundColor: _navy,
@@ -102,7 +103,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                               color: selected ? _primary.withValues(alpha: 0.08) : cardBg,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: selected ? _primary : (isDark ? Colors.white12 : const Color(0xFFE5E7EB)),
+                                color: selected ? _primary : (const Color(0xFFE5E7EB)),
                                 width: selected ? 2 : 1,
                               ),
                               boxShadow: selected ? [
@@ -137,7 +138,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                                     shape: BoxShape.circle,
                                     color: selected ? _primary : Colors.transparent,
                                     border: Border.all(
-                                      color: selected ? _primary : (isDark ? Colors.white24 : Colors.grey.shade300),
+                                      color: selected ? _primary : (Colors.grey.shade300),
                                       width: 2,
                                     ),
                                   ),
@@ -200,7 +201,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0B0B0B), Color(0xFF1A1A1A)],
+          colors: [Color(0xFF4FA9FF), Color(0xFF2F7BFF)],
           begin: Alignment.topCenter, end: Alignment.bottomCenter),
       ),
       child: SafeArea(

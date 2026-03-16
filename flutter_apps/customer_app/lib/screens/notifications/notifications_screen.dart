@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -14,7 +15,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loading = true;
   List<dynamic> _notifications = [];
 
-  static const Color _blue = Color(0xFF2F80ED);
+  static const Color _blue = Color(0xFF2F7BFF);
 
   @override
   void initState() {
@@ -89,11 +90,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF8FAFF);
-    final cardBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    final subColor = isDark ? Colors.white54 : Colors.grey.shade600;
+    
+    final bg = JT.bgSoft;
+    final cardBg = Colors.white;
+    final textColor = JT.textPrimary;
+    final subColor = JT.textSecondary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -111,7 +112,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+          ? const Center(child: CircularProgressIndicator(color: JT.primary))
           : _notifications.isEmpty
               ? Center(
                   child: Column(
@@ -137,7 +138,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final color = _colorForType(type);
                       return Container(
                         decoration: BoxDecoration(
-                          color: isRead ? cardBg : (isDark ? _blue.withValues(alpha: 0.08) : const Color(0xFFEFF6FF)),
+                          color: isRead ? cardBg : (JT.surfaceAlt),
                           borderRadius: BorderRadius.circular(14),
                           border: isRead ? null : Border.all(color: _blue.withValues(alpha: 0.2)),
                         ),
@@ -165,7 +166,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           trailing: !isRead
                               ? Container(width: 8, height: 8,
-                                  decoration: const BoxDecoration(color: Color(0xFF2F80ED), shape: BoxShape.circle))
+                                  decoration: const BoxDecoration(color: JT.primary, shape: BoxShape.circle))
                               : null,
                         ),
                       );
