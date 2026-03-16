@@ -7,31 +7,25 @@ on:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - name: Pull latest code
-        run: |
-          cd /var/www/jago
-          git pull origin master
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          cd /var/www/jago
-          npm ci --prefer-offline
-
-      - name: Build production bundle
-        run: |
-          cd /var/www/jago
-          npm run build
-
-      - name: Restart server
-        run: |
-          cd /var/www/jago
-          set -a && source .env && set +a
-          pm2 restart jago --update-env || pm2 start dist/index.js --name jago --max-memory-restart 512M
-          pm2 save
-
-      - name: Health check
-        run: |
-          sleep 5
-          curl -sf http://localhost:5000/api/health && echo "Deploy OK" || echo "WARNING: health check failed"
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/jago
+            git pull origin master
+            npm ci --prefer-offline
+            npm run build
+            set -a && source /var/www/jago/.env && set +a
+            pm2 restart jago --update-env || pm2 start dist/index.js --name jago --max-memory-restart 512M
+            pm2 save
+            sleep 5
+            curl -sf http://localhost:5000/api/health && echo "Deploy OK" || echo "WARNING: health check failed"
