@@ -1235,6 +1235,28 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
     `).catch(() => {});
+    // ── Migration: add refunded_at to customer_payments ──────────────────────
+    await rawDb.execute(rawSql`
+      ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP;
+    `).catch(() => {});
+    // ── SECURITY MIGRATIONS: Unique constraints for payment idempotency ───────
+    // Prevents duplicate wallet credits even under concurrent requests
+    await rawDb.execute(rawSql`
+      -- Unique index: one earning/refund/recharge per (payment_id, type)
+      -- ON CONFLICT ... DO NOTHING in INSERT statements will safely skip duplicates
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_idempotency
+        ON transactions(ref_transaction_id, transaction_type)
+        WHERE ref_transaction_id IS NOT NULL;
+      -- Unique index on driver commission_settlements per razorpay_payment_id
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_settlements_payment
+        ON commission_settlements(razorpay_payment_id)
+        WHERE razorpay_payment_id IS NOT NULL;
+      -- Unique index: one trip_earning or commission_deduction per trip per user
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_trip_user_type
+        ON transactions(user_id, ref_transaction_id, transaction_type)
+        WHERE transaction_type IN ('trip_earning','commission_deduction','ride_refund','admin_refund')
+          AND ref_transaction_id IS NOT NULL;
+    `).catch(() => {}); -- best-effort: index may already exist
 
     // ── Razorpay webhook audit log ────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -2999,7 +3021,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { driverId } = req.params;
       const { amount, method = 'cash', description, forceUnlock = false } = req.body;
       const payAmt = parseFloat(String(amount));
-      if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
+      // SECURITY: Cap settlement amount to prevent accidental/malicious over-credit
+      if (!payAmt || payAmt <= 0 || payAmt > 100000 || isNaN(payAmt)) {
+        return res.status(400).json({ message: "Invalid amount. Must be between ₹0.01 and ₹1,00,000." });
+      }
 
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
       const settings: any = {};
@@ -4367,13 +4392,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
 
       const gstAmt   = parseFloat(String(gstPortion)) || 0;
-      const commAmt  = parseFloat((parseFloat(String(amount)) - gstAmt).toFixed(2));
+      const commAmt  = Math.round((parseFloat(String(amount)) - gstAmt) * 100) / 100;
       const totalAmt = parseFloat(String(amount));
 
       const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
+        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance
         FROM users WHERE id=${id}::uuid LIMIT 1
       `);
+      if (!balR.rows.length) return res.status(404).json({ message: "Driver not found" });
+      // SECURITY: Validate driver exists and has a driver role
+      const driverCheck = await rawDb.execute(rawSql`SELECT role FROM users WHERE id=${id}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+      const driverRole = (driverCheck.rows[0] as any)?.role;
+      if (!['driver', 'pilot'].includes(driverRole || '')) return res.status(400).json({ message: "Target user is not a driver" });
       const bal: any = balR.rows[0] || {};
       const prevTotal    = parseFloat(bal.total_pending_balance ?? '0') || 0;
       const newCommission = parseFloat(((parseFloat(bal.pending_commission_balance ?? '0') || 0) + commAmt).toFixed(2));
@@ -4447,11 +4477,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Razorpay: Verify payment + reduce pending balance (partial payment supported)
-  app.post("/api/driver-wallet/:id/verify-payment", authApp, async (req, res) => {
+  app.post("/api/driver-wallet/:id/verify-payment", authApp, requireDriver, async (req, res) => {
     try {
       const { id } = req.params;
+      const caller = (req as any).currentUser;
+      // SECURITY: Driver can only verify payment for their OWN wallet (prevent cross-driver fraud)
+      if (caller.id !== id) return res.status(403).json({ message: "Forbidden: you can only settle your own wallet" });
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
+      // SECURITY: Idempotency — reject if this payment was already processed
+      const alreadyDone = await rawDb.execute(rawSql`
+        SELECT id FROM commission_settlements WHERE razorpay_payment_id=${razorpayPaymentId} LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (alreadyDone.rows.length) return res.status(409).json({ message: "Payment already processed", alreadySettled: true });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keySecret) return res.status(503).json({ message: "Payment verification not configured — contact support" });
       // Timing-safe HMAC verification
@@ -4480,12 +4518,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
       const paidAmt = parseFloat((pendingRec.rows[0] as any).amount);
 
-      // Proportionally reduce commission vs GST (or reduce from commission first)
-      const gstReduction  = Math.min(prevGst, paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05));
-      const commReduction = Math.min(prevCommission, paidAmt - gstReduction);
-      const newTotal      = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
-      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
-      const newGst        = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+      // SECURITY: Atomic mark-as-completed BEFORE crediting wallet
+      // Prevents double-processing if this function is called twice for the same payment
+      const atomicMark = await rawDb.execute(rawSql`
+        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId}, verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${id}::uuid AND status='pending'
+        RETURNING amount
+      `);
+      if (!atomicMark.rows.length) return res.status(409).json({ message: "Payment already processed or order not found" });
+
+      // Proportionally reduce commission vs GST using integer paise arithmetic (no float drift)
+      const paidPaise = Math.round(paidAmt * 100);
+      const totalPaise = Math.round(prevTotal * 100);
+      const gstPaise = Math.round(prevGst * 100);
+      const commPaise = Math.round(prevCommission * 100);
+      const gstRedPaise  = Math.min(gstPaise, totalPaise > 0 ? Math.round(paidPaise * gstPaise / totalPaise) : Math.round(paidPaise * 0.05));
+      const commRedPaise = Math.min(commPaise, paidPaise - gstRedPaise);
+      const gstReduction  = gstRedPaise / 100;
+      const commReduction = commRedPaise / 100;
+      const newTotal      = Math.max(0, Math.round((totalPaise - paidPaise)) / 100);
+      const newCommission = Math.max(0, Math.round((commPaise - commRedPaise)) / 100);
+      const newGst        = Math.max(0, Math.round((gstPaise - gstRedPaise)) / 100);
 
       const updated = await rawDb.execute(rawSql`
         UPDATE users
@@ -4518,16 +4571,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
            'credit', ${prevTotal}, ${newTotal}, 'razorpay',
            ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
            ${'Commission payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
-      `).catch(() => {});
-      await rawDb.execute(rawSql`
-        UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
-          razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
-        WHERE razorpay_order_id=${razorpayOrderId}
-      `).catch(() => {});
-      await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${id}::uuid, ${paidAmt}, 'commission_payment', 'completed', ${'Commission settlement: ₹' + paidAmt})
-      `).catch(() => {});
+      `).catch((e: any) => console.error('[SETTLE-CS]', e.message));
+      // driver_payments already marked completed atomically above — no duplicate INSERT needed
 
       res.json({
         success: true,
@@ -4640,20 +4685,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.patch("/api/refund-requests/:id", async (req, res) => {
+  app.patch("/api/refund-requests/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { status, adminNote, approvedBy } = req.body;
-      const r = status !== 'pending'
-        ? await rawDb.execute(rawSql`UPDATE refund_requests SET status=${status}, admin_note=${adminNote||''}, approved_by=${approvedBy||'Admin'}, approved_at=NOW() WHERE id=${id}::uuid RETURNING *`)
-        : await rawDb.execute(rawSql`UPDATE refund_requests SET status=${status}, admin_note=${adminNote||''}, approved_by=${approvedBy||'Admin'} WHERE id=${id}::uuid RETURNING *`);
-      // If approved, credit customer wallet
+      if (!['approved', 'denied', 'pending'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      // SECURITY: Atomic transition — only approve if currently 'pending' to prevent double-credit.
+      // If admin clicks approve twice, second request finds status!='pending' and returns 0 rows → 409.
+      const whereClause = status === 'approved'
+        ? rawSql`WHERE id=${id}::uuid AND status='pending'`   // guard: can only approve once
+        : rawSql`WHERE id=${id}::uuid AND status != 'approved'`; // can update pending/denied freely
+      const r = await rawDb.execute(rawSql`
+        UPDATE refund_requests
+        SET status=${status}, admin_note=${adminNote||''}, approved_by=${approvedBy||'Admin'},
+            approved_at=${status !== 'pending' ? rawSql`NOW()` : rawSql`NULL`}
+        ${whereClause}
+        RETURNING *
+      `);
+      if (!r.rows.length) return res.status(409).json({ message: "Refund already processed or not found" });
+      // Credit wallet only on first-time approval (guaranteed by atomic WHERE above)
       if (status === 'approved') {
         const refund: any = r.rows[0];
         if (refund?.customer_id && refund?.amount) {
+          const refundAmt = Math.round(parseFloat(refund.amount) * 100) / 100;
+          await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${refund.customer_id}::uuid`);
+          const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${refund.customer_id}::uuid`);
+          const newBal = Math.round(parseFloat((newBalRes.rows[0] as any)?.wallet_balance || '0') * 100) / 100;
           await rawDb.execute(rawSql`
-            UPDATE users SET wallet_balance = wallet_balance + ${refund.amount} WHERE id = ${refund.customer_id}::uuid
-          `);
+            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+            VALUES (${refund.customer_id}::uuid, ${'Admin approved refund'}, ${refundAmt}, 0, ${newBal}, ${'admin_refund'}, ${id})
+            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
+          `).catch((e: any) => console.error('[REFUND-APPROVE-TX]', e.message));
+          console.log(`[REFUND-APPROVED] ₹${refundAmt} credited to customer ${refund.customer_id}, refund ${id}`);
         }
       }
       res.json(camelize(r.rows[0]));
@@ -6763,32 +6828,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let fare = parseFloat(actualFare) || estimatedFareVal;
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
       // Cap actual fare to 3x estimated fare to prevent fare manipulation
-      if (estimatedFareVal > 0 && fare > estimatedFareVal * 3) {
-        fare = estimatedFareVal * 3;
-      }
+      if (estimatedFareVal > 0 && fare > estimatedFareVal * 3) fare = estimatedFareVal * 3;
       // Absolute cap at ₹10,000 per ride
       if (fare > 10000) fare = 10000;
+      // SECURITY: All money math in integer paise to avoid floating-point drift
+      const farePaise = Math.round(fare * 100);
 
       // ── Pricing: user discount (first 2 rides = 50% off) ─────────────────
       const customerRow = tripRow.customer_id
         ? (await rawDb.execute(rawSql`SELECT completed_rides_count FROM users WHERE id=${tripRow.customer_id}::uuid LIMIT 1`).catch(() => ({ rows: [] }))).rows[0] as any
         : null;
       const completedRidesCount = parseInt(customerRow?.completed_rides_count ?? '0') || 0;
-      const rideFullFare = fare;
-      const userDiscount = completedRidesCount < 2 ? parseFloat((rideFullFare * 0.50).toFixed(2)) : 0;
-      const userPayable  = parseFloat((rideFullFare - userDiscount).toFixed(2));
+      const rideFullFare = farePaise / 100;
+      const userDiscountPaise = completedRidesCount < 2 ? Math.round(farePaise * 0.50) : 0;
+      const userDiscount = userDiscountPaise / 100;
+      const userPayable  = (farePaise - userDiscountPaise) / 100;
 
       // ── Car Pool: per-seat fare ───────────────────────────────────────────
       const seatsBooked   = parseInt(tripRow.seats_booked ?? '1') || 1;
       const isCarpool     = tripRow.is_carpool === true || tripRow.is_carpool === 'true';
       const carpoolSeats  = parseInt(tripRow.total_seats ?? '4') || 4;
-      const seatPrice     = isCarpool ? parseFloat((fare / carpoolSeats).toFixed(2)) : 0;
+      const seatPrice     = isCarpool ? Math.round(farePaise / carpoolSeats) / 100 : 0;
       const vehicleTypeName = tripRow.vehicle_name || tripRow.vehicle_type_field || null;
 
       // ── GST: 5% of full ride fare (government tax, always deducted from driver credit) ──
       const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='ride_gst_rate' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
-      const rideGstRate = parseFloat((gstPctR.rows[0] as any)?.value || '5') / 100;
-      const gstAmount = parseFloat((rideFullFare * rideGstRate).toFixed(2));
+      const rideGstRatePct = Math.round(parseFloat((gstPctR.rows[0] as any)?.value || '5') * 100); // e.g. 500 = 5%
+      const gstPaise = Math.round(farePaise * rideGstRatePct / 10000);
+      const gstAmount = gstPaise / 100;
 
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
@@ -6842,34 +6909,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let deductAmount = 0;
       let breakdown: any = {};
 
+      // SECURITY: All commission math in integer paise — no floating-point drift across 1000s of trips
+      let deductPaise = 0;
+      let breakdown: any = {};
+
       if (launchFreeApplied) {
-        // 🎉 Launch Benefit: no commission, no subscription fee — only GST
-        deductAmount = gstAmount;
+        deductPaise = gstPaise;
         breakdown = { model: "launch_free", commission: 0, platformFee: 0, gst: gstAmount, insurance: 0, total: gstAmount };
       } else if (activeModel === "commission") {
-        const commPct = parseFloat(s.commission_pct || "15") / 100;
-        const ins = parseFloat(s.commission_insurance_per_ride || "2");
-        const comm = parseFloat((fare * commPct).toFixed(2));
-        deductAmount = parseFloat((comm + gstAmount + ins).toFixed(2));
-        breakdown = { model: "commission", commission: comm, gst: gstAmount, insurance: ins, total: deductAmount };
+        const commPctX100 = Math.round(parseFloat(s.commission_pct || "15") * 100); // e.g. 1500 = 15%
+        const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
+        const commPaise2 = Math.round(farePaise * commPctX100 / 10000);
+        deductPaise = commPaise2 + gstPaise + insPaise;
+        breakdown = { model: "commission", commission: commPaise2/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
       } else if (activeModel === "subscription") {
-        // Subscription model: per-ride platform fee + GST + insurance
-        const platFee = parseFloat(s.sub_platform_fee_per_ride || "5");
-        const ins = parseFloat(s.commission_insurance_per_ride || "2");
-        deductAmount = parseFloat((platFee + gstAmount + ins).toFixed(2));
-        breakdown = { model: "subscription", platformFee: platFee, gst: gstAmount, insurance: ins, total: deductAmount };
+        const platPaise = Math.round(parseFloat(s.sub_platform_fee_per_ride || "5") * 100);
+        const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
+        deductPaise = platPaise + gstPaise + insPaise;
+        breakdown = { model: "subscription", platformFee: platPaise/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
       } else if (activeModel === "hybrid") {
-        // Hybrid model: reduced commission + base platform fee + GST + insurance
-        const commPct = parseFloat(s.hybrid_commission_pct || s.commission_pct || "10") / 100;
-        const platFee = parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5");
-        const ins = parseFloat(s.hybrid_insurance_per_ride || s.commission_insurance_per_ride || "2");
-        const comm = parseFloat((fare * commPct).toFixed(2));
-        deductAmount = parseFloat((comm + platFee + gstAmount + ins).toFixed(2));
-        breakdown = { model: "hybrid", commission: comm, platformFee: platFee, gst: gstAmount, insurance: ins, total: deductAmount };
+        const commPctX100 = Math.round(parseFloat(s.hybrid_commission_pct || s.commission_pct || "10") * 100);
+        const platPaise = Math.round(parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5") * 100);
+        const insPaise = Math.round(parseFloat(s.hybrid_insurance_per_ride || s.commission_insurance_per_ride || "2") * 100);
+        const commPaise2 = Math.round(farePaise * commPctX100 / 10000);
+        deductPaise = commPaise2 + platPaise + gstPaise + insPaise;
+        breakdown = { model: "hybrid", commission: commPaise2/100, platformFee: platPaise/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
       }
+      const deductAmount = deductPaise / 100;
 
-      // driverWalletCredit = what driver actually keeps
-      const driverWalletCredit = parseFloat((fare - deductAmount).toFixed(2));
+      // driverWalletCredit = what driver actually keeps (exact paise arithmetic, no drift)
+      const driverWalletCredit = (farePaise - deductPaise) / 100;
 
       // Save all pricing fields: commission_amount + driver_wallet_credit + driver_fare + customer_fare
       await rawDb.execute(rawSql`
@@ -7078,29 +7147,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${userPayable}, ${custBal2}, ${'ride_payment'}, ${tripId})
-          `).catch(() => {});
-        } catch (_) {}
+            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
+          `).catch((e: any) => console.error('[CUST-ONLINE-TX]', e.message));
+        } catch (e: any) { console.error('[CUST-ONLINE-TX-OUTER]', e.message); }
       }
 
       // ── Driver earnings transaction record ───────────────────────────────
-      // Insert a transactions entry so driver can see trip earnings in wallet history
+      // ON CONFLICT DO NOTHING + unique index prevents duplicate if complete-trip is called twice
       try {
         const driverBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${driver.id}::uuid`);
         const driverNewBal = parseFloat((driverBalRes.rows[0] as any)?.wallet_balance || '0');
         if (isOnlinePayment) {
-          // Online: driver wallet was credited — record as earning
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${driver.id}::uuid, ${'Trip earnings (online payment)'}, ${driverWalletCredit}, 0, ${driverNewBal}, ${'trip_earning'}, ${tripId})
+            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
           `);
         } else {
-          // Cash: driver collects fare physically — record commission deduction
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${driver.id}::uuid, ${'Platform commission (cash trip)'}, 0, ${deductAmount}, ${driverNewBal}, ${'commission_deduction'}, ${tripId})
+            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
           `);
         }
-      } catch (_) {}
+      } catch (e: any) { console.error('[DRIVER-EARN-TX]', e.message); }
 
       // ── Increment customer's completed_rides_count ──────────────────────
       if (tripCustomerId) {
@@ -8226,34 +8296,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
       }
       // ── Auto-refund to wallet if customer paid online ────────────────────────
+      // SECURITY: Atomic UPDATE (not SELECT→UPDATE) prevents double-refund race condition.
+      // PostgreSQL row-level lock: only ONE concurrent request can flip status='completed'→'refunded'.
       let walletRefund: number | null = null;
       if (trip.payment_status === 'paid_online') {
-        // Find the completed ride_payment for this trip
-        const payRec = await rawDb.execute(rawSql`
-          SELECT id, amount FROM customer_payments
-          WHERE trip_id=${effectiveTripId}::uuid AND customer_id=${customer.id}::uuid
-            AND payment_type='ride_payment' AND status='completed'
-          LIMIT 1
+        const atomicRefund = await rawDb.execute(rawSql`
+          UPDATE customer_payments
+          SET status='refunded', refunded_at=NOW()
+          WHERE trip_id=${effectiveTripId}::uuid
+            AND customer_id=${customer.id}::uuid
+            AND payment_type='ride_payment'
+            AND status='completed'
+          RETURNING id, amount
         `);
-        if (payRec.rows.length) {
-          const refundAmt = parseFloat((payRec.rows[0] as any).amount);
-          // Credit wallet
+        if (atomicRefund.rows.length) {
+          const refundAmt = Math.round(parseFloat((atomicRefund.rows[0] as any).amount) * 100) / 100;
           await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
           const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-          const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || '0');
-          // Transaction record
+          const newBal = Math.round(parseFloat((newBalRes.rows[0] as any).wallet_balance || '0') * 100) / 100;
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${customer.id}::uuid, ${'Refund for cancelled ride'}, ${refundAmt}, 0, ${newBal}, ${'ride_refund'}, ${trip.razorpay_payment_id || null})
-          `).catch(() => {});
-          // Mark customer_payment as refunded
-          await rawDb.execute(rawSql`
-            UPDATE customer_payments SET status='refunded' WHERE id=${(payRec.rows[0] as any).id}::uuid
-          `).catch(() => {});
-          // Mark trip payment_status as refunded_to_wallet
+            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
+          `).catch((e: any) => console.error('[REFUND-TX]', e.message));
           await rawDb.execute(rawSql`
             UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
-          `).catch(() => {});
+          `).catch((e: any) => console.error('[REFUND-TRIP]', e.message));
           walletRefund = refundAmt;
           console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
         }
@@ -8969,23 +9037,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
       // Amount from DB — never trust client-sent amount
-      const pendingRec = await rawDb.execute(rawSql`
-        SELECT amount FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
+      // SECURITY: Atomic mark-completed first prevents concurrent double-credit
+      const atomicMark = await rawDb.execute(rawSql`
+        UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending'
+        RETURNING amount
       `);
-      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
-      const amt = parseFloat((pendingRec.rows[0] as any).amount);
+      if (!atomicMark.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
+      const amt = Math.round(parseFloat((atomicMark.rows[0] as any).amount) * 100) / 100;
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
       const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-      const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || "0");
+      const newBal = Math.round(parseFloat((newBalRes.rows[0] as any).wallet_balance || "0") * 100) / 100;
       await rawDb.execute(rawSql`
         INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
-      `).catch(() => {});
-      // Mark the pending customer_payment record as completed
-      await rawDb.execute(rawSql`
-        UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
-        WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid
-      `).catch(() => {});
+        ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
+      `).catch((e: any) => console.error('[WALLET-RECHARGE-TX]', e.message));
       res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
