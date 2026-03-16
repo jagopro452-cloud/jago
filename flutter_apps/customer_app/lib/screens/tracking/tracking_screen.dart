@@ -367,6 +367,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final driverName = trip?['driverName']?.toString() ?? trip?['driver_name']?.toString();
     final driverPhone = trip?['driverPhone']?.toString() ?? trip?['driver_phone']?.toString();
     final driverRating = trip?['driverRating'] ?? trip?['driver_rating'];
+    final driverPhoto = trip?['driverPhoto']?.toString() ?? trip?['driver_photo']?.toString();
     final actualFare = trip?['actualFare'] ?? trip?['actual_fare'];
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
@@ -411,7 +412,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                     _buildStatusHeader(statusInfo),
                     if (driverName != null && _status != 'searching') ...[
                       const SizedBox(height: 14),
-                      _buildDriverCard(driverName, driverPhone, driverRating),
+                      _buildDriverCard(driverName, driverPhone, driverRating, driverPhoto),
                     ],
                     if (otp != null && otp.isNotEmpty &&
                         (_status == 'driver_assigned' || _status == 'accepted' || _status == 'arrived')) ...[
@@ -634,7 +635,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildDriverCard(String name, String? phone, dynamic rating) {
+  Widget _buildDriverCard(String name, String? phone, dynamic rating, [String? photoUrl]) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final driverModel = _trip?['driverVehicleModel'] ?? '';
     final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
@@ -643,7 +644,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-            ? [const Color(0xFF1A1A1A), const Color(0xFF111F4A)]
+            ? [const Color(0xFF0D1526), const Color(0xFF060A14)]
             : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
@@ -655,7 +656,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           padding: const EdgeInsets.all(14),
           child: Row(children: [
             Container(
-              width: 48, height: 48,
+              width: 52, height: 52,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [_blue, const Color(0xFF1244A2)],
@@ -663,8 +664,19 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
               ),
-              child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20))),
+              child: photoUrl != null && photoUrl.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(child: Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : 'P',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22))),
+                    ),
+                  )
+                : Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22))),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

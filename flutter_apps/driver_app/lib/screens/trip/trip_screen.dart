@@ -30,10 +30,12 @@ class _TripScreenState extends State<TripScreen> {
   Timer? _locationTimer;
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
+  final Set<Marker> _markers = {};
 
-  static const Color _blue = Color(0xFF2563EB);
-  static const Color _bg = Color(0xFF0B0B0B);
-  static const Color _surface = Color(0xFF1A1A1A);
+  static const Color _cyan = Color(0xFF00D4FF);
+  static const Color _blue = Color(0xFF0091FF);
+  static const Color _bg = Color(0xFF060A14);
+  static const Color _surface = Color(0xFF0D1526);
   static const Color _green = Color(0xFF16A34A);
 
   @override
@@ -50,6 +52,8 @@ class _TripScreenState extends State<TripScreen> {
     _startLocationUpdates();
     _loadCancelReasons();
     _listenForCancel();
+    // Add markers after frame renders (so map is ready)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initMapMarkers());
     // Auto-launch navigation to pickup when trip is accepted
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_status == 'accepted' || _status == 'driver_assigned') {
@@ -101,6 +105,47 @@ class _TripScreenState extends State<TripScreen> {
     _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) => _updateLocation());
   }
 
+  void _initMapMarkers() {
+    if (!mounted || _trip == null) return;
+    final pickupLat = double.tryParse(_trip!['pickupLat']?.toString() ?? _trip!['pickup_lat']?.toString() ?? '');
+    final pickupLng = double.tryParse(_trip!['pickupLng']?.toString() ?? _trip!['pickup_lng']?.toString() ?? '');
+    final destLat = double.tryParse(_trip!['destinationLat']?.toString() ?? _trip!['destination_lat']?.toString() ?? '');
+    final destLng = double.tryParse(_trip!['destinationLng']?.toString() ?? _trip!['destination_lng']?.toString() ?? '');
+    setState(() {
+      _markers.clear();
+      if (pickupLat != null && pickupLat != 0 && pickupLng != null) {
+        _markers.add(Marker(
+          markerId: const MarkerId('pickup'),
+          position: LatLng(pickupLat, pickupLng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          infoWindow: const InfoWindow(title: '📍 Customer Pickup'),
+        ));
+      }
+      if (destLat != null && destLat != 0 && destLng != null) {
+        _markers.add(Marker(
+          markerId: const MarkerId('destination'),
+          position: LatLng(destLat, destLng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: const InfoWindow(title: '🏁 Destination'),
+        ));
+      }
+    });
+  }
+
+  void _updateSelfMarker(double lat, double lng) {
+    if (!mounted) return;
+    setState(() {
+      _markers.removeWhere((m) => m.markerId.value == 'self');
+      _markers.add(Marker(
+        markerId: const MarkerId('self'),
+        position: LatLng(lat, lng),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
+        infoWindow: const InfoWindow(title: '🏍️ You'),
+        zIndex: 2,
+      ));
+    });
+  }
+
   Future<void> _updateLocation() async {
     try {
       final pos = await Geolocator.getCurrentPosition(
@@ -114,6 +159,7 @@ class _TripScreenState extends State<TripScreen> {
       if (mounted) {
         setState(() => _center = LatLng(lat, lng));
         _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+        _updateSelfMarker(lat, lng);
       }
 
       // Socket — real-time (fastest, broadcasts to customer's map)
@@ -760,8 +806,14 @@ class _TripScreenState extends State<TripScreen> {
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
-            onMapCreated: (c) { _mapController = c; c.animateCamera(CameraUpdate.newLatLng(_center)); },
+            onMapCreated: (c) {
+              _mapController = c;
+              c.animateCamera(CameraUpdate.newLatLng(_center));
+              _initMapMarkers();
+            },
+            markers: _markers,
             myLocationEnabled: true,
+            myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
           ),
@@ -815,10 +867,10 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildStatusHeader(Map<String, dynamic> step, String pickup, String dest) {
     final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
-    final statusColor = isOnTheWay ? _green : _blue;
+    final statusColor = isOnTheWay ? _green : _cyan;
     final gradColors = isOnTheWay
       ? [const Color(0xFF064E3B), const Color(0xFF065F46)]
-      : [const Color(0xFF1E3A8A), const Color(0xFF1E40AF)];
+      : [const Color(0xFF001F2E), const Color(0xFF003344)];
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1081,10 +1133,10 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A1A1A), const Color(0xFF0B0B0B)],
+          colors: [const Color(0xFF0D1526), const Color(0xFF060A14)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
+        border: Border.all(color: _cyan.withValues(alpha: 0.12), width: 1),
       ),
       child: Column(children: [
         Padding(
@@ -1121,11 +1173,11 @@ class _TripScreenState extends State<TripScreen> {
                 child: Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [_blue, const Color(0xFF1E40AF)]),
+                    gradient: const LinearGradient(colors: [Color(0xFF00D4FF), Color(0xFF0091FF)]),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
+                    boxShadow: [BoxShadow(color: Color(0xFF00D4FF).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0,3))],
                   ),
-                  child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
+                  child: const Icon(Icons.phone_rounded, color: Color(0xFF060A14), size: 20)),
               ),
           ]),
         ),
@@ -1165,9 +1217,9 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildActionBtn(Map<String, dynamic> step) {
     final isComplete = _status == 'in_progress' || _status == 'on_the_way';
-    final c1 = isComplete ? const Color(0xFF064E3B) : const Color(0xFF1E3A8A);
-    final c2 = isComplete ? _green : _blue;
-    final c3 = isComplete ? const Color(0xFF22C55E) : const Color(0xFF60A5FA);
+    final c1 = isComplete ? const Color(0xFF064E3B) : const Color(0xFF002233);
+    final c2 = isComplete ? _green : _cyan;
+    final c3 = isComplete ? const Color(0xFF22C55E) : const Color(0xFF0091FF);
     return GestureDetector(
       onTap: _loading ? null : _nextStep,
       child: AnimatedContainer(
@@ -1297,14 +1349,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF2F80ED).withValues(alpha: 0.08),
+            color: _cyan.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF2F80ED).withValues(alpha: 0.25)),
+            border: Border.all(color: _cyan.withValues(alpha: 0.3)),
           ),
           child: const Row(children: [
-            Icon(Icons.navigation_rounded, color: Color(0xFF2F80ED), size: 16),
+            Icon(Icons.navigation_rounded, color: Color(0xFF00D4FF), size: 16),
             SizedBox(width: 6),
-            Text('Navigate', style: TextStyle(color: Color(0xFF2F80ED), fontSize: 12, fontWeight: FontWeight.w700)),
+            Text('Navigate', style: TextStyle(color: Color(0xFF00D4FF), fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),

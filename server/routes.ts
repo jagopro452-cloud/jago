@@ -8282,6 +8282,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
+          d.profile_photo as driver_photo,
           d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading,
           vc.name as vehicle_name

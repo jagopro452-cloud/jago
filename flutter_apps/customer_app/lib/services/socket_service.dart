@@ -58,6 +58,10 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
+      // Re-join trip room on every connect (first connect + reconnect after restart)
+      if (_activeTripId != null) {
+        _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
+      }
     });
 
     // On reconnect after server restart: re-join active trip room so events resume

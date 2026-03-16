@@ -288,6 +288,8 @@ export function setupSocket(httpServer: HttpServer) {
             }
           } catch {}
 
+          // Driver joins the trip room so they receive real-time events (cancellation, status changes)
+          socket.join(`trip:${tripId}`);
           socket.emit("driver:accept_trip_ok", { tripId, trip });
           console.log(`[SOCKET] Driver ${userId} accepted trip ${tripId}`);
         } catch (e: any) {
