@@ -6921,8 +6921,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       else if (tripServiceType === 'intercity') serviceModelKey = 'intercity_model';
       else serviceModelKey = 'rides_model';
       const activeModel = s[serviceModelKey] || s.active_model || "commission";
-      let deductAmount = 0;
-      let breakdown: any = {};
 
       // SECURITY: All commission math in integer paise — no floating-point drift across 1000s of trips
       let deductPaise = 0;
