@@ -607,6 +607,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (_activeTrip != null) _buildActiveTripBanner(isDark),
                       _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
                       _buildServiceIcons(isDark),
+                      _buildLogisticsSection(isDark),
                       _buildBannerCarousel(isDark),
                       _buildSavedPlaces(isDark),
                       _buildRecentTrips(isDark),
@@ -878,6 +879,80 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 6),
         Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : JT.textPrimary), maxLines: 1),
+      ]),
+    );
+  }
+
+  // ── LOGISTICS SECTION ─────────────────────────────────────────────────────
+  Widget _buildLogisticsSection(bool isDark) {
+    const vehicles = [
+      {'key': 'bike_parcel',  'icon': '🏍️', 'name': 'Bike Parcel',   'cap': '≤ 10 kg',     'color': Color(0xFF2F7BFF)},
+      {'key': 'tata_ace',     'icon': '🚛',  'name': 'Mini Truck',    'cap': '≤ 500 kg',    'color': Color(0xFFFF6B35)},
+      {'key': 'pickup_truck', 'icon': '🛻',  'name': 'Pickup Truck',  'cap': '≤ 2,000 kg',  'color': Color(0xFF7C3AED)},
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('Logistics', style: JT.h3),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              gradient: JT.grad,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('NEW', style: GoogleFonts.poppins(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('Send parcels & freight across the city', style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
+        const SizedBox(height: 14),
+        Row(
+          children: vehicles.map((v) {
+            final color = v['color'] as Color;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+                    pickupAddress: _pickup,
+                    pickupLat: _pickupLat,
+                    pickupLng: _pickupLng,
+                    initialVehicleKey: v['key'] as String,
+                  )));
+                },
+                child: Container(
+                  margin: EdgeInsets.only(right: v['key'] != 'pickup_truck' ? 8 : 0),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: JT.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: JT.border),
+                    boxShadow: JT.cardShadow,
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(child: Text(v['icon'] as String, style: const TextStyle(fontSize: 20))),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(v['name'] as String,
+                      style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: JT.textPrimary),
+                      maxLines: 1),
+                    Text(v['cap'] as String,
+                      style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary),
+                      maxLines: 1),
+                  ]),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
       ]),
     );
   }

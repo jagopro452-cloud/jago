@@ -32,6 +32,7 @@ import '../onboarding/model_selection_screen.dart';
 import '../onboarding/subscription_plans_screen.dart';
 import '../earnings/earnings_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
+import '../parcel/parcel_delivery_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -604,6 +605,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _showIncomingParcel() {
     final parcel = _incomingParcel;
     if (parcel == null) return;
+
+    final vehicleType = parcel['vehicleCategory']?.toString() ?? parcel['vehicle_category']?.toString() ?? 'bike_parcel';
+    final vehicleEmoji = vehicleType.contains('pickup') ? '🛻'
+        : vehicleType.contains('tata') || vehicleType.contains('mini') ? '🚛' : '🏍️';
+    final vehicleName = vehicleType.contains('pickup') ? 'Pickup Truck'
+        : vehicleType.contains('tata') || vehicleType.contains('mini') ? 'Mini Truck' : 'Bike Parcel';
+    final stops = parcel['dropCount'] ?? 1;
+    final weight = parcel['weightKg']?.toString() ?? parcel['weight_kg']?.toString() ?? '';
+    final itemType = parcel['itemType']?.toString() ?? parcel['item_type']?.toString() ?? '';
+    final distKm = parcel['totalDistanceKm']?.toString() ?? parcel['total_distance_km']?.toString() ?? '';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -614,64 +626,59 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: JT.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: JT.warning.withOpacity(0.4), width: 1)),
+          border: Border(top: BorderSide(color: JT.warning.withOpacity(0.4), width: 2)),
           boxShadow: JT.cardShadow,
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
+          // Handle
+          Center(child: Container(
             width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: JT.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
+          )),
           const SizedBox(height: 16),
+          // Header
           Row(children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: JT.warning.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
+                color: JT.warning.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: const Text('📦', style: TextStyle(fontSize: 28)),
+              child: Text(vehicleEmoji, style: const TextStyle(fontSize: 30)),
             ),
             const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  'New Parcel Request',
-                  style: GoogleFonts.poppins(
-                    color: JT.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${parcel['dropCount'] ?? 1} stop${(parcel['dropCount'] ?? 1) > 1 ? 's' : ''}',
-                  style: GoogleFonts.poppins(color: JT.warning, fontSize: 13),
-                ),
-              ]),
-            ),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('New Parcel Request',
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w800)),
+              Text(vehicleName,
+                style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
+            ])),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: JT.surfaceAlt,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JT.border),
+                gradient: JT.grad,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: JT.primary.withOpacity(0.25), blurRadius: 8)],
               ),
-              child: Text(
-                '₹${parcel['totalFare'] ?? 0}',
-                style: GoogleFonts.poppins(
-                  color: JT.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
+              child: Text('₹${parcel['totalFare'] ?? 0}',
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
             ),
           ]),
           const SizedBox(height: 14),
-          if ((parcel['pickupAddress'] ?? '').toString().isNotEmpty)
+          // Package details chips
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: [
+              _parcelChip(Icons.place_rounded, '$stops stop${stops > 1 ? 's' : ''}', JT.warning),
+              if (weight.isNotEmpty) _parcelChip(Icons.scale_rounded, '$weight kg', JT.primary),
+              if (distKm.isNotEmpty) _parcelChip(Icons.route_rounded, '${double.tryParse(distKm)?.toStringAsFixed(1) ?? distKm} km', JT.success),
+              if (itemType.isNotEmpty) _parcelChip(Icons.category_rounded, itemType, JT.textSecondary),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Pickup address
+          if ((parcel['pickupAddress'] ?? parcel['pickup_address'] ?? '').toString().isNotEmpty)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -680,22 +687,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 border: Border.all(color: JT.border),
               ),
               child: Row(children: [
-                const Icon(Icons.location_on, color: JT.success, size: 18),
+                const Icon(Icons.store_rounded, color: JT.success, size: 18),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    parcel['pickupAddress'] ?? '',
-                    style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Pickup', style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+                  Text(
+                    parcel['pickupAddress']?.toString() ?? parcel['pickup_address']?.toString() ?? '',
+                    style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
                     maxLines: 2,
                   ),
-                ),
+                ])),
               ]),
             ),
           const SizedBox(height: 20),
+          // Action buttons
           Row(children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: () async {
+                onPressed: () {
                   Navigator.pop(context);
                   AlarmService().stopAlarm();
                   setState(() => _incomingParcel = null);
@@ -705,14 +714,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text(
-                  'Pass',
-                  style: GoogleFonts.poppins(
-                    color: JT.error,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
+                child: Text('Pass', style: GoogleFonts.poppins(color: JT.error, fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
             const SizedBox(width: 12),
@@ -720,7 +722,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               flex: 2,
               child: ElevatedButton(
                 onPressed: () async {
-                  final orderId = parcel['orderId']?.toString() ?? '';
+                  final orderId = parcel['orderId']?.toString() ?? parcel['id']?.toString() ?? '';
                   if (orderId.isEmpty) return;
                   Navigator.pop(context);
                   AlarmService().stopAlarm();
@@ -732,7 +734,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       headers: hdrs,
                     );
                     if (r.statusCode == 200) {
-                      _showSnack('Parcel order accepted! Check pending orders.');
+                      final data = jsonDecode(r.body);
+                      final order = data['order'] as Map<String, dynamic>? ?? {};
+                      if (mounted) {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => ParcelDeliveryScreen(order: order),
+                        ));
+                      }
                     } else {
                       _showSnack('Already taken by another driver', error: true);
                     }
@@ -746,10 +754,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text(
-                  'Accept Delivery',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
+                child: Text('Accept Delivery', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
           ]),
@@ -759,6 +764,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       AlarmService().stopAlarm();
       if (mounted) setState(() => _incomingParcel = null);
     });
+  }
+
+  Widget _parcelChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ]),
+    );
   }
 
   void _showSnack(String msg, {bool error = false}) {

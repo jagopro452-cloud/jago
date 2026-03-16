@@ -957,11 +957,12 @@ async function ensureOperationalSchema() {
              v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
              0::numeric, v.weight_rate::numeric, 0::int, false
       FROM (VALUES
-        ('Bike Parcel',  'bike_parcel',  '🏍️', 30, 10,  40, 3),
-        ('Auto Parcel',  'auto_parcel',  '🛺',  40, 12,  60, 4),
-        ('Tata Ace',     'tata_ace',     '🚛',  80, 20, 120, 5),
-        ('Cargo Car',    'cargo_car',    '🚗',  80, 18, 100, 5),
-        ('Bolero Cargo', 'bolero_cargo', '🚙', 100, 22, 150, 6)
+        ('Bike Parcel',     'bike_parcel',   '🏍️',  40, 12,  40, 4),
+        ('Mini Truck',      'tata_ace',      '🚛',  150, 18, 150, 2),
+        ('Pickup Truck',    'pickup_truck',  '🛻',  200, 22, 200, 1),
+        ('Auto Parcel',     'auto_parcel',   '🛺',   50, 13,  50, 7),
+        ('Cargo Car',       'cargo_car',     '🚗',  120, 16, 120, 4),
+        ('Bolero Cargo',    'bolero_cargo',  '🚙',  200, 22, 200, 3)
       ) AS v(vname, vtype, icon, base_fare, fare_per_km, minimum_fare, weight_rate)
       WHERE NOT EXISTS (
         SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
@@ -11877,25 +11878,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
 
-  // Fare vehicle categories for parcel
-  const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string }> = {
-    bike_parcel:   { baseFare: 35,  perKm: 10, perKg: 5,  name: 'Bike Parcel'   },
-    auto_parcel:   { baseFare: 50,  perKm: 13, perKg: 7,  name: 'Auto Parcel'   },
-    tata_ace:      { baseFare: 150, perKm: 18, perKg: 3,  name: 'Tata Ace'      },
-    cargo_car:     { baseFare: 120, perKm: 16, perKg: 4,  name: 'Cargo Car'     },
-    bolero_cargo:  { baseFare: 200, perKm: 22, perKg: 3,  name: 'Bolero Cargo'  },
+  // Fare vehicle categories for parcel — 3 tiers matching Porter model
+  const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string; maxWeightKg: number; loadCharge: number }> = {
+    bike_parcel:   { baseFare: 40,  perKm: 12, perKg: 4,  name: 'Bike Parcel',     maxWeightKg: 10,   loadCharge: 0   },
+    tata_ace:      { baseFare: 150, perKm: 18, perKg: 2,  name: 'Mini Truck',       maxWeightKg: 500,  loadCharge: 50  },
+    pickup_truck:  { baseFare: 200, perKm: 22, perKg: 1,  name: 'Pickup Truck',     maxWeightKg: 2000, loadCharge: 100 },
+    // Legacy aliases — kept for backward compat
+    auto_parcel:   { baseFare: 50,  perKm: 13, perKg: 7,  name: 'Auto Parcel',      maxWeightKg: 50,   loadCharge: 0   },
+    cargo_car:     { baseFare: 120, perKm: 16, perKg: 4,  name: 'Cargo Car',        maxWeightKg: 200,  loadCharge: 30  },
+    bolero_cargo:  { baseFare: 200, perKm: 22, perKg: 3,  name: 'Bolero Cargo',     maxWeightKg: 1500, loadCharge: 80  },
   };
 
-  // Customer: get fare quote for multi-drop parcel
+  // Customer: get fare quote for parcel — supports all 3 tiers
   app.post("/api/app/parcel/quote", authApp, async (req, res) => {
     try {
       const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1 } = req.body;
       const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
+      const wt = parseFloat(weightKg) || 1;
+      // Weight limit check
+      if (wt > vc.maxWeightKg) {
+        return res.status(400).json({
+          message: `${vc.name} supports max ${vc.maxWeightKg} kg. Your package is ${wt} kg.`,
+          code: 'WEIGHT_EXCEEDED', maxWeightKg: vc.maxWeightKg
+        });
+      }
       const totalDistance: number = parseFloat(req.body.totalDistanceKm ?? '5') || 5;
       const baseFare    = vc.baseFare;
       const distFare    = Math.round(totalDistance * vc.perKm);
-      const weightFare  = Math.round(parseFloat(weightKg) * vc.perKg);
-      const totalFare   = baseFare + distFare + weightFare;
+      const weightFare  = Math.round(wt * vc.perKg);
+      const loadCharge  = vc.loadCharge;
+      const totalFare   = baseFare + distFare + weightFare + loadCharge;
       const commPct     = 15;
       const commAmt     = Math.round(totalFare * commPct / 100);
       res.json({
@@ -11904,11 +11916,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         baseFare,
         distanceFare: distFare,
         weightFare,
+        loadCharge,
         totalFare,
         commissionPct: commPct,
         commissionAmt: commAmt,
         driverEarnings: totalFare - commAmt,
+        maxWeightKg: vc.maxWeightKg,
         dropCount: (dropLocations as any[]).length,
+        breakdown: { baseFare, distanceFare: distFare, weightFare, loadCharge, total: totalFare },
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -11942,10 +11957,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
       const dist    = parseFloat(totalDistanceKm) || 5;
       const wt      = parseFloat(weightKg) || 1;
+      // Enforce vehicle weight limit
+      if (wt > vc.maxWeightKg) {
+        return res.status(400).json({ message: `${vc.name} supports max ${vc.maxWeightKg} kg.`, code: 'WEIGHT_EXCEEDED' });
+      }
       const baseFare   = vc.baseFare;
       const distFare   = Math.round(dist * vc.perKm);
       const wFare      = Math.round(wt * vc.perKg);
-      const totalFare  = baseFare + distFare + wFare;
+      const loadCharge = vc.loadCharge;
+      const totalFare  = baseFare + distFare + wFare + loadCharge;
       const commPct    = 15;
       const commAmt    = Math.round(totalFare * commPct / 100);
       const pickupOtp  = Math.floor(100000 + Math.random() * 900000).toString();
