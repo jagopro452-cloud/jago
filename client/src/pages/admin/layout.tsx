@@ -258,7 +258,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const adminName = admin.name || admin.email || "Admin";
   const adminInitials = adminName.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase();
-  const adminBg = ["#2563eb","#7c3aed","#0891b2","#16a34a"][adminName.charCodeAt(0) % 4];
+  const adminBg = ["#2F7BFF","#7c3aed","#0891b2","#16a34a"][adminName.charCodeAt(0) % 4];
 
   useEffect(() => {
     if (!admin?.email && !admin?.name) {
@@ -346,18 +346,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
         background: "#f8fafc", flexDirection: "column", gap: 12
       }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 10,
-          background: "linear-gradient(135deg,#2563eb,#7c3aed)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 20, fontWeight: 900, color: "#fff"
-        }}>J</div>
+        <img src="/jago-logo-blue.png" alt="JAGO" style={{ height: 40, objectFit: "contain" }} />
         <div style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Loading JAGO Admin…</div>
         <div style={{
           width: 40, height: 3, borderRadius: 2, background: "#e2e8f0", overflow: "hidden"
         }}>
           <div style={{
-            width: "60%", height: "100%", background: "#2563eb",
+            width: "60%", height: "100%", background: "#2F7BFF",
             animation: "pulse 1s ease-in-out infinite alternate"
           }} />
         </div>
@@ -383,16 +378,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
             style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
           >
-            <div style={{
-              width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-              background: "rgba(255,255,255,0.25)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "0.82rem", fontWeight: 900, color: "#fff", letterSpacing: 0,
-            }}>J</div>
-            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-              <span className="logo-text" style={{ fontSize: "0.95rem", letterSpacing: 2 }}>JAGO</span>
-              <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: 2.5, marginTop: 1 }}>ADMIN PANEL</span>
-            </div>
+            <img src="/jago-logo-white.png" alt="JAGO" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+            <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: 2.5, marginTop: 1, alignSelf: "flex-end", paddingBottom: 2 }}>ADMIN PANEL</span>
           </a>
           <button
             className="toggle-menu-button"
@@ -537,7 +524,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {theme === "dark" ? (
                       <i className="bi bi-sun-fill" style={{ color: "#fbbf24" }}></i>
                     ) : (
-                      <i className="bi bi-moon-fill" style={{ color: "#2563eb" }}></i>
+                      <i className="bi bi-moon-fill" style={{ color: "#2F7BFF" }}></i>
                     )}
                   </button>
                 </li>

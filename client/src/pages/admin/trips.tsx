@@ -18,7 +18,7 @@ const STATUS_CONFIG: Record<string, { cls: string; dot: string }> = {
 };
 
 const TYPE_CONFIG: Record<string, { label: string; icon: string; bg: string; color: string }> = {
-  ride:   { label: "Ride",   icon: "🚗", bg: "#eff6ff", color: "#1d4ed8" },
+  ride:   { label: "Ride",   icon: "🚗", bg: "#eff6ff", color: "#1E5FCC" },
   parcel: { label: "Parcel", icon: "📦", bg: "#f0fdf4", color: "#16a34a" },
 };
 

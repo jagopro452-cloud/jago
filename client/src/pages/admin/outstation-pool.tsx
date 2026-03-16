@@ -63,7 +63,7 @@ export default function OutstationPool() {
       <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
         <div>
           <h4 className="fw-bold mb-1" style={{ color: "#0f172a" }}>
-            <i className="bi bi-signpost-2-fill me-2" style={{ color: "#2563eb" }}></i>
+            <i className="bi bi-signpost-2-fill me-2" style={{ color: "#2F7BFF" }}></i>
             Outstation Pool
           </h4>
           <p className="text-muted mb-0" style={{ fontSize: 13 }}>

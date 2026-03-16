@@ -181,7 +181,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             'contact': driverPhone,
             'email': '',
           },
-          'theme': {'color': '#00D4FF'},
+          'theme': {'color': '#2F7BFF'},
         };
         _razorpay.open(options);
       } else {

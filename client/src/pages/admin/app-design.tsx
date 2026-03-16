@@ -91,7 +91,7 @@ function ScreenLabel({ title, sub, color }: { title: string; sub: string; color:
 
 function C1_Splash() {
   return (
-    <Phone bg="#0D47A1" dark>
+    <Phone bg="#1E5FCC" dark>
       <div style={{ height: "100%", background: "linear-gradient(160deg,#071a4a 0%,#0d3b99 40%,#1565c0 75%,#1e88e5 100%)", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden" }}>
         {/* Circles */}
         {[380,290,210,140,80].map((s,i)=>(
@@ -130,7 +130,7 @@ function C2_Login() {
   return (
     <Phone bg="#F0F5FF">
       <div style={{ height: "100%", background: "#F0F5FF", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ background: "linear-gradient(155deg,#0a2f7a,#1244A2,#1976D2)", padding: "16px 22px 40px", borderRadius: "0 0 36px 36px", position: "relative", overflow: "hidden", flexShrink: 0 }}>
+        <div style={{ background: "linear-gradient(155deg,#1E5FCC,#4FA9FF,#4FA9FF)", padding: "16px 22px 40px", borderRadius: "0 0 36px 36px", position: "relative", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }}/>
           <div style={{ position: "absolute", bottom: -30, left: -20, width: 130, height: 130, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }}/>
           <img src={jagoLogoWhite} style={{ height: 24, objectFit: "contain", marginBottom: 22, position: "relative" }} alt="JAGO"/>
@@ -149,7 +149,7 @@ function C2_Login() {
             <div style={{ padding: "0 15px", fontSize: 15, color: "#CBD5E1", letterSpacing: 2 }}>98765 43210</div>
           </div>
 
-          <div style={{ background: "linear-gradient(135deg,#1565C0,#0D47A1)", borderRadius: 16, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 14, fontWeight: 800, boxShadow: "0 8px 24px rgba(21,101,192,0.4)", marginBottom: 16, gap: 8 }}>
+          <div style={{ background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", borderRadius: 16, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 14, fontWeight: 800, boxShadow: "0 8px 24px rgba(47,123,255,0.4)", marginBottom: 16, gap: 8 }}>
             <span>Send OTP</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
@@ -166,7 +166,7 @@ function C2_Login() {
           </div>
 
           <div style={{ fontSize: 10, color: "#94A3B8", textAlign: "center", lineHeight: 1.5 }}>
-            By continuing, you agree to JAGO's<br/><span style={{ color: "#1976D2", fontWeight: 600 }}>Terms of Service</span> &amp; <span style={{ color: "#1976D2", fontWeight: 600 }}>Privacy Policy</span>
+            By continuing, you agree to JAGO's<br/><span style={{ color: "#4FA9FF", fontWeight: 600 }}>Terms of Service</span> &amp; <span style={{ color: "#4FA9FF", fontWeight: 600 }}>Privacy Policy</span>
           </div>
         </div>
       </div>
@@ -184,12 +184,12 @@ function C3_Home() {
         <div style={{ position: "relative", zIndex: 10, padding: "8px 12px 0" }}>
           <div style={{ background: "white", borderRadius: 18, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <div style={{ width: 36, height: 36, borderRadius: 11, background: "#EFF6FF", border: "1.5px solid #BFDBFE", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="16" height="14" viewBox="0 0 16 14"><rect width="16" height="2.5" rx="1.2" fill="#1976D2"/><rect y="5.5" width="12" height="2.5" rx="1.2" fill="#1976D2"/><rect y="11" width="8" height="2.5" rx="1.2" fill="#1976D2"/></svg>
+              <svg width="16" height="14" viewBox="0 0 16 14"><rect width="16" height="2.5" rx="1.2" fill="#4FA9FF"/><rect y="5.5" width="12" height="2.5" rx="1.2" fill="#4FA9FF"/><rect y="11" width="8" height="2.5" rx="1.2" fill="#4FA9FF"/></svg>
             </div>
             <img src={jagoLogoBlue} style={{ height: 17, objectFit: "contain" }} alt="JAGO"/>
             <div style={{ flex: 1 }}/>
             <div style={{ position: "relative" }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#1976D2,#0D47A1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "white" }}>R</div>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#4FA9FF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "white" }}>R</div>
               <div style={{ position: "absolute", top: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#EF4444", border: "1.5px solid white" }}/>
             </div>
           </div>
@@ -197,7 +197,7 @@ function C3_Home() {
 
         {/* Map center dot */}
         <div style={{ position: "absolute", top: "35%", left: "46%", zIndex: 5 }}>
-          <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#1565C0", border: "2.5px solid white", boxShadow: "0 0 0 8px rgba(21,101,192,0.12), 0 4px 10px rgba(0,0,0,0.2)" }}/>
+          <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#2F7BFF", border: "2.5px solid white", boxShadow: "0 0 0 8px rgba(47,123,255,0.12), 0 4px 10px rgba(0,0,0,0.2)" }}/>
         </div>
 
         {/* Greeting */}
@@ -215,14 +215,14 @@ function C3_Home() {
 
           <div style={{ background: "#F8FAFF", borderRadius: 18, border: "1.5px solid #E8EEFF", marginBottom: 16, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid #F1F5F9" }}>
-              <div style={{ width: 9, height: 9, borderRadius: "50%", border: "2.5px solid #1976D2", flexShrink: 0 }}/>
-              <span style={{ fontSize: 13, color: "#1976D2", fontWeight: 600 }}>Hitech City, Hyderabad</span>
+              <div style={{ width: 9, height: 9, borderRadius: "50%", border: "2.5px solid #4FA9FF", flexShrink: 0 }}/>
+              <span style={{ fontSize: 13, color: "#4FA9FF", fontWeight: 600 }}>Hitech City, Hyderabad</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
               <div style={{ width: 9, height: 9, borderRadius: "2px", background: "#EF4444", flexShrink: 0 }}/>
               <span style={{ fontSize: 13, color: "#94A3B8" }}>Search destination...</span>
               <div style={{ marginLeft: "auto", width: 26, height: 26, background: "#EFF6FF", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #BFDBFE" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#1976D2" strokeWidth="2"/><path d="M21 21L16.65 16.65" stroke="#1976D2" strokeWidth="2" strokeLinecap="round"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#4FA9FF" strokeWidth="2"/><path d="M21 21L16.65 16.65" stroke="#4FA9FF" strokeWidth="2" strokeLinecap="round"/></svg>
               </div>
             </div>
           </div>
@@ -230,15 +230,15 @@ function C3_Home() {
           <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Choose ride type</div>
           <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
             {[{e:"🏍",n:"Bike",f:"₹20+",s:true},{e:"🛺",n:"Auto",f:"₹38+",s:false},{e:"📦",n:"Parcel",f:"₹28+",s:false},{e:"🚛",n:"Cargo",f:"₹220+",s:false}].map((v,i)=>(
-              <div key={i} style={{ flex: 1, background: v.s ? "linear-gradient(150deg,#1565C0,#0D47A1)" : "white", borderRadius: 14, border: `1.5px solid ${v.s?"#1565C0":"#E8EEFF"}`, padding: "10px 3px", textAlign: "center", boxShadow: v.s ? "0 8px 22px rgba(21,101,192,0.38)" : "0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div key={i} style={{ flex: 1, background: v.s ? "linear-gradient(150deg,#2F7BFF,#1E5FCC)" : "white", borderRadius: 14, border: `1.5px solid ${v.s?"#2F7BFF":"#E8EEFF"}`, padding: "10px 3px", textAlign: "center", boxShadow: v.s ? "0 8px 22px rgba(47,123,255,0.38)" : "0 2px 6px rgba(0,0,0,0.04)" }}>
                 <div style={{ fontSize: 19, marginBottom: 3 }}>{v.e}</div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: v.s ? "white" : "#374151" }}>{v.n}</div>
-                <div style={{ fontSize: 8, fontWeight: 700, color: v.s ? "rgba(255,255,255,0.75)" : "#1976D2", marginTop: 1 }}>{v.f}</div>
+                <div style={{ fontSize: 8, fontWeight: 700, color: v.s ? "rgba(255,255,255,0.75)" : "#4FA9FF", marginTop: 1 }}>{v.f}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ background: "linear-gradient(135deg,#1565C0,#0D47A1)", borderRadius: 18, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 15, fontWeight: 800, boxShadow: "0 10px 28px rgba(21,101,192,0.42)", gap: 8 }}>
+          <div style={{ background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", borderRadius: 18, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 15, fontWeight: 800, boxShadow: "0 10px 28px rgba(47,123,255,0.42)", gap: 8 }}>
             <span>Find Bike · ₹20+</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
@@ -256,12 +256,12 @@ function C4_Tracking() {
 
         {/* Route visualization */}
         <div style={{ position: "absolute", top: "18%", left: "36%", zIndex: 5 }}>
-          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#1976D2", border: "2.5px solid white", boxShadow: "0 0 0 5px rgba(25,118,210,0.18)" }}/>
+          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#4FA9FF", border: "2.5px solid white", boxShadow: "0 0 0 5px rgba(25,118,210,0.18)" }}/>
           <svg width="22" height="65" viewBox="0 0 22 65" style={{ marginLeft: -5.5 }}>
             <path d="M11,0 L11,65" stroke="url(#cg)" strokeWidth="2.5" fill="none" strokeDasharray="5,4"/>
-            <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1976D2"/><stop offset="100%" stopColor="#1976D2" stopOpacity="0.4"/></linearGradient></defs>
+            <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4FA9FF"/><stop offset="100%" stopColor="#4FA9FF" stopOpacity="0.4"/></linearGradient></defs>
           </svg>
-          <div style={{ width: 26, height: 26, borderRadius: "50%", background: "white", border: "2.5px solid #1976D2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, marginLeft: -7.5, boxShadow: "0 4px 12px rgba(25,118,210,0.3)" }}>🏍</div>
+          <div style={{ width: 26, height: 26, borderRadius: "50%", background: "white", border: "2.5px solid #4FA9FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, marginLeft: -7.5, boxShadow: "0 4px 12px rgba(25,118,210,0.3)" }}>🏍</div>
           <svg width="22" height="45" viewBox="0 0 22 45" style={{ marginLeft: -5.5 }}>
             <path d="M11,0 L11,45" stroke="#EF4444" strokeWidth="2.5" fill="none" strokeDasharray="5,4" opacity="0.6"/>
           </svg>
@@ -277,27 +277,27 @@ function C4_Tracking() {
           <div style={{ background: "linear-gradient(135deg,#EFF6FF,#DBEAFE)", borderRadius: 18, padding: "13px 14px", display: "flex", alignItems: "center", gap: 12, border: "1px solid #BFDBFE", marginBottom: 14 }}>
             <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#DBEAFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🏍</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 900, color: "#1D4ED8" }}>Pilot వస్తున్నాడు!</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#1E5FCC" }}>Pilot వస్తున్నాడు!</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px rgba(34,197,94,0.6)" }}/>
-                <span style={{ fontSize: 11, color: "#3B82F6", fontWeight: 600 }}>~4 min away · Live</span>
+                <span style={{ fontSize: 11, color: "#4FA9FF", fontWeight: 600 }}>~4 min away · Live</span>
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#1D4ED8" }}>4:23</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#1E5FCC" }}>4:23</div>
               <div style={{ fontSize: 9, color: "#94A3B8", fontWeight: 600 }}>min away</div>
             </div>
           </div>
 
           <div style={{ background: "#F8FAFC", borderRadius: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12, border: "1px solid #F1F5F9", marginBottom: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#1976D2,#0D47A1)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, color: "white", flexShrink: 0 }}>A</div>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#4FA9FF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, color: "white", flexShrink: 0 }}>A</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>Arjun Kumar</div>
               <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>⭐ 4.92 · TG09AB1234 · Bike</div>
             </div>
             <div style={{ display: "flex", gap: 7 }}>
               <div style={{ width: 38, height: 38, borderRadius: 12, background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #BFDBFE" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#1976D2"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#4FA9FF"/></svg>
               </div>
             </div>
           </div>
@@ -360,7 +360,7 @@ function C5_Rating() {
 
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1, background: "#F8FAFC", border: "1.5px solid #E2E8F0", borderRadius: 14, height: 48, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#64748B" }}>Skip</div>
-          <div style={{ flex: 2, background: "linear-gradient(135deg,#1565C0,#0D47A1)", borderRadius: 14, height: 48, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white", boxShadow: "0 8px 22px rgba(21,101,192,0.4)" }}>Submit Rating</div>
+          <div style={{ flex: 2, background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", borderRadius: 14, height: 48, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white", boxShadow: "0 8px 22px rgba(47,123,255,0.4)" }}>Submit Rating</div>
         </div>
       </div>
     </Phone>
@@ -371,7 +371,7 @@ function C6_Wallet() {
   return (
     <Phone bg="#F0F5FF">
       <div style={{ height: "100%", background: "#F0F5FF", overflow: "hidden" }}>
-        <div style={{ background: "linear-gradient(155deg,#0a2f7a,#1244A2,#1565C0)", padding: "14px 20px 28px", borderRadius: "0 0 32px 32px", position: "relative", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(155deg,#1E5FCC,#4FA9FF,#2F7BFF)", padding: "14px 20px 28px", borderRadius: "0 0 32px 32px", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", top: -40, right: -30, width: 150, height: 150, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }}/>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, position: "relative" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: "white" }}>My Wallet</div>
@@ -476,7 +476,7 @@ function D2_Login() {
             <div style={{ padding: "0 14px", fontSize: 15, color: "rgba(255,255,255,0.18)", letterSpacing: 2 }}>98765 43210</div>
           </div>
 
-          <div style={{ background: "linear-gradient(135deg,#2563EB,#1D4ED8)", borderRadius: 16, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 14, fontWeight: 800, boxShadow: "0 12px 32px rgba(37,99,235,0.45)", marginBottom: 12, gap: 8 }}>
+          <div style={{ background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", borderRadius: 16, height: 52, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 14, fontWeight: 800, boxShadow: "0 12px 32px rgba(37,99,235,0.45)", marginBottom: 12, gap: 8 }}>
             <span>Get OTP</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
@@ -488,7 +488,7 @@ function D2_Login() {
 
           <div style={{ background: "#0D1B3E", borderRadius: 18, border: "1px solid rgba(37,99,235,0.15)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 44, height: 44, background: "rgba(37,99,235,0.15)", borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M23 6l-9.5 9.5-5-5L1 18" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M17 6h6v6" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M23 6l-9.5 9.5-5-5L1 18" stroke="#2F7BFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M17 6h6v6" stroke="#2F7BFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 900, color: "white" }}>₹800 – ₹1,500<span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>/day</span></div>
@@ -507,7 +507,7 @@ function D3_Home() {
       <div style={{ height: "100%", background: "#060D1E", position: "relative", display: "flex", flexDirection: "column" }}>
         <MapBg dark/>
         <div style={{ position: "absolute", top: "34%", left: "45%", zIndex: 5 }}>
-          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#2563EB", border: "2.5px solid white", boxShadow: "0 0 0 10px rgba(37,99,235,0.12), 0 0 0 20px rgba(37,99,235,0.06)" }}/>
+          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#2F7BFF", border: "2.5px solid white", boxShadow: "0 0 0 10px rgba(37,99,235,0.12), 0 0 0 20px rgba(37,99,235,0.06)" }}/>
         </div>
 
         <div style={{ position: "relative", zIndex: 10, padding: "8px 12px 0" }}>
@@ -519,7 +519,7 @@ function D3_Home() {
             <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.08)" }}/>
             <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>Online — Ready ✓</span>
             <div style={{ flex: 1 }}/>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: "white" }}>R</div>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: "white" }}>R</div>
           </div>
         </div>
 
@@ -528,7 +528,7 @@ function D3_Home() {
         <div style={{ position: "relative", zIndex: 10, background: "#060D1E", borderRadius: "28px 28px 0 0", padding: "6px 14px 14px", boxShadow: "0 -6px 40px rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.04)", borderBottom: "none" }}>
           <div style={{ width: 38, height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, margin: "8px auto 16px" }}/>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {[{e:"💰",l:"Today's Earn",v:"₹1,240",c:"#22C55E",bg:"rgba(34,197,94,0.08)",br:"rgba(34,197,94,0.15)"},{e:"🛺",l:"Trips Done",v:"8",c:"#3B82F6",bg:"rgba(59,130,246,0.08)",br:"rgba(59,130,246,0.15)"},{e:"👛",l:"Wallet",v:"₹340",c:"#F59E0B",bg:"rgba(245,158,11,0.08)",br:"rgba(245,158,11,0.15)"}].map((s,i)=>(
+            {[{e:"💰",l:"Today's Earn",v:"₹1,240",c:"#22C55E",bg:"rgba(34,197,94,0.08)",br:"rgba(34,197,94,0.15)"},{e:"🛺",l:"Trips Done",v:"8",c:"#4FA9FF",bg:"rgba(79,169,255,0.08)",br:"rgba(79,169,255,0.15)"},{e:"👛",l:"Wallet",v:"₹340",c:"#F59E0B",bg:"rgba(245,158,11,0.08)",br:"rgba(245,158,11,0.15)"}].map((s,i)=>(
               <div key={i} style={{ flex: 1, background: s.bg, border: `1px solid ${s.br}`, borderRadius: 16, padding: "12px 4px", textAlign: "center" }}>
                 <div style={{ fontSize: 20, marginBottom: 4 }}>{s.e}</div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: "white" }}>{s.v}</div>
@@ -541,7 +541,7 @@ function D3_Home() {
             Online — Trip కోసం Ready ✓
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            {[{e:"☕",l:"Break",c:"#F59E0B",bg:"rgba(245,158,11,0.08)",br:"rgba(245,158,11,0.15)"},{e:"💳",l:"Wallet",c:"#22C55E",bg:"rgba(34,197,94,0.08)",br:"rgba(34,197,94,0.15)"},{e:"📋",l:"History",c:"#3B82F6",bg:"rgba(59,130,246,0.08)",br:"rgba(59,130,246,0.15)"}].map((a,i)=>(
+            {[{e:"☕",l:"Break",c:"#F59E0B",bg:"rgba(245,158,11,0.08)",br:"rgba(245,158,11,0.15)"},{e:"💳",l:"Wallet",c:"#22C55E",bg:"rgba(34,197,94,0.08)",br:"rgba(34,197,94,0.15)"},{e:"📋",l:"History",c:"#4FA9FF",bg:"rgba(79,169,255,0.08)",br:"rgba(79,169,255,0.15)"}].map((a,i)=>(
               <div key={i} style={{ flex: 1, background: a.bg, border: `1px solid ${a.br}`, borderRadius: 14, padding: "10px 0", textAlign: "center" }}>
                 <div style={{ fontSize: 17, marginBottom: 3 }}>{a.e}</div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: a.c }}>{a.l}</div>
@@ -565,7 +565,7 @@ function D4_Incoming() {
           {[160,120,84].map((s,i)=>(
             <div key={i} style={{ position: "absolute", width: s, height: s, borderRadius: "50%", border: `1px solid rgba(37,99,235,${0.14-i*0.04})`, top: -(s-52)/2, left: -(s-52)/2 }}/>
           ))}
-          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 50px rgba(37,99,235,0.7), 0 0 100px rgba(37,99,235,0.3)" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 50px rgba(37,99,235,0.7), 0 0 100px rgba(37,99,235,0.3)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
           </div>
         </div>
@@ -575,13 +575,13 @@ function D4_Incoming() {
         <div style={{ position: "relative", zIndex: 4, margin: "0 10px 10px", background: "#0D1B3E", borderRadius: 28, border: "1px solid rgba(37,99,235,0.2)", boxShadow: "0 0 60px rgba(37,99,235,0.18), 0 50px 90px rgba(0,0,0,0.7)" }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#60A5FA", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 3 }}>🔔 New Trip Request</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#4FA9FF", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 3 }}>🔔 New Trip Request</div>
               <div style={{ fontSize: 17, fontWeight: 900, color: "white" }}>Accept చేయండి!</div>
             </div>
             <div style={{ width: 52, height: 52, borderRadius: "50%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="52" height="52" viewBox="0 0 52 52" style={{ position: "absolute", transform: "rotate(-90deg)" }}>
                 <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(37,99,235,0.12)" strokeWidth="3"/>
-                <circle cx="26" cy="26" r="22" fill="none" stroke="#2563EB" strokeWidth="3" strokeDasharray={`${138*0.58} ${138}`} strokeLinecap="round"/>
+                <circle cx="26" cy="26" r="22" fill="none" stroke="#2F7BFF" strokeWidth="3" strokeDasharray={`${138*0.58} ${138}`} strokeLinecap="round"/>
               </svg>
               <span style={{ fontSize: 15, fontWeight: 900, color: "white" }}>22</span>
             </div>
@@ -590,19 +590,19 @@ function D4_Incoming() {
           <div style={{ margin: "12px 14px", background: "#060D1E", borderRadius: 18, padding: "13px 14px" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3, gap: 2 }}>
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#2563EB", boxShadow: "0 0 10px rgba(37,99,235,0.6)" }}/>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#2F7BFF", boxShadow: "0 0 10px rgba(37,99,235,0.6)" }}/>
                 <div style={{ width: 1.5, height: 20, background: "linear-gradient(to bottom,rgba(37,99,235,0.5),rgba(245,158,11,0.4))" }}/>
                 <div style={{ width: 10, height: 10, borderRadius: "2px", background: "#F59E0B", boxShadow: "0 0 8px rgba(245,158,11,0.5)" }}/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "#60A5FA", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Pickup</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "#4FA9FF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Pickup</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "white", marginBottom: 14 }}>MGBS Bus Stand, Hyd</div>
                 <div style={{ fontSize: 9, fontWeight: 700, color: "#FCD34D", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Destination</div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.7)" }}>Banjara Hills Rd No. 12</div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-              {[{ic:"🛣️",v:"7.2 km",c:"#3B82F6"},{ic:"⏱",v:"~8 min",c:"#22C55E"},{ic:"💰",v:"₹185",c:"#F59E0B"}].map((s,i)=>(
+              {[{ic:"🛣️",v:"7.2 km",c:"#4FA9FF"},{ic:"⏱",v:"~8 min",c:"#22C55E"},{ic:"💰",v:"₹185",c:"#F59E0B"}].map((s,i)=>(
                 <div key={i} style={{ flex: 1, textAlign: "center", padding: "6px 0", background: "rgba(255,255,255,0.03)", borderRadius: 10 }}>
                   <div style={{ fontSize: 12, marginBottom: 2 }}>{s.ic}</div>
                   <div style={{ fontSize: 13, fontWeight: 900, color: s.c }}>{s.v}</div>
@@ -631,9 +631,9 @@ function D5_OnTrip() {
         <MapBg dark/>
         <div style={{ position: "absolute", top: "18%", left: "38%", zIndex: 5 }}>
           <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#22C55E", border: "2.5px solid white", boxShadow: "0 0 12px rgba(34,197,94,0.7)" }}/>
-          <svg width="22" height="60" viewBox="0 0 22 60" style={{ marginLeft: -5.5 }}><path d="M11,0 L11,60" stroke="url(#dg)" strokeWidth="2.5" fill="none" strokeDasharray="5,4"/><defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22C55E"/><stop offset="100%" stopColor="#2563EB"/></linearGradient></defs></svg>
-          <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, boxShadow: "0 0 0 5px rgba(37,99,235,0.18)", marginLeft: -6.5 }}>🏍</div>
-          <svg width="22" height="45" viewBox="0 0 22 45" style={{ marginLeft: -5.5 }}><path d="M11,0 L11,45" stroke="url(#dg2)" strokeWidth="2.5" fill="none" strokeDasharray="5,4"/><defs><linearGradient id="dg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563EB"/><stop offset="100%" stopColor="#EF4444"/></linearGradient></defs></svg>
+          <svg width="22" height="60" viewBox="0 0 22 60" style={{ marginLeft: -5.5 }}><path d="M11,0 L11,60" stroke="url(#dg)" strokeWidth="2.5" fill="none" strokeDasharray="5,4"/><defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22C55E"/><stop offset="100%" stopColor="#2F7BFF"/></linearGradient></defs></svg>
+          <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, boxShadow: "0 0 0 5px rgba(37,99,235,0.18)", marginLeft: -6.5 }}>🏍</div>
+          <svg width="22" height="45" viewBox="0 0 22 45" style={{ marginLeft: -5.5 }}><path d="M11,0 L11,45" stroke="url(#dg2)" strokeWidth="2.5" fill="none" strokeDasharray="5,4"/><defs><linearGradient id="dg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2F7BFF"/><stop offset="100%" stopColor="#EF4444"/></linearGradient></defs></svg>
           <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#EF4444", border: "2.5px solid white", boxShadow: "0 0 12px rgba(239,68,68,0.7)" }}/>
         </div>
 
@@ -649,16 +649,16 @@ function D5_OnTrip() {
           </div>
 
           <div style={{ background: "#0D1B3E", borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", padding: "12px 14px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 17, color: "white", flexShrink: 0 }}>A</div>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#2F7BFF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 17, color: "white", flexShrink: 0 }}>A</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>Arjun Reddy</div>
               <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.1)", borderRadius: 6, padding: "2px 8px" }}>₹185</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#3B82F6", background: "rgba(59,130,246,0.1)", borderRadius: 6, padding: "2px 8px" }}>7.2 km</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#4FA9FF", background: "rgba(79,169,255,0.1)", borderRadius: 6, padding: "2px 8px" }}>7.2 km</span>
               </div>
             </div>
             <div style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#2563EB"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#2F7BFF"/></svg>
             </div>
           </div>
 
@@ -668,7 +668,7 @@ function D5_OnTrip() {
           </div>
 
           <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#2563EB" }}>📞 Call Customer</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#2F7BFF" }}>📞 Call Customer</span>
             <span style={{ color: "rgba(255,255,255,0.08)" }}>|</span>
             <span style={{ fontSize: 12, fontWeight: 600, color: "#F87171" }}>SOS</span>
           </div>
@@ -710,13 +710,13 @@ function D6_Earnings() {
           <div style={{ display: "flex", gap: 7, alignItems: "flex-end", height: 80, marginBottom: 6 }}>
             {bars.map((h, i) => (
               <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                <div style={{ width: "100%", height: `${h}%`, background: i === 4 ? "linear-gradient(to top,#2563EB,#60A5FA)" : "rgba(37,99,235,0.25)", borderRadius: "4px 4px 2px 2px" }}/>
+                <div style={{ width: "100%", height: `${h}%`, background: i === 4 ? "linear-gradient(to top,#2F7BFF,#4FA9FF)" : "rgba(37,99,235,0.25)", borderRadius: "4px 4px 2px 2px" }}/>
               </div>
             ))}
           </div>
           <div style={{ display: "flex", gap: 7 }}>
             {days.map((d, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: i === 4 ? "#60A5FA" : "rgba(255,255,255,0.2)" }}>{d}</div>
+              <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: i === 4 ? "#4FA9FF" : "rgba(255,255,255,0.2)" }}>{d}</div>
             ))}
           </div>
 
@@ -742,8 +742,8 @@ function D6_Earnings() {
 export default function AppDesignPage() {
   const [tab, setTab] = useState<AppTab>("customer");
   const isDriver = tab === "driver";
-  const accent = isDriver ? "#2563EB" : "#1565C0";
-  const grad = isDriver ? "linear-gradient(135deg,#1E40AF,#2563EB)" : "linear-gradient(135deg,#0D47A1,#1565C0)";
+  const accent = isDriver ? "#2F7BFF" : "#2F7BFF";
+  const grad = isDriver ? "linear-gradient(135deg,#1E5FCC,#2F7BFF)" : "linear-gradient(135deg,#1E5FCC,#2F7BFF)";
 
   const customerScreens = [
     { c: <C1_Splash/>, title: "Splash Screen",   sub: "Animated entry · Blue gradient" },
@@ -789,7 +789,7 @@ export default function AppDesignPage() {
               <button key={t} onClick={() => setTab(t)} style={{
                 padding: "10px 22px", borderRadius: 13, border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: 700, transition: "all 0.2s",
-                background: tab === t ? (t === "driver" ? "linear-gradient(135deg,#1E40AF,#2563EB)" : "linear-gradient(135deg,#0D47A1,#1565C0)") : "transparent",
+                background: tab === t ? (t === "driver" ? "linear-gradient(135deg,#1E5FCC,#2F7BFF)" : "linear-gradient(135deg,#1E5FCC,#2F7BFF)") : "transparent",
                 color: tab === t ? "white" : "#64748B",
                 boxShadow: tab === t ? "0 4px 20px rgba(0,0,0,0.2)" : "none",
               }}>
@@ -803,8 +803,8 @@ export default function AppDesignPage() {
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginRight: 4 }}>Color System</span>
           {(isDriver
-            ? [{c:"#060D1E",n:"Background"},{c:"#0D1B3E",n:"Surface"},{c:"#2563EB",n:"Primary"},{c:"#22C55E",n:"Online"},{c:"#F59E0B",n:"Earning"},{c:"#EF4444",n:"Alert"}]
-            : [{c:"#0D47A1",n:"Deep Blue"},{c:"#1565C0",n:"Primary"},{c:"#42A5F5",n:"Light"},{c:"#F0F5FF",n:"Surface"},{c:"#EF4444",n:"Dest"},{c:"#F59E0B",n:"OTP"}]
+            ? [{c:"#060D1E",n:"Background"},{c:"#0D1B3E",n:"Surface"},{c:"#2F7BFF",n:"Primary"},{c:"#22C55E",n:"Online"},{c:"#F59E0B",n:"Earning"},{c:"#EF4444",n:"Alert"}]
+            : [{c:"#1E5FCC",n:"Deep Blue"},{c:"#2F7BFF",n:"Primary"},{c:"#42A5F5",n:"Light"},{c:"#F0F5FF",n:"Surface"},{c:"#EF4444",n:"Dest"},{c:"#F59E0B",n:"OTP"}]
           ).map((p, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F8FAFC", borderRadius: 9, padding: "4px 10px", border: "1px solid #F1F5F9" }}>
               <div style={{ width: 14, height: 14, background: p.c, borderRadius: 3, border: "1px solid rgba(0,0,0,0.08)", flexShrink: 0 }}/>
@@ -826,7 +826,7 @@ export default function AppDesignPage() {
         {[
           { l: "Framework",  v: "Flutter 3.27.1" },
           { l: "CI/CD",      v: "GitHub Actions" },
-          { l: "Theme",      v: isDriver ? "Dark #060D1E" : "Blue #1565C0" },
+          { l: "Theme",      v: isDriver ? "Dark #060D1E" : "Blue #2F7BFF" },
           { l: "Screens",    v: `${screens.length} screens` },
           { l: "APK",        v: isDriver ? "~25.5 MB" : "~26 MB" },
           { l: "Maps",       v: "Google Maps SDK" },
@@ -872,7 +872,7 @@ export default function AppDesignPage() {
           <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>📦 Dependencies</div>
           <div style={{ background: "#0F172A", borderRadius: 14, padding: "16px 18px", fontFamily: "monospace", fontSize: 10, lineHeight: 2.1 }}>
             {[["google_maps_flutter","^2.5.0"],["dio","^5.0.0"],["get","^4.6.6"],["geolocator","^11.0.0"],["firebase_messaging","^14.7.0"],["pin_code_fields","^8.0.1"],["socket_io_client","^2.0.0"]].map(([k,v],i)=>(
-              <div key={i}><span style={{ color: "#60A5FA" }}>{k}:</span> <span style={{ color: "#86EFAC" }}>{v}</span></div>
+              <div key={i}><span style={{ color: "#4FA9FF" }}>{k}:</span> <span style={{ color: "#86EFAC" }}>{v}</span></div>
             ))}
           </div>
         </div>
@@ -880,7 +880,7 @@ export default function AppDesignPage() {
           <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>🔗 API Endpoints</div>
           {[
             { env: "Production", url: "https://jagopro.org",         c: "#7C3AED", bg: "#F5F3FF", status: "✓ Live" },
-            { env: "Staging",    url: "https://staging.jagopro.org", c: "#2563EB", bg: "#EFF6FF", status: "Standby" },
+            { env: "Staging",    url: "https://staging.jagopro.org", c: "#2F7BFF", bg: "#EFF6FF", status: "Standby" },
             { env: "Local Dev",  url: "http://localhost:5000",        c: "#16A34A", bg: "#F0FDF4", status: "Dev" },
           ].map((e, i) => (
             <div key={i} style={{ background: "#F8FAFC", borderRadius: 13, padding: "11px 14px", marginBottom: 8, border: "1px solid #F1F5F9" }}>

@@ -24,7 +24,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
     sectionBorder: isDark ? "rgba(148,163,184,0.22)" : "#f1f5f9",
     infoBg: isDark ? "rgba(30,109,229,0.14)" : "#eff6ff",
     infoBorder: isDark ? "rgba(59,130,246,0.36)" : "#bfdbfe",
-    infoText: isDark ? "#bfdbfe" : "#1e40af",
+    infoText: isDark ? "#bfdbfe" : "#1E5FCC",
     cardBg: isDark ? "rgba(15,23,42,0.78)" : "#f8fafc",
     cardBorder: isDark ? "rgba(148,163,184,0.18)" : "#f1f5f9",
   };
@@ -53,7 +53,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
         .policy-list-item { color: ${tokens.bodyText}; margin-bottom: 7px; padding-left: 4px; }
         .policy-info-box {
           background: ${tokens.infoBg}; border: 1px solid ${tokens.infoBorder};
-          border-left: 4px solid #2563eb; border-radius: 10px; padding: 14px 18px;
+          border-left: 4px solid #2F7BFF; border-radius: 10px; padding: 14px 18px;
           margin-bottom: 20px; color: ${tokens.infoText}; font-size: 13.5px;
         }
         .policy-value-card {
@@ -93,7 +93,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
           <a href="/contact-us">Contact</a>
         </div>
         <div style={{ width: 1, height: 20, background: tokens.navBorder, margin: "0 20px" }} />
-        <a href="/" style={{ fontSize: 13, color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>← Home</a>
+        <a href="/" style={{ fontSize: 13, color: "#2F7BFF", textDecoration: "none", fontWeight: 600 }}>← Home</a>
       </nav>
 
       {/* Hero */}
@@ -476,7 +476,7 @@ export function AboutPage() {
             <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
             <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
             {href ? (
-              <a href={href} style={{ fontSize: 13, fontWeight: 600, color: "#2563eb", marginTop: 3, display: "block", textDecoration: "none" }}>{val}</a>
+              <a href={href} style={{ fontSize: 13, fontWeight: 600, color: "#2F7BFF", marginTop: 3, display: "block", textDecoration: "none" }}>{val}</a>
             ) : (
               <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginTop: 3 }}>{val}</div>
             )}

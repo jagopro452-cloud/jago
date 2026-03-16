@@ -7563,11 +7563,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/commission/verify-payment", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      const expectedSig = crypto.createHmac("sha256", keySecret).update(razorpayOrderId + "|" + razorpayPaymentId).digest("hex");
-      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      // Timing-safe HMAC — same pattern as subscription verify
+      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
       // Idempotency: reject if this payment was already processed
       const dupCheck = await rawDb.execute(rawSql`
         SELECT id FROM commission_settlements WHERE razorpay_payment_id=${razorpayPaymentId} LIMIT 1
@@ -7577,6 +7580,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
 
+      // Amount from DB — never trust client-sent amount
+      const pendingRec = await rawDb.execute(rawSql`
+        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
+      `);
+      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      const paidAmt = parseFloat((pendingRec.rows[0] as any).amount);
+
       const balR = await rawDb.execute(rawSql`
         SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance, is_locked
         FROM users WHERE id=${driver.id}::uuid LIMIT 1
@@ -7585,7 +7595,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
       const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
       const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
-      const paidAmt        = parseFloat(String(amount));
       const gstReduction   = Math.min(prevGst, parseFloat((paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05)).toFixed(2)));
       const commReduction  = Math.min(prevCommission, parseFloat((paidAmt - gstReduction).toFixed(2)));
       const newTotal       = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));

@@ -406,7 +406,7 @@ export default function CarSharingPage() {
                   </div>
                   {/* Live preview */}
                   <div className="p-3 mb-3 rounded-3" style={{ background: "#f0f9ff", border: "1px dashed #93c5fd" }}>
-                    <div style={{ fontSize: 12.5, color: "#1e40af" }}>
+                    <div style={{ fontSize: 12.5, color: "#1E5FCC" }}>
                       <i className="bi bi-calculator me-1"></i>
                       <strong>Example:</strong> 10 km route →
                       ₹{settings["base_fare_per_seat"] || 20} base + (10 × ₹{settings["fare_per_km_per_seat"] || 5}) =

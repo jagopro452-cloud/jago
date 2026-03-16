@@ -119,7 +119,7 @@ export default function ReportsPage() {
   }));
 
   const earningsBreakdown = [
-    { name: "Commission", value: Number(summary.totalCommission || 0), color: "#2563eb" },
+    { name: "Commission", value: Number(summary.totalCommission || 0), color: "#2F7BFF" },
     { name: "GST", value: Number(summary.totalGst || 0), color: "#f59e0b" },
     { name: "Insurance", value: Number(summary.totalInsurance || 0), color: "#0891b2" },
   ].filter((d) => d.value > 0);
@@ -127,7 +127,7 @@ export default function ReportsPage() {
   const tripStatusData = [
     { name: "Completed", value: trips.filter((t: any) => t.currentStatus === "completed").length, color: "#16a34a" },
     { name: "Cancelled", value: trips.filter((t: any) => t.currentStatus === "cancelled").length, color: "#dc2626" },
-    { name: "Ongoing", value: trips.filter((t: any) => t.currentStatus === "ongoing").length, color: "#2563eb" },
+    { name: "Ongoing", value: trips.filter((t: any) => t.currentStatus === "ongoing").length, color: "#2F7BFF" },
     { name: "Other", value: trips.filter((t: any) => !["completed", "cancelled", "ongoing"].includes(t.currentStatus)).length, color: "#94a3b8" },
   ].filter((d) => d.value > 0);
 
@@ -140,7 +140,7 @@ export default function ReportsPage() {
   ).map(([name, value], i) => ({
     name: name.toUpperCase(),
     value,
-    color: ["#2563eb", "#16a34a", "#7c3aed", "#d97706", "#0891b2"][i % 5],
+    color: ["#2F7BFF", "#16a34a", "#7c3aed", "#d97706", "#0891b2"][i % 5],
   }));
 
   const TABS = [
@@ -243,8 +243,8 @@ export default function ReportsPage() {
                       <AreaChart data={earningsTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="earnRev" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#2563eb" stopOpacity={0.25} />
-                            <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                            <stop offset="0%" stopColor="#2F7BFF" stopOpacity={0.25} />
+                            <stop offset="100%" stopColor="#2F7BFF" stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="earnAdmin" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
@@ -255,7 +255,7 @@ export default function ReportsPage() {
                         <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={50} />
                         <Tooltip formatter={(v: any) => fmtCur(v)} />
-                        <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2563eb" fill="url(#earnRev)" strokeWidth={2.4} />
+                        <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2F7BFF" fill="url(#earnRev)" strokeWidth={2.4} />
                         <Area type="monotone" dataKey="admin" name="Admin Earning" stroke="#16a34a" fill="url(#earnAdmin)" strokeWidth={2.4} />
                       </AreaChart>
                     </ResponsiveContainer>

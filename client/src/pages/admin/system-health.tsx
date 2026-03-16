@@ -64,7 +64,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: string; value: string | number; sub?: string; accent?: string }) {
-  const color = accent || "#2F80ED";
+  const color = accent || "#2F7BFF";
   return (
     <div style={{
       background: "#fff", borderRadius: 16, padding: "18px 20px",
@@ -141,7 +141,7 @@ export default function SystemHealthPage() {
 
         {isLoading && !data && (
           <div style={{ textAlign: "center", padding: 80 }}>
-            <div className="spinner-border" style={{ color: "#2F80ED" }} />
+            <div className="spinner-border" style={{ color: "#2F7BFF" }} />
             <p style={{ marginTop: 12, color: "#6B7280" }}>Running system checks…</p>
           </div>
         )}
@@ -207,7 +207,7 @@ export default function SystemHealthPage() {
               Live Metrics (Today)
             </h6>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
-              <KpiCard icon="🏍️" label="Active Rides" value={data.trips.active} accent="#2F80ED" />
+              <KpiCard icon="🏍️" label="Active Rides" value={data.trips.active} accent="#2F7BFF" />
               <KpiCard icon="✅" label="Rides Completed" value={data.trips.completedToday} sub="Last 24 hours" accent="#2ecc71" />
               <KpiCard icon="❌" label="Rides Cancelled" value={data.trips.cancelledToday} sub="Last 24 hours" accent="#e74c3c" />
               <KpiCard
@@ -225,7 +225,7 @@ export default function SystemHealthPage() {
             </h6>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
               <KpiCard icon="🟢" label="Online Drivers" value={data.drivers.online} accent="#2ecc71" />
-              <KpiCard icon="🚗" label="Drivers On Trip" value={data.drivers.onTrip} accent="#2F80ED" />
+              <KpiCard icon="🚗" label="Drivers On Trip" value={data.drivers.onTrip} accent="#2F7BFF" />
               <KpiCard icon="🔒" label="Locked Drivers" value={data.drivers.locked} sub="Pending dues" accent="#e74c3c" />
               <KpiCard icon="📋" label="Active Subscriptions" value={data.drivers.activeSubscriptions} sub={`${data.drivers.subscribedDrivers} unique drivers`} accent="#F39C12" />
             </div>
@@ -235,7 +235,7 @@ export default function SystemHealthPage() {
               Admin Revenue
             </h6>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }}>
-              <div style={{ background: "linear-gradient(135deg,#2F80ED,#4A90E2)", borderRadius: 16, padding: "20px 22px", color: "#fff" }}>
+              <div style={{ background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", borderRadius: 16, padding: "20px 22px", color: "#fff" }}>
                 <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>GST Wallet Balance</div>
                 <div style={{ fontSize: 28, fontWeight: 800 }}>₹{data.gstWallet.balance.toFixed(2)}</div>
                 <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>

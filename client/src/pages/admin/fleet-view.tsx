@@ -716,7 +716,7 @@ export default function FleetViewPage() {
                               <span className="fw-semibold" style={{ color: "#1e293b" }}>₹{parseFloat(trip.estimatedFare).toFixed(0)}</span>
                               <span style={{ color: "#94a3b8" }}>{parseFloat(trip.estimatedDistance).toFixed(1)} km</span>
                               <span className="badge rounded-pill"
-                                style={{ fontSize: 9, background: trip.type === "ride" ? "#dbeafe" : "#dcfce7", color: trip.type === "ride" ? "#1d4ed8" : "#166534" }}>
+                                style={{ fontSize: 9, background: trip.type === "ride" ? "#dbeafe" : "#dcfce7", color: trip.type === "ride" ? "#1E5FCC" : "#166534" }}>
                                 {trip.type}
                               </span>
                             </div>

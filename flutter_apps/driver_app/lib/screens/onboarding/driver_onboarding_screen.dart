@@ -22,8 +22,8 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   // Color system
   static const _bg = Color(0xFFFFFFFF);
   static const _surface = JT.bgSoft;
-  static const _card = Color(0xFF162030);
-  static const _border = Color(0xFF1E3050);
+  static const _card = Color(0xFFF0F5FF);
+  static const _border = Color(0xFFDDE8FF);
   static const _primary = Color(0xFF2F7BFF);
   static const _green = Color(0xFF00E676);
   static const _amber = Color(0xFFFFB300);
@@ -265,7 +265,7 @@ class _SlidePage extends StatelessWidget {
               Container(
                 width: 100, height: 100,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF162030),
+                  color: const Color(0xFFF0F5FF),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(color: slide.neonColor.withValues(alpha: 0.4), width: 1.5),
                   boxShadow: [

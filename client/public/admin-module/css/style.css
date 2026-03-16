@@ -41,7 +41,7 @@
         4.1 Dark Theme
     ********************/
 :root {
-    --text-primary: #2563EB;
+    --text-primary: #2F7BFF;
     --text-secondary: #DBEAFE;
     --input-border-color: #e4e4e4;
     --input-border-color-active: #93C5FD;
@@ -72,13 +72,13 @@
     --bs-yellow: #ffe600;
     --bs-dark-rgb: 15, 23, 42;
     --bs-dark: #0F172A;
-    --bs-primary-rgb: 37, 99, 235;
-    --bs-primary: #2563EB;
+    --bs-primary-rgb: 47, 123, 255;
+    --bs-primary: #2F7BFF;
     --bs-secondary-rgb: 219, 234, 254;
     --bs-secondary: #DBEAFE;
     --bs-fafafa: #fafafa;
     --bs-section-bg: #f6f6f6;
-    --text-link: #2563EB;
+    --text-link: #2F7BFF;
     --dropdown-box-shadow: rgba(145, 158, 171, 0.24) 0px 0px 4px 0px,
         rgba(145, 158, 171, 0.24) -10px 10px 40px -4px;
     --shadow-color-rgb: 0, 0, 0;
@@ -4455,7 +4455,7 @@ div.dataTables_wrapper div.dataTables_length select {
     width: 35px;
     height: 35px;
     border-radius: 6px;
-    color: #2563EB;
+    color: #2F7BFF;
     background: rgba(37, 99, 235, 0.05);
     display: flex;
     align-items: center;
@@ -6602,7 +6602,7 @@ progress {
 }
 
 /* .cmn_focus.active {
-    outline: 0.09px solid #2563EB !important;
+    outline: 0.09px solid #2F7BFF !important;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
 } */
 .cmn_reset.active{
@@ -6613,22 +6613,22 @@ progress {
     border-color: #bec0c2;
 }
 .cmn_focus-shadow.active{
-    box-shadow: 0px 0px 2px 1px #2563EB;
+    box-shadow: 0px 0px 2px 1px #2F7BFF;
 }
 
 
 .cmn_focus + .select2-container--default.select2-container--focus .select2-selection--multiple {
-    border-color: #2563EB !important;
+    border-color: #2F7BFF !important;
 }
 .cmn_focus + .select2.select2-container--focus .selection .select2-selection{
-    border-color: #2563EB !important;
+    border-color: #2F7BFF !important;
 }
 *:focus-visible{
     outline: none !important;
 }
 
 .form-select:focus{
-    border-color: #2563EB !important;
+    border-color: #2F7BFF !important;
 }
 .border-start-0{
     border-left: unset !important;

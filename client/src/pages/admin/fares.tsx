@@ -302,7 +302,7 @@ export default function Fares() {
                       <td>{idx + 1}</td>
                       <td>
                         <div className="media align-items-center gap-2">
-                          <span className="circle-24 title-color-bg" style={{ width: "24px", height: "24px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 700, background: "#1e40af", color: "#fff" }}>{idx + 1}</span>
+                          <span className="circle-24 title-color-bg" style={{ width: "24px", height: "24px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 700, background: "#1E5FCC", color: "#fff" }}>{idx + 1}</span>
                           <div className="media-body fw-medium">{item.zone?.name || "—"}</div>
                         </div>
                       </td>

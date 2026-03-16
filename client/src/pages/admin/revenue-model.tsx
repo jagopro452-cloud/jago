@@ -461,7 +461,7 @@ export default function RevenueModelPage() {
             <div className="col-md-6">
               <div className="p-3 rounded-3" style={{ border: "1.5px solid #e2e8f0", background: "#f8fafc" }}>
                 <div className="d-flex align-items-center gap-2 mb-3">
-                  <div className="rounded-2 d-flex align-items-center justify-content-center" style={{ width: 30, height: 30, background: "#eff6ff", color: "#2563eb", fontSize: 14 }}>
+                  <div className="rounded-2 d-flex align-items-center justify-content-center" style={{ width: 30, height: 30, background: "#eff6ff", color: "#2F7BFF", fontSize: 14 }}>
                     <i className="bi bi-map"></i>
                   </div>
                   <div className="fw-semibold" style={{ fontSize: 13 }}>Intercity Rides</div>

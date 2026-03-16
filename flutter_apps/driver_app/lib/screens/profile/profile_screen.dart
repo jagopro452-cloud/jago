@@ -42,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Color system
   static const Color _bg = Color(0xFFFFFFFF);
   static const Color _surface = Color(0xFFF7FAFF);
-  static const Color _card = Color(0xFF162030);
+  static const Color _card = Color(0xFFF0F5FF);
   static const Color _border = Color(0xFFDDE8FF);
   static const Color _primary = Color(0xFF2F7BFF);
   static const Color _green = Color(0xFF00E676);

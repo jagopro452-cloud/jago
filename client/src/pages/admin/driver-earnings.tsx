@@ -26,7 +26,7 @@ function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void })
           <div>
             <div className="row g-3 mb-4">
               {[
-                { label: "Total Trips", val: driver.completedTrips || 0, icon: "bi-car-front", color: "#2F80ED" },
+                { label: "Total Trips", val: driver.completedTrips || 0, icon: "bi-car-front", color: "#2F7BFF" },
                 { label: "Gross Earnings", val: `₹${Number(driver.grossEarnings || 0).toFixed(0)}`, icon: "bi-cash-stack", color: "#059669" },
                 { label: "Commission Paid", val: `₹${Number(driver.commission || 0).toFixed(0)}`, icon: "bi-building", color: "#d97706" },
                 { label: "Net Earnings", val: `₹${Number(driver.netEarnings || 0).toFixed(0)}`, icon: "bi-wallet-fill", color: "#0284c7" },
@@ -109,7 +109,7 @@ export default function DriverEarningsPage() {
       <div className="container-fluid">
         <div className="row g-3 mb-4">
           {[
-            { label: "Total Completed Trips", val: totalTrips, icon: "bi-car-front-fill", color: "#2F80ED", bg: "linear-gradient(135deg,#2F80ED15,#818cf815)" },
+            { label: "Total Completed Trips", val: totalTrips, icon: "bi-car-front-fill", color: "#2F7BFF", bg: "linear-gradient(135deg,#2F7BFF15,#818cf815)" },
             { label: "Total Gross Earnings", val: `₹${(totalGross / 1000).toFixed(1)}K`, icon: "bi-cash-stack", color: "#059669", bg: "linear-gradient(135deg,#05966915,#34d39915)" },
             { label: "Total Commission", val: `₹${(totalCommission / 1000).toFixed(1)}K`, icon: "bi-building", color: "#d97706", bg: "linear-gradient(135deg,#d9770615,#fbbf2415)" },
             { label: "Total Net Payout", val: `₹${(totalNet / 1000).toFixed(1)}K`, icon: "bi-wallet-fill", color: "#0284c7", bg: "linear-gradient(135deg,#0284c715,#38bdf815)" },

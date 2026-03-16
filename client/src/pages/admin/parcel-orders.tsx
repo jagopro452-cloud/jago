@@ -25,7 +25,7 @@ interface ParcelOrder {
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
   pending:         { label: "Pending",         bg: "rgba(243,156,18,0.15)",  color: "#F39C12" },
-  searching:       { label: "Searching",       bg: "rgba(47,128,237,0.15)",  color: "#2F80ED" },
+  searching:       { label: "Searching",       bg: "rgba(47,123,255,0.15)",  color: "#2F7BFF" },
   driver_assigned: { label: "Driver Assigned", bg: "rgba(74,144,226,0.15)",  color: "#4A90E2" },
   in_transit:      { label: "In Transit",      bg: "rgba(16,185,129,0.15)",  color: "#10B981" },
   completed:       { label: "Completed",       bg: "rgba(46,204,113,0.15)",  color: "#2ECC71" },
@@ -99,9 +99,9 @@ function DetailModal({ order, onClose }: DetailModalProps) {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {drops.map((d: any, i: number) => (
                 <div key={i} style={{
-                  background: d.delivered_at ? "rgba(46,204,113,0.08)" : i === order.current_drop_index && order.current_status === "in_transit" ? "rgba(47,128,237,0.08)" : "#F9FAFB",
+                  background: d.delivered_at ? "rgba(46,204,113,0.08)" : i === order.current_drop_index && order.current_status === "in_transit" ? "rgba(47,123,255,0.08)" : "#F9FAFB",
                   borderRadius: 10, padding: "10px 14px",
-                  borderLeft: `3px solid ${d.delivered_at ? "#2ECC71" : i === order.current_drop_index ? "#2F80ED" : "#E5E7EB"}`,
+                  borderLeft: `3px solid ${d.delivered_at ? "#2ECC71" : i === order.current_drop_index ? "#2F7BFF" : "#E5E7EB"}`,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>
@@ -110,7 +110,7 @@ function DetailModal({ order, onClose }: DetailModalProps) {
                     {d.delivered_at
                       ? <span style={{ fontSize: 10, fontWeight: 700, color: "#2ECC71" }}>✓ Delivered</span>
                       : i === order.current_drop_index && order.current_status === "in_transit"
-                        ? <span style={{ fontSize: 10, fontWeight: 700, color: "#2F80ED" }}>● Current</span>
+                        ? <span style={{ fontSize: 10, fontWeight: 700, color: "#2F7BFF" }}>● Current</span>
                         : <span style={{ fontSize: 10, color: "#9CA3AF" }}>Pending</span>
                     }
                   </div>
@@ -135,7 +135,7 @@ function DetailModal({ order, onClose }: DetailModalProps) {
           </div>
 
           <div className="col-12">
-            <div style={{ background: "linear-gradient(135deg,#2F80ED,#4A90E2)", borderRadius: 14, padding: "14px 18px", color: "#fff" }}>
+            <div style={{ background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", borderRadius: 14, padding: "14px 18px", color: "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 2 }}>Total Fare</div>
@@ -199,7 +199,7 @@ export default function ParcelOrdersPage() {
         {/* KPI row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14, marginBottom: 24 }}>
           {[
-            { label: "Total Orders", value: stats.total,     icon: "bi-box-seam",       color: "#2F80ED" },
+            { label: "Total Orders", value: stats.total,     icon: "bi-box-seam",       color: "#2F7BFF" },
             { label: "Searching",    value: stats.searching, icon: "bi-search",          color: "#F39C12" },
             { label: "In Transit",   value: stats.inTransit, icon: "bi-truck",           color: "#10B981" },
             { label: "Completed",    value: stats.completed, icon: "bi-check-circle",    color: "#2ECC71" },
@@ -223,7 +223,7 @@ export default function ParcelOrdersPage() {
             {["all", "searching", "driver_assigned", "in_transit", "completed", "cancelled"].map(s => (
               <button key={s} onClick={() => setStatusFilter(s)} style={{
                 padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                background: statusFilter === s ? "linear-gradient(135deg,#2F80ED,#4A90E2)" : "#F3F4F6",
+                background: statusFilter === s ? "linear-gradient(135deg,#2F7BFF,#4A90E2)" : "#F3F4F6",
                 color: statusFilter === s ? "#fff" : "#6B7280",
                 border: "none",
               }}>

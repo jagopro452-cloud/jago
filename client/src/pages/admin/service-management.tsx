@@ -23,7 +23,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const MODEL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  subscription: { bg: "rgba(47,128,237,0.12)", text: "#2F80ED", label: "Subscription" },
+  subscription: { bg: "rgba(47,123,255,0.12)", text: "#2F7BFF", label: "Subscription" },
   commission:   { bg: "rgba(255,107,53,0.12)",  text: "#FF6B35", label: "Commission"   },
   hybrid:       { bg: "rgba(139,92,246,0.12)", text: "#8B5CF6", label: "Hybrid"        },
 };
@@ -92,7 +92,7 @@ export default function ServiceManagement() {
 
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,#2F80ED,#4A90E2)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(47,128,237,0.35)" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(47,123,255,0.35)" }}>
               <i className="bi bi-toggles2" style={{ color: "#fff", fontSize: 22 }} />
             </div>
             <div>
@@ -100,19 +100,19 @@ export default function ServiceManagement() {
               <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>Activate/deactivate services · configure revenue model per service</p>
             </div>
           </div>
-          <div style={{ background: "linear-gradient(135deg,#060D1E,#0D1B3E)", borderRadius: 16, padding: "14px 20px", minWidth: 220, border: "1px solid rgba(47,128,237,0.2)" }}>
+          <div style={{ background: "linear-gradient(135deg,#060D1E,#0D1B3E)", borderRadius: 16, padding: "14px 20px", minWidth: 220, border: "1px solid rgba(47,123,255,0.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600 }}>Launch Readiness</span>
-              <span style={{ color: "#2F80ED", fontWeight: 800, fontSize: 14 }}>{activeCount}/{totalCount} Active</span>
+              <span style={{ color: "#2F7BFF", fontWeight: 800, fontSize: 14 }}>{activeCount}/{totalCount} Active</span>
             </div>
             <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 8, height: 8, overflow: "hidden" }}>
-              <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#2F80ED,#4A90E2)", borderRadius: 8, transition: "width .4s ease" }} />
+              <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#2F7BFF,#4A90E2)", borderRadius: 8, transition: "width .4s ease" }} />
             </div>
             <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, marginTop: 6, fontWeight: 500 }}>{pct}% services enabled</div>
           </div>
         </div>
 
-        <div style={{ background: "linear-gradient(135deg,rgba(47,128,237,0.1),rgba(74,144,226,0.06))", border: "1px solid rgba(47,128,237,0.25)", borderRadius: 16, padding: "16px 20px", marginBottom: 28, display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ background: "linear-gradient(135deg,rgba(47,123,255,0.1),rgba(74,144,226,0.06))", border: "1px solid rgba(47,123,255,0.25)", borderRadius: 16, padding: "16px 20px", marginBottom: 28, display: "flex", alignItems: "center", gap: 14 }}>
           <span style={{ fontSize: 32 }}>??</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Phase 1 Launch: Bike Ride + Parcel Delivery only</div>
@@ -121,12 +121,12 @@ export default function ServiceManagement() {
               Each service supports an independent <strong>Subscription</strong> or <strong>Commission</strong> revenue model.
             </div>
           </div>
-          <div style={{ padding: "6px 14px", borderRadius: 20, background: "linear-gradient(135deg,#2F80ED,#4A90E2)", color: "#fff", fontWeight: 800, fontSize: 11, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(47,128,237,0.35)" }}>?? Phase 1</div>
+          <div style={{ padding: "6px 14px", borderRadius: 20, background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", color: "#fff", fontWeight: 800, fontSize: 11, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(47,123,255,0.35)" }}>?? Phase 1</div>
         </div>
 
         {isLoading ? (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <div className="spinner-border" style={{ color: "#2F80ED" }} />
+            <div className="spinner-border" style={{ color: "#2F7BFF" }} />
             <p style={{ marginTop: 12, color: "#6B7280" }}>Loading services...</p>
           </div>
         ) : (
@@ -149,7 +149,7 @@ export default function ServiceManagement() {
                     <div key={svc.service_key} style={{ background: "#fff", borderRadius: 20, overflow: "hidden", boxShadow: isActive ? `0 4px 24px ${svc.color}22, 0 1px 4px rgba(0,0,0,0.06)` : "0 2px 12px rgba(0,0,0,0.06)", border: isActive ? `1.5px solid ${svc.color}40` : "1.5px solid #F3F4F6", transition: "all .25s ease", position: "relative" }}>
                       <div style={{ height: 5, background: isActive ? `linear-gradient(90deg,${svc.color},${svc.color}99)` : "#E5E7EB" }} />
                       {isLaunch && (
-                        <div style={{ position: "absolute", top: 14, right: 14, background: "linear-gradient(135deg,#2F80ED,#4A90E2)", color: "#fff", fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 8, letterSpacing: 0.5 }}>?? LAUNCH</div>
+                        <div style={{ position: "absolute", top: 14, right: 14, background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", color: "#fff", fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 8, letterSpacing: 0.5 }}>?? LAUNCH</div>
                       )}
                       <div style={{ padding: "20px 20px 16px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
@@ -194,7 +194,7 @@ export default function ServiceManagement() {
                               </div>
                             )}
                             <div style={{ display: "flex", gap: 8 }}>
-                              <button onClick={() => modelMutation.mutate({ key: svc.service_key, ...modelForm })} disabled={modelMutation.isPending} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#2F80ED,#4A90E2)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                              <button onClick={() => modelMutation.mutate({ key: svc.service_key, ...modelForm })} disabled={modelMutation.isPending} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                                 {modelMutation.isPending ? "Saving…" : "Save"}
                               </button>
                               <button onClick={() => setEditingModel(null)} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#fff", color: "#6B7280", fontSize: 12, cursor: "pointer" }}>Cancel</button>
@@ -220,14 +220,14 @@ export default function ServiceManagement() {
           ))
         )}
 
-        <div style={{ marginTop: 24, background: "linear-gradient(135deg,#060D1E,#0D1B3E)", borderRadius: 20, padding: "20px 24px", border: "1px solid rgba(47,128,237,0.15)" }}>
+        <div style={{ marginTop: 24, background: "linear-gradient(135deg,#060D1E,#0D1B3E)", borderRadius: 20, padding: "20px 24px", border: "1px solid rgba(47,123,255,0.15)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
             <i className="bi bi-lightbulb-fill" style={{ color: "#FFD700", fontSize: 18 }} />
             <span style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>Revenue Model Guide</span>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {[
-              { icon: "??", title: "Subscription", desc: "Drivers buy Daily/Weekly/Monthly plans. No per-trip deduction. Best for Bike/Auto rides.", color: "#2F80ED" },
+              { icon: "??", title: "Subscription", desc: "Drivers buy Daily/Weekly/Monthly plans. No per-trip deduction. Best for Bike/Auto rides.", color: "#2F7BFF" },
               { icon: "??", title: "Commission",   desc: "Platform deducts % per transaction. Best for Parcel, Pool, and Outstation services.",      color: "#FF6B35" },
               { icon: "?", title: "Hybrid",       desc: "Drivers need a plan AND platform takes a small commission. Best for premium services.",      color: "#8B5CF6" },
             ].map(g => (

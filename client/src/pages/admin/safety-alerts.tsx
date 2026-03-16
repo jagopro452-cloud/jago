@@ -248,7 +248,7 @@ export default function SafetyAlertsPage() {
                               <div className="fw-semibold">{a.userName || "Unknown"}</div>
                               <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
                                 {a.userPhone || "—"}
-                                <span className="ms-1 badge" style={{ background: a.triggeredBy === "driver" ? "#dbeafe" : "#dcfce7", color: a.triggeredBy === "driver" ? "#1e40af" : "#15803d", fontSize: "0.65rem" }}>
+                                <span className="ms-1 badge" style={{ background: a.triggeredBy === "driver" ? "#dbeafe" : "#dcfce7", color: a.triggeredBy === "driver" ? "#1E5FCC" : "#15803d", fontSize: "0.65rem" }}>
                                   {a.triggeredBy === "driver" ? "🚗 Driver" : "🧑 Customer"}
                                 </span>
                                 {a.gender === "female" && <span className="ms-1 badge" style={{ background: "#fce7f3", color: "#be185d", fontSize: "0.65rem" }}>♀</span>}
@@ -338,11 +338,11 @@ export default function SafetyAlertsPage() {
                 <div className="card border-0 mb-4" style={{ background: "#eff6ff" }}>
                   <div className="card-body py-2 px-3">
                     <div className="d-flex flex-wrap gap-3 align-items-center">
-                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#1d4ed8" }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#1E5FCC" }}>
                         <i className="bi bi-telephone-fill me-1"></i>National Emergency:
                       </span>
                       {[["Police", "100"], ["Ambulance", "108"], ["Women Helpline", "1091"], ["Fire", "101"]].map(([lbl, num]) => (
-                        <span key={lbl} className="badge" style={{ background: "#dbeafe", color: "#1e40af", fontSize: "0.78rem" }}>
+                        <span key={lbl} className="badge" style={{ background: "#dbeafe", color: "#1E5FCC", fontSize: "0.78rem" }}>
                           {lbl}: <strong>{num}</strong>
                         </span>
                       ))}
@@ -366,7 +366,7 @@ export default function SafetyAlertsPage() {
                         <div className="card-body p-3">
                           <div className="d-flex justify-content-between align-items-start mb-2">
                             <div className="d-flex align-items-center gap-2">
-                              <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "#1e40af", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "#1E5FCC", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                 <i className="bi bi-building text-white"></i>
                               </div>
                               <div>
@@ -413,7 +413,7 @@ export default function SafetyAlertsPage() {
                         <h6 className="fw-bold mb-3" style={{ fontSize: "0.87rem" }}>Platform Stats</h6>
                         {[
                           { label: "Female Drivers", value: matchStats.femaleDrivers || 0, color: "#be185d", bg: "#fce7f3" },
-                          { label: "Male Drivers", value: matchStats.maleDrivers || 0, color: "#1d4ed8", bg: "#dbeafe" },
+                          { label: "Male Drivers", value: matchStats.maleDrivers || 0, color: "#1E5FCC", bg: "#dbeafe" },
                           { label: "Female Customers", value: matchStats.femaleCustomers || 0, color: "#be185d", bg: "#fce7f3" },
                           { label: "Prefer Female Driver", value: matchStats.preferFemaleCustomers || 0, color: "#7c3aed", bg: "#ede9fe" },
                         ].map(s => (
@@ -459,14 +459,14 @@ export default function SafetyAlertsPage() {
                         <div className="p-3 rounded mb-3" style={{ background: "#eff6ff", border: "1px solid #dbeafe" }}>
                           <div className="d-flex align-items-start justify-content-between gap-3">
                             <div className="flex-grow-1">
-                              <div className="fw-semibold mb-1" style={{ fontSize: "0.87rem", color: "#1d4ed8" }}>
+                              <div className="fw-semibold mb-1" style={{ fontSize: "0.87rem", color: "#1E5FCC" }}>
                                 <i className="bi bi-car-front me-2"></i>Vehicle-Type Priority Matching
                               </div>
                               <p className="mb-2" style={{ fontSize: "0.78rem", color: "#64748b" }}>
                                 Bike booking → Bike drivers first. Auto booking → Auto drivers. Car/SUV → Car drivers. Ensures right vehicle type is dispatched.
                               </p>
                               <div className="d-flex gap-1 flex-wrap">
-                                {[["🚲 Bike→Bike", "#dbeafe", "#1e40af"], ["🛺 Auto→Auto", "#dcfce7", "#15803d"], ["🚗 Car→Car", "#fef3c7", "#b45309"], ["🚐 SUV→SUV", "#ede9fe", "#7c3aed"], ["⚡ Temo→Temo", "#f0fdf4", "#16a34a"]].map(([t, bg, c]) => (
+                                {[["🚲 Bike→Bike", "#dbeafe", "#1E5FCC"], ["🛺 Auto→Auto", "#dcfce7", "#15803d"], ["🚗 Car→Car", "#fef3c7", "#b45309"], ["🚐 SUV→SUV", "#ede9fe", "#7c3aed"], ["⚡ Temo→Temo", "#f0fdf4", "#16a34a"]].map(([t, bg, c]) => (
                                   <span key={t} className="badge" style={{ background: bg, color: c, fontSize: "0.7rem" }}>{t}</span>
                                 ))}
                               </div>
@@ -500,7 +500,7 @@ export default function SafetyAlertsPage() {
                           <i className="bi bi-telephone-fill text-danger me-2"></i>Emergency Contact Numbers
                         </h6>
                         {[
-                          { key: "emergency_number", label: "Police", icon: "bi-shield-fill", color: "#1d4ed8" },
+                          { key: "emergency_number", label: "Police", icon: "bi-shield-fill", color: "#1E5FCC" },
                           { key: "ambulance_number", label: "Ambulance", icon: "bi-heart-pulse-fill", color: "#dc2626" },
                           { key: "women_helpline", label: "Women Helpline", icon: "bi-person-fill", color: "#be185d" },
                           { key: "company_sos_phone", label: "Company SOS", icon: "bi-building", color: "#7c3aed" },

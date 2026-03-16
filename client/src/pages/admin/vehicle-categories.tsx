@@ -137,7 +137,7 @@ export default function VehicleCategories() {
                             ) : v.icon ? (
                               <span style={{ fontSize: 20 }}>{v.icon}</span>
                             ) : (
-                              <i className={`bi ${defaultIcon(v.type)}`} style={{ color: "#2563eb", fontSize: 18 }}></i>
+                              <i className={`bi ${defaultIcon(v.type)}`} style={{ color: "#2F7BFF", fontSize: 18 }}></i>
                             )}
                           </div>
                           <div className="fw-medium">{v.name}</div>
