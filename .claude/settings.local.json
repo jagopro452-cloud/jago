@@ -12,7 +12,9 @@
       "Bash(sed -i \"s|static const String _prodUrl = ''https://oyster-app-9e9cd.ondigitalocean.app'';|static const String _prodUrl = ''https://jagopro.org'';|g\" \"c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/customer_app/lib/config/api_config.dart\")",
       "Bash(sed -i \"s|static const String _prodUrl = ''https://oyster-app-9e9cd.ondigitalocean.app'';|static const String _prodUrl = ''https://jagopro.org'';|g\" \"c:/Users/kiran/Downloads/jago-main/jago-main/flutter_apps/driver_app/lib/config/api_config.dart\")",
       "Bash(flutter pub:*)",
-      "Bash(flutter build:*)"
+      "Bash(flutter build:*)",
+      "Read(//c/Users/kiran/Downloads/jago-main/**)",
+      "Bash(awk 'NR>=2390 && NR<=2600 && /req\\\\.query/' /c/Users/kiran/Downloads/jago-main/server/routes.ts)"
     ]
   }
 }

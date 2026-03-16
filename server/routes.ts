@@ -904,10 +904,15 @@ async function ensureOperationalSchema() {
         start_date DATE,
         end_date DATE,
         payment_amount NUMERIC(10,2) DEFAULT 0,
+        gst_amount NUMERIC(10,2) DEFAULT 0,
+        insurance_amount NUMERIC(10,2) DEFAULT 0,
+        insurance_plan_id UUID,
+        plan_base_price NUMERIC(10,2) DEFAULT 0,
         payment_status VARCHAR(30) DEFAULT 'pending',
         rides_used INTEGER DEFAULT 0,
         is_active BOOLEAN DEFAULT true,
         razorpay_payment_id VARCHAR(100),
+        razorpay_order_id VARCHAR(120),
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -1239,6 +1244,16 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP;
     `).catch(() => {});
+    // ── Migration: add GST/insurance columns to driver_subscriptions ─────────
+    await rawDb.execute(rawSql`
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS insurance_amount NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS insurance_plan_id UUID;
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS plan_base_price NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(120);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_subscriptions_payment
+        ON driver_subscriptions(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+    `).catch(() => {});
     // ── SECURITY MIGRATIONS: Unique constraints for payment idempotency ───────
     // Prevents duplicate wallet credits even under concurrent requests
     await rawDb.execute(rawSql`
@@ -1256,7 +1271,7 @@ async function ensureOperationalSchema() {
         ON transactions(user_id, ref_transaction_id, transaction_type)
         WHERE transaction_type IN ('trip_earning','commission_deduction','ride_refund','admin_refund')
           AND ref_transaction_id IS NOT NULL;
-    `).catch(() => {}); -- best-effort: index may already exist
+    `).catch(() => {}); // best-effort: index may already exist
 
     // ── Razorpay webhook audit log ────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -7619,74 +7634,154 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/subscription/create-order", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { planId } = req.body;
+      const { planId, insurancePlanId } = req.body;
       if (!planId) return res.status(400).json({ message: "planId required" });
       const planR = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE id=${planId}::uuid AND is_active=true`);
       if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
       const plan = camelize(planR.rows[0]) as any;
-      const gstPct = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='sub_gst_pct'`);
-      const gst = parseFloat(plan.price) * (parseFloat((gstPct.rows[0] as any)?.value || "18") / 100);
-      const total = parseFloat((parseFloat(plan.price) + gst).toFixed(2));
+
+      // Paise-based arithmetic to prevent float drift
+      const planPricePaise = Math.round(parseFloat(plan.price) * 100);
+      const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='sub_gst_pct'`).catch(() => ({ rows: [] as any[] }));
+      const gstPct = parseFloat((gstPctR.rows[0] as any)?.value || "18");
+      const gstPaise = Math.round(planPricePaise * gstPct / 100);
+
+      // Optional insurance add-on
+      let insurancePaise = 0;
+      let insurancePlan: any = null;
+      if (insurancePlanId) {
+        const insR = await rawDb.execute(rawSql`SELECT * FROM insurance_plans WHERE id=${insurancePlanId}::uuid AND is_active=true`).catch(() => ({ rows: [] as any[] }));
+        if (insR.rows.length) {
+          insurancePlan = camelize(insR.rows[0]) as any;
+          insurancePaise = Math.round(parseFloat(insurancePlan.premiumMonthly || insurancePlan.premiumDaily * 30 || 0) * 100);
+        }
+      }
+      const totalPaise = planPricePaise + gstPaise + insurancePaise;
+      const total = totalPaise / 100;
+      const planFee = planPricePaise / 100;
+      const gstAmt = gstPaise / 100;
+      const insuranceAmt = insurancePaise / 100;
+
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({
-        amount: Math.round(total * 100),
+        amount: totalPaise, // already in paise
         currency: "INR",
         receipt: `sub_${Date.now().toString(36)}`,
         notes: { driver_id: driver.id, plan_id: planId, plan_name: plan.name }
       });
-      // Persist pending record so verify-payment can cross-check amount from DB
+      // Persist pending record with full breakdown so verify can cross-check
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${driver.id}::uuid, ${total}, 'subscription', ${order.id}, 'pending',
-                ${'Subscription: ' + plan.name + ' (' + plan.durationDays + ' days)'})
+                ${'Subscription: ' + plan.name + ' | Base:₹' + planFee + ' GST:₹' + gstAmt + (insuranceAmt > 0 ? ' Ins:₹' + insuranceAmt : '')})
         ON CONFLICT DO NOTHING
-      `).catch(() => {});
-      res.json({ order, keyId, amount: total, planFee: parseFloat(plan.price), gst, plan });
+      `).catch((e: any) => console.error('[SUB-CREATE-ORDER]', e.message));
+      res.json({
+        order, keyId,
+        breakdown: { planFee, gst: gstAmt, insurance: insuranceAmt, total, gstPct },
+        insurancePlanId: insurancePlanId || null,
+        insurancePlan: insurancePlan || null,
+        plan,
+        // Legacy fields kept for backward compat
+        amount: total, planFee, gst: gstAmt,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.post("/api/app/driver/subscription/verify-payment", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId } = req.body;
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId, insurancePlanId } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !planId) return res.status(400).json({ message: "Missing required fields" });
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      // Timing-safe HMAC verification — prevents timing-oracle attacks
+      // Timing-safe HMAC
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
-      // Verify amount against the pending record we stored at create-order time
-      const pendingRec = await rawDb.execute(rawSql`
-        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
+
+      // SECURITY: Atomic idempotency — mark driver_payment as completed FIRST
+      // Second call will find status='completed' and return 409 immediately
+      const atomicMark = await rawDb.execute(rawSql`
+        UPDATE driver_payments
+        SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending'
+        RETURNING amount, description
       `);
-      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
+      if (!atomicMark.rows.length) return res.status(409).json({ message: "Subscription payment already processed", alreadyActivated: true });
+
+      const totalPaid = Math.round(parseFloat((atomicMark.rows[0] as any).amount) * 100) / 100;
+
       const planR = await rawDb.execute(rawSql`SELECT * FROM subscription_plans WHERE id=${planId}::uuid`);
       if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
       const plan = camelize(planR.rows[0]) as any;
+      const planBasePaise = Math.round(parseFloat(plan.price) * 100);
+      const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='sub_gst_pct'`).catch(() => ({ rows: [] as any[] }));
+      const gstPct = parseFloat((gstPctR.rows[0] as any)?.value || "18");
+      const gstPaise = Math.round(planBasePaise * gstPct / 100);
+      const gstAmt = gstPaise / 100;
+      const planBase = planBasePaise / 100;
+
+      // Optional insurance
+      let insuranceAmt = 0;
+      if (insurancePlanId) {
+        const insR = await rawDb.execute(rawSql`SELECT premium_monthly, premium_daily FROM insurance_plans WHERE id=${insurancePlanId}::uuid AND is_active=true`).catch(() => ({ rows: [] as any[] }));
+        if (insR.rows.length) {
+          const ins = insR.rows[0] as any;
+          insuranceAmt = Math.round(parseFloat(ins.premium_monthly || ins.premium_daily * 30 || 0) * 100) / 100;
+        }
+      }
+
       const startDate = new Date().toISOString().split("T")[0];
       const endDate = new Date(Date.now() + plan.durationDays * 86400000).toISOString().split("T")[0];
-      await rawDb.execute(rawSql`UPDATE driver_subscriptions SET is_active=false WHERE driver_id=${driver.id}::uuid`);
+
+      // Deactivate old subscriptions then insert new one (with unique constraint on razorpay_payment_id)
+      await rawDb.execute(rawSql`UPDATE driver_subscriptions SET is_active=false WHERE driver_id=${driver.id}::uuid AND is_active=true`);
       const sub = await rawDb.execute(rawSql`
-        INSERT INTO driver_subscriptions (driver_id, plan_id, start_date, end_date, payment_amount, payment_status, is_active)
-        VALUES (${driver.id}::uuid, ${planId}::uuid, ${startDate}, ${endDate}, ${plan.price}, 'paid', true)
+        INSERT INTO driver_subscriptions
+          (driver_id, plan_id, start_date, end_date,
+           payment_amount, plan_base_price, gst_amount, insurance_amount, insurance_plan_id,
+           payment_status, is_active, razorpay_payment_id, razorpay_order_id)
+        VALUES
+          (${driver.id}::uuid, ${planId}::uuid, ${startDate}, ${endDate},
+           ${totalPaid}, ${planBase}, ${gstAmt}, ${insuranceAmt}, ${insurancePlanId || null}::uuid,
+           'paid', true, ${razorpayPaymentId}, ${razorpayOrderId})
+        ON CONFLICT (razorpay_payment_id) DO UPDATE SET is_active=true
         RETURNING *
       `);
-      // Mark the pending driver_payment record as completed (created at create-order time)
-      await rawDb.execute(rawSql`
-        UPDATE driver_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
-        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid
-      `).catch(() => {});
+
+      // Record company revenue with full breakdown
+      const breakdown = { planName: plan.name, planFee: planBase, gst: gstAmt, insurance: insuranceAmt, total: totalPaid, durationDays: plan.durationDays, paymentId: razorpayPaymentId };
       await rawDb.execute(rawSql`
         INSERT INTO admin_revenue (driver_id, amount, revenue_type, breakdown)
-        VALUES (${driver.id}::uuid, ${plan.price}, 'subscription_purchase', ${JSON.stringify({ planName: plan.name, durationDays: plan.durationDays, paymentId: razorpayPaymentId })}::jsonb)
-      `).catch(() => {});
-      res.json({ success: true, subscription: camelize(sub.rows[0]), plan, validUntil: endDate, message: `Subscription activated until ${endDate}` });
+        VALUES (${driver.id}::uuid, ${totalPaid}, 'subscription_purchase', ${JSON.stringify(breakdown)}::jsonb)
+        ON CONFLICT DO NOTHING
+      `).catch((e: any) => console.error('[SUB-ADMIN-REV]', e.message));
+
+      // Transaction record in driver transactions (so driver sees "subscription" in payment history)
+      await rawDb.execute(rawSql`
+        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+        VALUES (${driver.id}::uuid, ${totalPaid}, 'subscription_payment', 'completed',
+                ${'Subscription: ' + plan.name + ' valid till ' + endDate + ' | Fee:₹' + planBase + ' GST:₹' + gstAmt})
+        ON CONFLICT DO NOTHING
+      `).catch((e: any) => console.error('[SUB-DRV-PAY]', e.message));
+
+      console.log(`[SUBSCRIPTION] Driver ${driver.id} activated plan "${plan.name}" ₹${totalPaid} (base:${planBase} gst:${gstAmt} ins:${insuranceAmt}) valid till ${endDate}`);
+      res.json({
+        success: true,
+        subscription: camelize(sub.rows[0]),
+        plan,
+        validUntil: endDate,
+        daysLeft: plan.durationDays,
+        totalPaid,
+        breakdown: { planFee: planBase, gst: gstAmt, insurance: insuranceAmt, total: totalPaid },
+        message: `Subscription activated! Valid until ${endDate}`,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
