@@ -1299,6 +1299,37 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_driver_locations_lat_lng      ON driver_locations(lat, lng) WHERE is_online = true;
     `).catch(() => {});
 
+    // ── Feature Flags table ──────────────────────────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        key VARCHAR(60) PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        description TEXT DEFAULT '',
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO feature_flags (key, enabled, description) VALUES
+        ('wallet',        true,  'Customer wallet top-up and payment'),
+        ('rewards',       true,  'Coins and spin wheel rewards'),
+        ('subscriptions', true,  'Driver subscription plans'),
+        ('intercity',     false, 'Intercity travel service'),
+        ('carpool',       false, 'Car pool / ride sharing'),
+        ('parcel',        true,  'Parcel delivery service'),
+        ('voice_booking', true,  'AI voice booking'),
+        ('offers',        true,  'Promo offers and coupons')
+      ON CONFLICT (key) DO NOTHING;
+    `).catch(() => {});
+
+    // ── Banners table: add display_order if missing ──────────────────────────
+    await rawDb.execute(rawSql`
+      ALTER TABLE banners ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
+    `).catch(() => {});
+
+    // ── Platform services: add icon_url + banner_url for uploaded images ──────
+    await rawDb.execute(rawSql`
+      ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS icon_url TEXT;
+      ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS banner_url TEXT;
+    `).catch(() => {});
+
   } catch (e: any) {
     console.error("[schema] ensureOperationalSchema error:", formatDbError(e));
   }
@@ -3461,6 +3492,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await rawDb.execute(rawSql`DELETE FROM banners WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // App: active banners for home screen carousel
+  app.get("/api/app/banners", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT id, title, image_url, redirect_url, zone, display_order
+        FROM banners
+        WHERE is_active = true
+        ORDER BY display_order ASC, created_at DESC
+        LIMIT 10
+      `);
+      res.json({ banners: r.rows });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // App: get feature flags
+  app.get("/api/app/feature-flags", async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key, enabled, description FROM feature_flags`);
+      const flags: Record<string, boolean> = {};
+      (r.rows as any[]).forEach(row => { flags[row.key] = row.enabled; });
+      res.json({ flags });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Admin: toggle feature flag
+  app.patch("/api/feature-flags/:key", requireAdminAuth, async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { enabled } = req.body;
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO feature_flags (key, enabled, updated_at)
+        VALUES (${key}, ${!!enabled}, NOW())
+        ON CONFLICT (key) DO UPDATE SET enabled=${!!enabled}, updated_at=NOW()
+        RETURNING *
+      `);
+      res.json((r.rows as any[])[0]);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Admin: list all feature flags
+  app.get("/api/feature-flags", requireAdminAuth, async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT * FROM feature_flags ORDER BY key`);
+      res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
