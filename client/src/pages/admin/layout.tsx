@@ -204,6 +204,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "API Reference", icon: "bi-code-square", href: "/admin/api-docs" },
       { label: "App UI Design", icon: "bi-phone-fill", href: "/admin/app-design" },
+      { label: "Voice Commands", icon: "bi-mic-fill", href: "/admin/voice-commands" },
     ],
   },
   {

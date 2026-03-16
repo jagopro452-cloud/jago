@@ -228,25 +228,44 @@ async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
       max_tokens: 256,
       messages: [{
         role: "user",
-        content: `You are a ride-booking assistant for JAGO app in India. Extract intent from the user's voice input.
+        content: `You are a multi-service booking assistant for JAGO mobility app in India.
+JAGO offers: ride-hailing (Bike/Auto/Car), parcel logistics, and intercity carpool.
+Extract the booking intent from the user's voice command.
 
 User said: "${text}"
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "intent": "book_ride" | "send_parcel" | "cancel_ride" | "check_status" | "unknown",
-  "pickup": "exact location name or null",
-  "destination": "exact location name or null",
-  "vehicleType": "Bike" | "Auto" | "Mini Auto" | "Sedan" | "SUV" | "Bike Parcel" | null,
+  "intent": "book_ride" | "send_parcel" | "book_intercity" | "cancel_ride" | "check_status" | "unknown",
+  "pickup": "exact pickup location name or null",
+  "destination": "exact destination location name or null",
+  "vehicleType": "Bike" | "Auto" | "Mini Auto" | "Sedan" | "SUV" | "Car Pool" | "Bike Parcel" | "Mini Truck" | "Pickup Truck" | null,
   "confidence": 0.0-1.0
 }
 
-Rules:
-- Support Telugu, Hindi, English and mixed speech
-- Extract pickup and destination as place names (not coordinates)
-- If parcel/delivery mentioned → send_parcel intent, Bike Parcel vehicle
-- If no clear pickup/destination → return null for those fields
-- confidence: 0.9 if clear, 0.7 if partial, 0.4 if unclear`
+Intent rules (apply in order):
+1. send_parcel → if user says: parcel, courier, delivery, package, send, pampali, pampu, cargo, truck delivery, mini truck, pickup truck, goods delivery, furniture delivery, move house
+2. book_intercity → if user says: outstation, intercity, bangalore, hyderabad to [city], [city] to [city], long distance, overnight, highway trip, carpool seat
+3. book_ride → all other ride requests: bike, auto, cab, car, rickshaw, lift, ride, drop
+4. unknown → if none of the above is clear
+
+Vehicle type rules:
+- Bike Parcel → for small parcels ≤10kg, documents
+- Mini Truck → for furniture, appliances, medium goods, tata ace
+- Pickup Truck → for heavy goods, construction, commercial
+- Car Pool → if user says "carpool", "share cab", "pool", "seat kavali"
+- Bike → "bike ride", "motor", "two-wheeler ride" (NOT parcel)
+- Auto → "auto", "autorickshaw", "temo", "three-wheeler"
+- Sedan/SUV → "car", "cab", "sedan", "suv"
+
+Language support:
+- Telugu: kavali=need, pampali=send, ride=ride, parcel=parcel
+- Hindi: chahiye=need, bhejo=send, savari=ride
+- Mixed/Hinglish is normal — handle it
+
+Special: if pickup is clearly the current user location (like "here", "current location", "yahan", "ikada") → return pickup=null (app uses GPS).
+If no clear destination → return destination=null.
+confidence: 0.9 if intent+locations clear, 0.7 if partial, 0.4 if unclear`
       }],
     });
     const raw = (msg.content[0] as any).text?.trim() || "";
@@ -278,10 +297,14 @@ type AssistantVoiceIntent = {
 function mapServiceSuggestionToVehicle(serviceSuggestion?: string | null): string | null {
   if (!serviceSuggestion) return null;
   const s = String(serviceSuggestion).toLowerCase();
+  if (s.includes("pickup truck") || s.includes("pickup_truck")) return "Pickup Truck";
+  if (s.includes("mini truck") || s.includes("tata ace") || s.includes("tata_ace")) return "Mini Truck";
   if (s.includes("parcel")) return "Bike Parcel";
-  if (s.includes("bike")) return "Bike";
-  if (s.includes("auto")) return "Mini Auto";
-  if (s.includes("car")) return "Car";
+  if (s.includes("pool") || s.includes("carpool")) return "Car Pool";
+  if (s.includes("bike") || s.includes("moto")) return "Bike";
+  if (s.includes("auto") || s.includes("temo")) return "Mini Auto";
+  if (s.includes("suv") || s.includes("innova")) return "SUV";
+  if (s.includes("car") || s.includes("cab") || s.includes("sedan")) return "Car";
   return null;
 }
 
@@ -8963,6 +8986,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── VOICE BOOKING: AI-Enhanced NLP Intent Parser ──────────────────────────
+  // In-memory voice log ring buffer (last 200 requests)
+  const voiceLogs: Array<{ id: number; ts: string; text: string; intent: string; pickup: string | null; destination: string | null; vehicleType: string | null; parser: string; success: boolean }> = [];
+  let voiceLogSeq = 0;
+
   app.post("/api/app/voice-booking/parse", authApp, async (req, res) => {
     try {
       const { text, currentLat, currentLng, currentAddress } = req.body;
@@ -9015,9 +9042,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         [pickupGeo, destGeo] = await Promise.all(promises);
       }
 
-      res.json({
+      const responseData = {
         success: parsed.intent !== "unknown",
-        intent: parsed.intent,
+        intent: parsed.intent || "book_ride",
         confidence: parsed.confidence,
         pickup: pickupGeo?.address || parsed.pickup,
         destination: destGeo?.address || parsed.destination,
@@ -9026,14 +9053,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destLat: destGeo?.lat || null,
         destLng: destGeo?.lng || null,
         vehicleName,
+        vehicleType: parsed.vehicleType || null,
         vehicleCategoryId,
         entities: parsed.entities,
         parserSource,
         originalText: text,
+      };
+
+      // Log to ring buffer
+      voiceLogs.push({
+        id: ++voiceLogSeq,
+        ts: new Date().toISOString(),
+        text,
+        intent: responseData.intent,
+        pickup: responseData.pickup || null,
+        destination: responseData.destination || null,
+        vehicleType: responseData.vehicleType,
+        parser: parserSource,
+        success: responseData.success,
       });
+      if (voiceLogs.length > 200) voiceLogs.shift();
+
+      res.json(responseData);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
     }
+  });
+
+  // ── ADMIN: Voice booking logs ───────────────────────────────────────────────
+  app.get("/api/admin/voice-logs", async (_req, res) => {
+    const logs = [...voiceLogs].reverse();
+    const totalRequests = voiceLogs.length;
+    const successCount = voiceLogs.filter(l => l.success).length;
+    const intentCounts = voiceLogs.reduce((acc, l) => {
+      acc[l.intent] = (acc[l.intent] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    res.json({
+      logs,
+      stats: {
+        totalRequests,
+        successCount,
+        successRate: totalRequests ? Math.round((successCount / totalRequests) * 100) : 0,
+        intentCounts,
+      },
+    });
   });
 
   // ── SHARED: Nearby drivers (for customer map) ──────────────────────────────

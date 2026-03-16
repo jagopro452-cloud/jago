@@ -1,13 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../../config/jago_theme.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import 'parcel_booking_screen.dart';
+import 'intercity_booking_screen.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAGO AI Voice Booking — Multi-service voice assistant
+// Supports: Ride (Bike/Auto/Car) · Parcel Logistics · Intercity Carpool
+// Languages: EN / TE / HI / TA / KN / ML / MR / BN / UR
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _LangOption {
   final String name;
@@ -19,16 +29,21 @@ class _LangOption {
 }
 
 const _supportedLangs = [
-  _LangOption('English',   'en_IN', 'en-IN', '🇮🇳', 'Say: Book a bike from JNTU to Hitech City'),
-  _LangOption('Telugu',   'te_IN', 'te-IN', '🇮🇳', 'చెప్పండి: బైక్ JNTU నుండి Hitech City కి'),
-  _LangOption('Hindi',    'hi_IN', 'hi-IN', '🇮🇳', 'बोलें: JNTU से Hitech City के लिए बाइक'),
-  _LangOption('Tamil',    'ta_IN', 'ta-IN', '🇮🇳', 'சொல்லுங்கள்: JNTU இலிருந்து Hitech City க்கு'),
-  _LangOption('Kannada',  'kn_IN', 'kn-IN', '🇮🇳', 'ಹೇಳಿ: JNTU ನಿಂದ Hitech City ವರೆಗೆ'),
-  _LangOption('Malayalam','ml_IN', 'ml-IN', '🇮🇳', 'പറയൂ: JNTU മുതൽ Hitech City വരെ'),
-  _LangOption('Marathi',  'mr_IN', 'mr-IN', '🇮🇳', 'सांगा: JNTU वरून Hitech City ला'),
-  _LangOption('Bengali',  'bn_IN', 'bn-IN', '🇮🇳', 'বলুন: JNTU থেকে Hitech City পর্যন্ত'),
-  _LangOption('Urdu',     'ur_IN', 'ur-IN', '🇮🇳', 'کہیں: JNTU سے Hitech City تک'),
+  _LangOption('English',   'en_IN', 'en-IN', '🇮🇳', 'Try: "Bike to Hitech City" or "Send parcel to Ameerpet"'),
+  _LangOption('Telugu',   'te_IN', 'te-IN', '🇮🇳', 'చెప్పండి: "బైక్ హైటెక్ సిటీ కి" లేదా "పార్సెల్ పంపాలి"'),
+  _LangOption('Hindi',    'hi_IN', 'hi-IN', '🇮🇳', 'बोलें: "बाइक हाईटेक सिटी तक" या "पार्सल भेजना है"'),
+  _LangOption('Tamil',    'ta_IN', 'ta-IN', '🇮🇳', 'சொல்லுங்கள்: "பைக் ஹைடெக் சிட்டி" அல்லது "பார்சல் அனுப்ப வேண்டும்"'),
+  _LangOption('Kannada',  'kn_IN', 'kn-IN', '🇮🇳', 'ಹೇಳಿ: "ಬೈಕ್ ಹೈಟೆಕ್ ಸಿಟಿ" ಅಥವಾ "ಪಾರ್ಸೆಲ್ ಕಳುಹಿಸಬೇಕು"'),
+  _LangOption('Malayalam','ml_IN', 'ml-IN', '🇮🇳', 'പറയൂ: "ബൈക്ക് ഹൈടെക് സിറ്റി" അല്ലെങ്കിൽ "പാർസൽ അയക്കണം"'),
+  _LangOption('Marathi',  'mr_IN', 'mr-IN', '🇮🇳', 'सांगा: "बाइक हायटेक सिटी" किंवा "पार्सल पाठवायचा आहे"'),
+  _LangOption('Bengali',  'bn_IN', 'bn-IN', '🇮🇳', 'বলুন: "বাইক হাইটেক সিটি" বা "পার্সেল পাঠাতে হবে"'),
+  _LangOption('Urdu',     'ur_IN', 'ur-IN', '🇮🇳', 'کہیں: "بائیک ہائی ٹیک سٹی" یا "پارسل بھیجنا ہے"'),
 ];
+
+// Service intent types returned by the server
+const _intentRide       = 'book_ride';
+const _intentParcel     = 'send_parcel';
+const _intentIntercity  = 'book_intercity';
 
 class VoiceBookingScreen extends StatefulWidget {
   const VoiceBookingScreen({super.key});
@@ -48,8 +63,8 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   String _recognizedText = '';
   String _statusText = 'Tap the mic to start';
   Map<String, dynamic>? _parsedIntent;
+  String _detectedService = ''; // 'ride' | 'parcel' | 'intercity'
 
-  // All fares returned from server, plus the selected index
   List<Map<String, dynamic>> _allFares = [];
   int _selectedFareIndex = 0;
   double _distanceKm = 0;
@@ -62,12 +77,6 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   late AnimationController _pulseCtrl;
   late AnimationController _waveCtrl;
-
-  static const Color _bg      = JT.textPrimary;
-  static const Color _surface = JT.surface;
-  static const Color _blue    = Color(0xFF1B4DCC);
-  static const Color _yellow  = Color(0xFFFBBC04);
-  static const Color _primary  = JT.primary;
 
   // ─── Life-cycle ──────────────────────────────────────────────────────────
 
@@ -91,7 +100,6 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       ).timeout(const Duration(seconds: 8));
       if (!mounted) return;
       setState(() { _currentLat = pos.latitude; _currentLng = pos.longitude; });
-      // Reverse geocode for display
       final key = ApiConfig.googleMapsApiKey;
       if (key.isNotEmpty) {
         final r = await http.get(Uri.parse(
@@ -149,7 +157,6 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     _speakWelcome();
   }
 
-  // Auto-detect language from device locale
   void _autoDetectLanguage() {
     final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
     final langCode = deviceLocale.languageCode;
@@ -157,36 +164,21 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     if (match.isNotEmpty) setState(() => _selectedLang = match.first);
   }
 
-  // Heuristic language detection from the recognized text's Unicode script
   _LangOption _detectLangFromText(String text) {
-    // Telugu: U+0C00–U+0C7F
-    if (text.runes.any((r) => r >= 0x0C00 && r <= 0x0C7F)) {
+    if (text.runes.any((r) => r >= 0x0C00 && r <= 0x0C7F))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('te'), orElse: () => _selectedLang);
-    }
-    // Devanagari (Hindi/Marathi): U+0900–U+097F
-    if (text.runes.any((r) => r >= 0x0900 && r <= 0x097F)) {
+    if (text.runes.any((r) => r >= 0x0900 && r <= 0x097F))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('hi'), orElse: () => _selectedLang);
-    }
-    // Tamil: U+0B80–U+0BFF
-    if (text.runes.any((r) => r >= 0x0B80 && r <= 0x0BFF)) {
+    if (text.runes.any((r) => r >= 0x0B80 && r <= 0x0BFF))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('ta'), orElse: () => _selectedLang);
-    }
-    // Kannada: U+0C80–U+0CFF
-    if (text.runes.any((r) => r >= 0x0C80 && r <= 0x0CFF)) {
+    if (text.runes.any((r) => r >= 0x0C80 && r <= 0x0CFF))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('kn'), orElse: () => _selectedLang);
-    }
-    // Malayalam: U+0D00–U+0D7F
-    if (text.runes.any((r) => r >= 0x0D00 && r <= 0x0D7F)) {
+    if (text.runes.any((r) => r >= 0x0D00 && r <= 0x0D7F))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('ml'), orElse: () => _selectedLang);
-    }
-    // Bengali: U+0980–U+09FF
-    if (text.runes.any((r) => r >= 0x0980 && r <= 0x09FF)) {
+    if (text.runes.any((r) => r >= 0x0980 && r <= 0x09FF))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('bn'), orElse: () => _selectedLang);
-    }
-    // Arabic (Urdu): U+0600–U+06FF
-    if (text.runes.any((r) => r >= 0x0600 && r <= 0x06FF)) {
+    if (text.runes.any((r) => r >= 0x0600 && r <= 0x06FF))
       return _supportedLangs.firstWhere((l) => l.localeId.startsWith('ur'), orElse: () => _selectedLang);
-    }
     return _selectedLang;
   }
 
@@ -201,7 +193,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   Future<void> _speakWelcome() async {
     await Future.delayed(const Duration(milliseconds: 800));
-    await _speak(_selectedLang.welcomeText);
+    await _speak('Welcome to JAGO Voice Assistant. You can book a ride, send a parcel, or book an intercity trip. Tap the mic and speak.');
   }
 
   // ─── Language picker ─────────────────────────────────────────────────────
@@ -209,41 +201,37 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   Future<void> _selectLanguage() async {
     final chosen = await showModalBottomSheet<_LangOption>(
       context: context,
-      backgroundColor: _surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: JT.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 40, height: 4,
-            margin: const EdgeInsets.only(top: 12, bottom: 16),
-            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
           ),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text('Choose Language',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: Text('Choose Language', style: GoogleFonts.poppins(
+                color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
           ),
           ..._supportedLangs.map((lang) {
             final available = _availableLocales.any(
                 (l) => l.localeId.startsWith(lang.localeId.substring(0, 2)));
             return ListTile(
               leading: Text(lang.flag, style: const TextStyle(fontSize: 24)),
-              title: Text(lang.name,
-                  style: TextStyle(
-                      color: available ? Colors.white : Colors.white38,
-                      fontWeight: FontWeight.w600)),
-              trailing: available
-                  ? lang == _selectedLang
-                      ? const Icon(Icons.check_circle, color: _primary)
-                      : null
-                  : const Text('Not supported',
-                      style: TextStyle(color: Colors.white24, fontSize: 10)),
+              title: Text(lang.name, style: GoogleFonts.poppins(
+                  color: available ? JT.textPrimary : JT.textSecondary,
+                  fontWeight: FontWeight.w600)),
+              trailing: lang == _selectedLang
+                  ? const Icon(Icons.check_circle, color: JT.primary)
+                  : available ? null
+                  : Text('Not available', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 10)),
               onTap: available ? () => Navigator.pop(context, lang) : null,
             );
           }),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -253,10 +241,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     }
   }
 
-  // ─── Listening (first cycle — intent capture) ────────────────────────────
+  // ─── Listening ────────────────────────────────────────────────────────────
 
   Future<void> _startListening() async {
     if (!_speechAvailable) { _showSnack('Microphone not available'); return; }
+    HapticFeedback.mediumImpact();
     await _tts.stop();
     setState(() {
       _isListening = true;
@@ -264,11 +253,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       _recognizedText = '';
       _parsedIntent = null;
       _allFares = [];
+      _detectedService = '';
       _statusText = 'Listening… speak now';
     });
     final localeAvailable = _availableLocales
         .any((l) => l.localeId.startsWith(_selectedLang.localeId.substring(0, 2)));
-    final localeToUse = localeAvailable ? _selectedLang.localeId : 'en_IN';
     await _speech.listen(
       onResult: (r) {
         if (mounted) setState(() {
@@ -276,7 +265,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           _statusText = 'Heard: "$_recognizedText"';
         });
       },
-      localeId: localeToUse,
+      localeId: localeAvailable ? _selectedLang.localeId : 'en_IN',
       listenFor: const Duration(seconds: 12),
       pauseFor: const Duration(seconds: 3),
     );
@@ -295,8 +284,6 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     }
   }
 
-  // ─── Listening (second cycle — confirmation) ─────────────────────────────
-
   Future<void> _listenForConfirmation() async {
     if (!_speechAvailable || !mounted) return;
     await Future.delayed(const Duration(milliseconds: 600));
@@ -309,7 +296,6 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     });
     final localeAvailable = _availableLocales
         .any((l) => l.localeId.startsWith(_selectedLang.localeId.substring(0, 2)));
-    final localeToUse = localeAvailable ? _selectedLang.localeId : 'en_IN';
     await _speech.listen(
       onResult: (r) {
         if (mounted) setState(() {
@@ -317,76 +303,56 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           _statusText = 'Heard: "$_recognizedText"';
         });
       },
-      localeId: localeToUse,
+      localeId: localeAvailable ? _selectedLang.localeId : 'en_IN',
       listenFor: const Duration(seconds: 10),
       pauseFor: const Duration(seconds: 3),
     );
   }
 
-  // ─── Process voice confirmation ───────────────────────────────────────────
+  // ─── Voice confirmation processing ───────────────────────────────────────
 
   void _processVoiceConfirmation(String text) {
-    setState(() {
-      _isListening = false;
-      _awaitingConfirmation = false;
-    });
+    setState(() { _isListening = false; _awaitingConfirmation = false; });
     final lower = text.toLowerCase().trim();
+    if (_tryVehicleSwitch(lower)) return;
 
-    // Check for vehicle switch first (e.g. "auto", "car", "bike")
-    final vehicleSwitched = _tryVehicleSwitch(lower);
-    if (vehicleSwitched) return;
-
-    // Confirmation words in all supported languages
     const confirmWords = [
-      'yes', 'confirm', 'book', 'okay', 'ok', 'sure', 'proceed',
-      'go', 'accept', 'done', 'correct', 'right', 'ha', 'haan',
-      // Telugu
-      'అవును', 'బుక్',
-      // Hindi
-      'हाँ', 'बुक', 'हां',
-      // Tamil
+      'yes', 'confirm', 'book', 'okay', 'ok', 'sure', 'proceed', 'go', 'accept',
+      'done', 'correct', 'right', 'ha', 'haan',
+      'అవును', 'బుక్', 'హాఁ', 'హా',
+      'हाँ', 'बुक', 'हां', 'हा',
       'ஆம்', 'சரி',
-      // Kannada
       'ಹೌದು', 'ಸರಿ',
-      // Malayalam
       'ശരി', 'അതെ',
-      // Bengali
       'হ্যাঁ', 'ঠিক',
-      // Marathi
-      'हो', 'बुक',
+      'हो',
+    ];
+    const cancelWords = [
+      'no', 'cancel', 'stop', 'nahi', 'nope', 'back',
+      'illa', 'vendam', 'వద్దు', 'నో', 'వద్దు',
+      'वेण्डाम', 'نهیں', 'नहीं',
     ];
 
-    // Cancel words
-    const cancelWords = ['no', 'cancel', 'stop', 'nahi', 'nope', 'back',
-      'illa', 'vendam', 'வேண்டாம்', 'వద్దు', 'नहीं'];
-
-    final isConfirm = confirmWords.any((w) => lower.contains(w));
-    final isCancel = cancelWords.any((w) => lower.contains(w));
-
-    if (isCancel) {
-      setState(() => _statusText = 'Booking cancelled. Tap mic to try again.');
+    if (cancelWords.any((w) => lower.contains(w))) {
+      setState(() => _statusText = 'Cancelled. Tap the mic to try again.');
       _speak('Booking cancelled.');
       return;
     }
-
-    if (isConfirm) {
+    if (confirmWords.any((w) => lower.contains(w))) {
       _speak('Perfect! Booking your ride now.').then((_) => _confirmBooking());
       return;
     }
-
-    // Didn't understand
     setState(() => _statusText = 'Say "yes" to confirm or "no" to cancel.');
-    _speak('Say yes to confirm or no to cancel.').then((_) => _listenForConfirmation());
+    _speak('Say yes to confirm, or no to cancel.').then((_) => _listenForConfirmation());
   }
 
-  // Try to switch vehicle by voice
   bool _tryVehicleSwitch(String lower) {
     if (_allFares.isEmpty) return false;
     const vehicleMap = {
       'bike': ['bike', 'bicycle', 'motor'],
       'auto': ['auto', 'autorickshaw', 'rickshaw', 'temo'],
-      'car': ['car', 'cab', 'sedan'],
-      'suv': ['suv', 'innova', 'xylo'],
+      'car': ['car', 'cab', 'sedan', 'mini'],
+      'suv': ['suv', 'innova'],
     };
     for (final entry in vehicleMap.entries) {
       if (entry.value.any((k) => lower.contains(k))) {
@@ -413,16 +379,12 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   // ─── Parse intent from server ─────────────────────────────────────────────
 
   Future<void> _parseIntent(String text) async {
-    // Detect language from script of recognized text and update TTS lang
     final detectedLang = _detectLangFromText(text);
     if (detectedLang != _selectedLang && mounted) {
       setState(() => _selectedLang = detectedLang);
     }
+    setState(() { _loading = true; _statusText = '🧠 Understanding your request…'; });
 
-    setState(() {
-      _loading = true;
-      _statusText = '🧠 Understanding your request…';
-    });
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.post(
@@ -435,48 +397,82 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           'currentAddress': _currentAddress,
         }),
       ).timeout(const Duration(seconds: 12));
+
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (!mounted) return;
+
+        final intent = data['intent']?.toString() ?? _intentRide;
         setState(() {
           _parsedIntent = data;
-          _statusText = '📍 Finding locations…';
+          _detectedService = intent == _intentParcel ? 'parcel'
+              : intent == _intentIntercity ? 'intercity' : 'ride';
         });
+
+        // ── Parcel intent → navigate to ParcelBookingScreen ──────────────
+        if (intent == _intentParcel) {
+          if (mounted) setState(() => _loading = false);
+          await _speak('Sure! Opening parcel booking for you.');
+          if (mounted) {
+            Navigator.pushReplacement(context, MaterialPageRoute(
+              builder: (_) => ParcelBookingScreen(
+                pickupAddress: _currentAddress,
+                pickupLat: _currentLat ?? 17.3850,
+                pickupLng: _currentLng ?? 78.4867,
+              ),
+            ));
+          }
+          return;
+        }
+
+        // ── Intercity intent → navigate to IntercityBookingScreen ─────────
+        if (intent == _intentIntercity) {
+          if (mounted) setState(() => _loading = false);
+          await _speak('Opening intercity booking for you.');
+          if (mounted) {
+            Navigator.pushReplacement(context, MaterialPageRoute(
+              builder: (_) => const IntercityBookingScreen(),
+            ));
+          }
+          return;
+        }
+
+        // ── Ride intent → fetch all fares ─────────────────────────────────
         if (data['pickup'] != null && data['destination'] != null) {
+          setState(() => _statusText = '📍 Finding locations…');
           await _getAllFares(data);
         } else {
-          if (mounted) setState(() => _statusText = '❓ Could not understand. Try: "Bike from JNTU to Hitech City"');
+          setState(() => _statusText = '❓ Please say pickup and destination clearly.\nExample: "Bike from JNTU to Hitech City"');
           await _speak('Sorry, I could not understand. Please say the pickup and destination clearly.');
         }
       } else {
         final err = res.statusCode == 503
-          ? 'Maps service unavailable. Check Google Maps API key.'
-          : 'Server error (${res.statusCode}). Please try again.';
-        if (mounted) setState(() => _statusText = err);
+            ? 'Voice service unavailable. Check your connection.'
+            : 'Server error (${res.statusCode}). Please try again.';
+        setState(() => _statusText = err);
         await _speak('Sorry, something went wrong. Please try again.');
       }
     } on TimeoutException {
-      if (mounted) setState(() => _statusText = '⏱ Request timed out. Check internet connection.');
+      setState(() => _statusText = '⏱ Request timed out. Check internet connection.');
       await _speak('Request timed out. Please check your connection and try again.');
     } catch (e) {
-      if (mounted) setState(() => _statusText = '⚠️ Error: ${e.toString().replaceAll('Exception: ', '')}');
+      setState(() => _statusText = '⚠️ Error: ${e.toString().replaceAll('Exception: ', '')}');
       await _speak('Sorry, an error occurred. Please try again.');
     }
     if (mounted) setState(() => _loading = false);
   }
 
-  // ─── Get ALL vehicle fares ────────────────────────────────────────────────
+  // ─── Fetch all ride fares ─────────────────────────────────────────────────
 
   Future<void> _getAllFares(Map<String, dynamic> intent) async {
     if (intent['pickupLat'] == null || intent['destLat'] == null) {
-      setState(() => _statusText = 'Could not find location on map. Try a more specific address.');
-      await _speak('Sorry, I could not find that location. Please try again with a more specific address.');
+      setState(() => _statusText = 'Could not locate that place. Try a more specific address.');
+      await _speak('Sorry, I could not find that location. Please try with a more specific address.');
       return;
     }
     setState(() => _statusText = 'Getting vehicle fares…');
     try {
       final headers = await AuthService.getHeaders();
-      // Do NOT send vehicleCategoryId so server returns ALL vehicle options
       final res = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/app/customer/estimate-fare'),
         headers: {...headers, 'Content-Type': 'application/json'},
@@ -492,25 +488,31 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         final fares = (data['fares'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         _distanceKm = (data['distanceKm'] as num?)?.toDouble() ?? 0;
 
-        // Filter out parcel/cargo for voice — keep passenger vehicles only
+        // Ride vehicles only — parcel/cargo handled by separate screen
         final rideVehicles = fares.where((f) {
           final name = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
           return !name.contains('parcel') && !name.contains('cargo') && !name.contains('delivery');
         }).toList();
 
         if (rideVehicles.isEmpty) {
-          if (mounted) setState(() => _statusText = 'No vehicles available right now.');
+          setState(() => _statusText = 'No vehicles available right now.');
           await _speak('Sorry, no vehicles are available right now. Please try again later.');
           return;
         }
 
-        // Pre-select the vehicle that was mentioned in the voice command (if any)
         int preferredIndex = 0;
         final intentVehicleId = intent['vehicleCategoryId']?.toString();
         if (intentVehicleId != null) {
           final idx = rideVehicles.indexWhere((f) =>
-            f['vehicleCategoryId']?.toString() == intentVehicleId ||
-            f['id']?.toString() == intentVehicleId);
+              f['vehicleCategoryId']?.toString() == intentVehicleId ||
+              f['id']?.toString() == intentVehicleId);
+          if (idx >= 0) preferredIndex = idx;
+        }
+        // Also pre-select by vehicleType name
+        final intentVehicleType = intent['vehicleType']?.toString().toLowerCase() ?? '';
+        if (intentVehicleType.isNotEmpty && preferredIndex == 0) {
+          final idx = rideVehicles.indexWhere((f) =>
+              (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase().contains(intentVehicleType));
           if (idx >= 0) preferredIndex = idx;
         }
 
@@ -518,32 +520,27 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         setState(() {
           _allFares = rideVehicles;
           _selectedFareIndex = preferredIndex;
-          _statusText = 'Ready! Tap "Book Now" or say YES to confirm.';
+          _statusText = 'Ready! Say YES to confirm or tap Book Now.';
         });
-
         await _announceAllFaresAndConfirm(intent);
       }
     } catch (_) {
-      if (mounted) setState(() => _statusText = 'Error fetching fares. Try again.');
+      setState(() => _statusText = 'Error fetching fares. Try again.');
     }
   }
 
-  // ─── TTS: Announce all fares then start confirmation listener ────────────
+  // ─── TTS: Announce fares ──────────────────────────────────────────────────
 
   Future<void> _announceAllFaresAndConfirm(Map<String, dynamic> intent) async {
     if (_allFares.isEmpty || !mounted) return;
-
     final pickup = intent['pickup'] ?? 'your pickup';
     final dest = intent['destination'] ?? 'your destination';
     final dist = _distanceKm > 0 ? '${_distanceKm.toStringAsFixed(1)} kilometres' : '';
-
-    // Build TTS string listing all vehicles
-    final StringBuffer sb = StringBuffer();
-    sb.write('I found ${_allFares.length} vehicle option${_allFares.length > 1 ? "s" : ""} '
+    final sb = StringBuffer();
+    sb.write('I found ${_allFares.length} option${_allFares.length > 1 ? "s" : ""} '
         'from $pickup to $dest');
-    if (dist.isNotEmpty) sb.write(', $dist away');
+    if (dist.isNotEmpty) sb.write(', $dist');
     sb.write('. ');
-
     for (int i = 0; i < _allFares.length; i++) {
       final f = _allFares[i];
       final name = f['vehicleCategoryName'] ?? f['name'] ?? 'Vehicle';
@@ -553,26 +550,16 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       if (i < _allFares.length - 1) sb.write(', ');
     }
     sb.write('. ');
-
-    // Tell user which is selected
-    final selectedFare = _allFares[_selectedFareIndex];
-    final selectedName = selectedFare['vehicleCategoryName'] ?? selectedFare['name'] ?? 'Bike';
-    sb.write('$selectedName is selected. ');
+    final selected = _allFares[_selectedFareIndex];
+    sb.write('${selected['vehicleCategoryName'] ?? 'Bike'} is selected. ');
     sb.write('Say yes to confirm, or say the vehicle name to switch. Say no to cancel.');
-
-    final ttsMsg = sb.toString();
-    setState(() => _statusText = '🔊 $ttsMsg');
-
-    // Speak first, then listen for confirmation — no completion handler race condition
-    await _speak(ttsMsg);
-    // Small delay so TTS fully finishes before mic opens
+    setState(() => _statusText = sb.toString());
+    await _speak(sb.toString());
     await Future.delayed(const Duration(milliseconds: 400));
-    if (mounted && !_isListening && !_loading) {
-      _listenForConfirmation();
-    }
+    if (mounted && !_isListening && !_loading) _listenForConfirmation();
   }
 
-  // ─── Confirm booking ──────────────────────────────────────────────────────
+  // ─── Confirm ride booking ─────────────────────────────────────────────────
 
   Future<void> _confirmBooking() async {
     if (_parsedIntent == null || _allFares.isEmpty) return;
@@ -598,6 +585,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         }),
       );
       if (res.statusCode == 200) {
+        HapticFeedback.heavyImpact();
         await _speak('Your ride is booked! A driver is being assigned. Have a safe trip!');
         if (mounted) Navigator.of(context).pop(true);
       } else {
@@ -616,8 +604,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   void _showSnack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+      backgroundColor: JT.error,
       behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
     ));
   }
 
@@ -625,310 +616,419 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   @override
   Widget build(BuildContext context) {
+    const isDark = false;
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: isDark ? const Color(0xFF0F1724) : JT.bg,
       appBar: AppBar(
-        backgroundColor: _surface,
-        foregroundColor: Colors.white,
-        title: const Text('Voice Booking',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(children: [
-          const SizedBox(height: 12),
-
-          // Title + language selector
-          Text('JAGO Voice Assistant',
-              style: TextStyle(color: _yellow, fontSize: 20, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(_selectedLang.welcomeText,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 14),
-
+        backgroundColor: isDark ? const Color(0xFF162030) : JT.bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Voice Booking',
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+        actions: [
           GestureDetector(
             onTap: _selectLanguage,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              margin: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _surface,
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: _primary.withValues(alpha: 0.4)),
+                color: JT.surfaceAlt,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: JT.border),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(_selectedLang.flag, style: const TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
-                Text(_selectedLang.name,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(_selectedLang.flag, style: const TextStyle(fontSize: 14)),
                 const SizedBox(width: 6),
-                const Icon(Icons.expand_more, color: Colors.white54, size: 18),
+                Text(_selectedLang.name.split(' ')[0],
+                    style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more, color: JT.primary, size: 14),
               ]),
             ),
           ),
-          const SizedBox(height: 24),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+        child: Column(children: [
+          // ── Hero mic section ──────────────────────────────────────────
+          _buildHeroSection(),
+          const SizedBox(height: 20),
 
-          // Mic button
-          GestureDetector(
-            onTap: _isListening ? _stopListening : _startListening,
-            child: AnimatedBuilder(
-              animation: _pulseCtrl,
-              builder: (_, __) {
-                final micColor = _awaitingConfirmation
-                    ? Color.lerp(Colors.green.shade700, Colors.green.shade400, _pulseCtrl.value)!
-                    : _isListening
-                        ? Color.lerp(Colors.red.shade700, Colors.red.shade400, _pulseCtrl.value)!
-                        : _blue;
-                return Container(
-                  width: 130, height: 130,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: micColor,
-                    boxShadow: [
-                      BoxShadow(
-                        color: micColor.withValues(alpha: _isListening ? 0.4 + 0.3 * _pulseCtrl.value : 0.3),
-                        blurRadius: _isListening ? 30 + 20 * _pulseCtrl.value : 20,
-                        spreadRadius: _isListening ? 5 + 5 * _pulseCtrl.value : 2,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-                    color: Colors.white, size: 56,
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _awaitingConfirmation
-                ? 'Say YES to confirm or NO to cancel'
-                : _isListening ? 'Tap to stop' : 'Tap to speak',
-            style: TextStyle(
-              color: _awaitingConfirmation ? Colors.green.shade300 : Colors.white60,
-              fontSize: 13, fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          // Status card
-          _infoCard(
-            icon: Icons.info_outline,
-            iconColor: _yellow,
-            label: _awaitingConfirmation ? 'Awaiting Confirmation' : 'Status',
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(_statusText,
-                    style: const TextStyle(color: Colors.white, fontSize: 13)),
-          ),
-
-          // Recognized text
-          if (_recognizedText.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _infoCard(
-              icon: Icons.record_voice_over,
-              iconColor: _blue,
-              label: 'You said:',
-              child: Text('"$_recognizedText"',
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 14, fontStyle: FontStyle.italic)),
-            ),
-          ],
-
-          // Parsed intent
-          if (_parsedIntent != null) ...[
-            const SizedBox(height: 14),
-            _infoCard(
-              icon: Icons.check_circle,
-              iconColor: Colors.green,
-              label: 'Understood:',
-              child: Column(children: [
-                _intentRow(Icons.my_location, 'From', _parsedIntent!['pickup'] ?? '—'),
-                _intentRow(Icons.location_on, 'To', _parsedIntent!['destination'] ?? '—'),
-              ]),
-            ),
-          ],
-
-          // All fares grid
-          if (_allFares.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            Row(children: [
-              Container(width: 3, height: 14,
-                  decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 8),
-              const Text('Choose Vehicle',
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-            ]),
-            const SizedBox(height: 10),
-            ..._allFares.asMap().entries.map((entry) {
-              final i = entry.key;
-              final f = entry.value;
-              final isSelected = i == _selectedFareIndex;
-              final name = f['vehicleCategoryName'] ?? f['name'] ?? 'Vehicle';
-              final fareVal = (f['estimatedFare'] as num?)?.toStringAsFixed(0) ?? '?';
-              final time = f['estimatedTime']?.toString() ?? '~5 min';
-              return GestureDetector(
-                onTap: () => setState(() => _selectedFareIndex = i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isSelected ? _primary.withValues(alpha: 0.1) : _surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: isSelected ? _primary : Colors.white12,
-                        width: isSelected ? 2 : 1),
-                    boxShadow: isSelected
-                        ? [BoxShadow(color: _primary.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))]
-                        : [],
-                  ),
-                  child: Row(children: [
-                    Container(
-                      width: 42, height: 42,
-                      decoration: BoxDecoration(
-                        color: isSelected ? _primary.withValues(alpha: 0.15) : Colors.white10,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(_iconForVehicle(name),
-                          color: isSelected ? _primary : Colors.white54, size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(name,
-                          style: TextStyle(
-                              color: isSelected ? _primary : Colors.white,
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      const SizedBox(height: 3),
-                      Text(time, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                    ])),
-                    Text('₹$fareVal',
-                        style: TextStyle(
-                            color: isSelected ? _primary : Colors.white,
-                            fontSize: 22, fontWeight: FontWeight.w900)),
-                    if (isSelected) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 22, height: 22,
-                        decoration: const BoxDecoration(color: _primary, shape: BoxShape.circle),
-                        child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
-                      ),
-                    ] else
-                      const SizedBox(width: 30),
-                  ]),
-                ),
-              );
-            }).toList(),
-
+          // ── Service type badge ────────────────────────────────────────
+          if (_detectedService.isNotEmpty) ...[
+            _buildServiceBadge(),
             const SizedBox(height: 16),
-
-            // Action row
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _startListening,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Try Again'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white30),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : () {
-                    _speak('Booking now.').then((_) => _confirmBooking());
-                  },
-                  icon: const Icon(Icons.check_rounded, size: 20),
-                  label: Text(
-                    _awaitingConfirmation ? 'CONFIRM BOOKING' : 'BOOK NOW',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _awaitingConfirmation ? Colors.green.shade600 : _primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                ),
-              ),
-            ]),
-
-            if (_awaitingConfirmation) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade900.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green.shade700.withValues(alpha: 0.5)),
-                ),
-                child: Row(children: [
-                  AnimatedBuilder(
-                    animation: _pulseCtrl,
-                    builder: (_, __) => Container(
-                      width: 8, height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.green.shade400,
-                        boxShadow: [BoxShadow(
-                          color: Colors.green.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3),
-                          blurRadius: 6 + _pulseCtrl.value * 4,
-                        )],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(child: Text(
-                    'Listening for voice confirmation…',
-                    style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
-                  )),
-                ]),
-              ),
-            ],
           ],
 
-          const SizedBox(height: 32),
-          Text(
-            'Voice commands: "yes" · "confirm" · "book" · "auto" · "car" · "bike"',
-            style: const TextStyle(color: Colors.white24, fontSize: 11),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Optimised for elderly and visually impaired users',
-            style: TextStyle(color: Colors.white24, fontSize: 11),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
+          // ── Status card ───────────────────────────────────────────────
+          _buildStatusCard(),
+          const SizedBox(height: 14),
+
+          // ── Recognized text ───────────────────────────────────────────
+          if (_recognizedText.isNotEmpty) ...[
+            _buildInfoCard(
+              icon: Icons.record_voice_over_rounded,
+              label: 'You said',
+              child: Text('"$_recognizedText"',
+                  style: GoogleFonts.poppins(
+                      color: JT.textPrimary, fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500)),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          // ── Parsed intent ─────────────────────────────────────────────
+          if (_parsedIntent != null && _parsedIntent!['pickup'] != null) ...[
+            _buildInfoCard(
+              icon: Icons.check_circle_rounded,
+              iconColor: JT.success,
+              label: 'Understood',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _intentRow(Icons.my_location_rounded, 'From', _parsedIntent!['pickup'] ?? '—'),
+                _intentRow(Icons.location_on_rounded, 'To', _parsedIntent!['destination'] ?? '—'),
+                if (_distanceKm > 0)
+                  _intentRow(Icons.route_rounded, 'Distance', '${_distanceKm.toStringAsFixed(1)} km'),
+              ]),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          // ── Vehicle fare cards ─────────────────────────────────────────
+          if (_allFares.isNotEmpty) ...[
+            _buildFaresList(),
+            const SizedBox(height: 16),
+            _buildActionButtons(),
+          ],
+
+          const SizedBox(height: 28),
+          _buildCommandHints(),
         ]),
       ),
     );
   }
 
-  // ─── Helper widgets ───────────────────────────────────────────────────────
+  // ─── Hero mic button ──────────────────────────────────────────────────────
 
-  static IconData _iconForVehicle(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('bike')) return Icons.electric_bike;
-    if (n.contains('auto') || n.contains('temo')) return Icons.electric_rickshaw;
-    if (n.contains('suv')) return Icons.directions_car_filled;
-    if (n.contains('car')) return Icons.directions_car;
-    return Icons.directions_car;
+  Widget _buildHeroSection() {
+    final micColor = _awaitingConfirmation ? JT.success
+        : _isListening ? JT.error : JT.primary;
+    return Column(children: [
+      const SizedBox(height: 16),
+      // Mic button
+      GestureDetector(
+        onTap: _isListening ? _stopListening : _startListening,
+        child: AnimatedBuilder(
+          animation: _pulseCtrl,
+          builder: (_, __) {
+            final scale = _isListening ? 1.0 + _pulseCtrl.value * 0.08 : 1.0;
+            final glow = BoxShadow(
+              color: micColor.withOpacity(_isListening ? 0.35 + 0.15 * _pulseCtrl.value : 0.2),
+              blurRadius: _isListening ? 32 + 12 * _pulseCtrl.value : 16,
+              spreadRadius: _isListening ? 4 : 0,
+            );
+            return Transform.scale(
+              scale: scale,
+              child: Container(
+                width: 120, height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: _awaitingConfirmation
+                        ? [JT.success, JT.success.withOpacity(0.8)]
+                        : _isListening
+                            ? [JT.error, JT.error.withOpacity(0.8)]
+                            : [JT.primary, const Color(0xFF4FA9FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [glow],
+                ),
+                child: Icon(
+                  _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                  color: Colors.white, size: 52,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        _awaitingConfirmation ? 'Say YES to confirm or NO to cancel'
+            : _isListening ? 'Listening… tap to stop'
+            : _speechAvailable ? 'Tap mic to speak'
+            : 'Microphone not available',
+        style: GoogleFonts.poppins(
+          color: _awaitingConfirmation ? JT.success
+              : _isListening ? JT.error : JT.primary,
+          fontSize: 13, fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(_selectedLang.welcomeText,
+          style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary),
+          textAlign: TextAlign.center),
+      // Wave animation while listening
+      if (_isListening) ...[
+        const SizedBox(height: 10),
+        AnimatedBuilder(
+          animation: _waveCtrl,
+          builder: (_, __) => Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) => Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: 4,
+              height: 10 + 16 * (i % 3 == 0
+                  ? _waveCtrl.value
+                  : i % 2 == 0
+                      ? (1 - _waveCtrl.value)
+                      : _waveCtrl.value * 0.7),
+              decoration: BoxDecoration(
+                color: JT.error,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            )),
+          ),
+        ),
+      ],
+    ]);
   }
 
-  Widget _infoCard({
+  // ─── Service badge ────────────────────────────────────────────────────────
+
+  Widget _buildServiceBadge() {
+    final isParcel = _detectedService == 'parcel';
+    final isIntercity = _detectedService == 'intercity';
+    final label = isParcel ? '📦 Parcel Booking' : isIntercity ? '🛣️ Intercity Trip' : '🚗 Ride Booking';
+    final color = isParcel ? JT.warning : isIntercity ? JT.success : JT.primary;
+    return Center(child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Text(label, style: GoogleFonts.poppins(
+          color: color, fontWeight: FontWeight.w700, fontSize: 13)),
+    ));
+  }
+
+  // ─── Status card ──────────────────────────────────────────────────────────
+
+  Widget _buildStatusCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JT.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JT.border),
+        boxShadow: JT.cardShadow,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(_awaitingConfirmation ? Icons.record_voice_over_rounded : Icons.info_outline_rounded,
+              color: _awaitingConfirmation ? JT.success : JT.primary, size: 16),
+          const SizedBox(width: 8),
+          Text(_awaitingConfirmation ? 'Awaiting Confirmation' : 'Status',
+              style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+        ]),
+        const SizedBox(height: 8),
+        if (_loading)
+          Row(children: [
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: JT.primary)),
+            const SizedBox(width: 12),
+            Expanded(child: Text(_statusText, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13))),
+          ])
+        else
+          Text(_statusText, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13)),
+        // Confirmation pulsing indicator
+        if (_awaitingConfirmation) ...[
+          const SizedBox(height: 10),
+          AnimatedBuilder(
+            animation: _pulseCtrl,
+            builder: (_, __) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: JT.success.withOpacity(0.08 + 0.04 * _pulseCtrl.value),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JT.success.withOpacity(0.25)),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 8, height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: JT.success,
+                    boxShadow: [BoxShadow(color: JT.success.withOpacity(0.5 + _pulseCtrl.value * 0.3), blurRadius: 6)],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('Listening for voice confirmation…',
+                    style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  // ─── Fare cards list ──────────────────────────────────────────────────────
+
+  Widget _buildFaresList() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Container(width: 3, height: 16, decoration: BoxDecoration(gradient: JT.grad, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 8),
+        Text('Available Vehicles', style: GoogleFonts.poppins(
+            fontSize: 14, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+        if (_distanceKm > 0) ...[
+          const Spacer(),
+          Text('${_distanceKm.toStringAsFixed(1)} km',
+              style: GoogleFonts.poppins(fontSize: 12, color: JT.primary, fontWeight: FontWeight.w600)),
+        ],
+      ]),
+      const SizedBox(height: 12),
+      ..._allFares.asMap().entries.map((entry) {
+        final i = entry.key;
+        final f = entry.value;
+        final isSelected = i == _selectedFareIndex;
+        final name = f['vehicleCategoryName'] ?? f['name'] ?? 'Vehicle';
+        final fareVal = (f['estimatedFare'] as num?)?.toStringAsFixed(0) ?? '?';
+        final time = f['estimatedTime']?.toString() ?? '~5 min';
+        return GestureDetector(
+          onTap: () => setState(() => _selectedFareIndex = i),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isSelected ? JT.primary.withOpacity(0.06) : JT.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isSelected ? JT.primary : JT.border, width: isSelected ? 2 : 1),
+              boxShadow: isSelected ? JT.btnShadow : JT.cardShadow,
+            ),
+            child: Row(children: [
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  color: isSelected ? JT.primary.withOpacity(0.12) : JT.bgSoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(_iconForVehicle(name),
+                    color: isSelected ? JT.primary : JT.iconInactive, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: GoogleFonts.poppins(
+                    color: isSelected ? JT.primary : JT.textPrimary,
+                    fontWeight: FontWeight.w800, fontSize: 14)),
+                Text(time, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('₹$fareVal', style: GoogleFonts.poppins(
+                    color: isSelected ? JT.primary : JT.textPrimary,
+                    fontSize: 22, fontWeight: FontWeight.w900)),
+                if (isSelected)
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: JT.primary, borderRadius: BorderRadius.circular(6)),
+                    child: Text('Selected', style: GoogleFonts.poppins(
+                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                  ),
+              ]),
+            ]),
+          ),
+        );
+      }).toList(),
+    ]);
+  }
+
+  // ─── Action buttons ───────────────────────────────────────────────────────
+
+  Widget _buildActionButtons() {
+    return Row(children: [
+      Expanded(
+        child: OutlinedButton.icon(
+          onPressed: _startListening,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: Text('Try Again', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: JT.textSecondary,
+            side: BorderSide(color: JT.border),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        flex: 2,
+        child: ElevatedButton.icon(
+          onPressed: _loading ? null : () {
+            HapticFeedback.heavyImpact();
+            _speak('Booking now.').then((_) => _confirmBooking());
+          },
+          icon: Icon(_awaitingConfirmation ? Icons.check_rounded : Icons.flash_on_rounded, size: 20),
+          label: Text(
+            _awaitingConfirmation ? 'CONFIRM' : 'BOOK NOW',
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _awaitingConfirmation ? JT.success : JT.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            elevation: 0,
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  // ─── Command hints ────────────────────────────────────────────────────────
+
+  Widget _buildCommandHints() {
+    const hints = [
+      ('🏍️', 'Ride', '"Bike to Hitech City"'),
+      ('🛺', 'Auto', '"Auto kavali Ameerpet ki"'),
+      ('📦', 'Parcel', '"Parcel pampali" or "Send parcel"'),
+      ('🚛', 'Logistics', '"Mini truck kavali"'),
+      ('🛣️', 'Intercity', '"Bangalore ki outstation"'),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Example Commands', style: GoogleFonts.poppins(
+          fontSize: 12, fontWeight: FontWeight.w700, color: JT.textSecondary)),
+      const SizedBox(height: 8),
+      ...hints.map((h) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          Text(h.$1, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text('${h.$2}: ', style: GoogleFonts.poppins(
+              fontSize: 11, fontWeight: FontWeight.w700, color: JT.primary)),
+          Expanded(child: Text(h.$3, style: GoogleFonts.poppins(
+              fontSize: 11, color: JT.textSecondary))),
+        ]),
+      )),
+      const SizedBox(height: 12),
+      Center(child: Text('Optimised for elderly · visually impaired · hands-free use',
+          style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary),
+          textAlign: TextAlign.center)),
+    ]);
+  }
+
+  // ─── Shared helpers ───────────────────────────────────────────────────────
+
+  Widget _buildInfoCard({
     required IconData icon,
-    required Color iconColor,
+    Color iconColor = JT.primary,
     required String label,
     required Widget child,
   }) {
@@ -936,14 +1036,17 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(12),
+        color: JT.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JT.border),
+        boxShadow: JT.cardShadow,
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(icon, color: iconColor, size: 15),
           const SizedBox(width: 7),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          Text(label, style: GoogleFonts.poppins(
+              color: JT.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
         ]),
         const SizedBox(height: 8),
         child,
@@ -955,13 +1058,23 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(children: [
-        Icon(icon, color: Colors.white38, size: 16),
+        Icon(icon, color: JT.primary, size: 15),
         const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: Colors.white38, fontSize: 13)),
-        Expanded(child: Text(value,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+        Text('$label: ', style: GoogleFonts.poppins(
+            color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        Expanded(child: Text(value, style: GoogleFonts.poppins(
+            color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+            maxLines: 2, overflow: TextOverflow.ellipsis)),
       ]),
     );
+  }
+
+  static IconData _iconForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bike') || n.contains('motor')) return Icons.electric_bike_rounded;
+    if (n.contains('auto') || n.contains('temo')) return Icons.electric_rickshaw_rounded;
+    if (n.contains('suv') || n.contains('innova')) return Icons.directions_car_filled_rounded;
+    if (n.contains('pool') || n.contains('share')) return Icons.group_rounded;
+    return Icons.directions_car_rounded;
   }
 }

@@ -58,6 +58,7 @@ import DriverVerificationPage from "@/pages/admin/driver-verification";
 import OutstationPool from "@/pages/admin/outstation-pool";
 import ParcelOrders from "@/pages/admin/parcel-orders";
 import SystemHealth from "@/pages/admin/system-health";
+import VoiceCommandsPage from "@/pages/admin/voice-commands";
 
 export default function AdminRoutes() {
   return (
@@ -120,6 +121,7 @@ export default function AdminRoutes() {
         <Route path="/admin/service-management" component={ServiceManagement} />
         <Route path="/admin/parcel-orders" component={ParcelOrders} />
         <Route path="/admin/system-health" component={SystemHealth} />
+        <Route path="/admin/voice-commands" component={VoiceCommandsPage} />
         <Route path="/admin/referrals" component={Referrals} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>

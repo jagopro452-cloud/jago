@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class IntercityBookingScreen extends StatefulWidget {
@@ -12,7 +14,7 @@ class IntercityBookingScreen extends StatefulWidget {
 }
 
 class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
-  static const _blue = Color(0xFF1565C0);
+  static const _blue = JT.primary;
 
   bool _loading = true;
   bool _booking = false;
@@ -152,10 +154,11 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
-      backgroundColor: _blue,
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+      backgroundColor: JT.error,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
     ));
   }
 
@@ -178,7 +181,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
           const SizedBox(height: 8),
           Text(
             '₹${(data['estimatedFare'] as num?)?.toStringAsFixed(0) ?? '0'}',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _blue),
+            style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w900, color: JT.primary),
           ),
           const SizedBox(height: 4),
           const Text('Estimated Fare', style: TextStyle(color: Colors.grey, fontSize: 12)),
@@ -192,7 +195,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
         actions: [
           TextButton(
             onPressed: () { Navigator.pop(context); Navigator.pop(context); },
-            child: const Text('OK', style: TextStyle(color: _blue, fontWeight: FontWeight.bold)),
+            child: Text('OK', style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -202,12 +205,21 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: JT.bg,
       appBar: AppBar(
-        backgroundColor: _blue,
-        foregroundColor: Colors.white,
-        title: const Text('Intercity Booking', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: JT.bg,
+        foregroundColor: JT.textPrimary,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Intercity / Carpool',
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: JT.border),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _blue))
@@ -220,11 +232,18 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
 
   Widget _emptyState() => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(Icons.directions_bus_outlined, size: 72, color: Colors.grey.shade300),
-      const SizedBox(height: 16),
-      const Text('Intercity routes available levu', style: TextStyle(color: Colors.grey)),
+      Container(
+        width: 80, height: 80,
+        decoration: BoxDecoration(color: JT.bgSoft, shape: BoxShape.circle),
+        child: const Icon(Icons.directions_bus_rounded, size: 40, color: JT.primary),
+      ),
+      const SizedBox(height: 20),
+      Text('No routes available yet', style: GoogleFonts.poppins(
+          color: JT.textPrimary, fontWeight: FontWeight.w700, fontSize: 16)),
       const SizedBox(height: 8),
-      const Text('Admin routes add chesina taruvata book cheyyavachu', style: TextStyle(color: Colors.grey, fontSize: 12)),
+      Text('Routes will appear once admin adds intercity destinations.',
+          style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13),
+          textAlign: TextAlign.center),
     ]),
   );
 
@@ -454,17 +473,20 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
     );
   }
 
-  Widget _sectionTitle(String t) => Text(t, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+  Widget _sectionTitle(String t) => Text(t,
+      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary));
 
   Widget _label(String t) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(t, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
+    child: Text(t, style: GoogleFonts.poppins(
+        fontSize: 12, color: JT.textSecondary, fontWeight: FontWeight.w600)),
   );
 
   BoxDecoration _boxDecor() => BoxDecoration(
-    color: Colors.grey.shade50,
+    color: JT.surface,
     borderRadius: BorderRadius.circular(14),
-    border: Border.all(color: Colors.grey.shade200),
+    border: Border.all(color: JT.border),
+    boxShadow: JT.cardShadow,
   );
 
   Widget _tapCard({required VoidCallback onTap, required IconData icon, required String text}) =>
