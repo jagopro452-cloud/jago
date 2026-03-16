@@ -1226,6 +1226,15 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_customer_payments_payment  ON customer_payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_status   ON customer_payments(status);
     `).catch(() => {});
+    // ── Migration: add trip_id to customer_payments for refund tracking ───────
+    await rawDb.execute(rawSql`
+      ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS trip_id UUID;
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_trip ON customer_payments(trip_id) WHERE trip_id IS NOT NULL;
+    `).catch(() => {});
+    // ── Migration: add razorpay_payment_id to trip_requests for online pay tracking ──
+    await rawDb.execute(rawSql`
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
+    `).catch(() => {});
 
     // ── Razorpay webhook audit log ────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -7706,7 +7715,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Parcel fields
         receiverName, receiverPhone,
         // Coupon
-        couponCode, promoDiscount
+        couponCode, promoDiscount,
+        // Online payment — used to link customer_payments → trip for refund on cancel
+        razorpayPaymentId
       } = req.body;
       const finalDestAddress = destinationAddress || destAddress || "";
       const finalDestLat = destinationLat || destLat || 0;
@@ -7878,6 +7889,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             discount_amount = ${discountAmount},
             original_fare = ${computedFare}
           WHERE id = ${(trip.rows[0] as any).id}::uuid
+        `).catch(() => {});
+      }
+      // ── Link online payment to this trip for auto-refund on cancel ──────────
+      if (razorpayPaymentId) {
+        const newTripId = (trip.rows[0] as any).id;
+        rawDb.execute(rawSql`
+          UPDATE customer_payments SET trip_id=${newTripId}::uuid
+          WHERE razorpay_payment_id=${razorpayPaymentId} AND customer_id=${customer.id}::uuid AND payment_type='ride_payment'
+        `).catch(() => {});
+        rawDb.execute(rawSql`
+          UPDATE trip_requests SET payment_status='paid_online', razorpay_payment_id=${razorpayPaymentId}
+          WHERE id=${newTripId}::uuid
         `).catch(() => {});
       }
 
@@ -8182,7 +8205,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const drvFcm = (drvDevRes.rows[0] as any)?.fcm_token || null;
         notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
       }
-      res.json({ success: true });
+      // ── Auto-refund to wallet if customer paid online ────────────────────────
+      let walletRefund: number | null = null;
+      if (trip.payment_status === 'paid_online') {
+        // Find the completed ride_payment for this trip
+        const payRec = await rawDb.execute(rawSql`
+          SELECT id, amount FROM customer_payments
+          WHERE trip_id=${effectiveTripId}::uuid AND customer_id=${customer.id}::uuid
+            AND payment_type='ride_payment' AND status='completed'
+          LIMIT 1
+        `);
+        if (payRec.rows.length) {
+          const refundAmt = parseFloat((payRec.rows[0] as any).amount);
+          // Credit wallet
+          await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
+          const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+          const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || '0');
+          // Transaction record
+          await rawDb.execute(rawSql`
+            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+            VALUES (${customer.id}::uuid, ${'Refund for cancelled ride'}, ${refundAmt}, 0, ${newBal}, ${'ride_refund'}, ${trip.razorpay_payment_id || null})
+          `).catch(() => {});
+          // Mark customer_payment as refunded
+          await rawDb.execute(rawSql`
+            UPDATE customer_payments SET status='refunded' WHERE id=${(payRec.rows[0] as any).id}::uuid
+          `).catch(() => {});
+          // Mark trip payment_status as refunded_to_wallet
+          await rawDb.execute(rawSql`
+            UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
+          `).catch(() => {});
+          walletRefund = refundAmt;
+          console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
+        }
+      }
+      res.json({ success: true, walletRefund });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8918,7 +8974,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/customer/ride/create-order", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
-      const { amount } = req.body;
+      const { amount, tripId } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid fare amount" });
       const keyId = process.env.RAZORPAY_KEY_ID;
@@ -8930,12 +8986,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         amount: Math.round(amt * 100),
         currency: "INR",
         receipt: `r_${Date.now().toString(36)}`,
-        notes: { customer_id: customer.id, purpose: "ride_payment" }
+        notes: { customer_id: customer.id, purpose: "ride_payment", trip_id: tripId || '' }
       });
-      // Persist pending record so verify-payment can cross-check amount from DB
+      // Persist pending record with trip_id so verify/cancel can trace back
       await rawDb.execute(rawSql`
-        INSERT INTO customer_payments (customer_id, amount, payment_type, razorpay_order_id, status, description)
-        VALUES (${customer.id}::uuid, ${amt}, 'ride_payment', ${order.id}, 'pending', 'Ride payment via Razorpay')
+        INSERT INTO customer_payments (customer_id, trip_id, amount, payment_type, razorpay_order_id, status, description)
+        VALUES (${customer.id}::uuid, ${tripId || null}::uuid, ${amt}, 'ride_payment', ${order.id}, 'pending', 'Ride payment via Razorpay')
         ON CONFLICT DO NOTHING
       `).catch(() => {});
       res.json({ order, keyId, amount: amt });
@@ -8959,17 +9015,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
-      // Amount from DB — never trust client-sent amount
+      // Amount + trip_id from DB — never trust client-sent amount
       const pendingRec = await rawDb.execute(rawSql`
-        SELECT amount FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
+        SELECT amount, trip_id FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
       `);
       if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
       const verifiedAmt = parseFloat((pendingRec.rows[0] as any).amount);
+      const linkedTripId = (pendingRec.rows[0] as any).trip_id;
       // Mark as completed
       await rawDb.execute(rawSql`
         UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
         WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid
       `).catch(() => {});
+      // Mark trip as paid_online so cancel-trip can auto-refund to wallet
+      if (linkedTripId) {
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET payment_status='paid_online', razorpay_payment_id=${razorpayPaymentId}
+          WHERE id=${linkedTripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled')
+        `).catch(() => {});
+      }
       res.json({ success: true, paymentId: razorpayPaymentId, amount: verifiedAmt });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

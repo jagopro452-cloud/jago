@@ -275,12 +275,32 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     // Cancel via socket first
     _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
     // Also HTTP for persistence
+    double? walletRefund;
     try {
       final headers = await AuthService.getHeaders();
-      await http.post(Uri.parse(ApiConfig.cancelTrip),
+      final res = await http.post(Uri.parse(ApiConfig.cancelTrip),
         headers: headers,
         body: jsonEncode({'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        walletRefund = (data['walletRefund'] as num?)?.toDouble();
+      }
     } catch (_) {}
+    if (!mounted) return;
+    if (walletRefund != null && walletRefund > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          '₹${walletRefund.toStringAsFixed(0)} refunded to your wallet',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: const Color(0xFF16A34A),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 4),
+      ));
+      await Future.delayed(const Duration(seconds: 2));
+    }
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(context,
       MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
