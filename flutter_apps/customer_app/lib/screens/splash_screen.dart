@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/jago_theme.dart';
 import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
@@ -25,16 +26,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   late AnimationController _progressCtrl;
 
-  static const _bg1 = Color(0xFF0A1628);
-  static const _bg2 = Color(0xFF1A2F5E);
-  static const _accent = Color(0xFF2F80ED);
-
   @override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
     ));
 
     _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
@@ -108,144 +105,92 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [_bg1, _bg2, Color(0xFF0D2444)],
-            stops: [0.0, 0.5, 1.0],
+      backgroundColor: JT.bg,
+      body: Stack(
+        children: [
+          // Subtle blue gradient at top
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.35,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFEEF4FF), JT.bg],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            // Background glow circle
-            Positioned(
-              top: -size.height * 0.15,
-              left: -size.width * 0.2,
-              child: Container(
-                width: size.width * 0.8,
-                height: size.width * 0.8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _accent.withValues(alpha: 0.07),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -size.height * 0.1,
-              right: -size.width * 0.25,
-              child: Container(
-                width: size.width * 0.7,
-                height: size.width * 0.7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _accent.withValues(alpha: 0.05),
-                ),
-              ),
-            ),
 
-            // Center content
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Logo
-                  AnimatedBuilder(
-                    animation: _logoCtrl,
-                    builder: (_, child) => Opacity(
-                      opacity: _logoOpacity.value,
-                      child: Transform.scale(scale: _logoScale.value, child: child),
-                    ),
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        gradient: const LinearGradient(
-                          colors: [_accent, Color(0xFF1A6FE0)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _accent.withValues(alpha: 0.45),
-                            blurRadius: 40,
-                            spreadRadius: 4,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: Image.asset(
-                          'assets/images/jago_logo.png',
-                          fit: BoxFit.contain,
-                          color: Colors.white,
-                          colorBlendMode: BlendMode.srcIn,
-                          errorBuilder: (_, __, ___) => Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [_accent, Color(0xFF1A6FE0)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            child: Center(
-                              child: Text('J',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 52,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  height: 1,
-                                )),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+          // Center content
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Logo — scale + fade in
+                AnimatedBuilder(
+                  animation: _logoCtrl,
+                  builder: (_, child) => Opacity(
+                    opacity: _logoOpacity.value,
+                    child: Transform.scale(scale: _logoScale.value, child: child),
                   ),
+                  child: JT.logoBlue(height: 80),
+                ),
 
-                ],
-              ),
-            ),
+                const SizedBox(height: 24),
 
-            // Bottom: progress bar + company
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Thin progress bar
-                  AnimatedBuilder(
-                    animation: _progressCtrl,
-                    builder: (_, __) => LinearProgressIndicator(
-                      value: _progressCtrl.value,
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      valueColor: const AlwaysStoppedAnimation<Color>(_accent),
-                      minHeight: 2,
-                    ),
+                // Tagline — slide up + fade
+                AnimatedBuilder(
+                  animation: _textCtrl,
+                  builder: (_, child) => FadeTransition(
+                    opacity: _textOpacity,
+                    child: SlideTransition(position: _textSlide, child: child),
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Mindwhile IT Solutions Pvt Ltd',
+                  child: Text(
+                    'Move Smarter.',
                     style: GoogleFonts.poppins(
-                      color: Colors.white.withValues(alpha: 0.3),
-                      fontSize: 11,
-                      letterSpacing: 0.8,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: JT.textSecondary,
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // Bottom: thin linear progress bar
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedBuilder(
+                  animation: _progressCtrl,
+                  builder: (_, __) => LinearProgressIndicator(
+                    value: _progressCtrl.value,
+                    backgroundColor: JT.border,
+                    valueColor: const AlwaysStoppedAnimation<Color>(JT.primary),
+                    minHeight: 2,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Mindwhile IT Solutions Pvt Ltd',
+                  style: GoogleFonts.poppins(
+                    color: JT.iconInactive,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

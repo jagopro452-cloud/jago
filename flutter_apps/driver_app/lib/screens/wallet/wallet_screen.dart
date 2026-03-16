@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -13,18 +15,6 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderStateMixin {
-  // Color system
-  static const Color _bg = Color(0xFF060A14);
-  static const Color _surface = Color(0xFF0F1923);
-  static const Color _card = Color(0xFF162030);
-  static const Color _border = Color(0xFF1E3050);
-  static const Color _primary = Color(0xFF00D4FF);
-  static const Color _green = Color(0xFF00E676);
-  static const Color _amber = Color(0xFFFFB300);
-  static const Color _red = Color(0xFFFF3D57);
-  static const Color _textSecondary = Color(0xFF8899BB);
-  static const Color _textHint = Color(0xFF445577);
-
   Map<String, dynamic>? _wallet;
   bool _loading = true;
   late TabController _tabController;
@@ -75,7 +65,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: _card,
+      backgroundColor: JT.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -90,7 +80,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Center(
               child: Container(
                 width: 40, height: 4,
-                decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const SizedBox(height: 20),
@@ -98,29 +88,28 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               Container(
                 width: 44, height: 44,
                 decoration: BoxDecoration(
-                  color: _primary.withValues(alpha: 0.1),
+                  color: JT.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _primary.withValues(alpha: 0.3)),
-                  boxShadow: [BoxShadow(color: _primary.withValues(alpha: 0.2), blurRadius: 16)],
+                  border: Border.all(color: JT.primary.withOpacity(0.3)),
                 ),
-                child: const Icon(Icons.account_balance_wallet, color: _primary, size: 22)),
+                child: Icon(Icons.account_balance_wallet, color: JT.primary, size: 22)),
               const SizedBox(width: 14),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Recharge Wallet', style: GoogleFonts.poppins(
-                    color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                    color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
                 Text('Current: ₹${(_wallet?['walletBalance'] ?? 0).toStringAsFixed(2)}',
-                    style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
+                    style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
               ]),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.close_rounded, color: _textHint),
+                icon: Icon(Icons.close_rounded, color: JT.iconInactive),
                 onPressed: () => Navigator.pop(ctx),
               ),
             ]),
             const SizedBox(height: 24),
 
             Text('SELECT AMOUNT', style: GoogleFonts.poppins(
-                color: _textHint, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
             const SizedBox(height: 12),
 
             // Quick amount chips
@@ -132,20 +121,17 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                     duration: const Duration(milliseconds: 150),
                     padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
                     decoration: BoxDecoration(
-                      color: (!isCustom && selectedAmount == amt)
-                          ? _primary.withValues(alpha: 0.15)
-                          : _surface,
+                      gradient: (!isCustom && selectedAmount == amt) ? JT.grad : null,
+                      color: (!isCustom && selectedAmount == amt) ? null : JT.bgSoft,
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(
-                        color: (!isCustom && selectedAmount == amt) ? _primary : _border,
+                        color: (!isCustom && selectedAmount == amt) ? JT.primary : JT.border,
                         width: (!isCustom && selectedAmount == amt) ? 1.5 : 1),
-                      boxShadow: (!isCustom && selectedAmount == amt) ? [
-                        BoxShadow(color: _primary.withValues(alpha: 0.25), blurRadius: 12),
-                      ] : [],
+                      boxShadow: (!isCustom && selectedAmount == amt) ? JT.btnShadow : [],
                     ),
                     child: Text('₹${amt.toInt()}',
                       style: GoogleFonts.poppins(
-                        color: (!isCustom && selectedAmount == amt) ? _primary : _textSecondary,
+                        color: (!isCustom && selectedAmount == amt) ? Colors.white : JT.textSecondary,
                         fontWeight: FontWeight.w700, fontSize: 15)),
                   ),
                 ),
@@ -155,18 +141,18 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
                   decoration: BoxDecoration(
-                    color: isCustom ? _amber.withValues(alpha: 0.12) : _surface,
+                    color: isCustom ? JT.warning.withOpacity(0.12) : JT.bgSoft,
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
-                      color: isCustom ? _amber : _border,
+                      color: isCustom ? JT.warning : JT.border,
                       width: isCustom ? 1.5 : 1),
                     boxShadow: isCustom ? [
-                      BoxShadow(color: _amber.withValues(alpha: 0.2), blurRadius: 12),
+                      BoxShadow(color: JT.warning.withOpacity(0.2), blurRadius: 12),
                     ] : [],
                   ),
                   child: Text('Custom',
                     style: GoogleFonts.poppins(
-                      color: isCustom ? _amber : _textSecondary,
+                      color: isCustom ? JT.warning : JT.textSecondary,
                       fontWeight: FontWeight.w700, fontSize: 15)),
                 ),
               ),
@@ -179,23 +165,23 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 keyboardType: TextInputType.number,
                 autofocus: true,
                 onChanged: (v) => setSheet(() { selectedAmount = double.tryParse(v) ?? 0; }),
-                style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
                 decoration: InputDecoration(
                   hintText: 'Enter amount',
-                  hintStyle: GoogleFonts.poppins(color: _textHint),
+                  hintStyle: GoogleFonts.poppins(color: JT.iconInactive),
                   prefixText: '₹ ',
-                  prefixStyle: GoogleFonts.poppins(color: _primary, fontWeight: FontWeight.w800, fontSize: 18),
+                  prefixStyle: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w800, fontSize: 18),
                   filled: true,
-                  fillColor: _surface,
+                  fillColor: JT.bgSoft,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: _border)),
+                    borderSide: BorderSide(color: JT.border)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: _border)),
+                    borderSide: BorderSide(color: JT.border)),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: _primary, width: 1.5)),
+                    borderSide: BorderSide(color: JT.primary, width: 1.5)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
               ),
@@ -206,28 +192,22 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: _primary.withValues(alpha: 0.06),
+                color: JT.primary.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _primary.withValues(alpha: 0.25))),
+                border: Border.all(color: JT.primary.withOpacity(0.25))),
               child: Row(children: [
-                const Icon(Icons.info_outline_rounded, color: _primary, size: 16),
+                Icon(Icons.info_outline_rounded, color: JT.primary, size: 16),
                 const SizedBox(width: 10),
                 Text('You will be charged ₹${selectedAmount.toInt()} via Razorpay',
-                  style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
+                  style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
               ]),
             ),
             const SizedBox(height: 20),
 
             SizedBox(
               width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                ),
-                onPressed: (paying || selectedAmount < 1) ? null : () async {
+              child: GestureDetector(
+                onTap: (paying || selectedAmount < 1) ? null : () async {
                   setSheet(() => paying = true);
                   final amt = isCustom ? (double.tryParse(customCtrl.text.trim()) ?? 0) : selectedAmount;
                   if (amt < 1) {
@@ -238,15 +218,25 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   Navigator.pop(ctx);
                   await _initiateRecharge(amt);
                 },
-                child: paying
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
-                  : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      const Icon(Icons.payment_rounded, color: Colors.black, size: 20),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Pay ₹${(isCustom ? (double.tryParse(customCtrl.text.trim()) ?? 0) : selectedAmount).toInt()} via Razorpay',
-                        style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
-                    ]),
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: JT.grad,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: JT.btnShadow,
+                  ),
+                  child: Center(
+                    child: paying
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                      : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.payment_rounded, color: Colors.white, size: 20),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Pay ₹${(isCustom ? (double.tryParse(customCtrl.text.trim()) ?? 0) : selectedAmount).toInt()} via Razorpay',
+                            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                        ]),
+                  ),
+                ),
               ),
             ),
           ]),
@@ -292,7 +282,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         'description': 'Wallet Recharge ₹${amount.toInt()}',
         'timeout': 300,
         'prefill': {'contact': driverPhone, 'email': ''},
-        'theme': {'color': '#00D4FF'},
+        'theme': {'color': '#2F7BFF'},
       });
     } catch (e) {
       _showSnack('Payment error: $e', error: true);
@@ -340,57 +330,62 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        backgroundColor: _card,
+        backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: _green.withValues(alpha: 0.3), width: 1),
+          side: BorderSide(color: JT.success.withOpacity(0.3), width: 1),
         ),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 80, height: 80,
             decoration: BoxDecoration(
-              color: _green.withValues(alpha: 0.1),
+              color: JT.success.withOpacity(0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: _green.withValues(alpha: 0.4)),
-              boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.3), blurRadius: 24)],
+              border: Border.all(color: JT.success.withOpacity(0.4)),
             ),
-            child: Icon(Icons.check_rounded, color: _green, size: 44)),
+            child: Icon(Icons.check_rounded, color: JT.success, size: 44)),
           const SizedBox(height: 18),
           Text('Recharge Successful!',
-            style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Text('₹${amount.toInt()} added to your wallet',
-            style: GoogleFonts.poppins(color: _textSecondary, fontSize: 14), textAlign: TextAlign.center),
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 14), textAlign: TextAlign.center),
           const SizedBox(height: 8),
           Text('New balance: ₹${newBalance.toStringAsFixed(2)}',
-            style: GoogleFonts.poppins(color: _primary, fontSize: 16, fontWeight: FontWeight.w800)),
+            style: GoogleFonts.poppins(color: JT.primary, fontSize: 16, fontWeight: FontWeight.w800)),
           if (autoUnlocked) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: _green.withValues(alpha: 0.1),
+                color: JT.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _green.withValues(alpha: 0.3)),
+                border: Border.all(color: JT.success.withOpacity(0.3)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.lock_open_rounded, color: _green, size: 16),
+                Icon(Icons.lock_open_rounded, color: JT.success, size: 16),
                 const SizedBox(width: 8),
-                Text('Account Unlocked!', style: GoogleFonts.poppins(color: _green, fontSize: 13, fontWeight: FontWeight.w700)),
+                Text('Account Unlocked!', style: GoogleFonts.poppins(color: JT.success, fontSize: 13, fontWeight: FontWeight.w700)),
               ]),
             ),
           ],
           const SizedBox(height: 22),
           SizedBox(
             width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              onPressed: () => Navigator.pop(context),
-              child: Text('Done', style: GoogleFonts.poppins(
-                  color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: JT.grad,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: JT.btnShadow,
+                ),
+                child: Center(
+                  child: Text('Done', style: GoogleFonts.poppins(
+                      color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                ),
+              ),
             ),
           ),
         ]),
@@ -402,7 +397,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-      backgroundColor: error ? _red : _green,
+      backgroundColor: error ? JT.error : JT.success,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
@@ -421,7 +416,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: _card,
+      backgroundColor: JT.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -438,29 +433,29 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 Center(
                   child: Container(
                     width: 40, height: 4,
-                    decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2)),
+                    decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
                 const SizedBox(height: 20),
                 Row(children: [
-                  const Icon(Icons.account_balance_wallet_rounded, color: _amber, size: 22),
+                  Icon(Icons.account_balance_wallet_rounded, color: JT.warning, size: 22),
                   const SizedBox(width: 10),
                   Text('Withdraw Funds', style: GoogleFonts.poppins(
-                      color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                      color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
                   const Spacer(),
-                  IconButton(icon: const Icon(Icons.close_rounded, color: _textHint),
+                  IconButton(icon: Icon(Icons.close_rounded, color: JT.iconInactive),
                       onPressed: () => Navigator.pop(ctx)),
                 ]),
                 const SizedBox(height: 4),
                 Text('Available: ₹${(_wallet?['walletBalance'] ?? _wallet?['balance'] ?? 0).toStringAsFixed(2)}',
-                  style: GoogleFonts.poppins(color: _primary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.poppins(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 18),
 
                 _buildField(amountCtrl, 'Amount (min ₹100)', keyboardType: TextInputType.number, prefix: '₹'),
                 const SizedBox(height: 14),
 
                 Text('PAYMENT METHOD', style: GoogleFonts.poppins(
-                    color: _textHint, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                 const SizedBox(height: 10),
                 Row(children: [
                   _methodBtn(ctx, setModalState, 'Bank Transfer', 'bank', method, (v) => setModalState(() => method = v)),
@@ -484,31 +479,25 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 const SizedBox(height: 22),
                 SizedBox(
                   width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _amber,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                    onPressed: loading ? null : () async {
+                  child: GestureDetector(
+                    onTap: loading ? null : () async {
                       final amt = double.tryParse(amountCtrl.text.trim());
                       if (amt == null || amt < 100) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Enter a valid amount (min ₹100)', style: GoogleFonts.poppins()),
-                            backgroundColor: _red,
+                            backgroundColor: JT.error,
                           ));
                         return;
                       }
                       if (method == 'bank' && (holderCtrl.text.isEmpty || accountCtrl.text.isEmpty || ifscCtrl.text.isEmpty)) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Fill all bank details', style: GoogleFonts.poppins()), backgroundColor: _red));
+                          SnackBar(content: Text('Fill all bank details', style: GoogleFonts.poppins()), backgroundColor: JT.error));
                         return;
                       }
                       if (method == 'upi' && upiCtrl.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Enter UPI ID', style: GoogleFonts.poppins()), backgroundColor: _red));
+                          SnackBar(content: Text('Enter UPI ID', style: GoogleFonts.poppins()), backgroundColor: JT.error));
                         return;
                       }
                       setModalState(() => loading = true);
@@ -534,26 +523,37 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(data['message'] ?? 'Withdrawal requested', style: GoogleFonts.poppins()),
-                              backgroundColor: _green,
+                              backgroundColor: JT.success,
                             ));
                           _fetchWallet();
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(data['message'] ?? 'Request failed', style: GoogleFonts.poppins()),
-                              backgroundColor: _red,
+                              backgroundColor: JT.error,
                             ));
                         }
                       } catch (e) {
                         setModalState(() => loading = false);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Network error. Try again.', style: GoogleFonts.poppins()), backgroundColor: _red));
+                          SnackBar(content: Text('Network error. Try again.', style: GoogleFonts.poppins()), backgroundColor: JT.error));
                       }
                     },
-                    child: loading
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                      : Text('Submit Withdrawal Request', style: GoogleFonts.poppins(
-                          color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
+                    child: Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: loading ? JT.border : null,
+                        gradient: loading ? null : JT.grad,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: loading ? [] : JT.btnShadow,
+                      ),
+                      child: Center(
+                        child: loading
+                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : Text('Submit Withdrawal Request', style: GoogleFonts.poppins(
+                              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -573,16 +573,17 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: active ? _primary.withValues(alpha: 0.12) : _surface,
+            gradient: active ? JT.grad : null,
+            color: active ? null : JT.bgSoft,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: active ? _primary : _border,
+              color: active ? JT.primary : JT.border,
               width: active ? 1.5 : 1,
             ),
-            boxShadow: active ? [BoxShadow(color: _primary.withValues(alpha: 0.2), blurRadius: 10)] : [],
+            boxShadow: active ? JT.btnShadow : [],
           ),
           child: Center(child: Text(label, style: GoogleFonts.poppins(
-              color: active ? _primary : _textSecondary, fontWeight: FontWeight.w700, fontSize: 13))),
+              color: active ? Colors.white : JT.textSecondary, fontWeight: FontWeight.w700, fontSize: 13))),
         ),
       ),
     );
@@ -593,23 +594,23 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     return TextField(
       controller: ctrl,
       keyboardType: keyboardType,
-      style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
+      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 15),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: GoogleFonts.poppins(color: _textHint),
+        hintStyle: GoogleFonts.poppins(color: JT.iconInactive),
         prefixText: prefix != null ? '$prefix ' : null,
-        prefixStyle: GoogleFonts.poppins(color: _primary, fontWeight: FontWeight.w700),
+        prefixStyle: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w700),
         filled: true,
-        fillColor: _surface,
+        fillColor: JT.bgSoft,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: _border)),
+            borderSide: BorderSide(color: JT.border)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: _border)),
+            borderSide: BorderSide(color: JT.border)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: _primary, width: 1.5)),
+            borderSide: BorderSide(color: JT.primary, width: 1.5)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
@@ -622,326 +623,325 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
     final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
     final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;
 
-    return Scaffold(
-      backgroundColor: _bg,
-      body: Column(children: [
-        // Header + balance card combined
-        Container(
-          decoration: BoxDecoration(
-            color: _surface,
-            border: Border(bottom: BorderSide(color: _border, width: 1)),
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                // App bar row
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Row(children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 44, height: 44,
-                        decoration: BoxDecoration(
-                          color: _card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: _border),
-                        ),
-                        child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Text('Wallet', style: GoogleFonts.poppins(
-                        color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () { setState(() => _loading = true); _fetchWallet(); },
-                      child: Container(
-                        width: 44, height: 44,
-                        decoration: BoxDecoration(
-                          color: _card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: _border),
-                        ),
-                        child: const Icon(Icons.refresh_rounded, color: _textSecondary, size: 20),
-                      ),
-                    ),
-                  ]),
-                ),
-
-                if (_loading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: CircularProgressIndicator(color: _primary, strokeWidth: 2),
-                  )
-                else ...[
-                  // Balance display
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: JT.bg,
+        body: Column(children: [
+          // Header + balance card combined
+          Container(
+            decoration: BoxDecoration(
+              gradient: JT.grad,
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // App bar row
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                    child: Column(children: [
-                      Container(
-                        width: 72, height: 72,
-                        decoration: BoxDecoration(
-                          color: (isLocked ? _red : _primary).withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: (isLocked ? _red : _primary).withValues(alpha: 0.4)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (isLocked ? _red : _primary).withValues(alpha: 0.3),
-                              blurRadius: 24,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          isLocked ? Icons.lock_rounded : Icons.account_balance_wallet_rounded,
-                          color: isLocked ? _red : _primary, size: 34,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ShaderMask(
-                        shaderCallback: (bounds) => LinearGradient(
-                          colors: isLocked
-                              ? [_red, const Color(0xFFFF7070)]
-                              : [Colors.white, const Color(0xFFCCEEFF)],
-                        ).createShader(bounds),
-                        child: Text('₹${balance.toStringAsFixed(2)}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 40, fontWeight: FontWeight.w900,
-                            color: Colors.white, letterSpacing: -1.5)),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isLocked ? 'Account Locked — Recharge to unlock' : 'Available Balance',
-                        style: GoogleFonts.poppins(
-                          color: isLocked ? _red : _textSecondary,
-                          fontSize: 13, fontWeight: FontWeight.w600,
-                        )),
-                      const SizedBox(height: 20),
-
-                      // Recharge button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _primary,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            elevation: 0,
-                          ),
-                          icon: const Icon(Icons.add_circle_rounded, color: Colors.black, size: 22),
-                          label: Text('Recharge Wallet',
-                              style: GoogleFonts.poppins(
-                                  color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
-                          onPressed: _showRechargeSheet,
-                        ),
-                      ),
-
-                      // Withdraw button
-                      if (!isLocked && balance >= 100) ...[
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: _border, width: 1.5),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            icon: const Icon(Icons.arrow_upward_rounded, color: _textSecondary, size: 18),
-                            label: Text('Request Withdrawal',
-                                style: GoogleFonts.poppins(
-                                    color: _textSecondary, fontWeight: FontWeight.w700)),
-                            onPressed: _showWithdrawDialog,
-                          ),
-                        ),
-                      ],
-
-                      // Locked warning
-                      if (isLocked) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Row(children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: 44, height: 44,
                           decoration: BoxDecoration(
-                            color: _red.withValues(alpha: 0.08),
+                            color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _red.withValues(alpha: 0.3))),
-                          child: Row(children: [
-                            const Icon(Icons.info_outline_rounded, color: _red, size: 16),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text('Recharge your wallet to unlock your account and go online.',
-                                style: GoogleFonts.poppins(color: _red, fontSize: 12, fontWeight: FontWeight.w500))),
-                          ]),
+                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                         ),
-                      ],
-
-                      const SizedBox(height: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Text('Wallet', style: GoogleFonts.poppins(
+                          color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () { setState(() => _loading = true); _fetchWallet(); },
+                        child: Container(
+                          width: 44, height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          ),
+                          child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                        ),
+                      ),
                     ]),
                   ),
 
-                  // Tab bar
-                  TabBar(
-                    controller: _tabController,
-                    indicatorColor: _primary,
-                    indicatorWeight: 2,
-                    labelColor: Colors.white,
-                    unselectedLabelColor: _textHint,
-                    labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
-                    unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 13),
-                    tabs: const [Tab(text: 'Transactions'), Tab(text: 'Withdrawals')],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-
-        // Tab content
-        if (!_loading)
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // Transactions tab
-                history.isEmpty
-                  ? _emptyState(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'No transactions yet',
-                      subtitle: 'Recharge to get started',
-                      action: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        icon: const Icon(Icons.add_rounded, color: Colors.black, size: 18),
-                        label: Text('Recharge Now', style: GoogleFonts.poppins(
-                            color: Colors.black, fontWeight: FontWeight.w800)),
-                        onPressed: _showRechargeSheet,
-                      ),
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: history.length,
-                      itemBuilder: (_, i) {
-                        final t = history[i] as Map;
-                        final isCredit = (t['type']?.toString() ?? '').contains('credit') ||
-                          (t['type']?.toString() ?? '').contains('earn') ||
-                          (t['type']?.toString() ?? '').contains('topup') ||
-                          (t['type']?.toString() ?? '').contains('recharge');
-                        final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
+                  else ...[
+                    // Balance display
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                      child: Column(children: [
+                        Container(
+                          width: 72, height: 72,
                           decoration: BoxDecoration(
-                            color: _card,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: _border, width: 1),
+                            color: Colors.white.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.4)),
                           ),
-                          child: Row(children: [
-                            Container(
-                              width: 44, height: 44,
-                              decoration: BoxDecoration(
-                                color: (isCredit ? _green : _red).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                    color: (isCredit ? _green : _red).withValues(alpha: 0.3)),
-                              ),
-                              child: Icon(
-                                isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                                color: isCredit ? _green : _red, size: 20)),
-                            const SizedBox(width: 14),
-                            Expanded(child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(t['description']?.toString() ?? 'Transaction',
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
-                                const SizedBox(height: 3),
-                                Text((t['date'] ?? t['createdAt'] ?? '').toString().split('T').first,
-                                  style: GoogleFonts.poppins(color: _textHint, fontSize: 11)),
-                              ],
-                            )),
-                            Text('${isCredit ? '+' : '-'}₹${amt.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w800, fontSize: 15,
-                                color: isCredit ? _green : _red)),
-                          ]),
-                        );
-                      },
-                    ),
+                          child: Icon(
+                            isLocked ? Icons.lock_rounded : Icons.account_balance_wallet_rounded,
+                            color: Colors.white, size: 34,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text('₹${balance.toStringAsFixed(2)}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 40, fontWeight: FontWeight.w900,
+                            color: Colors.white, letterSpacing: -1.5)),
+                        const SizedBox(height: 6),
+                        Text(
+                          isLocked ? 'Account Locked — Recharge to unlock' : 'Available Balance',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                          )),
+                        const SizedBox(height: 20),
 
-                // Withdrawals tab
-                withdrawals.isEmpty
-                  ? _emptyState(
-                      icon: Icons.account_balance_rounded,
-                      title: 'No withdrawal requests',
-                      subtitle: balance >= 100 ? 'Request a withdrawal anytime' : 'Minimum ₹100 to withdraw',
-                      action: (!isLocked && balance >= 100) ? TextButton.icon(
-                        icon: const Icon(Icons.add_rounded, color: _primary),
-                        label: Text('Request Withdrawal',
-                            style: GoogleFonts.poppins(color: _primary, fontWeight: FontWeight.w700)),
-                        onPressed: _showWithdrawDialog,
-                      ) : null,
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: withdrawals.length,
-                      itemBuilder: (_, i) {
-                        final w = withdrawals[i] as Map;
-                        final status = w['status']?.toString() ?? 'pending';
-                        final statusColor = status == 'paid' ? _green
-                          : status == 'approved' ? _primary
-                          : status == 'rejected' ? _red
-                          : _amber;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: _card,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: statusColor.withValues(alpha: 0.2), width: 1),
-                          ),
-                          child: Row(children: [
-                            Container(
-                              width: 44, height: 44,
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                              ),
-                              child: Icon(Icons.account_balance_rounded, color: statusColor, size: 20)),
-                            const SizedBox(width: 14),
-                            Expanded(child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('₹${(w['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-                                if ((w['notes']?.toString() ?? '').isNotEmpty)
-                                  Text(w['notes']!.toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.poppins(color: _textHint, fontSize: 11)),
-                              ],
-                            )),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                              ),
-                              child: Text(status.toUpperCase(),
-                                style: GoogleFonts.poppins(
-                                    color: statusColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                        // Recharge button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
                             ),
-                          ]),
-                        );
-                      },
+                            icon: Icon(Icons.add_circle_rounded, color: JT.primary, size: 22),
+                            label: Text('Recharge Wallet',
+                                style: GoogleFonts.poppins(
+                                    color: JT.primary, fontWeight: FontWeight.w800, fontSize: 15)),
+                            onPressed: _showRechargeSheet,
+                          ),
+                        ),
+
+                        // Withdraw button
+                        if (!isLocked && balance >= 100) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
+                              label: Text('Request Withdrawal',
+                                  style: GoogleFonts.poppins(
+                                      color: Colors.white, fontWeight: FontWeight.w700)),
+                              onPressed: _showWithdrawDialog,
+                            ),
+                          ),
+                        ],
+
+                        // Locked warning
+                        if (isLocked) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withOpacity(0.3))),
+                            child: Row(children: [
+                              const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text('Recharge your wallet to unlock your account and go online.',
+                                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500))),
+                            ]),
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+                      ]),
                     ),
-              ],
+
+                    // Tab bar
+                    TabBar(
+                      controller: _tabController,
+                      indicatorColor: Colors.white,
+                      indicatorWeight: 2,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.white.withOpacity(0.6),
+                      labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
+                      unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 13),
+                      tabs: const [Tab(text: 'Transactions'), Tab(text: 'Withdrawals')],
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-      ]),
+
+          // Tab content
+          if (!_loading)
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Transactions tab
+                  history.isEmpty
+                    ? _emptyState(
+                        icon: Icons.receipt_long_rounded,
+                        title: 'No transactions yet',
+                        subtitle: 'Recharge to get started',
+                        action: GestureDetector(
+                          onTap: _showRechargeSheet,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: JT.grad,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: JT.btnShadow,
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                              const SizedBox(width: 8),
+                              Text('Recharge Now', style: GoogleFonts.poppins(
+                                  color: Colors.white, fontWeight: FontWeight.w800)),
+                            ]),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: history.length,
+                        itemBuilder: (_, i) {
+                          final t = history[i] as Map;
+                          final isCredit = (t['type']?.toString() ?? '').contains('credit') ||
+                            (t['type']?.toString() ?? '').contains('earn') ||
+                            (t['type']?.toString() ?? '').contains('topup') ||
+                            (t['type']?.toString() ?? '').contains('recharge');
+                          final amt = (t['amount'] as num?)?.toDouble() ?? 0;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: JT.bgSoft,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: JT.border, width: 1),
+                              boxShadow: JT.cardShadow,
+                            ),
+                            child: Row(children: [
+                              Container(
+                                width: 44, height: 44,
+                                decoration: BoxDecoration(
+                                  color: (isCredit ? JT.success : JT.error).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                      color: (isCredit ? JT.success : JT.error).withOpacity(0.3)),
+                                ),
+                                child: Icon(
+                                  isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                  color: isCredit ? JT.success : JT.error, size: 20)),
+                              const SizedBox(width: 14),
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(t['description']?.toString() ?? 'Transaction',
+                                    style: GoogleFonts.poppins(
+                                        color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+                                  const SizedBox(height: 3),
+                                  Text((t['date'] ?? t['createdAt'] ?? '').toString().split('T').first,
+                                    style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 11)),
+                                ],
+                              )),
+                              Text('${isCredit ? '+' : '-'}₹${amt.toStringAsFixed(2)}',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w800, fontSize: 15,
+                                  color: isCredit ? JT.success : JT.error)),
+                            ]),
+                          );
+                        },
+                      ),
+
+                  // Withdrawals tab
+                  withdrawals.isEmpty
+                    ? _emptyState(
+                        icon: Icons.account_balance_rounded,
+                        title: 'No withdrawal requests',
+                        subtitle: balance >= 100 ? 'Request a withdrawal anytime' : 'Minimum ₹100 to withdraw',
+                        action: (!isLocked && balance >= 100) ? TextButton.icon(
+                          icon: Icon(Icons.add_rounded, color: JT.primary),
+                          label: Text('Request Withdrawal',
+                              style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w700)),
+                          onPressed: _showWithdrawDialog,
+                        ) : null,
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: withdrawals.length,
+                        itemBuilder: (_, i) {
+                          final w = withdrawals[i] as Map;
+                          final status = w['status']?.toString() ?? 'pending';
+                          final statusColor = status == 'paid' ? JT.success
+                            : status == 'approved' ? JT.primary
+                            : status == 'rejected' ? JT.error
+                            : JT.warning;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: JT.bgSoft,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: statusColor.withOpacity(0.2), width: 1),
+                              boxShadow: JT.cardShadow,
+                            ),
+                            child: Row(children: [
+                              Container(
+                                width: 44, height: 44,
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                                ),
+                                child: Icon(Icons.account_balance_rounded, color: statusColor, size: 20)),
+                              const SizedBox(width: 14),
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('₹${(w['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                    style: GoogleFonts.poppins(
+                                        color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                                  if ((w['notes']?.toString() ?? '').isNotEmpty)
+                                    Text(w['notes']!.toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 11)),
+                                ],
+                              )),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                                ),
+                                child: Text(status.toUpperCase(),
+                                  style: GoogleFonts.poppins(
+                                      color: statusColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                              ),
+                            ]),
+                          );
+                        },
+                      ),
+                ],
+              ),
+            ),
+        ]),
+      ),
     );
   }
 
@@ -956,17 +956,17 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         Container(
           width: 80, height: 80,
           decoration: BoxDecoration(
-            color: _card,
+            color: JT.bgSoft,
             shape: BoxShape.circle,
-            border: Border.all(color: _border),
+            border: Border.all(color: JT.border),
           ),
-          child: Icon(icon, color: _textHint, size: 38),
+          child: Icon(icon, color: JT.iconInactive, size: 38),
         ),
         const SizedBox(height: 16),
         Text(title, style: GoogleFonts.poppins(
-            color: _textSecondary, fontSize: 16, fontWeight: FontWeight.w600)),
+            color: JT.textSecondary, fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        Text(subtitle, style: GoogleFonts.poppins(color: _textHint, fontSize: 13)),
+        Text(subtitle, style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 13)),
         if (action != null) ...[const SizedBox(height: 20), action],
       ]),
     );

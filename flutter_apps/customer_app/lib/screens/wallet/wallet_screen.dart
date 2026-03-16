@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -259,22 +260,14 @@ class _WalletScreenState extends State<WalletScreen>
                           horizontal: 20, vertical: 11),
                       decoration: BoxDecoration(
                         color: sel
-                            ? const Color(0xFF2F80ED)
-                            : isDarkSheet ? const Color(0xFF242424) : const Color(0xFFF3F6FB),
+                            ? JT.primary
+                            : isDarkSheet ? const Color(0xFF242424) : JT.surfaceAlt,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: sel
-                                ? const Color(0xFF2F80ED)
-                                : isDarkSheet ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB)),
-                        boxShadow: sel
-                            ? [
-                                BoxShadow(
-                                    color: const Color(0xFF2F80ED)
-                                        .withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3))
-                              ]
-                            : [],
+                                ? JT.primary
+                                : isDarkSheet ? const Color(0xFF2A2A2A) : JT.border),
+                        boxShadow: sel ? JT.btnShadow : [],
                       ),
                       child: Text('₹$amt',
                           style: GoogleFonts.poppins(
@@ -334,19 +327,12 @@ class _WalletScreenState extends State<WalletScreen>
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                height: 54,
+                height: 52,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                          color: const Color(0xFF2F80ED).withValues(alpha: 0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 5))
-                    ],
+                    gradient: JT.grad,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: JT.btnShadow,
                   ),
                   child: ElevatedButton(
                     onPressed: _paying
@@ -408,10 +394,10 @@ class _WalletScreenState extends State<WalletScreen>
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B0B0B) : const Color(0xFFF3F6FB),
+      backgroundColor: isDark ? const Color(0xFF0B0B0B) : JT.bgSoft,
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF2F80ED)))
+              child: CircularProgressIndicator(color: JT.primary))
           : CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildHeader(balanceDouble)),
@@ -424,7 +410,7 @@ class _WalletScreenState extends State<WalletScreen>
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
-                              color: isDark ? Colors.white : const Color(0xFF111827))),
+                              color: isDark ? Colors.white : JT.textPrimary)),
                       const Spacer(),
                       Text('${transactions.length} records',
                           style: GoogleFonts.poppins(
@@ -455,11 +441,7 @@ class _WalletScreenState extends State<WalletScreen>
       opacity: _headerFade,
       child: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED), Color(0xFF56CCF2)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: JT.grad,
         ),
         child: SafeArea(
           bottom: false,
@@ -532,7 +514,7 @@ class _WalletScreenState extends State<WalletScreen>
                               size: 22),
                         ),
                         const SizedBox(width: 10),
-                        Text('JAGO Wallet',
+                        Text('My Wallet',
                             style: GoogleFonts.poppins(
                                 color: Colors.white70,
                                 fontSize: 13,
@@ -561,17 +543,17 @@ class _WalletScreenState extends State<WalletScreen>
                     onPressed: _paying ? null : _showAddMoneySheet,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF2F80ED),
+                      foregroundColor: JT.primary,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                          borderRadius: BorderRadius.circular(14)),
                       elevation: 0,
                     ),
                     child: _paying
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                color: Color(0xFF2F80ED), strokeWidth: 2))
+                                color: JT.primary, strokeWidth: 2))
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -604,7 +586,7 @@ class _WalletScreenState extends State<WalletScreen>
       {
         'label': 'Cards',
         'icon': Icons.credit_card_rounded,
-        'color': const Color(0xFF2F80ED),
+        'color': JT.primary,
         'bg': const Color(0xFFEFF6FF),
       },
       {
@@ -626,15 +608,10 @@ class _WalletScreenState extends State<WalletScreen>
       margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: isDark ? Border.all(color: const Color(0xFF2A2A2A), width: 1) : null,
-        boxShadow: isDark ? null : [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 4))
-        ],
+        color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? const Color(0xFF2A2A2A) : JT.border),
+        boxShadow: isDark ? null : JT.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,7 +620,7 @@ class _WalletScreenState extends State<WalletScreen>
               style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF111827))),
+                  color: isDark ? Colors.white : JT.textPrimary)),
           const SizedBox(height: 4),
           Text('Powered by Razorpay — all methods accepted',
               style: GoogleFonts.poppins(
@@ -729,39 +706,32 @@ class _WalletScreenState extends State<WalletScreen>
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
         borderRadius: BorderRadius.circular(16),
-        border: isDark
-            ? Border(
-                left: BorderSide(
-                  color: isCredit ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                  width: 3,
-                ),
-              )
-            : null,
-        boxShadow: isDark ? null : [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
+        border: Border(
+          left: BorderSide(
+            color: isCredit ? JT.success : JT.error,
+            width: 3,
+          ),
+          right: BorderSide(color: isDark ? Colors.white12 : JT.border),
+          top: BorderSide(color: isDark ? Colors.white12 : JT.border),
+          bottom: BorderSide(color: isDark ? Colors.white12 : JT.border),
+        ),
+        boxShadow: isDark ? null : JT.cardShadow,
       ),
       child: Row(children: [
         Container(
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: (isCredit ? const Color(0xFF10B981) : const Color(0xFFEF4444))
-                .withValues(alpha: 0.1),
+            color: (isCredit ? JT.success : JT.error).withOpacity(0.1),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
               isCredit
                   ? Icons.arrow_downward_rounded
                   : Icons.arrow_upward_rounded,
-              color: isCredit
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFFEF4444),
+              color: isCredit ? JT.success : JT.error,
               size: 22),
         ),
         const SizedBox(width: 14),
@@ -773,7 +743,7 @@ class _WalletScreenState extends State<WalletScreen>
                   style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: isDark ? Colors.white : const Color(0xFF111827)),
+                      color: isDark ? Colors.white : JT.textPrimary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
@@ -783,12 +753,12 @@ class _WalletScreenState extends State<WalletScreen>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                        color: const Color(0xFF2F80ED).withValues(alpha: 0.1),
+                        color: JT.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(5)),
                     child: Text('Razorpay',
                         style: GoogleFonts.poppins(
                             fontSize: 9,
-                            color: const Color(0xFF2F80ED),
+                            color: JT.primary,
                             fontWeight: FontWeight.w700)),
                   ),
                   const SizedBox(width: 6),
@@ -805,9 +775,7 @@ class _WalletScreenState extends State<WalletScreen>
           style: GoogleFonts.poppins(
               fontWeight: FontWeight.w800,
               fontSize: 16,
-              color: isCredit
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFFEF4444)),
+              color: isCredit ? JT.success : JT.error),
         ),
       ]),
     );

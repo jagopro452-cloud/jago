@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
@@ -54,11 +55,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
 
-  static const Color _jagoPrimary = Color(0xFF2F80ED);
-  static const Color _jagoSecondary = Color(0xFF56CCF2);
+  static const Color _jagoPrimary = JT.primary;
+  static const Color _jagoSecondary = JT.secondary;
 
-  static const Color _blue = _jagoPrimary;
-  static const Color _green = Color(0xFF16A34A);
+  static const Color _blue = JT.primary;
+  static const Color _green = JT.success;
 
   LatLng get _pickupLatLng => LatLng(widget.pickupLat, widget.pickupLng);
   LatLng get _destLatLng => widget.destLat != 0 && widget.destLng != 0
@@ -601,12 +602,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8FAFF);
-    final textMain = isDark ? Colors.white : const Color(0xFF0B0B0B);
-    final borderCol = isDark ? Colors.white12 : const Color(0xFFE8EFFF);
+    final panelBg = isDark ? const Color(0xFF0B0B0B) : JT.surface;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : JT.bgSoft;
+    final textMain = isDark ? Colors.white : JT.textPrimary;
+    final borderCol = isDark ? Colors.white12 : JT.border;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B0B0B) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF0B0B0B) : JT.bg,
       body: Stack(children: [
         GoogleMap(
           initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 13),
@@ -630,7 +631,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           },
           markers: {
             Marker(markerId: const MarkerId('pickup'), position: _pickupLatLng,
-              infoWindow: InfoWindow(title: 'Pickup', snippet: widget.pickup)),
+              infoWindow: InfoWindow(title: 'Pickup', snippet: widget.pickup),
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)),
             Marker(markerId: const MarkerId('dest'), position: _destLatLng,
               infoWindow: InfoWindow(title: 'Drop', snippet: widget.destination),
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue)),
@@ -699,7 +701,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                         ),
                       ),
                       Column(children: [
-                        _addressRow(Icons.circle, const Color(0xFF16A34A), widget.pickup, textMain),
+                        _addressRow(Icons.circle, JT.primary, widget.pickup, textMain),
                         Padding(
                           padding: const EdgeInsets.only(left: 48),
                           child: Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey[100]),
@@ -732,32 +734,20 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 _buildPaymentSection(),
                 const SizedBox(height: 16),
 
-                // Confirm button
+                // Confirm button — brand gradient
                 Container(
-                  width: double.infinity, height: 56,
+                  width: double.infinity, height: 52,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_jagoPrimary, Color(0xFF56CCF2)],
-                      begin: Alignment.centerLeft, end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _jagoPrimary.withValues(alpha: 0.45),
-                        blurRadius: 20, offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: _jagoPrimary.withValues(alpha: 0.2),
-                        blurRadius: 40, offset: const Offset(0, 10),
-                      ),
-                    ],
+                    gradient: JT.grad,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: JT.btnShadow,
                   ),
                   child: ElevatedButton(
                     onPressed: _loading || _estimating ? null : _handleOnConfirm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent, foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey[200],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       elevation: 0, shadowColor: Colors.transparent,
                     ),
                     child: _loading
@@ -766,7 +756,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                       : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Text(
                             _paymentMethod == 'upi' ? 'PAY ₹${_finalFare.toStringAsFixed(0)} & BOOK' : 'BOOK NOW',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                           const SizedBox(width: 8),
                           const Icon(Icons.arrow_forward_rounded, size: 20),
                         ]),
@@ -1083,17 +1073,17 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0D1B2A), borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF1E3A5F))),
+          color: JT.surfaceAlt, borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JT.border)),
         child: Row(children: [
           const Text('🌙', style: TextStyle(fontSize: 16)),
           const SizedBox(width: 8),
-          const Expanded(child: Text('Night charges apply (10PM - 6AM)',
-            style: TextStyle(color: Color(0xFF93C5FD), fontSize: 13, fontWeight: FontWeight.w600))),
+          Expanded(child: Text('Night charges apply (10PM - 6AM)',
+            style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: const Color(0xFF1E3A5F), borderRadius: BorderRadius.circular(8)),
-            child: const Text('1.25x', style: TextStyle(color: Color(0xFFFFD700), fontSize: 12, fontWeight: FontWeight.w800)),
+            decoration: BoxDecoration(color: JT.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            child: Text('1.25x', style: TextStyle(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w800)),
           ),
         ]),
       ),

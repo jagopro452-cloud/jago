@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../home/home_screen.dart';
@@ -32,12 +34,6 @@ class _TripScreenState extends State<TripScreen> {
   StreamSubscription? _cancelSub;
   final Set<Marker> _markers = {};
 
-  static const Color _cyan = Color(0xFF00D4FF);
-  static const Color _blue = Color(0xFF0091FF);
-  static const Color _bg = Color(0xFF060A14);
-  static const Color _surface = Color(0xFF0D1526);
-  static const Color _green = Color(0xFF16A34A);
-
   @override
   void initState() {
     super.initState();
@@ -52,9 +48,7 @@ class _TripScreenState extends State<TripScreen> {
     _startLocationUpdates();
     _loadCancelReasons();
     _listenForCancel();
-    // Add markers after frame renders (so map is ready)
     WidgetsBinding.instance.addPostFrameCallback((_) => _initMapMarkers());
-    // Auto-launch navigation to pickup when trip is accepted
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_status == 'accepted' || _status == 'driver_assigned') {
         _openNavigation();
@@ -63,7 +57,6 @@ class _TripScreenState extends State<TripScreen> {
   }
 
   void _listenForCancel() {
-    // If customer cancels mid-trip, navigate back home
     _cancelSub = _socket.onTripCancelled.listen((data) {
       if (!mounted) return;
       _locationTimer?.cancel();
@@ -71,14 +64,15 @@ class _TripScreenState extends State<TripScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) => AlertDialog(
-          backgroundColor: _surface,
+          backgroundColor: JT.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Trip Cancelled', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          title: Text('Trip Cancelled',
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800)),
           content: Text('Customer cancelled the trip.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 14)),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white,
+              style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () {
                 Navigator.pop(context);
@@ -117,16 +111,16 @@ class _TripScreenState extends State<TripScreen> {
         _markers.add(Marker(
           markerId: const MarkerId('pickup'),
           position: LatLng(pickupLat, pickupLng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          infoWindow: const InfoWindow(title: '📍 Customer Pickup'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          infoWindow: const InfoWindow(title: 'Customer Pickup'),
         ));
       }
       if (destLat != null && destLat != 0 && destLng != null) {
         _markers.add(Marker(
           markerId: const MarkerId('destination'),
           position: LatLng(destLat, destLng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: const InfoWindow(title: '🏁 Destination'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: const InfoWindow(title: 'Destination'),
         ));
       }
     });
@@ -139,8 +133,8 @@ class _TripScreenState extends State<TripScreen> {
       _markers.add(Marker(
         markerId: const MarkerId('self'),
         position: LatLng(lat, lng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
-        infoWindow: const InfoWindow(title: '🏍️ You'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        infoWindow: const InfoWindow(title: 'You'),
         zIndex: 2,
       ));
     });
@@ -162,10 +156,8 @@ class _TripScreenState extends State<TripScreen> {
         _updateSelfMarker(lat, lng);
       }
 
-      // Socket — real-time (fastest, broadcasts to customer's map)
       _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
 
-      // HTTP fallback — always update DB
       final locHeaders = await AuthService.getHeaders();
       http.post(Uri.parse(ApiConfig.driverLocation),
         headers: {...locHeaders, 'Content-Type': 'application/json'},
@@ -199,7 +191,6 @@ class _TripScreenState extends State<TripScreen> {
 
     try {
       if (_status == 'accepted') {
-        // Mark arrived — HTTP + Socket
         final res = await http.post(Uri.parse(ApiConfig.driverArrived),
           headers: {...stepHeaders, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId}));
@@ -235,7 +226,6 @@ class _TripScreenState extends State<TripScreen> {
         final rideFare = pricing['rideFare'] ?? data['trip']?['actualFare'] ?? data['trip']?['actual_fare'] ?? estimatedFare;
         final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
         final commission = pricing['platformDeduction'] ?? 0;
-        // Notify customer via socket
         _socket.updateTripStatus(tripId, 'completed');
         _locationTimer?.cancel();
         if (!mounted) return;
@@ -260,15 +250,15 @@ class _TripScreenState extends State<TripScreen> {
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
-      backgroundColor: error ? const Color(0xFFDC2626) : _blue,
+      backgroundColor: error ? JT.error : JT.primary,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
 
   void _showCompletionDialog(String fare, {String driverEarnings = '0', String commission = '0'}) {
-    int _selectedRating = 0;
-    bool _ratingSubmitted = false;
+    int selectedRating = 0;
+    bool ratingSubmitted = false;
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
     final isCash = pm == 'cash';
@@ -281,7 +271,7 @@ class _TripScreenState extends State<TripScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => Dialog(
-          backgroundColor: _surface,
+          backgroundColor: JT.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -289,40 +279,41 @@ class _TripScreenState extends State<TripScreen> {
               Container(
                 width: 72, height: 72,
                 decoration: BoxDecoration(
-                  color: _green.withValues(alpha: 0.15),
+                  color: JT.success.withOpacity(0.10),
                   shape: BoxShape.circle,
-                  border: Border.all(color: _green.withValues(alpha: 0.3), width: 2),
+                  border: Border.all(color: JT.success.withOpacity(0.3), width: 2),
                 ),
-                child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 40)),
+                child: const Icon(Icons.check_rounded, color: JT.success, size: 40)),
               const SizedBox(height: 16),
-              const Text('Trip Complete!',
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              Text('Trip Complete!',
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               // Fare breakdown card
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  color: _green.withValues(alpha: 0.08),
+                  color: JT.bgSoft,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _green.withValues(alpha: 0.25)),
+                  border: Border.all(color: JT.border),
                 ),
                 child: Column(children: [
-                  // Net earnings — big green
                   Text('₹${netEarnings.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 40, fontWeight: FontWeight.w900)),
-                  const Text('Your Earnings', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(color: JT.primary, fontSize: 40, fontWeight: FontWeight.w900)),
+                  Text('Your Earnings',
+                    style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
                   if (commissionAmt > 0) ...[
                     const SizedBox(height: 12),
-                    Container(height: 1, color: Colors.white12),
+                    Container(height: 1, color: JT.border),
                     const SizedBox(height: 10),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      Text('Trip Fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13)),
-                      Text('₹${fullFare.toStringAsFixed(0)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13)),
+                      Text('Trip Fare', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
+                      Text('₹${fullFare.toStringAsFixed(0)}', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
                     ]),
                     const SizedBox(height: 4),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      Text('Platform Fee', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-                      Text('- ₹${commissionAmt.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12)),
+                      Text('Platform Fee', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
+                      Text('- ₹${commissionAmt.toStringAsFixed(0)}',
+                        style: GoogleFonts.poppins(color: JT.error, fontSize: 12)),
                     ]),
                   ],
                 ]),
@@ -332,12 +323,9 @@ class _TripScreenState extends State<TripScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF16A34A), Color(0xFF15803D)],
-                      begin: Alignment.centerLeft, end: Alignment.centerRight,
-                    ),
+                    gradient: JT.grad,
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+                    boxShadow: JT.btnShadow,
                   ),
                   child: Row(children: [
                     const Icon(Icons.payments_rounded, color: Colors.white, size: 28),
@@ -354,18 +342,18 @@ class _TripScreenState extends State<TripScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00D4FF).withValues(alpha: 0.08),
+                    color: JT.surfaceAlt,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF00D4FF).withValues(alpha: 0.25)),
+                    border: Border.all(color: JT.border),
                   ),
                   child: Row(children: [
-                    const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF00D4FF), size: 24),
+                    const Icon(Icons.account_balance_wallet_rounded, color: JT.primary, size: 24),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('₹${netEarnings.toStringAsFixed(0)} Wallet ki Credit Aindi!',
-                        style: const TextStyle(color: Color(0xFF00D4FF), fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w700, fontSize: 13)),
                       Text(pm == 'wallet' ? 'Customer wallet deducted automatically' : 'Customer already paid online',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11)),
+                        style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
                     ])),
                   ]),
                 ),
@@ -375,37 +363,38 @@ class _TripScreenState extends State<TripScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.04),
+                  color: JT.bgSoft,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border: Border.all(color: JT.border),
                 ),
-                child: _ratingSubmitted
+                child: ratingSubmitted
                     ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
                         const SizedBox(width: 6),
-                        Text('Rating submitted! Thanks', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13)),
+                        Text('Rating submitted! Thanks',
+                          style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
                       ])
                     : Column(children: [
                         Text('Customer ki Rating ivvandi',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13, fontWeight: FontWeight.w600)),
+                          style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 10),
                         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                           for (int i = 1; i <= 5; i++)
                             GestureDetector(
                               onTap: () async {
-                                setStateDialog(() => _selectedRating = i);
+                                setStateDialog(() => selectedRating = i);
                                 final rateHeaders = await AuthService.getHeaders();
                                 try {
                                   await http.post(Uri.parse(ApiConfig.driverRateCustomer),
                                     headers: {...rateHeaders, 'Content-Type': 'application/json'},
                                     body: jsonEncode({'tripId': tripId, 'rating': i}));
                                 } catch (_) {}
-                                setStateDialog(() => _ratingSubmitted = true);
+                                setStateDialog(() => ratingSubmitted = true);
                               },
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 4),
                                 child: Icon(
-                                  i <= _selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
+                                  i <= selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
                                   color: Colors.amber, size: 36),
                               ),
                             ),
@@ -417,7 +406,7 @@ class _TripScreenState extends State<TripScreen> {
                 width: double.infinity, height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _blue, foregroundColor: Colors.white,
+                    backgroundColor: JT.primary, foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     elevation: 0),
                   onPressed: () {
@@ -425,7 +414,8 @@ class _TripScreenState extends State<TripScreen> {
                     Navigator.pushAndRemoveUntil(context,
                       MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
                   },
-                  child: const Text('Go Home →', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                  child: Text('Go Home →',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15))),
               ),
             ]),
           ),
@@ -440,27 +430,27 @@ class _TripScreenState extends State<TripScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Dialog(
-        backgroundColor: _surface,
+        backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: _blue.withValues(alpha: 0.15), shape: BoxShape.circle),
-              child: const Icon(Icons.lock_open_rounded, color: Color(0xFF2563EB), size: 32)),
+              decoration: BoxDecoration(color: JT.surfaceAlt, shape: BoxShape.circle),
+              child: const Icon(Icons.lock_open_rounded, color: JT.primary, size: 32)),
             const SizedBox(height: 16),
-            const Text('Customer OTP',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            Text('Customer OTP',
+              style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
             Text('Ask customer for OTP from their JAGO app',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13), textAlign: TextAlign.center),
+              style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: JT.bgSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _blue.withValues(alpha: 0.2)),
+                border: Border.all(color: JT.border),
               ),
               child: TextField(
                 controller: _otpCtrl,
@@ -468,11 +458,11 @@ class _TripScreenState extends State<TripScreen> {
                 maxLength: 6,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 10),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 10),
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: '------',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.15), letterSpacing: 10, fontSize: 24),
+                  hintStyle: GoogleFonts.poppins(color: JT.iconInactive, letterSpacing: 10, fontSize: 24),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
@@ -486,11 +476,12 @@ class _TripScreenState extends State<TripScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontWeight: FontWeight.w600)))),
+                child: Text('Cancel',
+                  style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w600)))),
               const SizedBox(width: 12),
               Expanded(child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue, foregroundColor: Colors.white,
+                  backgroundColor: JT.primary, foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
                 onPressed: () async {
@@ -499,7 +490,8 @@ class _TripScreenState extends State<TripScreen> {
                   Navigator.pop(ctx);
                   await _verifyOtpAndStart(otp);
                 },
-                child: const Text('Verify ✓', style: TextStyle(fontWeight: FontWeight.w800)))),
+                child: Text('Verify ✓',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w800)))),
             ]),
           ]),
         ),
@@ -516,7 +508,6 @@ class _TripScreenState extends State<TripScreen> {
         headers: {...otpHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
-        // Notify customer trip started via socket
         _socket.updateTripStatus(tripId, 'on_the_way', otp: otp);
         if (!mounted) return;
         setState(() { _status = 'in_progress'; _loading = false; });
@@ -525,7 +516,6 @@ class _TripScreenState extends State<TripScreen> {
         if (destLat != null && destLng != null && destLat != 0) {
           _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(destLat, destLng)));
         }
-        // Prompt driver to take a pickup location photo (ride security)
         _showPickupPhotoPrompt(tripId);
       } else {
         final err = jsonDecode(res.body);
@@ -540,37 +530,37 @@ class _TripScreenState extends State<TripScreen> {
     }
   }
 
-  /// Show a bottom sheet prompting driver to capture a pickup location photo.
   void _showPickupPhotoPrompt(String tripId) {
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
-      backgroundColor: _surface,
+      backgroundColor: JT.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: _blue.withValues(alpha: 0.12),
+              color: JT.surfaceAlt,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _blue.withValues(alpha: 0.25)),
+              border: Border.all(color: JT.border),
             ),
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _blue.withValues(alpha: 0.18), shape: BoxShape.circle),
-                child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF60A5FA), size: 26)),
+                decoration: BoxDecoration(color: JT.primary.withOpacity(0.10), shape: BoxShape.circle),
+                child: const Icon(Icons.camera_alt_rounded, color: JT.primary, size: 26)),
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Pickup Location Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                Text('Pickup Location Photo',
+                  style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 4),
                 Text('Capture a photo at the pickup point for ride security.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12)),
+                  style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
               ])),
             ]),
           ),
@@ -579,13 +569,13 @@ class _TripScreenState extends State<TripScreen> {
             Expanded(
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white60,
-                  side: const BorderSide(color: Colors.white24),
+                  foregroundColor: JT.textSecondary,
+                  side: BorderSide(color: JT.border),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w600)),
+                child: Text('Skip', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(width: 12),
@@ -593,11 +583,11 @@ class _TripScreenState extends State<TripScreen> {
               flex: 2,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue, foregroundColor: Colors.white,
+                  backgroundColor: JT.primary, foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
                 icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                label: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w800)),
+                label: Text('Take Photo', style: GoogleFonts.poppins(fontWeight: FontWeight.w800)),
                 onPressed: () {
                   Navigator.pop(context);
                   _captureAndUploadPickupPhoto(tripId);
@@ -610,7 +600,6 @@ class _TripScreenState extends State<TripScreen> {
     );
   }
 
-  /// Opens the camera, captures a pickup photo and uploads it to the server.
   Future<void> _captureAndUploadPickupPhoto(String tripId) async {
     try {
       final picker = ImagePicker();
@@ -630,9 +619,7 @@ class _TripScreenState extends State<TripScreen> {
       if (response.statusCode == 200 && mounted) {
         _showSnack('Pickup photo saved ✓');
       }
-    } catch (_) {
-      // Photo is optional — don't block trip on failure
-    }
+    } catch (_) {}
   }
 
   void _showCancelDialog() {
@@ -645,25 +632,26 @@ class _TripScreenState extends State<TripScreen> {
     ];
     showModalBottomSheet(
       context: context,
-      backgroundColor: _surface,
+      backgroundColor: JT.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
+            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Row(children: [
             Container(padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.cancel_rounded, color: Color(0xFFF87171), size: 20)),
+              decoration: BoxDecoration(color: JT.error.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.cancel_rounded, color: JT.error, size: 20)),
             const SizedBox(width: 12),
-            const Text('Cancel Reason', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+            Text('Cancel Reason',
+              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 16),
           ...reasons.map((r) => ListTile(
-            title: Text(r, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
-            leading: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.3), size: 18),
+            title: Text(r, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13)),
+            leading: const Icon(Icons.chevron_right_rounded, color: JT.iconInactive, size: 18),
             contentPadding: EdgeInsets.zero,
             dense: true,
             onTap: () { Navigator.pop(context); _cancelTrip(r); },
@@ -678,7 +666,6 @@ class _TripScreenState extends State<TripScreen> {
     setState(() => _loading = true);
     final cancelHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
-    // Notify customer via socket
     _socket.updateTripStatus(tripId, 'cancelled');
     try {
       await http.post(Uri.parse(ApiConfig.driverCancelTrip),
@@ -697,27 +684,27 @@ class _TripScreenState extends State<TripScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Dialog(
-        backgroundColor: _surface,
+        backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFD97706).withValues(alpha: 0.15), shape: BoxShape.circle),
-              child: const Icon(Icons.local_shipping_rounded, color: Color(0xFFD97706), size: 32)),
+              decoration: BoxDecoration(color: JT.warning.withOpacity(0.10), shape: BoxShape.circle),
+              child: const Icon(Icons.local_shipping_rounded, color: JT.warning, size: 32)),
             const SizedBox(height: 16),
-            const Text('Delivery OTP',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            Text('Delivery OTP',
+              style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
             Text('Ask receiver for OTP to confirm delivery',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13), textAlign: TextAlign.center),
+              style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: JT.bgSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.3)),
+                border: Border.all(color: JT.warning.withOpacity(0.3)),
               ),
               child: TextField(
                 controller: deliveryOtpCtrl,
@@ -725,11 +712,11 @@ class _TripScreenState extends State<TripScreen> {
                 maxLength: 6,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 10),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 10),
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: '------',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.15), letterSpacing: 10, fontSize: 24),
+                  hintStyle: GoogleFonts.poppins(color: JT.iconInactive, letterSpacing: 10, fontSize: 24),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
@@ -743,11 +730,12 @@ class _TripScreenState extends State<TripScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontWeight: FontWeight.w600)))),
+                child: Text('Cancel',
+                  style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w600)))),
               const SizedBox(width: 12),
               Expanded(child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD97706), foregroundColor: Colors.white,
+                  backgroundColor: JT.warning, foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
                 onPressed: () async {
@@ -756,7 +744,8 @@ class _TripScreenState extends State<TripScreen> {
                   Navigator.pop(ctx);
                   await _verifyDeliveryOtp(otp);
                 },
-                child: const Text('Verify ✓', style: TextStyle(fontWeight: FontWeight.w800)))),
+                child: Text('Verify ✓',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w800)))),
             ]),
           ]),
         ),
@@ -774,7 +763,7 @@ class _TripScreenState extends State<TripScreen> {
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
         if (!mounted) return;
-        _showSnack('✅ Delivery verified! You can now complete the trip.');
+        _showSnack('Delivery verified! You can now complete the trip.');
       } else {
         final err = jsonDecode(res.body);
         if (!mounted) return;
@@ -803,6 +792,7 @@ class _TripScreenState extends State<TripScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        backgroundColor: JT.bg,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -817,25 +807,35 @@ class _TripScreenState extends State<TripScreen> {
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
           ),
+          // White floating status bar at top
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _buildFloatingStatusBar(step, pickupAddress, destAddress),
+              ),
+            ),
+          ),
+          // White bottom sheet
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
               decoration: BoxDecoration(
-                color: _bg,
+                color: JT.surface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 24)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 24)],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 44, height: 4,
                   margin: const EdgeInsets.only(top: 10, bottom: 4),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [_blue.withValues(alpha: 0.4), Colors.white.withValues(alpha: 0.1)]),
+                    color: JT.border,
                     borderRadius: BorderRadius.circular(2))),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    _buildStatusHeader(step, pickupAddress, destAddress),
-                    const SizedBox(height: 14),
                     _buildCustomerCard(customerName, customerPhone, estimatedFare, estimatedDistance),
                     if (isForSomeoneElse && passengerName.isNotEmpty) ...[
                       const SizedBox(height: 10),
@@ -865,51 +865,49 @@ class _TripScreenState extends State<TripScreen> {
     );
   }
 
-  Widget _buildStatusHeader(Map<String, dynamic> step, String pickup, String dest) {
+  Widget _buildFloatingStatusBar(Map<String, dynamic> step, String pickup, String dest) {
     final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
-    final statusColor = isOnTheWay ? _green : _cyan;
-    final gradColors = isOnTheWay
-      ? [const Color(0xFF064E3B), const Color(0xFF065F46)]
-      : [const Color(0xFF001F2E), const Color(0xFF003344)];
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: gradColors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        color: JT.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 1),
-        boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4))],
+        border: Border.all(color: JT.border),
+        boxShadow: JT.cardShadow,
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.25),
+            color: isOnTheWay ? JT.success.withOpacity(0.10) : JT.surfaceAlt,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+            border: Border.all(color: isOnTheWay ? JT.success.withOpacity(0.25) : JT.border),
           ),
-          child: Icon(step['icon'] as IconData, color: statusColor, size: 24)),
+          child: Icon(step['icon'] as IconData,
+            color: isOnTheWay ? JT.success : JT.primary, size: 24)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(step['label'] as String,
-            style: TextStyle(color: statusColor, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+            style: GoogleFonts.poppins(
+              color: isOnTheWay ? JT.success : JT.primary,
+              fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
           const SizedBox(height: 3),
           Text(
             _status == 'accepted' ? pickup : dest,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11),
             maxLines: 1, overflow: TextOverflow.ellipsis),
         ])),
-        // Live location indicator
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.15),
+            color: JT.success.withOpacity(0.08),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 6, height: 6,
-              decoration: const BoxDecoration(color: Color(0xFF4ADE80), shape: BoxShape.circle)),
+              decoration: const BoxDecoration(color: JT.success, shape: BoxShape.circle)),
             const SizedBox(width: 4),
-            const Text('LIVE', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 9, fontWeight: FontWeight.w800)),
+            Text('LIVE', style: GoogleFonts.poppins(color: JT.success, fontSize: 9, fontWeight: FontWeight.w800)),
           ]),
         ),
       ]),
@@ -932,36 +930,40 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFD97706).withValues(alpha: 0.08),
+        color: JT.warning.withOpacity(0.06),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.3), width: 1),
+        border: Border.all(color: JT.warning.withOpacity(0.25), width: 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Text('📦', style: TextStyle(fontSize: 16)),
-          SizedBox(width: 8),
-          Text('PARCEL DELIVERY', style: TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        Row(children: [
+          const Text('📦', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text('PARCEL DELIVERY',
+            style: GoogleFonts.poppins(color: JT.warning, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
         ]),
         const SizedBox(height: 10),
         if (receiver.isNotEmpty) Row(children: [
-          const Icon(Icons.person_rounded, color: Color(0xFFD97706), size: 15),
+          const Icon(Icons.person_rounded, color: JT.warning, size: 15),
           const SizedBox(width: 6),
-          Expanded(child: Text(receiver, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600))),
+          Expanded(child: Text(receiver,
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600))),
         ]),
         if (category.isNotEmpty) ...[
           const SizedBox(height: 4),
           Row(children: [
-            const Icon(Icons.category_rounded, color: Color(0xFFD97706), size: 15),
+            const Icon(Icons.category_rounded, color: JT.warning, size: 15),
             const SizedBox(width: 6),
-            Text('$category  •  $weight', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text('$category  •  $weight',
+              style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
           ]),
         ],
         if (instructions.isNotEmpty) ...[
           const SizedBox(height: 4),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.info_outline_rounded, color: Color(0xFFD97706), size: 15),
+            const Icon(Icons.info_outline_rounded, color: JT.warning, size: 15),
             const SizedBox(width: 6),
-            Expanded(child: Text(instructions, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+            Expanded(child: Text(instructions,
+              style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11))),
           ]),
         ],
       ]),
@@ -972,26 +974,29 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.purple.withValues(alpha: 0.08),
+        color: JT.surfaceAlt,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.purple.withValues(alpha: 0.25), width: 1),
+        border: Border.all(color: JT.border, width: 1),
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.purple.withValues(alpha: 0.15),
+            color: JT.primary.withOpacity(0.10),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.person_pin_rounded, color: Colors.purple, size: 18)),
+          child: const Icon(Icons.person_pin_rounded, color: JT.primary, size: 18)),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('PASSENGER', style: TextStyle(color: Colors.purple, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          Text('PASSENGER',
+            style: GoogleFonts.poppins(color: JT.primary, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
           const SizedBox(height: 2),
-          Text(passengerName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          Text(passengerName,
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w700)),
           if (passengerPhone != null && passengerPhone.isNotEmpty) ...[
             const SizedBox(height: 1),
-            Text(passengerPhone, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11)),
+            Text(passengerPhone,
+              style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
           ],
         ])),
         if (passengerPhone != null && passengerPhone.isNotEmpty)
@@ -1006,10 +1011,10 @@ class _TripScreenState extends State<TripScreen> {
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                color: Colors.purple.withValues(alpha: 0.15),
+                color: JT.primary.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.phone_rounded, color: Colors.purple, size: 17)),
+              child: const Icon(Icons.phone_rounded, color: JT.primary, size: 17)),
           ),
       ]),
     );
@@ -1022,18 +1027,15 @@ class _TripScreenState extends State<TripScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         margin: const EdgeInsets.only(bottom: 4),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFD97706), Color(0xFFB45309)],
-            begin: Alignment.centerLeft, end: Alignment.centerRight,
-          ),
+          color: JT.warning.withOpacity(0.10),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: const Color(0xFFD97706).withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 3))],
+          border: Border.all(color: JT.warning.withOpacity(0.3)),
         ),
-        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.lock_open_rounded, color: Colors.white, size: 18),
-          SizedBox(width: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.lock_open_rounded, color: JT.warning, size: 18),
+          const SizedBox(width: 8),
           Text('Verify Delivery OTP',
-            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+            style: GoogleFonts.poppins(color: JT.warning, fontSize: 14, fontWeight: FontWeight.w800)),
         ]),
       ),
     );
@@ -1051,24 +1053,23 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF16A34A), Color(0xFF15803D)],
-            begin: Alignment.centerLeft, end: Alignment.centerRight,
-          ),
+          gradient: JT.grad,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 4))],
+          boxShadow: JT.btnShadow,
         ),
         child: Row(children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.payments_rounded, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 14),
           const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('COLLECT CASH', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            Text('COLLECT CASH',
+              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
             SizedBox(height: 2),
-            Text('Trip ending. Please collect cash from customer.', style: TextStyle(color: Colors.white70, fontSize: 11)),
+            Text('Trip ending. Please collect cash from customer.',
+              style: TextStyle(color: Colors.white70, fontSize: 11)),
           ])),
         ]),
       );
@@ -1078,14 +1079,15 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF16A34A).withValues(alpha: 0.1),
+          color: JT.success.withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.25)),
+          border: Border.all(color: JT.success.withOpacity(0.20)),
         ),
         child: const Row(children: [
-          Icon(Icons.payments_rounded, color: Color(0xFF4ADE80), size: 16),
+          Icon(Icons.payments_rounded, color: JT.success, size: 16),
           SizedBox(width: 8),
-          Text('💵 Cash Payment — Collect at trip end', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text('Cash Payment — Collect at trip end',
+            style: TextStyle(color: JT.success, fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
       );
     }
@@ -1094,14 +1096,15 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: _blue.withValues(alpha: 0.1),
+          color: JT.primary.withOpacity(0.06),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _blue.withValues(alpha: 0.25)),
+          border: Border.all(color: JT.border),
         ),
-        child: const Row(children: [
-          Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF60A5FA), size: 16),
-          SizedBox(width: 8),
-          Text('👛 Wallet Payment — Auto deducted from customer', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Row(children: [
+          const Icon(Icons.account_balance_wallet_rounded, color: JT.primary, size: 16),
+          const SizedBox(width: 8),
+          Text('Wallet Payment — Auto deducted from customer',
+            style: GoogleFonts.poppins(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
       );
     }
@@ -1110,14 +1113,15 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+          color: JT.surfaceAlt,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.25)),
+          border: Border.all(color: JT.border),
         ),
-        child: const Row(children: [
-          Icon(Icons.qr_code_scanner_rounded, color: Color(0xFFA78BFA), size: 16),
-          SizedBox(width: 8),
-          Text('📱 Online Payment — Already paid via UPI/Razorpay', style: TextStyle(color: Color(0xFFA78BFA), fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Row(children: [
+          const Icon(Icons.qr_code_scanner_rounded, color: JT.secondary, size: 16),
+          const SizedBox(width: 8),
+          Text('Online Payment — Already paid via UPI/Razorpay',
+            style: GoogleFonts.poppins(color: JT.secondary, fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
       );
     }
@@ -1126,17 +1130,15 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildCustomerCard(String name, String? phone, dynamic fare, dynamic dist) {
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
-    final pmLabel = pm == 'wallet' ? '💳 Wallet' : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? '📱 UPI' : '💵 Cash';
-    final pmColor = pm == 'wallet' ? _blue : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? const Color(0xFF7C3AED) : _green;
+    final pmLabel = pm == 'wallet' ? 'Wallet' : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? 'UPI' : 'Cash';
+    final pmColor = pm == 'wallet' ? JT.primary : pm == 'upi' || pm == 'online' || pm == 'razorpay' ? JT.secondary : JT.success;
     final fareVal = double.tryParse(fare?.toString() ?? '0') ?? 0;
 
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [const Color(0xFF0D1526), const Color(0xFF060A14)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight),
+        color: JT.bgSoft,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _cyan.withValues(alpha: 0.12), width: 1),
+        border: Border.all(color: JT.border),
       ),
       child: Column(children: [
         Padding(
@@ -1145,21 +1147,21 @@ class _TripScreenState extends State<TripScreen> {
             Container(
               width: 46, height: 46,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [_blue, const Color(0xFF1E40AF)],
-                  begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: JT.grad,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0,3))],
+                boxShadow: JT.btnShadow,
               ),
               child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'C',
                 style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900))),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+              Text(name,
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.3),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
-              Text(pmLabel, style: TextStyle(color: pmColor, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text(pmLabel,
+                style: GoogleFonts.poppins(color: pmColor, fontSize: 12, fontWeight: FontWeight.w700)),
             ])),
             if (phone != null)
               GestureDetector(
@@ -1173,26 +1175,23 @@ class _TripScreenState extends State<TripScreen> {
                 child: Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF00D4FF), Color(0xFF0091FF)]),
+                    gradient: JT.grad,
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: Color(0xFF00D4FF).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0,3))],
+                    boxShadow: JT.btnShadow,
                   ),
-                  child: const Icon(Icons.phone_rounded, color: Color(0xFF060A14), size: 20)),
+                  child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
               ),
           ]),
         ),
-        Container(
-          height: 1,
-          color: Colors.white.withValues(alpha: 0.05),
-        ),
+        Container(height: 1, color: JT.border),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(children: [
-            Expanded(child: _statPill('Fare', fareVal > 0 ? '₹${fareVal.toInt()}' : '₹$fare', const Color(0xFF10B981))),
+            Expanded(child: _statPill('Fare', fareVal > 0 ? '₹${fareVal.toInt()}' : '₹$fare', JT.success)),
             const SizedBox(width: 8),
-            Expanded(child: _statPill('Distance', '$dist km', _blue)),
+            Expanded(child: _statPill('Distance', '$dist km', JT.primary)),
             const SizedBox(width: 8),
-            Expanded(child: _statPill('Pay', pm == 'cash' ? 'Cash' : pm == 'wallet' ? 'Wallet' : 'Online', pmColor)),
+            Expanded(child: _statPill('Pay', pmLabel, pmColor)),
           ]),
         ),
       ]),
@@ -1203,23 +1202,22 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.06),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
+        border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Column(children: [
-        Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+        Text(value,
+          style: GoogleFonts.poppins(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9, fontWeight: FontWeight.w600)),
+        Text(label,
+          style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 9, fontWeight: FontWeight.w600)),
       ]),
     );
   }
 
   Widget _buildActionBtn(Map<String, dynamic> step) {
     final isComplete = _status == 'in_progress' || _status == 'on_the_way';
-    final c1 = isComplete ? const Color(0xFF064E3B) : const Color(0xFF002233);
-    final c2 = isComplete ? _green : _cyan;
-    final c3 = isComplete ? const Color(0xFF22C55E) : const Color(0xFF0091FF);
     return GestureDetector(
       onTap: _loading ? null : _nextStep,
       child: AnimatedContainer(
@@ -1227,12 +1225,16 @@ class _TripScreenState extends State<TripScreen> {
         width: double.infinity, height: 60,
         margin: const EdgeInsets.only(top: 4),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [c1, c2, c3],
-            begin: Alignment.centerLeft, end: Alignment.centerRight),
+          gradient: isComplete
+              ? const LinearGradient(
+                  colors: [JT.success, Color(0xFF15803D)],
+                  begin: Alignment.centerLeft, end: Alignment.centerRight)
+              : JT.grad,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
-            BoxShadow(color: c2.withValues(alpha: 0.5), blurRadius: 20, offset: const Offset(0, 6)),
-            BoxShadow(color: c2.withValues(alpha: 0.2), blurRadius: 40, offset: const Offset(0, 10)),
+            BoxShadow(
+              color: (isComplete ? JT.success : JT.primary).withOpacity(0.35),
+              blurRadius: 20, offset: const Offset(0, 6)),
           ],
         ),
         child: Center(
@@ -1246,7 +1248,7 @@ class _TripScreenState extends State<TripScreen> {
             : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Container(
                   width: 36, height: 36,
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                   child: Icon(step['icon'] as IconData, color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 12),
@@ -1262,14 +1264,18 @@ class _TripScreenState extends State<TripScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: _surface,
-        title: const Text('SOS Alert', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text('Emergency SOS send చేయాలా? Help team contact అవుతారు.',
-            style: TextStyle(color: Colors.white70)),
+        backgroundColor: JT.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('SOS Alert',
+          style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+        content: Text('Emergency SOS send చేయాలా? Help team contact అవుతారు.',
+          style: GoogleFonts.poppins(color: JT.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: JT.textSecondary))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: JT.error),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
         ],
@@ -1283,13 +1289,12 @@ class _TripScreenState extends State<TripScreen> {
         headers: {...sosHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'lat': _center.latitude, 'lng': _center.longitude, 'message': 'Driver SOS alert during trip'}));
       if (!mounted) return;
-      _showSnack('🚨 SOS Alert sent! Help is on the way.');
+      _showSnack('SOS Alert sent! Help is on the way.');
     } catch (_) {
       if (!mounted) return;
       _showSnack('SOS send failed. Call 100 immediately!', error: true);
     }
   }
-
 
   Future<String> _getSupportPhone() async {
     try {
@@ -1317,14 +1322,14 @@ class _TripScreenState extends State<TripScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [_blue.withValues(alpha: 0.15), _blue.withValues(alpha: 0.08)]),
+              color: JT.surfaceAlt,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _blue.withValues(alpha: 0.25)),
+              border: Border.all(color: JT.border),
             ),
-            child: const Row(children: [
-              Icon(Icons.phone_rounded, color: Color(0xFF2563EB), size: 16),
-              SizedBox(width: 6),
-              Text('Call', style: TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w800)),
+            child: Row(children: [
+              const Icon(Icons.phone_rounded, color: JT.primary, size: 16),
+              const SizedBox(width: 6),
+              Text('Call', style: GoogleFonts.poppins(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
@@ -1333,14 +1338,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [Colors.red.withValues(alpha: 0.18), Colors.red.withValues(alpha: 0.08)]),
+            color: JT.error.withOpacity(0.06),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red.withValues(alpha: 0.35)),
+            border: Border.all(color: JT.error.withOpacity(0.25)),
           ),
-          child: const Row(children: [
-            Icon(Icons.sos_rounded, color: Colors.red, size: 16),
-            SizedBox(width: 6),
-            Text('SOS', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800)),
+          child: Row(children: [
+            const Icon(Icons.sos_rounded, color: JT.error, size: 16),
+            const SizedBox(width: 6),
+            Text('SOS', style: GoogleFonts.poppins(color: JT.error, fontSize: 12, fontWeight: FontWeight.w800)),
           ]),
         ),
       ),
@@ -1349,14 +1354,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: _cyan.withValues(alpha: 0.08),
+            color: JT.surfaceAlt,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _cyan.withValues(alpha: 0.3)),
+            border: Border.all(color: JT.border),
           ),
-          child: const Row(children: [
-            Icon(Icons.navigation_rounded, color: Color(0xFF00D4FF), size: 16),
-            SizedBox(width: 6),
-            Text('Navigate', style: TextStyle(color: Color(0xFF00D4FF), fontSize: 12, fontWeight: FontWeight.w700)),
+          child: Row(children: [
+            const Icon(Icons.navigation_rounded, color: JT.primary, size: 16),
+            const SizedBox(width: 6),
+            Text('Navigate', style: GoogleFonts.poppins(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
@@ -1365,14 +1370,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.08),
+            color: JT.warning.withOpacity(0.06),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+            border: Border.all(color: JT.warning.withOpacity(0.2)),
           ),
-          child: const Row(children: [
-            Icon(Icons.cancel_rounded, color: Colors.orange, size: 16),
-            SizedBox(width: 6),
-            Text('Cancel', style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w700)),
+          child: Row(children: [
+            const Icon(Icons.cancel_rounded, color: JT.warning, size: 16),
+            const SizedBox(width: 6),
+            Text('Cancel', style: GoogleFonts.poppins(color: JT.warning, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
@@ -1385,14 +1390,14 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.08),
+            color: JT.success.withOpacity(0.06),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.green.withValues(alpha: 0.25)),
+            border: Border.all(color: JT.success.withOpacity(0.20)),
           ),
-          child: const Row(children: [
-            Icon(Icons.phone_in_talk_rounded, color: Colors.green, size: 16),
-            SizedBox(width: 6),
-            Text('Support', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700)),
+          child: Row(children: [
+            const Icon(Icons.phone_in_talk_rounded, color: JT.success, size: 16),
+            const SizedBox(width: 6),
+            Text('Support', style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
@@ -1428,12 +1433,12 @@ class _TripScreenState extends State<TripScreen> {
     switch (status) {
       case 'driver_assigned':
       case 'accepted':
-        return {'label': 'Pickup వైపు వెళ్తున్నారు 🏍️', 'icon': Icons.navigation_rounded, 'action': 'Arrived at Pickup'};
+        return {'label': 'Pickup వైపు వెళ్తున్నారు', 'icon': Icons.navigation_rounded, 'action': 'Arrived at Pickup'};
       case 'arrived':
-        return {'label': 'Pickup Location కి చేరారు 📍', 'icon': Icons.location_on_rounded, 'action': 'Enter Customer OTP'};
+        return {'label': 'Pickup Location కి చేరారు', 'icon': Icons.location_on_rounded, 'action': 'Enter Customer OTP'};
       case 'in_progress':
       case 'on_the_way':
-        return {'label': 'Trip పూర్తి చేస్తున్నారు 🚀', 'icon': Icons.speed_rounded, 'action': 'Complete Trip ✓'};
+        return {'label': 'Trip పూర్తి చేస్తున్నారు', 'icon': Icons.speed_rounded, 'action': 'Complete Trip ✓'};
       default:
         return {'label': 'Trip Active', 'icon': Icons.electric_bike, 'action': 'Next Step'};
     }

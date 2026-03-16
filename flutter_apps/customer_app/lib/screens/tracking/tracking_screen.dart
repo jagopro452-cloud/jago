@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/alarm_service.dart';
@@ -38,8 +39,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   final FlutterTts _tts = FlutterTts();
   String _lastAnnouncedStatus = '';
 
-  static const Color _blue = Color(0xFF2F80ED);
-  static const Color _green = Color(0xFF16A34A);
+  static const Color _blue = JT.primary;
+  static const Color _green = JT.success;
 
   @override
   void initState() {
@@ -372,12 +373,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
+    final panelBg = isDark ? const Color(0xFF0B0B0B) : JT.surface;
 
     return PopScope(
       canPop: _status == 'completed' || _status == 'cancelled',
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0B0B0B) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF0B0B0B) : JT.bg,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -642,14 +643,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final vehicleName = _trip?['vehicleName'] ?? '';
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-            ? [const Color(0xFF0D1526), const Color(0xFF060A14)]
-            : [const Color(0xFFF0F4FF), const Color(0xFFF8FAFF)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _blue.withValues(alpha: isDark ? 0.3 : 0.15), width: 1.5),
-        boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+        color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.white12 : JT.border, width: 1.5),
+        boxShadow: JT.cardShadow,
       ),
       child: Column(children: [
         Padding(
@@ -658,11 +655,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             Container(
               width: 52, height: 52,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [_blue, const Color(0xFF1244A2)],
-                  begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: JT.grad,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+                boxShadow: JT.btnShadow,
               ),
               child: photoUrl != null && photoUrl.isNotEmpty
                 ? ClipRRect(
@@ -712,11 +707,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   child: Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [_blue, Color(0xFF1244A2)]),
+                      color: JT.surfaceAlt,
                       borderRadius: BorderRadius.circular(13),
-                      boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
+                      border: Border.all(color: JT.border),
                     ),
-                    child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20)),
+                    child: Icon(Icons.phone_rounded, color: JT.primary, size: 20)),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
@@ -734,11 +729,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                   child: Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF25D366),
+                      color: JT.surfaceAlt,
                       borderRadius: BorderRadius.circular(13),
-                      boxShadow: [BoxShadow(color: const Color(0xFF25D366).withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0,3))],
+                      border: Border.all(color: JT.border),
                     ),
-                    child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20)),
+                    child: Icon(Icons.chat_rounded, color: JT.primary, size: 20)),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -841,35 +836,35 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildOtpBox(String otp) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1200) : const Color(0xFFFFFBEB),
+        color: JT.surfaceAlt,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(color: JT.border, width: 1.5),
+        boxShadow: JT.cardShadow,
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.12),
+            color: JT.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.lock_rounded, color: Colors.orange, size: 20)),
+          child: Icon(Icons.lock_rounded, color: JT.primary, size: 20)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Share this OTP with Pilot',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Colors.orange)),
+          Text('Share this OTP with Pilot',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: JT.primary)),
           Text(otp,
-            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF111827), letterSpacing: 10)),
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: JT.primary, letterSpacing: 10)),
         ])),
         GestureDetector(
           onTap: () {
             Clipboard.setData(ClipboardData(text: otp));
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: const Text('OTP copied!', style: TextStyle(fontWeight: FontWeight.w600)),
-              backgroundColor: Colors.orange[700],
+              backgroundColor: JT.primary,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ));
@@ -877,10 +872,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.1),
+              color: JT.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.copy_rounded, color: Colors.orange, size: 16)),
+            child: Icon(Icons.copy_rounded, color: JT.primary, size: 16)),
         ),
       ]),
     );
@@ -1037,27 +1032,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       ),
       const SizedBox(height: 8),
       SizedBox(
-        width: double.infinity, height: 52,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1A6FE0), Color(0xFF2F80ED)]),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(
-              color: _blue.withValues(alpha: 0.35),
-              blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: ElevatedButton(
-            onPressed: () => Navigator.pushAndRemoveUntil(context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              elevation: 0),
-            child: Text('Book Another Ride',
-              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700)),
-          ),
+        width: double.infinity,
+        child: JT.gradientButton(
+          label: 'Book Another Ride',
+          onTap: () => Navigator.pushAndRemoveUntil(context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
         )),
     ]);
   }

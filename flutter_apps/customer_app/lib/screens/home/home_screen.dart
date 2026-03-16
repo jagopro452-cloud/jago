@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../history/trips_history_screen.dart';
@@ -58,14 +59,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _bannerTimer;
   final PageController _bannerPageCtrl = PageController();
 
-  // Brand colors
-  static const Color _primary = Color(0xFF2F80ED);
-  static const Color _secondary = Color(0xFF56CCF2);
-  static const Color _lightAccent = Color(0xFF86D5F5);
+  // Brand colors — mapped to JT design system
+  static const Color _primary = JT.primary;
+  static const Color _secondary = JT.secondary;
+  static const Color _lightAccent = JT.secondary;
   static const Color _darkBg = Color(0xFF0B0B0B);
   static const Color _darkCard = Color(0xFF1A1A1A);
-  static const Color _lightBg = Color(0xFFFFFFFF);
-  static const Color _lightCard = Color(0xFFF5F8FF);
+  static const Color _lightBg = JT.bg;
+  static const Color _lightCard = JT.surfaceAlt;
 
   @override
   void initState() {
@@ -249,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)]),
+                  gradient: JT.grad,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
                 child: Row(
@@ -258,8 +259,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Welcome to JAGO!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                        Text('Here\'s a quick guide to get you started', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
+                        Text('Welcome!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                        Text('Here\'s a quick guide to get you started', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 12)),
                       ]),
                     ),
                   ],
@@ -279,17 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2F80ED),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        child: Text('Got it, Let\'s Go! 🚀', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15)),
-                      ),
+                      child: JT.gradientButton(label: "Got it, Let's Go!", onTap: () => Navigator.pop(ctx)),
                     ),
                   ],
                 ),
@@ -588,7 +579,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldBg = isDark ? const Color(0xFF0B0B0B) : Colors.white;
+    final scaffoldBg = isDark ? const Color(0xFF0B0B0B) : JT.bg;
+
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    ));
 
     return Scaffold(
       key: _scaffoldKey,
@@ -596,12 +592,12 @@ class _HomeScreenState extends State<HomeScreen> {
       drawer: _buildDrawer(isDark),
       body: SafeArea(
         child: Column(children: [
-          _buildTopBar(isDark, isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA), isDark ? Colors.white : const Color(0xFF0B0B0B)),
+          _buildTopBar(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft, isDark ? Colors.white : JT.textPrimary),
           Expanded(
             child: _homeLoading
-              ? _buildSkeletonLoader(isDark, isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA))
+              ? _buildSkeletonLoader(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft)
               : RefreshIndicator(
-                  color: const Color(0xFF2F80ED),
+                  color: JT.primary,
                   onRefresh: () async {
                     await Future.wait([_fetchHome(), _fetchActiveServices(), _fetchBanners(), _fetchWalletBalance()]);
                   },
@@ -609,7 +605,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       if (_activeTrip != null) _buildActiveTripBanner(isDark),
-                      _buildSearchBar(isDark, isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA), isDark ? Colors.white : const Color(0xFF0B0B0B)),
+                      _buildSearchBar(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bgSoft, isDark ? Colors.white : JT.textPrimary),
                       _buildServiceIcons(isDark),
                       _buildBannerCarousel(isDark),
                       _buildSavedPlaces(isDark),
@@ -619,14 +615,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
           ),
-          _buildBottomNav(isDark, isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA), isDark ? Colors.white : const Color(0xFF0B0B0B)),
+          _buildBottomNav(isDark, isDark ? const Color(0xFF1A1A1A) : JT.bg, isDark ? Colors.white : JT.textPrimary),
         ]),
       ),
     );
   }
 
   Widget _buildSkeletonLoader(bool isDark, Color cardBg) {
-    final shimmer = isDark ? const Color(0xFF2A3A50) : const Color(0xFFCBD5E1);
+    final shimmer = isDark ? const Color(0xFF2A3A50) : JT.border;
     Widget box(double w, double h, {double r = 10}) => Container(
       width: w, height: h,
       decoration: BoxDecoration(color: shimmer, borderRadius: BorderRadius.circular(r)),
@@ -663,65 +659,61 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── TOP BAR ──────────────────────────────────────────────────────────────
   Widget _buildTopBar(bool isDark, Color cardBg, Color textColor) {
     return Container(
-      color: isDark ? _darkBg : _lightBg,
+      color: isDark ? _darkBg : JT.bg,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(children: [
+        // Logo
         GestureDetector(
           onTap: () => _scaffoldKey.currentState?.openDrawer(),
-          child: Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-              color: isDark ? _darkCard : _lightCard,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF)),
-            ),
-            child: Icon(Icons.menu_rounded, size: 20, color: textColor),
-          ),
+          child: isDark ? JT.logoWhite(height: 32) : JT.logoBlue(height: 32),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         // Location indicator
         Expanded(
-          child: Row(children: [
-            const Icon(Icons.location_on_rounded, color: _primary, size: 14),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                _pickup == 'Getting location...' ? 'Getting location...' : _pickup.split(',').first,
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: textColor.withValues(alpha: 0.75),
+          child: GestureDetector(
+            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+            child: Row(children: [
+              Icon(Icons.location_on_rounded, color: JT.primary, size: 13),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  _pickup == 'Getting location...' ? 'Getting location...' : _pickup.split(',').first,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white70 : JT.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
-        // Wallet balance
+        // Wallet balance chip
         if (_walletBalance > 0) ...[
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                color: JT.surfaceAlt,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                border: Border.all(color: JT.border),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 13),
+                Icon(Icons.account_balance_wallet_rounded, color: JT.primary, size: 13),
                 const SizedBox(width: 4),
                 Text(
                   '₹${_walletBalance.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(color: const Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w800),
+                  style: GoogleFonts.poppins(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ]),
             ),
           ),
           const SizedBox(width: 8),
         ],
-        // Notification bell
+        // Notification bell — outline icon in JT.primary
         GestureDetector(
           onTap: () => Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
@@ -730,11 +722,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: isDark ? _darkCard : _lightCard,
+                color: isDark ? _darkCard : JT.surfaceAlt,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF)),
+                border: Border.all(color: isDark ? const Color(0xFF334155) : JT.border),
               ),
-              child: Icon(Icons.notifications_outlined, color: textColor.withValues(alpha: 0.8), size: 20),
+              child: Icon(Icons.notifications_outlined, color: JT.primary, size: 20),
             ),
             if (_unreadNotifCount > 0)
               Positioned(
@@ -743,9 +735,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444),
+                    color: JT.error,
                     borderRadius: BorderRadius.circular(10),
-                    boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.4), blurRadius: 4)],
+                    boxShadow: [BoxShadow(color: JT.error.withOpacity(0.4), blurRadius: 4)],
                   ),
                   child: Center(child: Text(
                     _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
@@ -768,36 +760,29 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: isDark ? _darkCard : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _primary.withValues(alpha: 0.2), width: 1.5),
-            boxShadow: [
-              BoxShadow(color: _primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4)),
-              BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 3)),
-            ],
+            color: isDark ? _darkCard : JT.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: JT.border, width: 1.5),
+            boxShadow: JT.cardShadow,
           ),
           child: Row(children: [
             Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [_lightAccent, _primary],
-                  begin: Alignment.topLeft, end: Alignment.bottomRight,
-                ),
+                color: JT.surfaceAlt,
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: _primary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))],
               ),
-              child: const Icon(Icons.search_rounded, color: Colors.white, size: 18),
+              child: const Icon(Icons.location_on_rounded, color: JT.primary, size: 18),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(
-                  'Where do you want to go?',
+                  'Where to go?',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: textColor.withValues(alpha: 0.4),
+                    color: isDark ? Colors.white54 : JT.textSecondary,
                   ),
                 ),
                 if (_pickup.isNotEmpty && _pickup != 'Getting location...')
@@ -805,7 +790,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _pickup.split(',').first,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(fontSize: 10, color: _primary.withValues(alpha: 0.7), fontWeight: FontWeight.w600),
+                    style: GoogleFonts.poppins(fontSize: 10, color: JT.primary, fontWeight: FontWeight.w600),
                   ),
               ]),
             ),
@@ -817,12 +802,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [_lightAccent, _primary],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      ),
+                      gradient: JT.grad,
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: _primary.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
+                      boxShadow: JT.btnShadow,
                     ),
                     child: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
                   ),
@@ -831,7 +813,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
+                        color: JT.success,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: Colors.white, width: 1),
                       ),
@@ -855,7 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Services', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0B0B0B))),
+        Text('Services', style: JT.h3),
         const SizedBox(height: 14),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -888,14 +870,14 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           width: 56, height: 56,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF0F5FF),
+            gradient: JT.grad,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF2F80ED).withValues(alpha: 0.2)),
+            boxShadow: JT.btnShadow,
           ),
-          child: Icon(icon, color: const Color(0xFF2F80ED), size: 26),
+          child: Icon(icon, color: Colors.white, size: 26),
         ),
         const SizedBox(height: 6),
-        Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : const Color(0xFF374151)), maxLines: 1),
+        Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : JT.textPrimary), maxLines: 1),
       ]),
     );
   }
@@ -920,7 +902,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1A6FE0)]),
+                      gradient: JT.grad,
+                      boxShadow: JT.cardShadow,
                     ),
                     child: imgUrl.isNotEmpty
                       ? ClipRRect(
@@ -939,7 +922,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: _bannerIndex == i ? 16 : 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: _bannerIndex == i ? const Color(0xFF2F80ED) : const Color(0xFF2F80ED).withValues(alpha: 0.3),
+                    color: _bannerIndex == i ? JT.primary : JT.primary.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ))),
@@ -953,7 +936,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1650B0)]),
+        gradient: JT.grad,
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
         Text(b['title']?.toString() ?? 'Special Offer', style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
@@ -968,21 +951,22 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 130,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1650B0)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: JT.grad,
+        boxShadow: JT.cardShadow,
       ),
       padding: const EdgeInsets.all(20),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('Ride with JAGO', style: GoogleFonts.poppins(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text('Safe, fast and affordable rides', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 12)),
+          JT.logoWhite(height: 28),
+          const SizedBox(height: 8),
+          Text('Safe, fast and affordable rides', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 12)),
           const SizedBox(height: 10),
           GestureDetector(
             onTap: _openSearch,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-              child: Text('Book Now', style: GoogleFonts.poppins(color: const Color(0xFF2F80ED), fontSize: 12, fontWeight: FontWeight.w800)),
+              child: Text('Book Now', style: GoogleFonts.poppins(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w800)),
             ),
           ),
         ])),
@@ -997,7 +981,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Quick Access', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0B0B0B))),
+        Text('Quick Access', style: JT.h3),
         const SizedBox(height: 10),
         Row(children: _savedPlaces.take(2).map((place) {
           final label = place['label']?.toString() ?? '';
@@ -1018,16 +1002,17 @@ class _HomeScreenState extends State<HomeScreen> {
               margin: EdgeInsets.only(right: isFirst ? 8 : 0),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA),
+                color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF2F80ED).withValues(alpha: 0.15)),
+                border: Border.all(color: JT.border),
+                boxShadow: JT.cardShadow,
               ),
               child: Row(children: [
-                Icon(icon, color: const Color(0xFF2F80ED), size: 18),
+                Icon(icon, color: JT.primary, size: 18),
                 const SizedBox(width: 8),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0B0B0B))),
-                  Text(address, style: GoogleFonts.poppins(fontSize: 10, color: isDark ? Colors.white54 : const Color(0xFF6B7280)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : JT.textPrimary)),
+                  Text(address, style: GoogleFonts.poppins(fontSize: 10, color: isDark ? Colors.white54 : JT.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ])),
               ]),
             ),
@@ -1044,11 +1029,11 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text('Recent', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0B0B0B))),
+          Text('Recent', style: JT.h3),
           const Spacer(),
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
-            child: Text('See all', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF2F80ED), fontWeight: FontWeight.w600)),
+            child: Text('See all', style: GoogleFonts.poppins(fontSize: 12, color: JT.primary, fontWeight: FontWeight.w600)),
           ),
         ]),
         const SizedBox(height: 10),
@@ -1061,14 +1046,16 @@ class _HomeScreenState extends State<HomeScreen> {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F7FA),
+                color: isDark ? const Color(0xFF1A1A1A) : JT.surface,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? Colors.white12 : JT.border),
+                boxShadow: isDark ? null : JT.cardShadow,
               ),
               child: Row(children: [
-                const Icon(Icons.history_rounded, color: Color(0xFF2F80ED), size: 18),
+                Icon(Icons.history_rounded, color: JT.primary, size: 18),
                 const SizedBox(width: 12),
-                Expanded(child: Text(dest.split(',').first, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : const Color(0xFF0B0B0B)), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                if (fare.isNotEmpty) Text('₹$fare', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF6B7280))),
+                Expanded(child: Text(dest.split(',').first, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : JT.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (fare.isNotEmpty) Text('₹$fare', style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
               ]),
             ),
           );
@@ -1093,7 +1080,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }[status] ?? 'Ride active';
 
     final isArrived = status == 'arrived';
-    final bannerColor = isArrived ? const Color(0xFF16A34A) : _primary;
+    final bannerColor = isArrived ? JT.success : JT.primary;
 
     return GestureDetector(
       onTap: () {
@@ -1140,14 +1127,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── BOTTOM NAV ───────────────────────────────────────────────────────────
   Widget _buildBottomNav(bool isDark, Color cardBg, Color textColor) {
-    final iconColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
+    final iconColor = isDark ? JT.iconInactive : JT.iconInactive;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? _darkCard : Colors.white,
-        border: Border(top: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF), width: 1)),
+        color: isDark ? _darkCard : JT.bg,
+        border: Border(top: BorderSide(color: isDark ? const Color(0xFF334155) : JT.border, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -1163,21 +1150,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _navItem(Icons.home_rounded, Icons.home_outlined, 'Home', 0, iconColor, isDark),
               _navItem(Icons.receipt_long_rounded, Icons.receipt_long_outlined, 'Trips', 1, iconColor, isDark),
-              // Center voice button — blue circle
+              // Center voice button — gradient circle
               GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
                 child: Container(
                   width: 52, height: 52,
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_lightAccent, _primary],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    ),
+                    gradient: JT.grad,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: _primary.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4)),
-                    ],
+                    boxShadow: JT.btnShadow,
                   ),
                   child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
                 ),
@@ -1205,10 +1187,10 @@ class _HomeScreenState extends State<HomeScreen> {
           duration: const Duration(milliseconds: 200),
           width: 40, height: 32,
           decoration: BoxDecoration(
-            color: active ? _primary.withValues(alpha: isDark ? 0.2 : 0.12) : Colors.transparent,
+            color: active ? JT.primary.withOpacity(0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Icon(active ? activeIcon : inactiveIcon, size: 20, color: active ? _primary : iconColor),
+          child: Icon(active ? activeIcon : inactiveIcon, size: 20, color: active ? JT.primary : JT.iconInactive),
         ),
         const SizedBox(height: 2),
         Text(
@@ -1216,7 +1198,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: GoogleFonts.poppins(
             fontSize: 10,
             fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            color: active ? _primary : iconColor,
+            color: active ? JT.primary : JT.iconInactive,
           ),
         ),
       ]),
@@ -1225,8 +1207,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── DRAWER ───────────────────────────────────────────────────────────────
   Widget _buildDrawer(bool isDark) {
-    final drawerBg = isDark ? _darkBg : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF0B0B0B);
+    final drawerBg = isDark ? _darkBg : JT.bg;
+    final textColor = isDark ? Colors.white : JT.textPrimary;
     return Drawer(
       backgroundColor: drawerBg,
       child: SafeArea(
@@ -1234,28 +1216,25 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isDark
-                  ? [_primary.withValues(alpha: 0.15), _darkCard.withValues(alpha: 0.8)]
-                  : [const Color(0xFFEAF2FF), Colors.white],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-              ),
+              gradient: isDark
+                ? LinearGradient(colors: [JT.primary.withOpacity(0.15), _darkCard.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+                : const LinearGradient(colors: [JT.bgSoft, JT.bg], begin: Alignment.topLeft, end: Alignment.bottomRight),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               CircleAvatar(
                 radius: 30,
-                backgroundColor: _primary.withValues(alpha: 0.15),
+                backgroundColor: JT.surfaceAlt,
                 child: Text(
                   _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                  style: GoogleFonts.poppins(color: _primary, fontSize: 24, fontWeight: FontWeight.w700),
+                  style: GoogleFonts.poppins(color: JT.primary, fontSize: 24, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(height: 12),
-              Text(_userName, style: GoogleFonts.poppins(color: textColor, fontSize: 18, fontWeight: FontWeight.w700)),
-              Text(_userPhone, style: GoogleFonts.poppins(color: textColor.withValues(alpha: 0.5), fontSize: 13)),
+              Text(_userName, style: JT.h2),
+              Text(_userPhone, style: JT.body),
             ]),
           ),
-          Divider(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF), thickness: 1),
+          Divider(color: isDark ? const Color(0xFF334155) : JT.border, thickness: 1),
           _drawerItem(Icons.history_rounded, 'My Trips', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())); }),
           _drawerItem(Icons.account_balance_wallet_rounded, 'Wallet', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())); }),
           _drawerItem(Icons.local_offer_rounded, 'Offers', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())); }),
@@ -1272,7 +1251,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _drawerItem(IconData icon, String label, Color textColor, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: _primary, size: 22),
+      leading: Icon(icon, color: JT.primary, size: 22),
       title: Text(label, style: GoogleFonts.poppins(color: textColor, fontSize: 15, fontWeight: FontWeight.w500)),
       onTap: onTap,
       dense: true,
@@ -1303,7 +1282,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   bool _loading = false;
   Timer? _debounce;
 
-  static const Color _primary = Color(0xFF2F80ED);
+  static const Color _primary = JT.primary;
 
   @override
   void initState() {
@@ -1487,7 +1466,7 @@ class _AllServicesSheet extends StatelessWidget {
     required this.onServiceTap,
   });
 
-  static const Color _primary = Color(0xFF2F80ED);
+  static const Color _primary = JT.primary;
 
   @override
   Widget build(BuildContext context) {
