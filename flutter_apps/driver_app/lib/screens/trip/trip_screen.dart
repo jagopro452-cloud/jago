@@ -185,12 +185,19 @@ class _TripScreenState extends State<TripScreen> {
         body: jsonEncode({'tripId': tripId, 'actualFare': estimatedFare, 'actualDistance': estimatedDistance}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final actualFare = data['trip']?['actualFare'] ?? data['trip']?['actual_fare'] ?? estimatedFare;
+        final pricing = data['pricing'] as Map<String, dynamic>? ?? {};
+        final rideFare = pricing['rideFare'] ?? data['trip']?['actualFare'] ?? data['trip']?['actual_fare'] ?? estimatedFare;
+        final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
+        final commission = pricing['platformDeduction'] ?? 0;
         // Notify customer via socket
         _socket.updateTripStatus(tripId, 'completed');
         _locationTimer?.cancel();
         if (!mounted) return;
-        _showCompletionDialog(actualFare.toString());
+        _showCompletionDialog(
+          rideFare.toString(),
+          driverEarnings: driverEarnings.toString(),
+          commission: commission.toString(),
+        );
       } else {
         final err = jsonDecode(res.body);
         if (!mounted) return;
@@ -213,12 +220,15 @@ class _TripScreenState extends State<TripScreen> {
     ));
   }
 
-  void _showCompletionDialog(String fare) {
+  void _showCompletionDialog(String fare, {String driverEarnings = '0', String commission = '0'}) {
     int _selectedRating = 0;
     bool _ratingSubmitted = false;
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
     final isCash = pm == 'cash';
+    final netEarnings = double.tryParse(driverEarnings) ?? 0.0;
+    final commissionAmt = double.tryParse(commission) ?? 0.0;
+    final fullFare = double.tryParse(fare) ?? 0.0;
 
     showDialog(
       context: context,
@@ -239,36 +249,40 @@ class _TripScreenState extends State<TripScreen> {
                 ),
                 child: const Icon(Icons.check_rounded, color: Color(0xFF16A34A), size: 40)),
               const SizedBox(height: 16),
-              const Text('Trip Complete! 🎉',
+              const Text('Trip Complete!',
                 style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
+              // Fare breakdown card
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  color: _green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _green.withValues(alpha: 0.2)),
+                  color: _green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _green.withValues(alpha: 0.25)),
                 ),
                 child: Column(children: [
-                  Text('₹$fare',
-                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 4),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(
-                      isCash ? Icons.payments_rounded : pm == 'wallet' ? Icons.account_balance_wallet_rounded : Icons.qr_code_scanner_rounded,
-                      color: Colors.white.withValues(alpha: 0.5),
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isCash ? 'Cash' : pm == 'wallet' ? 'Wallet' : 'UPI/Online',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
-                    ),
-                  ]),
+                  // Net earnings — big green
+                  Text('₹${netEarnings.toStringAsFixed(0)}',
+                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 40, fontWeight: FontWeight.w900)),
+                  const Text('Your Earnings', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600)),
+                  if (commissionAmt > 0) ...[
+                    const SizedBox(height: 12),
+                    Container(height: 1, color: Colors.white12),
+                    const SizedBox(height: 10),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text('Trip Fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13)),
+                      Text('₹${fullFare.toStringAsFixed(0)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text('Platform Fee', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                      Text('- ₹${commissionAmt.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12)),
+                    ]),
+                  ],
                 ]),
               ),
+              const SizedBox(height: 12),
               if (isCash) ...[
-                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -283,20 +297,33 @@ class _TripScreenState extends State<TripScreen> {
                     const Icon(Icons.payments_rounded, color: Colors.white, size: 28),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('COLLECT ₹ CASH', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                      Text('Collect ₹$fare cash from customer',
+                      Text('COLLECT ₹${fullFare.toStringAsFixed(0)} CASH',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                      Text('Commission ₹${commissionAmt.toStringAsFixed(0)} deducted from wallet',
                         style: const TextStyle(color: Colors.white70, fontSize: 11)),
                     ])),
                   ]),
                 ),
               ] else ...[
-                const SizedBox(height: 8),
-                Text(pm == 'wallet' ? 'Customer wallet deducted automatically' : 'Customer already paid online',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11), textAlign: TextAlign.center),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00D4FF).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF00D4FF).withValues(alpha: 0.25)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF00D4FF), size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('₹${netEarnings.toStringAsFixed(0)} Wallet ki Credit Aindi!',
+                        style: const TextStyle(color: Color(0xFF00D4FF), fontWeight: FontWeight.w700, fontSize: 13)),
+                      Text(pm == 'wallet' ? 'Customer wallet deducted automatically' : 'Customer already paid online',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11)),
+                    ])),
+                  ]),
+                ),
               ],
-              const SizedBox(height: 8),
-              Text('Platform commission will be deducted',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11), textAlign: TextAlign.center),
               const SizedBox(height: 20),
               // Rate customer section
               Container(

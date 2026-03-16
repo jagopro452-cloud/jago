@@ -7082,6 +7082,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (_) {}
       }
 
+      // ── Driver earnings transaction record ───────────────────────────────
+      // Insert a transactions entry so driver can see trip earnings in wallet history
+      try {
+        const driverBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${driver.id}::uuid`);
+        const driverNewBal = parseFloat((driverBalRes.rows[0] as any)?.wallet_balance || '0');
+        if (isOnlinePayment) {
+          // Online: driver wallet was credited — record as earning
+          await rawDb.execute(rawSql`
+            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+            VALUES (${driver.id}::uuid, ${'Trip earnings (online payment)'}, ${driverWalletCredit}, 0, ${driverNewBal}, ${'trip_earning'}, ${tripId})
+          `);
+        } else {
+          // Cash: driver collects fare physically — record commission deduction
+          await rawDb.execute(rawSql`
+            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+            VALUES (${driver.id}::uuid, ${'Platform commission (cash trip)'}, 0, ${deductAmount}, ${driverNewBal}, ${'commission_deduction'}, ${tripId})
+          `);
+        }
+      } catch (_) {}
+
       // ── Increment customer's completed_rides_count ──────────────────────
       if (tripCustomerId) {
         await rawDb.execute(rawSql`
