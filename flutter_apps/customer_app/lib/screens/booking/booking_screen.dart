@@ -166,6 +166,22 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     );
   }
 
+  /// Parse "~5 min" / "5 min" / "5-8 min" → arrival minutes number
+  static int _etaMins(String timeStr) {
+    final match = RegExp(r'(\d+)').firstMatch(timeStr);
+    return match != null ? int.tryParse(match.group(1) ?? '5') ?? 5 : 5;
+  }
+
+  /// "Drop 6:14 pm" style string from eta
+  static String _dropTimeStr(String timeStr) {
+    final mins = _etaMins(timeStr);
+    final dropTime = DateTime.now().add(Duration(minutes: mins + 10));
+    final h = dropTime.hour > 12 ? dropTime.hour - 12 : (dropTime.hour == 0 ? 12 : dropTime.hour);
+    final m = dropTime.minute.toString().padLeft(2, '0');
+    final ampm = dropTime.hour >= 12 ? 'pm' : 'am';
+    return '$h:$m $ampm';
+  }
+
   static String _capacityForVehicle(String name) {
     final n = name.toLowerCase();
     if (n.contains('suv')) return '6 seats';
@@ -643,21 +659,86 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           },
           zoomControlsEnabled: false, mapToolbarEnabled: false,
         ),
-        // Back button
+        // Back button + address overlays on map
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 4))],
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Back button
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white, borderRadius: BorderRadius.circular(12),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 4))],
+                  ),
+                  child: const Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 18),
                 ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 18),
               ),
-            ),
+              const SizedBox(height: 10),
+              // Pickup label on map
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 10, offset: const Offset(0, 3))],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: JT.primary, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.55),
+                    child: Text(
+                      widget.pickup.split(',').first,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: const Color(0xFFF0F4FF), borderRadius: BorderRadius.circular(6)),
+                      child: const Icon(Icons.edit_rounded, color: JT.primary, size: 13),
+                    ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 6),
+              // Drop label on map
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 10, offset: const Offset(0, 3))],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFFE53935), shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.55),
+                    child: Text(
+                      widget.destination.split(',').first,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: const Color(0xFFF0F4FF), borderRadius: BorderRadius.circular(6)),
+                      child: const Icon(Icons.edit_rounded, color: JT.primary, size: 13),
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
           ),
         ),
         // Bottom panel
@@ -730,7 +811,52 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
                 // Payment selection
                 _buildPaymentSection(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+
+                // Cash | Offers quick-access strip (Rapido-style)
+                Container(
+                  decoration: BoxDecoration(
+                    color: JT.bgSoft,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: JT.border),
+                  ),
+                  child: Row(children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {},
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                          child: Row(children: [
+                            const Icon(Icons.account_balance_wallet_rounded, size: 16, color: JT.textSecondary),
+                            const SizedBox(width: 6),
+                            Text(_paymentMethod == 'cash' ? 'Cash' : _paymentMethod.toUpperCase(),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.chevron_right_rounded, size: 16, color: JT.textSecondary),
+                          ]),
+                        ),
+                      ),
+                    ),
+                    Container(width: 1, height: 32, color: JT.border),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {},
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                          child: Row(children: [
+                            const Icon(Icons.local_offer_rounded, size: 16, color: JT.textSecondary),
+                            const SizedBox(width: 6),
+                            Text(_appliedPromo != null ? _appliedPromo! : 'Offers',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.chevron_right_rounded, size: 16, color: JT.textSecondary),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
 
                 // Confirm button — brand gradient
                 Container(
@@ -753,8 +879,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                       : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Text(
-                            _paymentMethod == 'upi' ? 'PAY ₹${_finalFare.toStringAsFixed(0)} & BOOK' : 'BOOK NOW',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                            _paymentMethod == 'upi'
+                              ? 'PAY ₹${_finalFare.toStringAsFixed(0)} & BOOK'
+                              : 'Book $_vehicleName',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
                           const SizedBox(width: 8),
                           const Icon(Icons.arrow_forward_rounded, size: 20),
                         ]),
@@ -1290,55 +1418,28 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                         _vehicleTagBadge(tag),
                       ],
                     ]),
-                    const SizedBox(height: 5),
-                    Wrap(spacing: 8, runSpacing: 4, children: [
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.route_rounded, size: 11, color: Colors.grey[400]),
-                        const SizedBox(width: 3),
-                        Text('${_distanceKm.toStringAsFixed(1)} km',
-                          style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-                      ]),
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
-                        const SizedBox(width: 3),
-                        Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-                      ]),
-                      if (_capacityForVehicle(name).isNotEmpty)
-                        Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.people_alt_rounded, size: 11,
-                            color: isSelected ? _jagoPrimary.withValues(alpha: 0.7) : Colors.grey[400]),
-                          const SizedBox(width: 3),
-                          Text(_capacityForVehicle(name),
-                            style: TextStyle(fontSize: 11,
-                              color: isSelected ? _jagoPrimary.withValues(alpha: 0.85) : Colors.grey[500],
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400)),
-                        ]),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Text(
+                        '${_etaMins(time)} mins away · Drop ${_dropTimeStr(time)}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500),
+                      ),
+                      if (_capacityForVehicle(name).isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.person_rounded, size: 11, color: Colors.grey[400]),
+                        Text(' ${_capacityForVehicle(name)}',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                      ],
                     ]),
                   ])),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('₹${displayMin.floor()}–₹${displayMax.ceil()}',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _accentForVehicle(name))),
-                    Text('est. fare', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+                    Text('₹${displayFare.toStringAsFixed(0)}',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: _accentForVehicle(name))),
                     if (isSelected && _promoDiscount > 0)
                       Text('saved ₹${_promoDiscount.toInt()}',
                         style: const TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 2),
-                    Text(time, style: TextStyle(fontSize: 11, color: textSub)),
-                    if (minFareVal > 0) ...[
-                      const SizedBox(height: 2),
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.info_outline_rounded, size: 9, color: Colors.grey[400]),
-                        const SizedBox(width: 2),
-                        Text('Min ₹${minFareVal.toStringAsFixed(0)}',
-                          style: TextStyle(fontSize: 9, color: Colors.grey[400])),
-                      ]),
-                    ],
-                    if (farePerKmVal > 0) ...[
-                      Text('₹${farePerKmVal.toStringAsFixed(0)}/km',
-                        style: TextStyle(fontSize: 9, color: Colors.grey[400])),
-                    ],
                   ]),
-                  const SizedBox(width: 28),
+                  const SizedBox(width: 24),
                 ]),
               ),
               if (isSelected)

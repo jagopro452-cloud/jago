@@ -606,8 +606,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       if (_activeTrip != null) _buildActiveTripBanner(isDark),
                       _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
-                      _buildServiceIcons(isDark),
-                      _buildLogisticsSection(isDark),
+                      _buildFeaturedGrid(isDark),
+                      _buildExploreSection(isDark),
                       _buildBannerCarousel(isDark),
                       _buildSavedPlaces(isDark),
                       _buildRecentTrips(isDark),
@@ -830,131 +830,166 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── SERVICE ICONS (dynamic from vehicle categories) ───────────────────────
-  Widget _buildServiceIcons(bool isDark) {
-    final items = _vehicleCategories.take(6).toList();
-    if (items.isEmpty) return const SizedBox.shrink();
-
+  // ── FEATURED 2×2 GRID (Rapido-style) ─────────────────────────────────────
+  Widget _buildFeaturedGrid(bool isDark) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Services', style: JT.h3),
+        Text('Everything In Minutes',
+          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
         const SizedBox(height: 14),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: items.map((cat) => _buildServiceIcon(cat, isDark)).toList(),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildServiceIcon(Map<String, dynamic> cat, bool isDark) {
-    final name = cat['name']?.toString() ?? '';
-    final type = cat['type']?.toString() ?? 'ride';
-    IconData icon = Icons.directions_bike_rounded;
-    if (name.toLowerCase().contains('auto')) icon = Icons.electric_rickshaw_rounded;
-    else if (name.toLowerCase().contains('car') || name.toLowerCase().contains('cab')) icon = Icons.directions_car_rounded;
-    else if (name.toLowerCase().contains('parcel')) icon = Icons.inventory_2_rounded;
-    else if (name.toLowerCase().contains('travel') || name.toLowerCase().contains('intercity')) icon = Icons.directions_bus_rounded;
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        if (type == 'parcel') {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-            pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
-        } else {
-          _openSearchWithCategory(cat);
-        }
-      },
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 56, height: 56,
-          decoration: BoxDecoration(
-            gradient: JT.grad,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: JT.btnShadow,
-          ),
-          child: Icon(icon, color: Colors.white, size: 26),
-        ),
-        const SizedBox(height: 6),
-        Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : JT.textPrimary), maxLines: 1),
-      ]),
-    );
-  }
-
-  // ── LOGISTICS SECTION ─────────────────────────────────────────────────────
-  Widget _buildLogisticsSection(bool isDark) {
-    const vehicles = [
-      {'key': 'bike_parcel',  'icon': '🏍️', 'name': 'Bike Parcel',   'cap': '≤ 10 kg',     'color': Color(0xFF2F7BFF)},
-      {'key': 'tata_ace',     'icon': '🚛',  'name': 'Mini Truck',    'cap': '≤ 500 kg',    'color': Color(0xFFFF6B35)},
-      {'key': 'pickup_truck', 'icon': '🛻',  'name': 'Pickup Truck',  'cap': '≤ 2,000 kg',  'color': Color(0xFF7C3AED)},
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text('Logistics', style: JT.h3),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              gradient: JT.grad,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text('NEW', style: GoogleFonts.poppins(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          Expanded(child: _featuredCard(
+            subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
+            onTap: () { HapticFeedback.selectionClick();
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+                pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
+          )),
+          const SizedBox(width: 12),
+          Expanded(child: _featuredCard(
+            subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
+            onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
+          )),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _featuredCard(
+            subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
+            tall: true,
+            onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
+          )),
+          const SizedBox(width: 12),
+          Expanded(child: _featuredCard(
+            subtitle: '', title: 'All\nServices', emoji: '📋',
+            onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
+          )),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _featuredCard({
+    required String subtitle, required String title, required String emoji,
+    required VoidCallback onTap, bool tall = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: tall ? 172 : 148,
+        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF4FF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: JT.border),
+          boxShadow: JT.cardShadow,
+        ),
+        child: Stack(children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (subtitle.isNotEmpty) ...[
+              Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 4),
+            ],
+            Text(title,
+              style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+          ]),
+          Positioned(
+            right: 0, bottom: 0,
+            child: Text(emoji, style: const TextStyle(fontSize: 54))),
+        ]),
+      ),
+    );
+  }
+
+  // ── EXPLORE STRIP (Rapido-style horizontal scroll) ────────────────────────
+  Widget _buildExploreSection(bool isDark) {
+    // Build explore items: ride vehicles + parcel options
+    final rideItems = _vehicleCategories.where((c) => c['type'] != 'parcel').map((cat) {
+      final name = cat['name']?.toString() ?? '';
+      String emoji = '🚖';
+      if (name.toLowerCase().contains('bike')) emoji = '🏍️';
+      else if (name.toLowerCase().contains('auto')) emoji = '🛺';
+      else if (name.toLowerCase().contains('car') || name.toLowerCase().contains('cab')) emoji = '🚗';
+      else if (name.toLowerCase().contains('pool') || name.toLowerCase().contains('carpool')) emoji = '🚌';
+      return {...cat, 'emoji': emoji};
+    }).toList();
+
+    final exploreItems = [
+      ...rideItems,
+      {'name': 'Bike Parcel', 'emoji': '📦', 'type': 'parcel', 'vehicleKey': 'bike_parcel'},
+      {'name': 'Mini Truck',  'emoji': '🚛', 'type': 'parcel', 'vehicleKey': 'tata_ace'},
+      {'name': 'Pickup',      'emoji': '🛻', 'type': 'parcel', 'vehicleKey': 'pickup_truck'},
+    ];
+    if (rideItems.isEmpty) {
+      exploreItems.insertAll(0, [
+        {'name': 'Shared Auto', 'emoji': '🛺', 'type': 'ride'},
+        {'name': 'Bike',        'emoji': '🏍️', 'type': 'ride'},
+        {'name': 'Auto',        'emoji': '🛺', 'type': 'ride'},
+      ]);
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+        child: Row(children: [
+          Text('Explore', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+          const Spacer(),
+          GestureDetector(
+            onTap: _showAllServicesSheet,
+            child: Row(children: [
+              Text('View All', style: GoogleFonts.poppins(fontSize: 13, color: JT.primary, fontWeight: FontWeight.w600)),
+              const Icon(Icons.chevron_right_rounded, color: JT.primary, size: 18),
+            ]),
           ),
         ]),
-        const SizedBox(height: 4),
-        Text('Send parcels & freight across the city', style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
-        const SizedBox(height: 14),
-        Row(
-          children: vehicles.map((v) {
-            final color = v['color'] as Color;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        height: 92,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          itemCount: exploreItems.length,
+          itemBuilder: (_, i) {
+            final item = exploreItems[i];
+            final name = item['name']?.toString() ?? '';
+            final emoji = item['emoji']?.toString() ?? '🚖';
+            final type = item['type']?.toString() ?? 'ride';
+            final vKey = item['vehicleKey']?.toString();
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                if (type == 'parcel') {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-                    pickupAddress: _pickup,
-                    pickupLat: _pickupLat,
-                    pickupLng: _pickupLng,
-                    initialVehicleKey: v['key'] as String,
-                  )));
-                },
-                child: Container(
-                  margin: EdgeInsets.only(right: v['key'] != 'pickup_truck' ? 8 : 0),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: JT.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: JT.border),
-                    boxShadow: JT.cardShadow,
-                  ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Container(
-                      width: 38, height: 38,
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Center(child: Text(v['icon'] as String, style: const TextStyle(fontSize: 20))),
+                    pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng,
+                    initialVehicleKey: vKey)));
+                } else {
+                  _openSearchWithCategory(item);
+                }
+              },
+              child: Container(
+                width: 74,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(children: [
+                  Container(
+                    width: 60, height: 60,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF4FF),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: JT.border),
                     ),
-                    const SizedBox(height: 8),
-                    Text(v['name'] as String,
-                      style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: JT.textPrimary),
-                      maxLines: 1),
-                    Text(v['cap'] as String,
-                      style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary),
-                      maxLines: 1),
-                  ]),
-                ),
+                    child: Center(child: Text(emoji, style: const TextStyle(fontSize: 28))),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(name,
+                    style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                ]),
               ),
             );
-          }).toList(),
+          },
         ),
-      ]),
-    );
+      ),
+    ]);
   }
 
   // ── BANNER CAROUSEL ───────────────────────────────────────────────────────
