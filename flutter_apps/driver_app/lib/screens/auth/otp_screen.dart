@@ -87,23 +87,10 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
         _otpCtrl.clear();
       }
     } else {
-      // Server OTP fallback
-      final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
-      if (!mounted) return;
+      // Firebase verification ID not available — ask user to retry
       setState(() => _loading = false);
-      if (res['success'] == true) {
-        Navigator.pushAndRemoveUntil(context,
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const HomeScreen(),
-            transitionDuration: const Duration(milliseconds: 400),
-            transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-          ),
-          (_) => false);
-      } else {
-        _showSnack(res['message'] ?? 'Invalid OTP', error: true);
-        setState(() => _hasError = true);
-        _otpCtrl.clear();
-      }
+      _showSnack('Session expired. Please go back and request a new OTP.', error: true);
+      setState(() => _hasError = true);
     }
   }
 
@@ -365,8 +352,8 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                   FirebaseOtpService.sendOtp(
                                     phoneNumber: '+91${widget.phone}',
                                     onCodeSent: (vId) => setState(() => _verificationId = vId),
-                                    onError: (_) async {
-                                      await AuthService.sendOtp(widget.phone, 'driver');
+                                    onError: (e) {
+                                      _showSnack('OTP send failed. Check your phone number and try again.', error: true);
                                     },
                                   );
                                 },

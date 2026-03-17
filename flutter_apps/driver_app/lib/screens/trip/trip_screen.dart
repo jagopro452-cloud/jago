@@ -28,6 +28,7 @@ class _TripScreenState extends State<TripScreen> {
   String _status = 'accepted';
   Map<String, dynamic>? _trip;
   bool _loading = false;
+  bool _nearPickup = false; // true when driver is within 100m of pickup
   final _otpCtrl = TextEditingController();
   Timer? _locationTimer;
   List<String> _cancelReasons = [];
@@ -96,7 +97,7 @@ class _TripScreenState extends State<TripScreen> {
   }
 
   void _startLocationUpdates() {
-    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) => _updateLocation());
+    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) => _updateLocation());
   }
 
   void _initMapMarkers() {
@@ -162,6 +163,21 @@ class _TripScreenState extends State<TripScreen> {
       http.post(Uri.parse(ApiConfig.driverLocation),
         headers: {...locHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true})).catchError((_) => http.Response('', 500));
+
+      // 100m arrival detection — auto-enable "Arrived" button when near pickup
+      if (_status == 'accepted' || _status == 'driver_assigned') {
+        final pickupLat = double.tryParse(_trip?['pickupLat']?.toString() ?? _trip?['pickup_lat']?.toString() ?? '');
+        final pickupLng = double.tryParse(_trip?['pickupLng']?.toString() ?? _trip?['pickup_lng']?.toString() ?? '');
+        if (pickupLat != null && pickupLng != null && pickupLat != 0) {
+          final dist = Geolocator.distanceBetween(lat, lng, pickupLat, pickupLng);
+          if (mounted && dist <= 100 && !_nearPickup) {
+            setState(() => _nearPickup = true);
+            _showSnack('You are near the pickup location!');
+          } else if (mounted && dist > 100 && _nearPickup) {
+            setState(() => _nearPickup = false);
+          }
+        }
+      }
     } catch (_) {}
   }
 
@@ -1218,45 +1234,70 @@ class _TripScreenState extends State<TripScreen> {
 
   Widget _buildActionBtn(Map<String, dynamic> step) {
     final isComplete = _status == 'in_progress' || _status == 'on_the_way';
-    return GestureDetector(
-      onTap: _loading ? null : _nextStep,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: double.infinity, height: 60,
-        margin: const EdgeInsets.only(top: 4),
-        decoration: BoxDecoration(
-          gradient: isComplete
-              ? const LinearGradient(
-                  colors: [JT.success, Color(0xFF15803D)],
-                  begin: Alignment.centerLeft, end: Alignment.centerRight)
-              : JT.grad,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: (isComplete ? JT.success : JT.primary).withOpacity(0.35),
-              blurRadius: 20, offset: const Offset(0, 6)),
-          ],
+    final isArriveStep = _status == 'accepted' || _status == 'driver_assigned';
+    final showNearGlow = isArriveStep && _nearPickup;
+    return Column(
+      children: [
+        if (showNearGlow) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: JT.success.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: JT.success.withOpacity(0.4)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 8, height: 8,
+                decoration: const BoxDecoration(color: JT.success, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text('You are near the pickup — tap Arrived',
+                style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ],
+        GestureDetector(
+          onTap: _loading ? null : _nextStep,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: double.infinity, height: 60,
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              gradient: isComplete
+                  ? const LinearGradient(
+                      colors: [JT.success, Color(0xFF15803D)],
+                      begin: Alignment.centerLeft, end: Alignment.centerRight)
+                  : JT.grad,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: (showNearGlow ? JT.success : isComplete ? JT.success : JT.primary).withOpacity(showNearGlow ? 0.55 : 0.35),
+                  blurRadius: showNearGlow ? 28 : 20, offset: const Offset(0, 6)),
+              ],
+              border: showNearGlow ? Border.all(color: JT.success, width: 2) : null,
+            ),
+            child: Center(
+              child: _loading
+                ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const SizedBox(width: 22, height: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
+                    const SizedBox(width: 12),
+                    const Text('Please wait...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                  ])
+                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      child: Icon(step['icon'] as IconData, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(step['action'] as String,
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.2)),
+                  ]),
+            ),
+          ),
         ),
-        child: Center(
-          child: _loading
-            ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const SizedBox(width: 22, height: 22,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
-                const SizedBox(width: 12),
-                const Text('Please wait...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-              ])
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                  child: Icon(step['icon'] as IconData, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Text(step['action'] as String,
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.2)),
-              ]),
-        ),
-      ),
+      ],
     );
   }
 

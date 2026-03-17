@@ -50,8 +50,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     _connectSocket();
     _pollStatus();
     _loadCancelReasons();
-    // HTTP polling as fallback (every 8s — socket handles real-time)
-    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) => _pollStatus());
+    // HTTP polling as fallback (every 3s — socket handles real-time)
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollStatus());
   }
 
   void _connectSocket() {

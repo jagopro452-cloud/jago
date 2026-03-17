@@ -5880,10 +5880,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settingsRow = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`)
         .catch(() => ({ rows: [] as any[] }));
       const cfg = settingsRow.rows[0] as any || {};
-      const primaryProvider: string  = cfg.primary_provider   ?? 'sms';
-      const smsEnabled: boolean      = cfg.sms_enabled        ?? true;
+      const primaryProvider: string  = cfg.primary_provider   ?? 'firebase'; // default: Firebase-only
+      const smsEnabled: boolean      = cfg.sms_enabled        ?? false;      // SMS disabled by default
       const firebaseEnabled: boolean = cfg.firebase_enabled   ?? true;
-      const fallbackEnabled: boolean = cfg.fallback_enabled   ?? true;
+      const fallbackEnabled: boolean = cfg.fallback_enabled   ?? false;      // no SMS fallback by default
       const expirySeconds: number    = cfg.otp_expiry_seconds ?? 120;
 
       // Rate limiting: max 5 OTPs per phone per hour
