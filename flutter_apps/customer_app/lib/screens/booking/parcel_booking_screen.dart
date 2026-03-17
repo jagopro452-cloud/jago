@@ -115,6 +115,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   int _weightIdx = 0;
   bool _safetyAgreed = false;
 
+  // Dynamic vehicles from backend (overrides _kVehicles when loaded)
+  List<_ParcelVehicle> _dynamicVehicles = [];
+
   // Drop location
   double _destLat = 0, _destLng = 0;
   List<Map<String, dynamic>> _suggestions = [];
@@ -130,14 +133,54 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   late PageController _pageCtrl;
 
+  List<_ParcelVehicle> get _vehicles => _dynamicVehicles.isNotEmpty ? _dynamicVehicles : _kVehicles;
+
   @override
   void initState() {
     super.initState();
+    _fetchDynamicVehicles();
     if (widget.initialVehicleKey != null) {
       final idx = _kVehicles.indexWhere((v) => v.key == widget.initialVehicleKey);
       if (idx >= 0) _vehicleIdx = idx;
     }
     _pageCtrl = PageController();
+  }
+
+  Future<void> _fetchDynamicVehicles() async {
+    try {
+      final uri = Uri.parse(ApiConfig.parcelVehicles).replace(queryParameters: {
+        'lat': widget.pickupLat.toString(),
+        'lng': widget.pickupLng.toString(),
+      });
+      final r = await http.get(uri);
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final list = (data['vehicles'] as List<dynamic>?) ?? [];
+        final parsed = list.map<_ParcelVehicle>((v) {
+          final m = v as Map<String, dynamic>;
+          final colorStr = m['color']?.toString() ?? '#2F7BFF';
+          final colorVal = int.tryParse(colorStr.replaceFirst('#', '0xFF')) ?? 0xFF2F7BFF;
+          return _ParcelVehicle(
+            key: m['vehicle_key']?.toString() ?? '',
+            name: m['display_name']?.toString() ?? m['vehicle_key']?.toString() ?? '',
+            subtitle: m['description']?.toString() ?? '',
+            icon: m['icon']?.toString() ?? '📦',
+            capacity: 'Up to ${m['max_weight_kg'] ?? 10} kg',
+            maxKg: (m['max_weight_kg'] as num?)?.toInt() ?? 10,
+            suitable: m['suitable_items']?.toString() ?? '',
+            accentColor: Color(colorVal),
+          );
+        }).toList();
+        if (mounted && parsed.isNotEmpty) {
+          setState(() => _dynamicVehicles = parsed);
+          // Re-align initial vehicle selection
+          if (widget.initialVehicleKey != null) {
+            final idx = _dynamicVehicles.indexWhere((v) => v.key == widget.initialVehicleKey);
+            if (idx >= 0) setState(() => _vehicleIdx = idx);
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -154,7 +197,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  _ParcelVehicle get _vehicle => _kVehicles[_vehicleIdx];
+  _ParcelVehicle get _vehicle => _vehicles[_vehicleIdx];
   double get _weightKg => (_kWeightOptions[_weightIdx]['value'] as num).toDouble();
 
   bool get _step0Valid => true;
@@ -479,7 +522,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         const SizedBox(height: 20),
 
         // Vehicle cards
-        ...List.generate(_kVehicles.length, (i) => _buildVehicleCard(i)),
+        ...List.generate(_vehicles.length, (i) => _buildVehicleCard(i)),
 
         const SizedBox(height: 24),
         // What is Logistics section
@@ -515,7 +558,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   }
 
   Widget _buildVehicleCard(int idx) {
-    final v = _kVehicles[idx];
+    final v = _vehicles[idx];
     final selected = _vehicleIdx == idx;
     return GestureDetector(
       onTap: () => setState(() => _vehicleIdx = idx),

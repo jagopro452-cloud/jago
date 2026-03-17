@@ -111,4 +111,7 @@ class ApiConfig {
       '$baseUrl/api/app/driver/heatmap?lat=$lat&lng=$lng&radius=$radius';
   static String driverHeatmapSuggestion({double lat = 17.38, double lng = 78.49}) =>
       '$baseUrl/api/app/driver/heatmap/suggestion?lat=$lat&lng=$lng';
+
+  // ── Eligible Services (vehicle-type based) ────────────────────────────
+  static String get eligibleServices => '$baseUrl/api/app/driver/eligible-services';
 }

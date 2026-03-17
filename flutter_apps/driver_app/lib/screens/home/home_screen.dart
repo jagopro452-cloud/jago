@@ -77,6 +77,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _idleSeconds = 0;
   bool _idleSuggestionShown = false;
 
+  // ── Eligible Services ──────────────────────────────────────────────────
+  List<Map<String, dynamic>> _eligibleServices = [];
+
   String _getTimeGreeting() {
     final h = DateTime.now().hour;
     if (h < 12) return 'Good Morning';
@@ -105,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _getLocation();
     _fetchDashboard();
     _fetchLaunchBenefit();
+    _fetchEligibleServices();
     _connectSocket();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmTrip());
   }
@@ -352,6 +356,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _freeDaysRemaining = data['freeDaysRemaining'] ?? 0;
           });
         }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchEligibleServices() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.eligibleServices), headers: headers);
+      if (res.statusCode == 200 && mounted) {
+        final data = jsonDecode(res.body);
+        final list = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        setState(() => _eligibleServices = list);
       }
     } catch (_) {}
   }
@@ -1586,6 +1602,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (_vehicleCategory.isNotEmpty || _vehicleNumber.isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildVehicleCard(),
+            ],
+            if (_eligibleServices.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: JT.primary.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: JT.primary.withOpacity(0.15)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Your Eligible Services',
+                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 8, runSpacing: 6, children: _eligibleServices.map((svc) {
+                    final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
+                    final icon = svc['icon']?.toString() ?? '🚗';
+                    return Chip(
+                      avatar: Text(icon, style: const TextStyle(fontSize: 14)),
+                      label: Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
+                      backgroundColor: JT.primary.withOpacity(0.08),
+                      side: BorderSide(color: JT.primary.withOpacity(0.2)),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }).toList()),
+                ]),
+              ),
             ],
             if (_isOnline && (
               _vehicleCategory.toLowerCase().contains('parcel') ||

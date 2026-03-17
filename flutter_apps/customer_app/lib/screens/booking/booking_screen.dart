@@ -54,6 +54,18 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _passengerPhoneCtrl = TextEditingController();
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
+  bool _popularForPickup = false;
+
+  final List<Map<String, dynamic>> _popularLocations = const [
+    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
+    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
+    {'name': 'Vijayawada Bus Stand', 'lat': 16.5179, 'lng': 80.6238},
+    {'name': 'Balaji Bus Stand', 'lat': 16.5106, 'lng': 80.6248},
+    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
+    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
+    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
+    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
+  ];
 
   static const Color _jagoPrimary = JT.primary;
   static const Color _jagoSecondary = JT.secondary;
@@ -207,6 +219,31 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
     // Road distance is typically 1.3x aerial distance
     return (earthRadius * c * 1.3).clamp(0.5, 200.0);
+  }
+
+  String _shortLocation(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return v;
+    return v.split(',').first.trim();
+  }
+
+  void _quickSelectPopular(Map<String, dynamic> location) {
+    final name = (location['name'] ?? '').toString();
+    final lat = (location['lat'] as num?)?.toDouble() ?? 0.0;
+    final lng = (location['lng'] as num?)?.toDouble() ?? 0.0;
+    if (name.isEmpty || lat == 0 || lng == 0) return;
+
+    final next = BookingScreen(
+      pickup: _popularForPickup ? name : widget.pickup,
+      destination: _popularForPickup ? widget.destination : name,
+      pickupLat: _popularForPickup ? lat : widget.pickupLat,
+      pickupLng: _popularForPickup ? lng : widget.pickupLng,
+      destLat: _popularForPickup ? widget.destLat : lat,
+      destLng: _popularForPickup ? widget.destLng : lng,
+      vehicleCategoryId: widget.vehicleCategoryId,
+      vehicleCategoryName: widget.vehicleCategoryName,
+    );
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   double get _finalFare {
@@ -364,6 +401,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final body = <String, dynamic>{
         'pickupAddress': widget.pickup,
         'destinationAddress': widget.destination,
+        'pickupShortName': _shortLocation(widget.pickup),
+        'destinationShortName': _shortLocation(widget.destination),
         'pickupLat': widget.pickupLat, 'pickupLng': widget.pickupLng,
         'destinationLat': widget.destLat, 'destinationLng': widget.destLng,
         'estimatedFare': _finalFare,
@@ -553,7 +592,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'amount': order['amount'],
         'currency': 'INR',
         'name': 'JAGO Rides',
-        'description': 'Ride to ${widget.destination}',
+        'description': 'Ride to ${_shortLocation(widget.destination)}',
         'order_id': order['id'],
         'prefill': {
           'name': profileData?['fullName'] ?? '',
@@ -780,15 +819,85 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                         ),
                       ),
                       Column(children: [
-                        _addressRow(Icons.circle, JT.primary, widget.pickup, textMain),
+                        _addressRow(Icons.circle, JT.primary, _shortLocation(widget.pickup), textMain),
                         Padding(
                           padding: const EdgeInsets.only(left: 48),
                           child: Divider(height: 1, color: Colors.grey[100]),
                         ),
-                        _addressRow(Icons.location_on_rounded, const Color(0xFFE53935), widget.destination, textMain),
+                        _addressRow(Icons.location_on_rounded, const Color(0xFFE53935), _shortLocation(widget.destination), textMain),
                       ]),
                     ],
                   ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: JT.border),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text(
+                      'Popular Locations',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JT.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _popularForPickup = true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _popularForPickup ? JT.primary : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: JT.border),
+                            ),
+                            child: Center(
+                              child: Text('Set Pickup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _popularForPickup ? Colors.white : JT.textPrimary)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _popularForPickup = false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: !_popularForPickup ? JT.primary : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: JT.border),
+                            ),
+                            child: Center(
+                              child: Text('Set Drop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: !_popularForPickup ? Colors.white : JT.textPrimary)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _popularLocations.map((loc) => GestureDetector(
+                          onTap: () => _quickSelectPopular(loc),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: JT.border),
+                            ),
+                            child: Text(loc['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+                          ),
+                        )).toList(),
+                      ),
+                    ),
+                  ]),
                 ),
                 const SizedBox(height: 14),
 

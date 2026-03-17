@@ -22,6 +22,11 @@ class TripScreen extends StatefulWidget {
 }
 
 class _TripScreenState extends State<TripScreen> {
+    String _shortLocation(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return v;
+      return v.split(',').first.trim();
+    }
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
@@ -799,8 +804,8 @@ class _TripScreenState extends State<TripScreen> {
     final customerPhone = _trip?['customerPhone'] ?? _trip?['customer_phone'];
     final estimatedFare = _trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? '--';
     final estimatedDistance = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? '--';
-    final pickupAddress = _trip?['pickupAddress'] ?? _trip?['pickup_address'] ?? 'Pickup';
-    final destAddress = _trip?['destinationAddress'] ?? _trip?['destination_address'] ?? 'Destination';
+    final pickupAddress = _shortLocation((_trip?['pickupShortName'] ?? _trip?['pickupAddress'] ?? _trip?['pickup_address'] ?? 'Pickup').toString());
+    final destAddress = _shortLocation((_trip?['destinationShortName'] ?? _trip?['destinationAddress'] ?? _trip?['destination_address'] ?? 'Destination').toString());
     final isForSomeoneElse = _trip?['isForSomeoneElse'] == true || _trip?['is_for_someone_else'] == true;
     final passengerName = _trip?['passengerName'] ?? _trip?['passenger_name'] ?? '';
     final passengerPhone = _trip?['passengerPhone'] ?? _trip?['passenger_phone'];
@@ -1454,8 +1459,8 @@ class _TripScreenState extends State<TripScreen> {
       ? (double.tryParse(_trip?['pickupLng']?.toString() ?? '') ?? double.tryParse(_trip?['pickup_lng']?.toString() ?? '') ?? 0.0)
       : (double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? double.tryParse(_trip?['destination_lng']?.toString() ?? '') ?? 0.0);
     final targetAddress = toPickup
-      ? (_trip?['pickupAddress']?.toString() ?? _trip?['pickup_address']?.toString() ?? 'Pickup')
-      : (_trip?['destinationAddress']?.toString() ?? _trip?['destination_address']?.toString() ?? 'Destination');
+      ? _shortLocation((_trip?['pickupShortName']?.toString() ?? _trip?['pickupAddress']?.toString() ?? _trip?['pickup_address']?.toString() ?? 'Pickup'))
+      : _shortLocation((_trip?['destinationShortName']?.toString() ?? _trip?['destinationAddress']?.toString() ?? _trip?['destination_address']?.toString() ?? 'Destination'));
 
     Uri uri;
     if (targetLat != 0 && targetLng != 0) {

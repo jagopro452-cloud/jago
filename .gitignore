@@ -36,6 +36,12 @@ build_output.log
 
 # Environment
 .env
+
+# Claude worktrees
+.claude/
+
+# Public APK downloads (served at runtime, not version controlled)
+public/apks/
 .env.*
 
 # Sensitive artifacts and prompt dumps

@@ -442,13 +442,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchActiveServices() async {
     try {
       final headers = await AuthService.getHeaders();
-      final r = await http.get(Uri.parse(ApiConfig.activeServices), headers: headers);
+      // Use location-based endpoint for city-filtered services
+      final uri = Uri.parse(ApiConfig.servicesForLocation).replace(queryParameters: {
+        if (_pickupLat != 0) 'lat': _pickupLat.toString(),
+        if (_pickupLng != 0) 'lng': _pickupLng.toString(),
+      });
+      final r = await http.get(uri, headers: headers);
       if (r.statusCode == 200 && mounted) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final services = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
         setState(() => _activeServices = services);
       }
-    } catch (_) {}
+    } catch (_) {
+      // Fallback to non-location endpoint
+      try {
+        final headers = await AuthService.getHeaders();
+        final r = await http.get(Uri.parse(ApiConfig.activeServices), headers: headers);
+        if (r.statusCode == 200 && mounted) {
+          final data = jsonDecode(r.body) as Map<String, dynamic>;
+          final services = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+          setState(() => _activeServices = services);
+        }
+      } catch (_) {}
+    }
   }
 
   /// Map a service key to its default emoji and color fallback.
@@ -830,41 +846,134 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── FEATURED 2×2 GRID (Rapido-style) ─────────────────────────────────────
+  // ── FEATURED SERVICES GRID (Dynamic, city-based) ───────────────────────
   Widget _buildFeaturedGrid(bool isDark) {
+    // Use dynamic active services if available, fallback to static grid
+    final displayServices = _activeServices.isNotEmpty ? _activeServices : <Map<String, dynamic>>[];
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Everything In Minutes',
           style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
         const SizedBox(height: 14),
-        Row(children: [
-          Expanded(child: _featuredCard(
-            subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
-            onTap: () { HapticFeedback.selectionClick();
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-                pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
-          )),
-          const SizedBox(width: 12),
-          Expanded(child: _featuredCard(
-            subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
-            onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
-          )),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _featuredCard(
-            subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
-            tall: true,
-            onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
-          )),
-          const SizedBox(width: 12),
-          Expanded(child: _featuredCard(
-            subtitle: '', title: 'All\nServices', emoji: '📋',
-            onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
-          )),
-        ]),
+        if (displayServices.isEmpty) ...[
+          // Static fallback grid (same as before)
+          Row(children: [
+            Expanded(child: _featuredCard(
+              subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
+              onTap: () { HapticFeedback.selectionClick();
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+                  pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _featuredCard(
+              subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
+              onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
+            )),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _featuredCard(
+              subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
+              tall: true,
+              onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _featuredCard(
+              subtitle: '', title: 'All\nServices', emoji: '📋',
+              onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
+            )),
+          ]),
+        ] else ...[
+          // Dynamic grid from active services
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.2,
+            children: [
+              ...displayServices.take(3).map((svc) {
+                final key = svc['key']?.toString() ?? '';
+                final name = svc['name']?.toString() ?? key;
+                final defaults = _serviceDefaults(key);
+                final emoji = svc['icon']?.toString() ?? defaults['emoji']?.toString() ?? '🚗';
+                final desc = svc['short_description']?.toString() ?? svc['description']?.toString() ?? '';
+                final etaLabel = svc['eta_label']?.toString() ?? '';
+                final imageUrl = svc['image_url']?.toString() ?? '';
+                return _dynamicServiceCard(
+                  title: name, emoji: emoji, subtitle: desc.isNotEmpty ? desc : etaLabel,
+                  imageUrl: imageUrl,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _onServiceTap(key);
+                  },
+                );
+              }),
+              _featuredCard(
+                subtitle: '', title: 'All\nServices', emoji: '📋',
+                onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
+              ),
+            ],
+          ),
+        ],
       ]),
+    );
+  }
+
+  void _onServiceTap(String serviceKey) {
+    if (serviceKey.contains('parcel')) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+        pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
+    } else if (serviceKey.contains('bike')) {
+      _openSearch(presetVehicle: 'Bike');
+    } else if (serviceKey.contains('auto')) {
+      _openSearch(presetVehicle: 'Auto');
+    } else if (serviceKey.contains('pool') || serviceKey.contains('intercity')) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
+    } else {
+      _openSearch();
+    }
+  }
+
+  Widget _dynamicServiceCard({
+    required String title, required String emoji, required String subtitle,
+    required VoidCallback onTap, String imageUrl = '',
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF4FF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: JT.border),
+          boxShadow: JT.cardShadow,
+        ),
+        child: Stack(children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (subtitle.isNotEmpty) ...[
+              Text(subtitle, style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w500),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+            ],
+            Text(title,
+              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
+          Positioned(
+            right: 0, bottom: 0,
+            child: imageUrl.isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(imageUrl, width: 54, height: 54, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Text(emoji, style: const TextStyle(fontSize: 48))))
+              : Text(emoji, style: const TextStyle(fontSize: 48)),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -1389,6 +1498,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _results = [];
   List<Map<String, dynamic>> _nearby = [];
+  List<Map<String, dynamic>> _popular = [];
   bool _loading = false;
   Timer? _debounce;
 
@@ -1397,7 +1507,42 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   @override
   void initState() {
     super.initState();
+    _fetchPopularLocations();
     _fetchNearby();
+  }
+
+  Future<void> _fetchPopularLocations() async {
+    try {
+      final r = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final list = (data['locations'] as List<dynamic>? ?? [])
+            .map((x) => Map<String, dynamic>.from(x as Map))
+            .map((x) => {
+                  'name': (x['name'] ?? '').toString(),
+                  'lat': double.tryParse((x['lat'] ?? x['latitude'] ?? 0).toString()) ?? 0.0,
+                  'lng': double.tryParse((x['lng'] ?? x['longitude'] ?? 0).toString()) ?? 0.0,
+                })
+            .where((x) => (x['name'] as String).isNotEmpty)
+            .toList();
+        if (mounted && list.isNotEmpty) {
+          setState(() => _popular = list);
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted && _popular.isEmpty) {
+      setState(() => _popular = [
+        {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
+        {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
+        {'name': 'Vijayawada Bus Stand', 'lat': 16.5179, 'lng': 80.6238},
+        {'name': 'Balaji Bus Stand', 'lat': 16.5106, 'lng': 80.6248},
+        {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
+        {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
+        {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
+        {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
+      ]);
+    }
   }
 
   // Fetch actual nearby places based on real GPS coordinates
@@ -1517,6 +1662,51 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
             ),
           ),
           const SizedBox(height: 8),
+          if (_popular.isNotEmpty && query.length < 3)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  'Popular Locations',
+                  style: GoogleFonts.poppins(fontSize: 12, color: subColor, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _popular.map((p) {
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context);
+                          widget.onPlaceSelected(
+                            p['name'] as String,
+                            (p['lat'] as num?)?.toDouble() ?? 0.0,
+                            (p['lng'] as num?)?.toDouble() ?? 0.0,
+                          );
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F7FF),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFDCE9FF)),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.place_rounded, color: _primary, size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              p['name'] as String,
+                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                            ),
+                          ]),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ]),
+            ),
           if (_loading) const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: _primary)),
           if (!_loading)
             ConstrainedBox(

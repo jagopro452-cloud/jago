@@ -1,0 +1,790 @@
+/**
+ * Smart Driver Dispatch Engine
+ *
+ * Sequential driver dispatch with expanding radius search.
+ * Sends trip request to ONE driver at a time, with configurable timeout.
+ * Expands radius progressively (2→4→6→8 km) when no driver accepts.
+ *
+ * Works for all service types: bike, auto, cab, parcel, b2b, carpool, outstation.
+ */
+
+import { db as rawDb } from "./db";
+import { sql as rawSql } from "drizzle-orm";
+import { io } from "./socket";
+import { notifyDriverNewRide } from "./fcm";
+import { findBestDrivers, type DriverMatchScore } from "./ai";
+import { findParcelCapableDrivers } from "./parcel-advanced";
+
+// ── Service-specific dispatch configuration ──────────────────────────────────
+
+export interface DispatchConfig {
+  radiusStepsKm: number[];
+  driverTimeoutMs: number;
+  maxTotalTimeMs: number;
+  driversPerStep: number; // how many drivers to fetch per radius step
+}
+
+const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
+  bike:       { radiusStepsKm: [2, 4, 6, 8],     driverTimeoutMs: 8000,  maxTotalTimeMs: 180000, driversPerStep: 10 },
+  auto:       { radiusStepsKm: [2, 4, 6, 8],     driverTimeoutMs: 8000,  maxTotalTimeMs: 180000, driversPerStep: 10 },
+  cab:        { radiusStepsKm: [2, 4, 6, 8, 10], driverTimeoutMs: 10000, maxTotalTimeMs: 210000, driversPerStep: 10 },
+  parcel:     { radiusStepsKm: [2, 4, 6],         driverTimeoutMs: 10000, maxTotalTimeMs: 120000, driversPerStep: 8 },
+  b2b_parcel: { radiusStepsKm: [3, 6, 10],        driverTimeoutMs: 12000, maxTotalTimeMs: 180000, driversPerStep: 8 },
+  carpool:    { radiusStepsKm: [3, 6, 10, 15],    driverTimeoutMs: 12000, maxTotalTimeMs: 240000, driversPerStep: 10 },
+  outstation: { radiusStepsKm: [5, 10, 15, 25],   driverTimeoutMs: 15000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+};
+
+function getConfig(serviceType: string): DispatchConfig {
+  return DISPATCH_CONFIGS[serviceType] || DISPATCH_CONFIGS.auto;
+}
+
+// ── Dispatch session state ───────────────────────────────────────────────────
+
+interface DispatchSession {
+  tripId: string;
+  customerId: string;
+  pickupLat: number;
+  pickupLng: number;
+  vehicleCategoryId?: string;
+  parcelVehicleCategory?: string; // e.g. "bike_parcel", "tata_ace" — for parcel vehicle-type filtering
+  serviceType: string;
+  config: DispatchConfig;
+
+  // Trip metadata for socket payloads
+  tripMeta: TripMeta;
+
+  // State
+  radiusIndex: number;
+  driverQueue: DriverMatchScore[];
+  queueIndex: number;
+  currentOfferedDriverId: string | null;
+  offerTimer: ReturnType<typeof setTimeout> | null;
+  notifiedDriverIds: Set<string>;
+  rejectedDriverIds: Set<string>;
+  status: "searching" | "offered" | "accepted" | "cancelled" | "no_drivers" | "expired";
+  createdAt: number;
+  totalTimer: ReturnType<typeof setTimeout> | null;
+}
+
+export interface TripMeta {
+  refId: string;
+  customerName: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  pickupShortName?: string;
+  destinationShortName?: string;
+  pickupLat: number;
+  pickupLng: number;
+  estimatedFare: number;
+  estimatedDistance: number;
+  paymentMethod: string;
+  tripType: string;
+}
+
+// ── Dispatch Engine (singleton) ──────────────────────────────────────────────
+
+const activeDispatches = new Map<string, DispatchSession>();
+
+/**
+ * Resolve the service type from trip_type and vehicle category name.
+ * Maps the various trip_type values to dispatch config keys.
+ */
+export function resolveServiceType(
+  tripType: string,
+  vehicleCategoryName?: string
+): string {
+  const tt = (tripType || "").toLowerCase();
+  const vc = (vehicleCategoryName || "").toLowerCase();
+
+  if (tt === "parcel" || tt === "delivery") return "parcel";
+  if (tt === "cargo" || tt === "b2b") return "b2b_parcel";
+  if (tt === "carpool" || tt === "pool") return "carpool";
+  if (tt === "intercity" || tt === "outstation") return "outstation";
+
+  // Determine from vehicle category name fallback
+  if (vc.includes("bike") || vc.includes("two")) return "bike";
+  if (vc.includes("auto") || vc.includes("rickshaw")) return "auto";
+  if (vc.includes("cab") || vc.includes("car") || vc.includes("sedan") || vc.includes("suv") || vc.includes("mini")) return "cab";
+
+  return "auto"; // default
+}
+
+/**
+ * Start the smart dispatch process for a trip.
+ * This is the main entry point called after trip creation.
+ */
+export async function startDispatch(
+  tripId: string,
+  customerId: string,
+  pickupLat: number,
+  pickupLng: number,
+  vehicleCategoryId: string | undefined,
+  serviceType: string,
+  tripMeta: TripMeta,
+  parcelVehicleCategory?: string
+): Promise<void> {
+  // Cancel any existing dispatch for this trip (defensive)
+  cancelDispatch(tripId);
+
+  const config = getConfig(serviceType);
+
+  const session: DispatchSession = {
+    tripId,
+    customerId,
+    pickupLat,
+    pickupLng,
+    vehicleCategoryId,
+    parcelVehicleCategory,
+    serviceType,
+    config,
+    tripMeta,
+    radiusIndex: 0,
+    driverQueue: [],
+    queueIndex: 0,
+    currentOfferedDriverId: null,
+    offerTimer: null,
+    notifiedDriverIds: new Set(),
+    rejectedDriverIds: new Set(),
+    status: "searching",
+    createdAt: Date.now(),
+    totalTimer: null,
+  };
+
+  activeDispatches.set(tripId, session);
+
+  // Set max total timeout — auto-cancel if no driver found in time
+  session.totalTimer = setTimeout(() => {
+    if (session.status === "searching" || session.status === "offered") {
+      expireDispatch(session, "No pilots available nearby. Please try again.");
+    }
+  }, config.maxTotalTimeMs);
+
+  console.log(`[DISPATCH] Started for trip ${tripId} (${serviceType}) — radius steps: ${config.radiusStepsKm.join("→")}km`);
+
+  // Begin the first radius step
+  await searchAndDispatchNextRadius(session);
+}
+
+/**
+ * Called when a driver accepts a trip (from accept-trip endpoint or socket).
+ * Clears the dispatch session.
+ */
+export function onDriverAccepted(tripId: string, driverId: string): void {
+  const session = activeDispatches.get(tripId);
+  if (!session) return;
+
+  session.status = "accepted";
+  clearTimers(session);
+
+  // Notify all previously-notified (but not accepted) drivers that trip is taken
+  if (io) {
+    Array.from(session.notifiedDriverIds).forEach((notifiedId) => {
+      if (notifiedId !== driverId) {
+        io.to(`user:${notifiedId}`).emit("trip:request_taken", { tripId });
+      }
+    });
+  }
+
+  activeDispatches.delete(tripId);
+  console.log(`[DISPATCH] Trip ${tripId} accepted by driver ${driverId}`);
+}
+
+/**
+ * Called when a driver explicitly rejects a trip.
+ * Immediately moves to next driver in queue.
+ */
+export async function onDriverRejected(tripId: string, driverId: string): Promise<void> {
+  const session = activeDispatches.get(tripId);
+  if (!session) return;
+
+  // Clear offer timer for current driver
+  if (session.offerTimer) {
+    clearTimeout(session.offerTimer);
+    session.offerTimer = null;
+  }
+
+  session.rejectedDriverIds.add(driverId);
+  session.currentOfferedDriverId = null;
+
+  // Emit timeout/rejection to driver
+  if (io) {
+    io.to(`user:${driverId}`).emit("trip:offer_timeout", { tripId });
+  }
+
+  // Notify customer we're still searching
+  emitCustomerSearchStatus(session);
+
+  console.log(`[DISPATCH] Driver ${driverId} rejected trip ${tripId} — moving to next`);
+
+  // Try next driver in queue
+  await dispatchNextDriver(session);
+}
+
+/**
+ * Cancel dispatch for a trip (customer cancelled, system cancel, etc.)
+ */
+export function cancelDispatch(tripId: string): void {
+  const session = activeDispatches.get(tripId);
+  if (!session) return;
+
+  session.status = "cancelled";
+  clearTimers(session);
+
+  // Notify current offered driver that trip was cancelled
+  if (session.currentOfferedDriverId && io) {
+    io.to(`user:${session.currentOfferedDriverId}`).emit("trip:cancelled", {
+      tripId,
+      cancelledBy: "customer",
+    });
+  }
+
+  activeDispatches.delete(tripId);
+  console.log(`[DISPATCH] Cancelled for trip ${tripId}`);
+}
+
+/**
+ * Check if a trip has an active dispatch session.
+ */
+export function hasActiveDispatch(tripId: string): boolean {
+  return activeDispatches.has(tripId);
+}
+
+/**
+ * Get dispatch status for monitoring/debugging.
+ */
+export function getDispatchStatus(tripId: string) {
+  const session = activeDispatches.get(tripId);
+  if (!session) return null;
+  const config = session.config;
+  const currentRadius = config.radiusStepsKm[session.radiusIndex] || config.radiusStepsKm[config.radiusStepsKm.length - 1];
+  return {
+    tripId,
+    serviceType: session.serviceType,
+    status: session.status,
+    currentRadiusKm: currentRadius,
+    radiusStep: session.radiusIndex + 1,
+    totalRadiusSteps: config.radiusStepsKm.length,
+    driversInQueue: session.driverQueue.length,
+    queuePosition: session.queueIndex,
+    notifiedCount: session.notifiedDriverIds.size,
+    rejectedCount: session.rejectedDriverIds.size,
+    currentOfferedDriverId: session.currentOfferedDriverId,
+    elapsedMs: Date.now() - session.createdAt,
+  };
+}
+
+/**
+ * Get count of all active dispatches (for admin monitoring).
+ */
+export function getActiveDispatchCount(): number {
+  return activeDispatches.size;
+}
+
+// ── Internal dispatch logic ──────────────────────────────────────────────────
+
+/**
+ * Search for drivers within the current radius step and start dispatching.
+ */
+async function searchAndDispatchNextRadius(session: DispatchSession): Promise<void> {
+  if (session.status !== "searching" && session.status !== "offered") return;
+
+  const config = session.config;
+  if (session.radiusIndex >= config.radiusStepsKm.length) {
+    // All radius steps exhausted
+    expireDispatch(session, "No pilots available nearby. Please try again.");
+    return;
+  }
+
+  const radiusKm = config.radiusStepsKm[session.radiusIndex];
+
+  // Build exclude list: all previously notified + rejected drivers
+  const excludeIds: string[] = [
+    ...Array.from(session.notifiedDriverIds),
+    ...Array.from(session.rejectedDriverIds),
+    session.customerId, // don't send to the customer (they might also be a driver)
+  ].filter(Boolean);
+  // Deduplicate
+  const uniqueExcludeIds = Array.from(new Set(excludeIds));
+
+  console.log(`[DISPATCH] Trip ${session.tripId} — searching radius ${radiusKm}km (step ${session.radiusIndex + 1}/${config.radiusStepsKm.length})`);
+
+  try {
+    // Use parcel-specific driver search for parcel/b2b_parcel service types
+    let drivers: DriverMatchScore[];
+    if ((session.serviceType === "parcel" || session.serviceType === "b2b_parcel") && session.parcelVehicleCategory) {
+      const parcelDrivers = await findParcelCapableDrivers(
+        session.pickupLat,
+        session.pickupLng,
+        radiusKm,
+        session.parcelVehicleCategory,
+        uniqueExcludeIds,
+        config.driversPerStep
+      );
+      // Convert to DriverMatchScore format
+      drivers = parcelDrivers.map((row: any) => {
+        const distKm = Number(row.distance_km) || 99;
+        const rating = Number(row.rating) || 3.0;
+        const behaviorScore = Number(row.behavior_score) || 50;
+        const score = (1 - Math.min(distKm / 25, 1)) * 0.35 + (behaviorScore / 100) * 0.25 + ((rating - 1) / 4) * 0.20 + 0.15;
+        return {
+          driverId: row.id,
+          fullName: row.full_name || "Pilot",
+          phone: row.phone || "",
+          lat: Number(row.lat),
+          lng: Number(row.lng),
+          distanceKm: Math.round(distKm * 100) / 100,
+          rating: Math.round(rating * 10) / 10,
+          totalTrips: 0,
+          avgResponseTimeSec: 60,
+          score: Math.round(score * 1000) / 1000,
+          fcmToken: row.fcm_token || undefined,
+        };
+      });
+      drivers.sort((a, b) => b.score - a.score);
+    } else {
+      drivers = await findDriversInRadius(
+        session.pickupLat,
+        session.pickupLng,
+        radiusKm,
+        session.vehicleCategoryId,
+        uniqueExcludeIds,
+        config.driversPerStep
+      );
+    }
+
+    if (drivers.length === 0) {
+      // No drivers at this radius — try next
+      session.radiusIndex++;
+      emitCustomerSearchStatus(session);
+      await searchAndDispatchNextRadius(session);
+      return;
+    }
+
+    // Set up the driver queue for this radius
+    session.driverQueue = drivers;
+    session.queueIndex = 0;
+
+    // Notify customer about search progress
+    emitCustomerSearchStatus(session);
+
+    // Start dispatching sequentially
+    await dispatchNextDriver(session);
+  } catch (err: any) {
+    console.error(`[DISPATCH] Error searching radius for trip ${session.tripId}:`, err.message);
+    // On error, try next radius
+    session.radiusIndex++;
+    await searchAndDispatchNextRadius(session);
+  }
+}
+
+/**
+ * Dispatch to the next driver in the queue.
+ * If queue exhausted, expand to next radius.
+ */
+async function dispatchNextDriver(session: DispatchSession): Promise<void> {
+  if (session.status !== "searching" && session.status !== "offered") return;
+
+  // Verify trip is still in 'searching' status in DB
+  try {
+    const tripCheck = await rawDb.execute(rawSql`
+      SELECT current_status FROM trip_requests WHERE id=${session.tripId}::uuid
+    `);
+    const dbStatus = (tripCheck.rows[0] as any)?.current_status;
+    if (!dbStatus || (dbStatus !== "searching" && dbStatus !== "driver_assigned")) {
+      // Trip is no longer searchable — clean up
+      session.status = "cancelled";
+      clearTimers(session);
+      activeDispatches.delete(session.tripId);
+      return;
+    }
+  } catch {
+    // DB check failed — continue dispatch (trip might still be valid)
+  }
+
+  session.status = "searching";
+  session.currentOfferedDriverId = null;
+
+  // Find next un-notified, un-rejected driver in queue
+  while (session.queueIndex < session.driverQueue.length) {
+    const driver = session.driverQueue[session.queueIndex];
+    session.queueIndex++;
+
+    if (session.notifiedDriverIds.has(driver.driverId) || session.rejectedDriverIds.has(driver.driverId)) {
+      continue; // Skip already-notified or rejected drivers
+    }
+
+    // Verify driver is still available (online, no active trip)
+    const isAvailable = await checkDriverAvailability(driver.driverId);
+    if (!isAvailable) continue;
+
+    // Send request to this single driver
+    await offerTripToDriver(session, driver);
+    return;
+  }
+
+  // Queue exhausted — expand to next radius
+  session.radiusIndex++;
+  session.driverQueue = [];
+  session.queueIndex = 0;
+  await searchAndDispatchNextRadius(session);
+}
+
+/**
+ * Send trip request to a single driver and start the acceptance timer.
+ */
+async function offerTripToDriver(session: DispatchSession, driver: DriverMatchScore): Promise<void> {
+  session.status = "offered";
+  session.currentOfferedDriverId = driver.driverId;
+  session.notifiedDriverIds.add(driver.driverId);
+
+  const payload = {
+    tripId: session.tripId,
+    ...session.tripMeta,
+    aiScore: driver.score,
+    driverDistanceKm: driver.distanceKm,
+    timeoutMs: session.config.driverTimeoutMs,
+  };
+
+  // Socket notification (foreground)
+  if (io) {
+    io.to(`user:${driver.driverId}`).emit("trip:new_request", payload);
+  }
+
+  // FCM notification (background)
+  if (driver.fcmToken) {
+    notifyDriverNewRide({
+      fcmToken: driver.fcmToken,
+      driverName: driver.fullName,
+      customerName: session.tripMeta.customerName,
+      pickupAddress: session.tripMeta.pickupAddress,
+      estimatedFare: session.tripMeta.estimatedFare,
+      tripId: session.tripId,
+    }).catch(() => {});
+  }
+
+  console.log(`[DISPATCH] Trip ${session.tripId} → offered to driver ${driver.driverId} (score: ${driver.score}, dist: ${driver.distanceKm}km, timeout: ${session.config.driverTimeoutMs / 1000}s)`);
+
+  // Start timeout timer — if driver doesn't respond, auto-skip
+  session.offerTimer = setTimeout(async () => {
+    if (session.currentOfferedDriverId !== driver.driverId) return;
+    if (session.status !== "offered") return;
+
+    console.log(`[DISPATCH] Driver ${driver.driverId} timed out on trip ${session.tripId}`);
+
+    // Record this driver as timed out (equivalent to soft rejection)
+    session.rejectedDriverIds.add(driver.driverId);
+    session.currentOfferedDriverId = null;
+
+    // Notify driver their time expired
+    if (io) {
+      io.to(`user:${driver.driverId}`).emit("trip:offer_timeout", { tripId: session.tripId });
+    }
+
+    // Update customer
+    emitCustomerSearchStatus(session);
+
+    // Move to next driver
+    await dispatchNextDriver(session);
+  }, session.config.driverTimeoutMs);
+}
+
+/**
+ * Expire/fail the dispatch session — no driver found.
+ */
+async function expireDispatch(session: DispatchSession, message: string): Promise<void> {
+  if (session.status === "accepted" || session.status === "cancelled") return;
+
+  session.status = "no_drivers";
+  clearTimers(session);
+
+  // Notify customer
+  if (io) {
+    io.to(`user:${session.customerId}`).emit("trip:no_drivers", {
+      tripId: session.tripId,
+      message,
+    });
+  }
+
+  // Update trip status in DB
+  try {
+    await rawDb.execute(rawSql`
+      UPDATE trip_requests
+      SET current_status='cancelled',
+          cancel_reason=${message},
+          cancelled_by='system',
+          updated_at=NOW()
+      WHERE id=${session.tripId}::uuid
+        AND current_status IN ('searching', 'driver_assigned')
+    `);
+  } catch (err: any) {
+    console.error(`[DISPATCH] Failed to cancel trip ${session.tripId}:`, err.message);
+  }
+
+  activeDispatches.delete(session.tripId);
+  console.log(`[DISPATCH] Trip ${session.tripId} expired — ${message}`);
+}
+
+/**
+ * Check if a specific driver is still available to receive a trip offer.
+ */
+async function checkDriverAvailability(driverId: string): Promise<boolean> {
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT u.is_online, u.is_locked, u.current_trip_id, u.is_active, u.verification_status,
+             dl.is_online as dl_online
+      FROM users u
+      LEFT JOIN driver_locations dl ON dl.driver_id = u.id
+      WHERE u.id = ${driverId}::uuid
+      LIMIT 1
+    `);
+    if (!r.rows.length) return false;
+    const d = r.rows[0] as any;
+    return (
+      d.is_active === true &&
+      d.is_locked !== true &&
+      d.is_online === true &&
+      d.dl_online === true &&
+      d.current_trip_id === null &&
+      d.verification_status === "approved"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find drivers within a specific radius using Haversine-based distance.
+ * Returns drivers sorted by AI matching score (distance + rating + response speed + completion rate).
+ */
+async function findDriversInRadius(
+  pickupLat: number,
+  pickupLng: number,
+  radiusKm: number,
+  vehicleCategoryId: string | undefined,
+  excludeDriverIds: string[],
+  limit: number
+): Promise<DriverMatchScore[]> {
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
+  const excludeClause = safeIds.length > 0
+    ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
+    : rawSql``;
+
+  const vcFilter = vehicleCategoryId
+    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+    : rawSql``;
+
+  const drivers = await rawDb.execute(rawSql`
+    SELECT
+      u.id, u.full_name, u.phone, u.rating,
+      dl.lat, dl.lng,
+      COALESCE(ds.total_trips, 0) as total_trips,
+      COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,
+      COALESCE(ds.completion_rate, 0.8) as completion_rate,
+      COALESCE(dbs.overall_score, 50) as behavior_score,
+      (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token,
+      SQRT(
+        POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+        POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+      ) as distance_km
+    FROM users u
+    JOIN driver_locations dl ON dl.driver_id = u.id
+    JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN driver_stats ds ON ds.driver_id = u.id
+    LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
+    WHERE u.user_type = 'driver'
+      AND u.is_active = true
+      AND u.is_locked = false
+      AND dl.is_online = true
+      AND u.current_trip_id IS NULL
+      AND u.verification_status = 'approved'
+      ${vcFilter}
+      ${excludeClause}
+      AND SQRT(
+        POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+        POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+      ) <= ${radiusKm}
+    ORDER BY distance_km ASC
+    LIMIT ${limit}
+  `);
+
+  if (!drivers.rows.length) return [];
+
+  // AI scoring: distance (35%) + behavior score (25%) + rating (20%) + response speed (10%) + completion (10%)
+  const WEIGHTS = { distance: 0.35, behavior: 0.25, rating: 0.20, responseSpeed: 0.10, completionRate: 0.10 };
+
+  const scored: DriverMatchScore[] = drivers.rows.map((row: any) => {
+    const distKm = Number(row.distance_km) || 99;
+    const rating = Number(row.rating) || 3.0;
+    const avgResp = Number(row.avg_response_time_sec) || 60;
+    const completionRate = Number(row.completion_rate) || 0.8;
+    const behaviorScore = Number(row.behavior_score) || 50;
+
+    const maxRadius = 25;
+    const distScore = Math.max(0, 1 - distKm / maxRadius);
+    const behaviorNorm = behaviorScore / 100; // 0-100 → 0-1
+    const ratingScore = (rating - 1) / 4;
+    const respScore = Math.max(0, 1 - avgResp / 300);
+    const complScore = completionRate;
+
+    const score =
+      distScore * WEIGHTS.distance +
+      behaviorNorm * WEIGHTS.behavior +
+      ratingScore * WEIGHTS.rating +
+      respScore * WEIGHTS.responseSpeed +
+      complScore * WEIGHTS.completionRate;
+
+    return {
+      driverId: row.id,
+      fullName: row.full_name || "Pilot",
+      phone: row.phone || "",
+      lat: Number(row.lat),
+      lng: Number(row.lng),
+      distanceKm: Math.round(distKm * 100) / 100,
+      rating: Math.round(rating * 10) / 10,
+      totalTrips: Number(row.total_trips) || 0,
+      avgResponseTimeSec: Math.round(avgResp),
+      score: Math.round(score * 1000) / 1000,
+      fcmToken: row.fcm_token || undefined,
+    };
+  });
+
+  // Sort by score descending — nearest + highest rated first
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+/**
+ * Emit search status update to the customer.
+ */
+function emitCustomerSearchStatus(session: DispatchSession): void {
+  if (!io) return;
+  const config = session.config;
+  const currentRadius = config.radiusStepsKm[Math.min(session.radiusIndex, config.radiusStepsKm.length - 1)];
+
+  io.to(`user:${session.customerId}`).emit("dispatch:status", {
+    tripId: session.tripId,
+    status: "searching",
+    currentRadiusKm: currentRadius,
+    radiusStep: Math.min(session.radiusIndex + 1, config.radiusStepsKm.length),
+    totalRadiusSteps: config.radiusStepsKm.length,
+    driversNotified: session.notifiedDriverIds.size,
+    message: "Looking for a pilot near you...",
+  });
+
+  // Also emit legacy event for backward compatibility
+  io.to(`user:${session.customerId}`).emit("trip:searching", {
+    tripId: session.tripId,
+    message: "Looking for another pilot...",
+  });
+}
+
+/**
+ * Clear all timers for a dispatch session.
+ */
+function clearTimers(session: DispatchSession): void {
+  if (session.offerTimer) {
+    clearTimeout(session.offerTimer);
+    session.offerTimer = null;
+  }
+  if (session.totalTimer) {
+    clearTimeout(session.totalTimer);
+    session.totalTimer = null;
+  }
+}
+
+// ── Scheduled ride dispatch trigger ──────────────────────────────────────────
+
+/**
+ * Background interval that checks for scheduled rides approaching their
+ * departure time and starts dispatch for them.
+ * Runs every 30 seconds. Dispatches rides 5 minutes before scheduled time.
+ */
+export function startScheduledRideDispatcher(): void {
+  setInterval(async () => {
+    try {
+      const upcoming = await rawDb.execute(rawSql`
+        SELECT t.id, t.customer_id, t.pickup_lat, t.pickup_lng,
+               t.vehicle_category_id, t.trip_type, t.ref_id,
+               t.pickup_address, t.destination_address,
+               t.estimated_fare, t.estimated_distance, t.payment_method,
+               t.pickup_short_name, t.destination_short_name,
+               u.full_name as customer_name,
+               vc.name as vehicle_category_name
+        FROM trip_requests t
+        JOIN users u ON u.id = t.customer_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.current_status = 'scheduled'
+          AND t.is_scheduled = true
+          AND t.scheduled_at <= NOW() + INTERVAL '5 minutes'
+          AND t.scheduled_at > NOW() - INTERVAL '10 minutes'
+      `);
+
+      for (const row of upcoming.rows) {
+        const trip = row as any;
+        if (activeDispatches.has(trip.id)) continue; // Already dispatching
+
+        // Switch status to searching
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET current_status='searching', updated_at=NOW()
+          WHERE id=${trip.id}::uuid AND current_status='scheduled'
+        `);
+
+        const serviceType = resolveServiceType(trip.trip_type, trip.vehicle_category_name);
+
+        await startDispatch(
+          trip.id,
+          trip.customer_id,
+          Number(trip.pickup_lat),
+          Number(trip.pickup_lng),
+          trip.vehicle_category_id,
+          serviceType,
+          {
+            refId: trip.ref_id,
+            customerName: trip.customer_name || "Customer",
+            pickupAddress: trip.pickup_address || "",
+            destinationAddress: trip.destination_address || "",
+            pickupShortName: trip.pickup_short_name,
+            destinationShortName: trip.destination_short_name,
+            pickupLat: Number(trip.pickup_lat),
+            pickupLng: Number(trip.pickup_lng),
+            estimatedFare: Number(trip.estimated_fare) || 0,
+            estimatedDistance: Number(trip.estimated_distance) || 0,
+            paymentMethod: trip.payment_method || "cash",
+            tripType: trip.trip_type || "normal",
+          }
+        );
+
+        console.log(`[DISPATCH] Scheduled ride ${trip.id} activated for dispatch`);
+      }
+    } catch (err: any) {
+      console.error("[DISPATCH] Scheduled ride dispatcher error:", err.message);
+    }
+  }, 30000);
+
+  console.log("[DISPATCH] Scheduled ride dispatcher started (30s interval)");
+}
+
+// ── Stale dispatch cleanup ───────────────────────────────────────────────────
+
+/**
+ * Periodic cleanup of dispatch sessions that got stuck.
+ * Runs every 60 seconds.
+ */
+export function startDispatchCleanup(): void {
+  setInterval(() => {
+    const now = Date.now();
+    const entries = Array.from(activeDispatches.entries());
+    for (const [tripId, session] of entries) {
+      // Remove sessions older than 10 minutes (safety net)
+      if (now - session.createdAt > 600000) {
+        console.warn(`[DISPATCH] Cleaning up stale session for trip ${tripId} (age: ${Math.round((now - session.createdAt) / 1000)}s)`);
+        session.status = "expired";
+        clearTimers(session);
+        activeDispatches.delete(tripId);
+      }
+    }
+  }, 60000);
+
+  console.log("[DISPATCH] Stale session cleanup started (60s interval)");
+}

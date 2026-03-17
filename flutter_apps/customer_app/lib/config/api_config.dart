@@ -111,6 +111,9 @@ class ApiConfig {
 
   // ── Dynamic Services (admin-controlled Phase rollout) ─────────────────
   static String get activeServices => '$baseUrl/api/app/services/active';
+  static String get servicesForLocation => '$baseUrl/api/app/services/location';
+  static String get parcelVehicles => '$baseUrl/api/app/parcel-vehicles';
+  static String get parcelVehicleRecommend => '$baseUrl/api/app/parcel-vehicles/recommend';
 
   // ── App-level public endpoints ────────────────────────────────────────
   static String get appBanners => '$baseUrl/api/app/banners';

@@ -59,6 +59,10 @@ import OutstationPool from "@/pages/admin/outstation-pool";
 import ParcelOrders from "@/pages/admin/parcel-orders";
 import SystemHealth from "@/pages/admin/system-health";
 import VoiceCommandsPage from "@/pages/admin/voice-commands";
+import PopularLocationsAdmin from "@/pages/admin/popular-locations";
+import CityServices from "@/pages/admin/city-services";
+import ParcelVehiclesAdmin from "@/pages/admin/parcel-vehicles";
+import AIBrainDashboard from "@/pages/admin/ai-brain-dashboard";
 
 export default function AdminRoutes() {
   return (
@@ -123,6 +127,10 @@ export default function AdminRoutes() {
         <Route path="/admin/system-health" component={SystemHealth} />
         <Route path="/admin/voice-commands" component={VoiceCommandsPage} />
         <Route path="/admin/referrals" component={Referrals} />
+        <Route path="/admin/popular-locations" component={PopularLocationsAdmin} />
+        <Route path="/admin/city-services" component={CityServices} />
+        <Route path="/admin/parcel-vehicle-types" component={ParcelVehiclesAdmin} />
+        <Route path="/admin/ai-brain" component={AIBrainDashboard} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>
     </AdminLayout>

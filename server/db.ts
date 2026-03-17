@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema";
@@ -26,6 +27,8 @@ pool.on("error", (err) => {
 });
 
 export const db = drizzle(pool, { schema });
+export const rawDb = db;
+export const rawSql = sql;
 
 const gracefulShutdown = async (signal: string) => {
   console.log(`[DB] ${signal} received — draining pool...`);

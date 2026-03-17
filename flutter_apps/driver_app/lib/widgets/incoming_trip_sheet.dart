@@ -33,6 +33,12 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   static const Color _bg = Color(0xFF0B0B0B);
   static const Color _surface = Color(0xFF1A1A1A);
 
+  String _shortLocation(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return v;
+    return v.split(',').first.trim();
+  }
+
   Timer? _vibrationTimer;
 
   @override
@@ -119,8 +125,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   @override
   Widget build(BuildContext context) {
     final trip = widget.trip;
-    final pickup = trip['pickupAddress'] ?? 'Pickup location';
-    final dest = trip['destinationAddress'] ?? 'Destination';
+    final pickup = _shortLocation((trip['pickupShortName'] ?? trip['pickupAddress'] ?? 'Pickup location').toString());
+    final dest = _shortLocation((trip['destinationShortName'] ?? trip['destinationAddress'] ?? 'Destination').toString());
     final dist = trip['estimatedDistance'] ?? trip['driverDistanceKm'] ?? '--';
     final fare = trip['estimatedFare'] ?? '--';
     final eta = trip['eta'] ?? 5;
