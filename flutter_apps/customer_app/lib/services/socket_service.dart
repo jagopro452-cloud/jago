@@ -21,6 +21,12 @@ class SocketService {
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callIceController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
@@ -32,6 +38,12 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
+  Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
+  Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
+  Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
+  Stream<Map<String, dynamic>> get onCallIce => _callIceController.stream;
+  Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
+  Stream<Map<String, dynamic>> get onCallRejected => _callRejectedController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -151,6 +163,26 @@ class SocketService {
       _paymentPendingController.add(Map<String, dynamic>.from(data));
     });
 
+    // ── WebRTC Call Signaling ──────────────────────────────────
+    _socket!.on('call:incoming', (data) {
+      _callIncomingController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('call:offer', (data) {
+      _callOfferController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('call:answer', (data) {
+      _callAnswerController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('call:ice', (data) {
+      _callIceController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('call:ended', (data) {
+      _callEndedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('call:rejected', (data) {
+      _callRejectedController.add(Map<String, dynamic>.from(data));
+    });
+
     _socket!.connect();
   }
 
@@ -186,6 +218,37 @@ class SocketService {
     _socket!.emit('trip:get_messages', {'tripId': tripId});
   }
 
+  // ── WebRTC Call Methods ──────────────────────────────────
+  void initiateCall({required String targetUserId, required String tripId, required String callerName}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:initiate', {'targetUserId': targetUserId, 'tripId': tripId, 'callerName': callerName});
+  }
+
+  void sendCallOffer({required String targetUserId, required dynamic sdp}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:offer', {'targetUserId': targetUserId, 'sdp': sdp});
+  }
+
+  void sendCallAnswer({required String targetUserId, required dynamic sdp}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:answer', {'targetUserId': targetUserId, 'sdp': sdp});
+  }
+
+  void sendIceCandidate({required String targetUserId, required dynamic candidate}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:ice', {'targetUserId': targetUserId, 'candidate': candidate});
+  }
+
+  void endCall({required String targetUserId, String? tripId, int? durationSec}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:end', {'targetUserId': targetUserId, if (tripId != null) 'tripId': tripId, if (durationSec != null) 'durationSec': durationSec});
+  }
+
+  void rejectCall({required String targetUserId, String? tripId}) {
+    if (!_isConnected) return;
+    _socket!.emit('call:reject', {'targetUserId': targetUserId, if (tripId != null) 'tripId': tripId});
+  }
+
   void disconnect() {
     _socket?.disconnect();
     _socket = null;
@@ -204,5 +267,11 @@ class SocketService {
     _noDriversController.close();
     _tripSearchingController.close();
     _paymentPendingController.close();
+    _callIncomingController.close();
+    _callOfferController.close();
+    _callAnswerController.close();
+    _callIceController.close();
+    _callEndedController.close();
+    _callRejectedController.close();
   }
 }

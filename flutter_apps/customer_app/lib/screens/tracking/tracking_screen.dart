@@ -13,6 +13,9 @@ import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/alarm_service.dart';
+import '../../services/call_service.dart';
+import '../call/call_screen.dart';
+import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
 import '../tip/tip_driver_screen.dart';
 
@@ -38,6 +41,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   final List<StreamSubscription> _subs = [];
   final FlutterTts _tts = FlutterTts();
   String _lastAnnouncedStatus = '';
+  StreamSubscription? _incomingCallSub;
 
   static const Color _blue = Color(0xFF2F7BFF);
   static const Color _green = JT.success;
@@ -50,6 +54,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     _connectSocket();
     _pollStatus();
     _loadCancelReasons();
+    CallService().init();
+    _listenForIncomingCalls();
     // HTTP polling as fallback (every 3s — socket handles real-time)
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollStatus());
   }
@@ -176,11 +182,54 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   @override
   void dispose() {
     for (final s in _subs) s.cancel();
+    _incomingCallSub?.cancel();
     _pollTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
     _socket.disconnect();
     super.dispose();
+  }
+
+  void _listenForIncomingCalls() {
+    _incomingCallSub = _socket.onCallIncoming.listen((data) {
+      if (!mounted) return;
+      final callerName = data['callerName']?.toString() ?? 'Driver';
+      final callerId = data['callerId']?.toString() ?? '';
+      final tripId = data['tripId']?.toString() ?? widget.tripId;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CallScreen(
+          contactName: callerName,
+          tripId: tripId,
+          targetUserId: callerId,
+          isIncoming: true,
+          callerIdForIncoming: callerId,
+        ),
+      ));
+    });
+  }
+
+  void _startInAppCall(String driverName) {
+    final driverId = _trip?['driverId']?.toString() ?? _trip?['driver_id']?.toString();
+    if (driverId == null || driverId.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CallScreen(
+        contactName: driverName,
+        tripId: widget.tripId,
+        targetUserId: driverId,
+      ),
+    ));
+  }
+
+  void _openTripChat() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TripChatSheet(
+        tripId: widget.tripId,
+        senderName: 'Customer',
+      ),
+    );
   }
 
   Future<void> _initTts() async {
@@ -701,12 +750,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             Row(children: [
               if (phone != null) ...[
                 GestureDetector(
-                  onTap: () async {
-                    final uri = Uri(scheme: 'tel', path: phone);
-                    if (await canLaunchUrl(uri)) await launchUrl(uri);
-                    else if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Pilot: $phone'), backgroundColor: _blue, behavior: SnackBarBehavior.floating));
-                  },
+                  onTap: () => _startInAppCall(name),
                   child: Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(
@@ -718,17 +762,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () async {
-                    final msg = Uri.encodeComponent('Hi, I am your JAGO customer. Trip ID: ${widget.tripId}');
-                    final uri = Uri.parse('whatsapp://send?phone=$phone&text=$msg');
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri);
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('WhatsApp not available. Use call button.'),
-                        behavior: SnackBarBehavior.floating));
-                    }
-                  },
+                  onTap: () => _openTripChat(),
                   child: Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(

@@ -259,7 +259,7 @@ export const spinWheelItems = pgTable("spin_wheel_items", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   label: varchar("label", { length: 255 }).notNull(),
   rewardAmount: numeric("reward_amount", { precision: 23, scale: 3 }).default("0"),
-  rewardType: varchar("reward_type", { length: 50 }).default("amount"),
+  rewardType: varchar("reward_type", { length: 50 }).default("wallet"),
   probability: numeric("probability", { precision: 5, scale: 2 }).default("0"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -343,6 +343,9 @@ export const parcelFares = pgTable("parcel_fares", {
   farePerKm: numeric("fare_per_km", { precision: 23, scale: 3 }).default("0"),
   farePerKg: numeric("fare_per_kg", { precision: 23, scale: 3 }).default("0"),
   minimumFare: numeric("minimum_fare", { precision: 23, scale: 3 }).default("0"),
+  loadingCharge: numeric("loading_charge", { precision: 23, scale: 3 }).default("0"),
+  helperChargePerHour: numeric("helper_charge_per_hour", { precision: 23, scale: 3 }).default("0"),
+  maxHelpers: integer("max_helpers").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -546,12 +546,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       builder: (ctx) => _AllServicesSheet(
         vehicleCategories: _vehicleCategories,
+        activeServices: _activeServices,
         pickup: _pickup,
         pickupLat: _pickupLat,
         pickupLng: _pickupLng,
         onServiceTap: (cat) {
           Navigator.pop(ctx);
-          if (cat['type'] == 'parcel') {
+          if (cat['type'] == 'parcel' || (cat['key']?.toString().contains('parcel') ?? false)) {
             Navigator.push(context, MaterialPageRoute(
               builder: (_) => ParcelBookingScreen(
                 pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
@@ -848,8 +849,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── FEATURED SERVICES GRID (Dynamic, city-based) ───────────────────────
   Widget _buildFeaturedGrid(bool isDark) {
-    // Use dynamic active services if available, fallback to static grid
+    // Use dynamic active services if available
     final displayServices = _activeServices.isNotEmpty ? _activeServices : <Map<String, dynamic>>[];
+
+    // Build static fallback from vehicle categories (already filtered by is_active on server)
+    final hasParcel = _vehicleCategories.any((c) => (c['type']?.toString() ?? '').contains('parcel'));
+    final hasBike = _vehicleCategories.any((c) => (c['name']?.toString() ?? '').toLowerCase().contains('bike'));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -858,28 +863,31 @@ class _HomeScreenState extends State<HomeScreen> {
           style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
         const SizedBox(height: 14),
         if (displayServices.isEmpty) ...[
-          // Static fallback grid (same as before)
+          // Fallback grid based on active vehicle categories from server
           Row(children: [
-            Expanded(child: _featuredCard(
-              subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
-              onTap: () { HapticFeedback.selectionClick();
-                Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-                  pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: _featuredCard(
-              subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
-              onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
-            )),
+            if (hasParcel)
+              Expanded(child: _featuredCard(
+                subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
+                onTap: () { HapticFeedback.selectionClick();
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
+                    pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
+              )),
+            if (hasParcel && hasBike) const SizedBox(width: 12),
+            if (hasBike)
+              Expanded(child: _featuredCard(
+                subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
+                onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
+              )),
           ]),
-          const SizedBox(height: 12),
+          if (hasParcel || hasBike) const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _featuredCard(
-              subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
-              tall: true,
-              onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
-            )),
-            const SizedBox(width: 12),
+            if (_vehicleCategories.isNotEmpty)
+              Expanded(child: _featuredCard(
+                subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
+                tall: true,
+                onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
+              )),
+            if (_vehicleCategories.isNotEmpty) const SizedBox(width: 12),
             Expanded(child: _featuredCard(
               subtitle: '', title: 'All\nServices', emoji: '📋',
               onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
@@ -1754,6 +1762,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
 // ── ALL SERVICES SHEET ────────────────────────────────────────────────────
 class _AllServicesSheet extends StatelessWidget {
   final List<Map<String, dynamic>> vehicleCategories;
+  final List<Map<String, dynamic>> activeServices;
   final String pickup;
   final double pickupLat;
   final double pickupLng;
@@ -1761,6 +1770,7 @@ class _AllServicesSheet extends StatelessWidget {
 
   const _AllServicesSheet({
     required this.vehicleCategories,
+    required this.activeServices,
     required this.pickup,
     required this.pickupLat,
     required this.pickupLng,
@@ -1771,24 +1781,42 @@ class _AllServicesSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allServices = [
-      {'id': null, 'name': 'Bike Ride', 'type': 'ride', 'emoji': '🏍️', 'key': 'bike'},
-      {'id': null, 'name': 'Auto Ride', 'type': 'ride', 'emoji': '🛺', 'key': 'auto'},
-      {'id': null, 'name': 'Car Ride', 'type': 'ride', 'emoji': '🚗', 'key': 'car'},
-      {'id': null, 'name': 'Parcel', 'type': 'parcel', 'emoji': '📦', 'key': 'parcel'},
-      {'id': null, 'name': 'Intercity', 'type': 'intercity', 'emoji': '🛣️', 'key': 'intercity'},
-      {'id': null, 'name': 'Car Sharing', 'type': 'carsharing', 'emoji': '🚘', 'key': 'carsharing'},
-    ];
+    // Build services list from active vehicle categories (filtered by admin)
+    // If vehicle categories available, use them (already filtered by is_active on server)
+    // Also merge with activeServices from platform_services for non-ride services
+    List<Map<String, dynamic>> services = [];
 
-    final services = vehicleCategories.isNotEmpty
-      ? vehicleCategories.map((v) => {
+    if (vehicleCategories.isNotEmpty) {
+      services = vehicleCategories.map((v) => {
           'id': v['id'],
           'name': v['name'] ?? '',
           'type': v['type'] ?? 'ride',
           'emoji': _emojiForCategory(v['name']?.toString() ?? ''),
           'key': v['name']?.toString().toLowerCase().replaceAll(' ', '_') ?? '',
-        }).toList()
-      : allServices;
+        }).toList();
+    }
+
+    // Add active platform services that aren't already covered by vehicle categories
+    if (activeServices.isNotEmpty) {
+      final existingKeys = services.map((s) => s['key']?.toString() ?? '').toSet();
+      for (final svc in activeServices) {
+        final key = svc['key']?.toString() ?? '';
+        if (key.isNotEmpty && !existingKeys.any((k) => key.contains(k) || k.contains(key))) {
+          services.add({
+            'id': null,
+            'name': svc['name']?.toString() ?? key,
+            'type': svc['category']?.toString() ?? 'ride',
+            'emoji': svc['icon']?.toString() ?? '🚗',
+            'key': key,
+          });
+        }
+      }
+    }
+
+    // If nothing available at all, show empty state
+    if (services.isEmpty) {
+      services = [{'id': null, 'name': 'No services available', 'type': 'none', 'emoji': '🔒', 'key': ''}];
+    }
 
     const isDark = false;
     final sheetBg = isDark ? JT.textPrimary : Colors.white;

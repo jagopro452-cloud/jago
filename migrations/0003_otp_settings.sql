@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS otp_settings (
   updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Seed default row (only if table is empty)
+-- Seed default row (only if table is empty) — Firebase-only, no SMS
 INSERT INTO otp_settings
   (primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds, max_attempts)
-SELECT 'sms', true, true, true, 120, 3
+SELECT 'firebase', false, true, false, 120, 3
 WHERE NOT EXISTS (SELECT 1 FROM otp_settings);

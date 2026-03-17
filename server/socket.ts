@@ -742,6 +742,30 @@ export function setupSocket(httpServer: HttpServer) {
           // Phone masking: never expose real phone numbers
           maskedPhone: null,
         });
+
+        // Send FCM push for incoming call (works when app is backgrounded)
+        try {
+          const fcmRow = await rawDb.execute(rawSql`
+            SELECT fcm_token FROM users WHERE id=${targetUserId}::uuid AND fcm_token IS NOT NULL LIMIT 1
+          `);
+          const fcmToken = (fcmRow.rows[0] as any)?.fcm_token;
+          if (fcmToken) {
+            await sendFcmNotification({
+              fcmToken,
+              title: "📞 Incoming Call",
+              body: `${callerName} is calling you`,
+              sound: "trip_alert",
+              channelId: "call_alerts",
+              data: {
+                type: "incoming_call",
+                callerId: userId,
+                callerName,
+                tripId,
+              },
+            });
+          }
+        } catch (_) {}
+
         console.log(`[CALL] ${userId} → ${targetUserId} for trip ${tripId}`);
       } catch (e: any) {
         socket.emit("call:error", { message: "Call initiation failed" });

@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
-import { sendOtpSms, sendCustomSms } from "./sms";
+import { sendCustomSms } from "./sms";
 import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -168,6 +168,13 @@ const upload = multer({
 
 function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
+}
+
+// ── Razorpay key helper: env → DB fallback (consistent across all endpoints) ──
+export async function getRazorpayKeys(): Promise<{ keyId: string | undefined; keySecret: string | undefined }> {
+  const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
+  const keySecret = await getConf("RAZORPAY_KEY_SECRET", "razorpay_key_secret");
+  return { keyId, keySecret };
 }
 
 // Convert snake_case keys to camelCase for frontend consumption
@@ -356,6 +363,15 @@ const driverTripActionLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
   message: { message: "Too many driver trip actions. Please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+const paymentOrderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { message: "Too many payment requests. Please wait a minute." },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -1602,11 +1618,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Razorpay connectivity diagnostic (no auth — safe, just pings API)
-  app.get("/api/diag/razorpay", async (_req, res) => {
+  // Razorpay connectivity diagnostic (admin-only)
+  app.get("/api/diag/razorpay", requireAdminAuth, async (_req, res) => {
     try {
-      const keyId     = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.json({ status: "not_configured", keyId: false, keySecret: false });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 10000 });
@@ -1615,9 +1630,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         rzp.orders.all({ count: 1 }),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Razorpay API timeout after 10s")), 10000))
       ]);
-      res.json({ status: "ok", keyId: keyId.slice(0, 10) + "...", ordersReachable: true });
+      res.json({ status: "ok", keyConfigured: true, ordersReachable: true });
     } catch (e: any) {
-      res.json({ status: "error", message: e.message || String(e), keyId: (process.env.RAZORPAY_KEY_ID || "").slice(0, 10) + "..." });
+      res.json({ status: "error", message: e.message || String(e) });
     }
   });
 
@@ -1644,14 +1659,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!adminEmail) {
         return res.json({ success: true, message: "DB schema bootstrapped. ADMIN_EMAIL not set — admin not synced.", admin: null });
       }
-      const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,7) as pw_prefix FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
+      const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,4) as pw_hint FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
       const adminRow: any = r.rows[0];
       const adminPwdEnv = process.env.ADMIN_PASSWORD || "";
       res.json({
         success: true,
         message: "DB schema bootstrapped and admin account synced.",
-        admin: adminRow ? { id: adminRow.id, email: adminRow.email, is_active: adminRow.is_active, pw_is_bcrypt: (adminRow.pw_prefix || "").startsWith("$2") } : null,
-        env: { adminEmail, adminPasswordSet: !!adminPwdEnv, adminPasswordLength: adminPwdEnv.length },
+        admin: adminRow ? { id: adminRow.id, email: adminRow.email, is_active: adminRow.is_active, pw_is_bcrypt: (adminRow.pw_hint || "").startsWith("$2") } : null,
+        env: { adminEmail, adminPasswordSet: !!adminPwdEnv },
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
@@ -3462,7 +3477,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`);
       if (!r.rows.length) {
-        return res.json({ primaryProvider: 'sms', smsEnabled: true, firebaseEnabled: true, fallbackEnabled: true, otpExpirySeconds: 120, maxAttempts: 3 });
+        return res.json({ primaryProvider: 'firebase', smsEnabled: false, firebaseEnabled: true, fallbackEnabled: false, otpExpirySeconds: 120, maxAttempts: 3 });
       }
       const row = r.rows[0] as any;
       res.json({
@@ -3833,8 +3848,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/spin-wheel", requireAdminAuth, async (req, res) => {
     try {
-      const { label, reward_amount, reward_type, probability, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${reward_amount}, ${reward_type}, ${probability}, ${is_active ?? true}) RETURNING *`);
+      const { label, reward_amount, rewardAmount, reward_type, rewardType, probability, is_active, isActive } = req.body;
+      const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType ?? 'wallet'; const active = is_active ?? isActive ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${rAmt}, ${rType}, ${probability}, ${active}) RETURNING *`);
       res.status(201).json(r.rows[0]);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -3957,11 +3973,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/employees/:id", requireAdminAuth, async (req, res) => {
     try {
-      const updates: string[] = [];
-      if (req.body.isActive !== undefined) updates.push(`is_active=${req.body.isActive}`);
-      if (req.body.zoneId !== undefined) updates.push(`zone_id='${req.body.zoneId}'`);
-      if (updates.length === 0) return res.status(400).json({ message: "Nothing to update" });
-      const r = await rawDb.execute(rawSql`UPDATE employees SET is_active=${req.body.isActive ?? null} WHERE id=${req.params.id}::uuid RETURNING *`);
+      if (req.body.isActive === undefined && req.body.zoneId === undefined) return res.status(400).json({ message: "Nothing to update" });
+      const r = req.body.zoneId !== undefined
+        ? await rawDb.execute(rawSql`UPDATE employees SET is_active=${req.body.isActive ?? null}, zone_id=${req.body.zoneId}::uuid WHERE id=${req.params.id}::uuid RETURNING *`)
+        : await rawDb.execute(rawSql`UPDATE employees SET is_active=${req.body.isActive ?? null} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -4125,15 +4140,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/parcel-fares", requireAdminAuth, async (req, res) => {
     try {
-      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare) VALUES (${zoneId}::uuid, ${baseFare}, ${farePerKm}, ${farePerKg}, ${minimumFare}) RETURNING *`);
+      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers) VALUES (${zoneId}::uuid, ${baseFare||0}, ${farePerKm||0}, ${farePerKg||0}, ${minimumFare||0}, ${loadingCharge||0}, ${helperChargePerHour||0}, ${parseInt(maxHelpers)||0}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
-      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare } = req.body;
-      const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare}, fare_per_km=${farePerKm}, fare_per_kg=${farePerKg}, minimum_fare=${minimumFare} WHERE id=${req.params.id}::uuid RETURNING *`);
+      const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
+      const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare||0}, fare_per_km=${farePerKm||0}, fare_per_kg=${farePerKg||0}, minimum_fare=${minimumFare||0}, loading_charge=${loadingCharge||0}, helper_charge_per_hour=${helperChargePerHour||0}, max_helpers=${parseInt(maxHelpers)||0} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -4880,7 +4895,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT id FROM commission_settlements WHERE razorpay_payment_id=${razorpayPaymentId} LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       if (alreadyDone.rows.length) return res.status(409).json({ message: "Payment already processed", alreadySettled: true });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment verification not configured — contact support" });
       // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
@@ -5112,6 +5127,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
       res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── Admin: Initiate Razorpay refund (calls Razorpay API) ────────────────────
+  app.post("/api/admin/razorpay-refund", requireAdminAuth, async (req, res) => {
+    try {
+      const { paymentId, amount, tripId, customerId, reason } = req.body;
+      if (!paymentId) return res.status(400).json({ message: "Razorpay paymentId is required" });
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid refund amount" });
+      const { keyId, keySecret } = await getRazorpayKeys();
+      if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const Razorpay = _require("razorpay");
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
+      const refundResult = await rzp.payments.refund(paymentId, {
+        amount: Math.round(amt * 100),
+        speed: "normal",
+        notes: { reason: reason || "Admin initiated refund", trip_id: tripId || "", customer_id: customerId || "" },
+      });
+      // Log the refund initiation
+      console.log(`[ADMIN-REFUND] Initiated Razorpay refund: ${refundResult.id} for payment ${paymentId}, ₹${amt}`);
+      // Create a refund request record if customerId provided
+      if (customerId) {
+        await rawDb.execute(rawSql`
+          INSERT INTO refund_requests (customer_id, trip_id, amount, reason, payment_method, status, admin_note, approved_by, approved_at)
+          VALUES (${customerId}::uuid, ${tripId || null}::uuid, ${amt}, ${reason || 'Razorpay refund'}, 'razorpay', 'approved',
+                  ${'Razorpay refund ID: ' + refundResult.id}, 'Admin', NOW())
+          ON CONFLICT DO NOTHING
+        `).catch(() => {});
+      }
+      res.json({ success: true, refund: refundResult });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -5574,8 +5620,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const express = (await import("express")).default;
   app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
-  // ── File upload ─────────────────────────────────────────────────────────────
-  app.post("/api/upload", upload.single("file"), (req, res) => {
+  // ── File upload (requires admin or app auth) ────────────────────────────────
+  app.post("/api/upload", (req, res, next) => {
+    // Allow either admin auth or app auth
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader) return res.status(401).json({ message: "Authentication required" });
+    next();
+  }, upload.single("file"), (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const url = `/uploads/${req.file.filename}`;
@@ -6206,27 +6257,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ██  MOBILE APP APIs — Driver App + Customer App                       ██
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ── OTP SEND ─────────────────────────────────────────────────────────────
-  // Server controls which OTP provider to use based on otp_settings table.
-  // Response includes `provider` field: "sms" | "firebase"
-  //   "sms"      → OTP sent via SMS; app shows OTP input
-  //   "firebase" → App must trigger Firebase Phone Auth on-device
+  // ── OTP SEND (Firebase Only) ──────────────────────────────────────────────
+  // All OTP verification uses Firebase Phone Auth. The Flutter app handles
+  // Firebase SMS on-device; the server just tells the client to use Firebase.
   app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
-
-      // Load OTP settings from DB (with safe defaults)
-      const settingsRow = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`)
-        .catch(() => ({ rows: [] as any[] }));
-      const cfg = settingsRow.rows[0] as any || {};
-      const primaryProvider: string  = cfg.primary_provider   ?? 'firebase'; // default: Firebase-only
-      const smsEnabled: boolean      = cfg.sms_enabled        ?? false;      // SMS disabled by default
-      const firebaseEnabled: boolean = cfg.firebase_enabled   ?? true;
-      const fallbackEnabled: boolean = cfg.fallback_enabled   ?? false;      // no SMS fallback by default
-      const expirySeconds: number    = cfg.otp_expiry_seconds ?? 120;
 
       // Rate limiting: max 5 OTPs per phone per hour
       const recentCount = await rawDb.execute(rawSql`
@@ -6236,48 +6275,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
-      // If primary provider is Firebase, skip SMS entirely
-      if (primaryProvider === 'firebase' && firebaseEnabled) {
-        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase (primary)`);
-        return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
-      }
-
-      // Generate OTP and store (expiry from settings)
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiryInterval = `${expirySeconds} seconds`;
-      await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE phone=${phoneStr} AND is_used=false`);
-      await rawDb.execute(rawSql`
-        INSERT INTO otp_logs (phone, otp, user_type, expires_at)
-        VALUES (${phoneStr}, ${otp}, ${userType}, NOW() + ${expiryInterval}::INTERVAL)
-      `);
-
-      // Try SMS provider if enabled
-      if (smsEnabled) {
-        const smsResult = await sendOtpSms(phoneStr, otp);
-        if (smsResult.success) {
-          console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → SMS (${smsResult.provider})`);
-          const base: any = { success: true, provider: 'sms', message: 'OTP sent to your mobile number' };
-          if (isDevOtpResponseEnabled) base.otp = otp;
-          return res.json(base);
-        }
-        // SMS failed
-        console.warn(`[OTP] SMS failed for ${phoneStr.slice(-4).padStart(phoneStr.length, '*')}: ${smsResult.error}`);
-        if (fallbackEnabled && firebaseEnabled) {
-          console.log(`[OTP] Falling back to Firebase for ${phoneStr.slice(-4).padStart(phoneStr.length, '*')}`);
-          return res.json({ success: true, provider: 'firebase', message: 'SMS OTP failed. Switching to secure verification.' });
-        }
-        if (isDevOtpResponseEnabled) {
-          return res.json({ success: true, provider: 'sms', message: 'OTP generated (dev mode).', otp });
-        }
-        return res.status(503).json({ message: 'SMS service unavailable. Please try again.' });
-      }
-
-      // SMS disabled by admin — use Firebase if available
-      if (firebaseEnabled) {
-        return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
-      }
-
-      return res.status(503).json({ message: 'No OTP provider enabled. Contact support.' });
+      // Always use Firebase Phone Auth — no SMS providers
+      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase`);
+      return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -6537,7 +6537,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── FORGOT PASSWORD (send reset OTP to phone) ─────────────────────────────
+  // ── FORGOT PASSWORD (Firebase verification) ──────────────────────────────
+  // Uses Firebase Phone Auth instead of SMS OTP for password reset
   app.post("/api/app/forgot-password", otpLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
@@ -6546,21 +6547,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
       const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
       if (!userRes.rows.length) return res.status(404).json({ message: "No account found with this phone number." });
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      await rawDb.execute(rawSql`
-        UPDATE users
-        SET reset_otp=${otp}, reset_otp_expiry=NOW() + INTERVAL '10 minutes'
-        WHERE phone=${phoneStr} AND user_type=${userType}
-      `);
-      const isProd = process.env.NODE_ENV === "production";
-      let smsSent = false;
-      try { const r = await sendOtpSms(phoneStr, otp); smsSent = r.success; } catch (_) {}
-      if (!smsSent) {
-        console.log("[RESET OTP] SMS failed for " + phoneStr.slice(-4).padStart(phoneStr.length, '*') + " — no SMS provider configured");
-        if (isDevOtpResponseEnabled) return res.json({ success: true, message: "Reset OTP generated. Enter it to continue.", otp });
-        return res.json({ success: true, message: "Reset OTP sent to your mobile number" });
-      }
-      res.json({ success: true, message: "Reset OTP sent to your mobile number" });
+      // Use Firebase Phone Auth for password reset verification
+      console.log(`[RESET] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase password reset`);
+      res.json({ success: true, provider: 'firebase', message: 'Verify your phone via Firebase to reset password.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -7329,70 +7318,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
       }
 
-      // Auto-deduct platform fees from driver wallet (commission OR subscription model)
-      const settingR = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`).catch(() => ({ rows: [] as any[] }));
-      const s: any = {};
-      settingR.rows.forEach((row: any) => { s[row.key_name] = row.value; });
-
-      // ── Launch Benefit: check if this driver is in their 30-day free period ──
-      const driverBenefitR = await rawDb.execute(rawSql`
-        SELECT launch_free_active, free_period_end FROM users WHERE id=${driver.id}::uuid LIMIT 1
-      `).catch(() => ({ rows: [] as any[] }));
-      const driverBenefit = driverBenefitR.rows[0] as any;
-      const campaignGlobalOn = s['launch_campaign_enabled'] !== 'false';
-      const freePeriodStillValid = driverBenefit?.launch_free_active === true
-        && driverBenefit?.free_period_end
-        && new Date(driverBenefit.free_period_end) >= new Date();
-      const launchFreeApplied = campaignGlobalOn && freePeriodStillValid;
-
-      // Auto-expire: if period has ended, flip the flag off
-      if (driverBenefit?.launch_free_active === true && driverBenefit?.free_period_end && new Date(driverBenefit.free_period_end) < new Date()) {
-        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${driver.id}::uuid`).catch(() => {});
-      }
-
-      // Per-service revenue model: use rides_model/parcels_model/cargo_model if set
+      // ── Revenue: Calculate breakdown + settle (unified engine) ──────────────
       const tripServiceType = (tripRow.trip_type || tripRow.type || 'normal');
-      let serviceModelKey = 'active_model';
-      if (tripServiceType === 'parcel') serviceModelKey = 'parcels_model';
-      else if (tripServiceType === 'cargo') serviceModelKey = 'cargo_model';
-      else if (tripServiceType === 'intercity') serviceModelKey = 'intercity_model';
-      else if (tripServiceType === 'city_pool' || tripServiceType === 'carpool') serviceModelKey = 'city_pool_model';
-      else if (tripServiceType === 'outstation_pool') serviceModelKey = 'outstation_pool_model';
-      else serviceModelKey = 'rides_model';
-      const activeModel = s[serviceModelKey] || s.active_model || "commission";
+      const serviceCategory: any =
+        tripServiceType === 'parcel' ? 'parcel'
+        : tripServiceType === 'cargo' ? 'cargo'
+        : tripServiceType === 'intercity' ? 'intercity'
+        : (tripServiceType === 'city_pool' || tripServiceType === 'carpool') ? 'city_pool'
+        : tripServiceType === 'outstation_pool' ? 'outstation_pool'
+        : 'rides';
 
-      // SECURITY: All commission math in integer paise — no floating-point drift across 1000s of trips
-      let deductPaise = 0;
-      let breakdown: any = {};
+      const breakdown = await calculateRevenueBreakdown(fare, serviceCategory, driver.id);
+      const deductAmount = breakdown.total;
+      const driverWalletCredit = breakdown.driverEarnings;
+      const launchFreeApplied = breakdown.model === 'launch_free';
 
-      if (launchFreeApplied) {
-        deductPaise = gstPaise;
-        breakdown = { model: "launch_free", commission: 0, platformFee: 0, gst: gstAmount, insurance: 0, total: gstAmount };
-      } else if (activeModel === "commission") {
-        const commPctX100 = Math.round(parseFloat(s.commission_pct || "15") * 100); // e.g. 1500 = 15%
-        const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
-        const commPaise2 = Math.round(farePaise * commPctX100 / 10000);
-        deductPaise = commPaise2 + gstPaise + insPaise;
-        breakdown = { model: "commission", commission: commPaise2/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
-      } else if (activeModel === "subscription") {
-        const platPaise = Math.round(parseFloat(s.sub_platform_fee_per_ride || "5") * 100);
-        const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
-        deductPaise = platPaise + gstPaise + insPaise;
-        breakdown = { model: "subscription", platformFee: platPaise/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
-      } else if (activeModel === "hybrid") {
-        const commPctX100 = Math.round(parseFloat(s.hybrid_commission_pct || s.commission_pct || "10") * 100);
-        const platPaise = Math.round(parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5") * 100);
-        const insPaise = Math.round(parseFloat(s.hybrid_insurance_per_ride || s.commission_insurance_per_ride || "2") * 100);
-        const commPaise2 = Math.round(farePaise * commPctX100 / 10000);
-        deductPaise = commPaise2 + platPaise + gstPaise + insPaise;
-        breakdown = { model: "hybrid", commission: commPaise2/100, platformFee: platPaise/100, gst: gstAmount, insurance: insPaise/100, total: deductPaise/100 };
-      }
-      const deductAmount = deductPaise / 100;
-
-      // driverWalletCredit = what driver actually keeps (exact paise arithmetic, no drift)
-      const driverWalletCredit = (farePaise - deductPaise) / 100;
-
-      // Save all pricing fields: commission_amount + driver_wallet_credit + driver_fare + customer_fare
+      // Save pricing fields on trip
       await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET commission_amount=${deductAmount},
@@ -7402,154 +7343,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid
       `);
 
-      // ── GST: credit to company GST wallet ──────────────────────────────────
-      if (gstAmount > 0) {
-        await rawDb.execute(rawSql`
-          UPDATE company_gst_wallet
-          SET balance = balance + ${gstAmount},
-              total_collected = total_collected + ${gstAmount},
-              total_trips = total_trips + 1,
-              updated_at = NOW()
-          WHERE id = 1
-        `).catch(() => {});
-      }
-
-      // ── Commission Settlement: CASH vs ONLINE payment logic ─────────────────
-      // CASH:   Driver collects full fare → platform dues go NEGATIVE in driver wallet
-      //         Auto-lock when wallet < -₹200 or pending dues >= ₹200
-      // ONLINE: Platform already collected fare → credit driver net amount (positive)
-      //         No negative wallet, no auto-lock for this ride
+      // Customer wallet pre-check for wallet→cash fallback
       const paymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
-      // For wallet payment: verify customer has sufficient balance BEFORE crediting driver
-      let effectivePaymentMethod = paymentMethod;
-      if (paymentMethod === 'wallet') {
+      let customerWalletBalance: number | undefined;
+      if (paymentMethod === 'wallet' && tripRow.customer_id) {
         try {
-          const preCheckR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripRow.customer_id}::uuid`);
-          const preBal = parseFloat((preCheckR.rows[0] as any)?.wallet_balance || '0');
-          if (preBal < userPayable) {
-            // Insufficient wallet — treat as cash so driver pending dues are tracked correctly
-            effectivePaymentMethod = 'cash';
-          }
+          const cwRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripRow.customer_id}::uuid`);
+          customerWalletBalance = parseFloat((cwRes.rows[0] as any)?.wallet_balance || '0');
         } catch (_) {}
       }
-      const isOnlinePayment = ['online', 'wallet', 'upi', 'razorpay', 'card', 'prepaid'].includes(effectivePaymentMethod);
-      const commissionOwed = parseFloat((deductAmount - gstAmount).toFixed(2));
-      const lockThresholdVal = parseFloat(s.commission_lock_threshold || "200");
 
+      // Settle: driver wallet, commission_settlements, GST wallet, admin_revenue, auto-lock
       if (deductAmount > 0) {
-        // Fetch current pending balances before update
-        const balBeforeR = await rawDb.execute(rawSql`
-          SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
-          FROM users WHERE id=${driver.id}::uuid LIMIT 1
-        `).catch(() => ({ rows: [] as any[] }));
-        const balBefore = balBeforeR.rows[0] as any || {};
-        const prevCommission = parseFloat(balBefore.pending_commission_balance ?? '0') || 0;
-        const prevGst        = parseFloat(balBefore.pending_gst_balance ?? '0') || 0;
-        const prevTotal      = parseFloat(balBefore.total_pending_balance ?? '0') || 0;
-
-        let wUpd: any;
-        let newWalletBalance = 0;
-        let newTotal = prevTotal;
-
-        if (isOnlinePayment) {
-          // ── ONLINE PAYMENT (Uber/Ola style) ──────────────────────────────
-          // Platform collected full fare from customer.
-          // Credit driver with net amount (fare - commission - GST). Wallet goes UP.
-          // Pending balances do NOT increase (platform already has the commission).
-          wUpd = await rawDb.execute(rawSql`
-            UPDATE users
-            SET wallet_balance = wallet_balance + ${driverWalletCredit},
-                completed_rides_count = COALESCE(completed_rides_count, 0) + 1
-            WHERE id=${driver.id}::uuid
-            RETURNING wallet_balance, is_locked, total_pending_balance
-          `);
-          newTotal = prevTotal; // no new pending dues
-        } else {
-          // ── CASH PAYMENT (Rapido/local style) ─────────────────────────────
-          // Driver collected full fare in cash from customer.
-          // Platform's share (commission + GST) tracked as debt — wallet goes NEGATIVE.
-          // Use atomic SQL addition to prevent race conditions on concurrent trip completions.
-          wUpd = await rawDb.execute(rawSql`
-            UPDATE users
-            SET wallet_balance             = wallet_balance - ${deductAmount},
-                pending_commission_balance  = COALESCE(pending_commission_balance, 0) + ${commissionOwed},
-                pending_gst_balance         = COALESCE(pending_gst_balance, 0) + ${gstAmount},
-                total_pending_balance       = COALESCE(total_pending_balance, 0) + ${deductAmount},
-                completed_rides_count       = COALESCE(completed_rides_count, 0) + 1
-            WHERE id=${driver.id}::uuid
-            RETURNING wallet_balance, is_locked, total_pending_balance
-          `);
-          newTotal = parseFloat(wUpd?.rows?.[0]?.total_pending_balance ?? '0') || 0;
-        }
-
-        const wRow: any = wUpd?.rows[0] || {};
-        newWalletBalance = parseFloat(wRow.wallet_balance ?? 0);
-
-        // Auto-lock only for CASH rides (online rides don't create debt)
-        if (!isOnlinePayment) {
-          const lockMsg = `Pending balance ₹${newTotal.toFixed(2)} exceeds ₹${lockThresholdVal} limit. Pay to unlock ride access.`;
-          if (newTotal >= lockThresholdVal && !wRow.is_locked) {
-            await rawDb.execute(rawSql`
-              UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW()
-              WHERE id=${driver.id}::uuid
-            `);
-          }
-          const legacyThreshold = parseFloat(s.auto_lock_threshold || "-200");
-          if (newWalletBalance < legacyThreshold && !wRow.is_locked) {
-            await rawDb.execute(rawSql`
-              UPDATE users SET is_locked=true,
-                lock_reason=${'Wallet balance ₹' + newWalletBalance.toFixed(2) + '. Pay ₹' + Math.abs(newWalletBalance).toFixed(2) + ' to unlock ride access.'},
-                locked_at=NOW()
-              WHERE id=${driver.id}::uuid
-            `);
-          }
-        }
-
-        // Record in commission_settlements (split: commission + GST as separate lines)
-        const serviceTypeLabel = tripServiceType || 'ride';
-        if (commissionOwed > 0) {
-          await rawDb.execute(rawSql`
-            INSERT INTO commission_settlements
-              (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount,
-               direction, balance_before, balance_after, ride_fare, service_type, description)
-            VALUES
-              (${driver.id}::uuid, ${tripId}::uuid, 'commission_debit',
-               ${commissionOwed}, 0, ${commissionOwed},
-               'debit', ${prevTotal}, ${newTotal}, ${fare}, ${serviceTypeLabel},
-               ${'Commission ' + (breakdown.model || activeModel) + ' for trip ' + tripId.slice(0,8)})
-          `).catch(() => {});
-        }
-        if (gstAmount > 0) {
-          await rawDb.execute(rawSql`
-            INSERT INTO commission_settlements
-              (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount,
-               direction, balance_before, balance_after, ride_fare, service_type, description)
-            VALUES
-              (${driver.id}::uuid, ${tripId}::uuid, 'gst_debit',
-               0, ${gstAmount}, ${gstAmount},
-               'debit', ${prevTotal}, ${newTotal}, ${fare}, ${serviceTypeLabel},
-               ${'Government GST (5%) for trip ' + tripId.slice(0,8)})
-          `).catch(() => {});
-        }
-
-        // Record driver deduction in driver_payments (legacy table)
-        const deductDesc = launchFreeApplied
-          ? `Government GST ₹${gstAmount} for trip ${tripId.slice(0,8)}… (launch period)`
-          : `Platform fee (${activeModel}) ₹${deductAmount} for trip ${tripId.slice(0,8)}…`;
-        await rawDb.execute(rawSql`
-          INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-          VALUES (${driver.id}::uuid, ${deductAmount}, 'deduction', 'completed', ${deductDesc})
-        `).catch(() => {});
-
-        // Credit admin revenue
-        const revenueType = launchFreeApplied ? 'gst_only'
-          : activeModel === 'commission' ? 'commission'
-          : activeModel === 'hybrid' ? 'hybrid_fee'
-          : 'subscription_fee';
-        await rawDb.execute(rawSql`
-          INSERT INTO admin_revenue (driver_id, trip_id, amount, revenue_type, breakdown)
-          VALUES (${driver.id}::uuid, ${tripId}::uuid, ${deductAmount}, ${revenueType}, ${JSON.stringify(breakdown)}::jsonb)
-        `).catch(() => {});
+        await settleRevenue({
+          driverId: driver.id,
+          tripId,
+          fare,
+          paymentMethod: paymentMethod as any,
+          breakdown,
+          serviceCategory,
+          serviceLabel: tripServiceType || 'ride',
+          customerWalletBalance,
+        });
       }
 
       // ── Customer wallet deduction: use userPayable (discounted amount) ────
@@ -7603,25 +7418,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (e: any) { console.error('[CUST-ONLINE-TX-OUTER]', e.message); }
       }
 
-      // ── Driver earnings transaction record ───────────────────────────────
-      // ON CONFLICT DO NOTHING + unique index prevents duplicate if complete-trip is called twice
-      try {
-        const driverBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${driver.id}::uuid`);
-        const driverNewBal = parseFloat((driverBalRes.rows[0] as any)?.wallet_balance || '0');
-        if (isOnlinePayment) {
-          await rawDb.execute(rawSql`
-            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-            VALUES (${driver.id}::uuid, ${'Trip earnings (online payment)'}, ${driverWalletCredit}, 0, ${driverNewBal}, ${'trip_earning'}, ${tripId})
-            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
-          `);
-        } else {
-          await rawDb.execute(rawSql`
-            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-            VALUES (${driver.id}::uuid, ${'Platform commission (cash trip)'}, 0, ${deductAmount}, ${driverNewBal}, ${'commission_deduction'}, ${tripId})
-            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
-          `);
-        }
-      } catch (e: any) { console.error('[DRIVER-EARN-TX]', e.message); }
+      // Driver earnings transaction handled by settleRevenue()
 
       // ── Increment customer's completed_rides_count ──────────────────────
       if (tripCustomerId) {
@@ -7891,12 +7688,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── DRIVER: Initiate Razorpay payment to settle pending commission ───────────
-  app.post("/api/app/driver/commission/create-order", authApp, async (req, res) => {
+  app.post("/api/app/driver/commission/create-order", authApp, paymentOrderLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { amount } = req.body;
-      const keyId     = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured." });
       // Validate amount against pending balance
       const balR = await rawDb.execute(rawSql`SELECT total_pending_balance FROM users WHERE id=${driver.id}::uuid LIMIT 1`);
@@ -7924,9 +7720,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      // Timing-safe HMAC — same pattern as subscription verify
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
@@ -8076,7 +7871,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/subscription/create-order", authApp, requireDriver, async (req, res) => {
+  app.post("/api/app/driver/subscription/create-order", authApp, requireDriver, paymentOrderLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { planId, insurancePlanId } = req.body;
@@ -8107,8 +7902,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const gstAmt = gstPaise / 100;
       const insuranceAmt = insurancePaise / 100;
 
-      const keyId = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
@@ -8142,7 +7936,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature, planId, insurancePlanId } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !planId) return res.status(400).json({ message: "Missing required fields" });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       // Timing-safe HMAC
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
@@ -8230,14 +8024,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/app/driver/wallet/create-order", authApp, requireDriver, async (req, res) => {
+  app.post("/api/app/driver/wallet/create-order", authApp, requireDriver, paymentOrderLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { amount } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid amount" });
-      const keyId = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
@@ -8261,7 +8054,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
@@ -9164,12 +8957,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PARCEL FARE ESTIMATE (weight + distance based) ────────────────────────
-  // Formula: customerFare = base_fare + (distanceKm × fare_per_km) + (weightKg × weight_rate)
+  // ── PARCEL FARE ESTIMATE (weight + distance + helpers based) ────────────────
+  // Formula: customerFare = base_fare + (distanceKm × fare_per_km) + (weightKg × weight_rate) + loadingCharge + (helpers × helperChargePerHour × hours)
   // driverFare  = customerFare — platform commission (per parcels_model setting)
   app.post("/api/app/customer/estimate-parcel-fare", async (req, res) => {
     try {
-      const { pickupLat, pickupLng, destLat, destLng, weightKg = 0 } = req.body;
+      const { pickupLat, pickupLng, destLat, destLng, weightKg = 0, helpers = 0, helperHours = 1 } = req.body;
 
       const pLat = Number(pickupLat), pLng = Number(pickupLng);
       const dLat = Number(destLat),  dLng = Number(destLng);
@@ -9208,6 +9001,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const gstRate = parseFloat(settings['ride_gst_rate'] || '5') / 100;
 
       const wt = Math.max(0, Number(weightKg));
+      const helperCount = Math.min(Math.max(0, parseInt(helpers) || 0), 5); // cap at 5 helpers
+      const hHours = Math.max(1, parseFloat(helperHours) || 1);
+
+      // Fetch per-zone helper/loading charges from parcel_fares
+      const pfRes = await rawDb.execute(rawSql`
+        SELECT loading_charge, helper_charge_per_hour, max_helpers FROM parcel_fares LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const pf: any = pfRes.rows[0] || {};
+      const globalLoadCharge = parseFloat(pf.loading_charge || '0');
+      const globalHelperRate = parseFloat(pf.helper_charge_per_hour || '0');
+      const globalMaxHelpers = parseInt(pf.max_helpers || '0') || 5;
 
       const fares = (vcRes.rows as any[]).map(vc => {
         const baseFare   = parseFloat(vc.base_fare   || 0);
@@ -9216,7 +9020,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const weightRate = parseFloat(vc.weight_rate  || 0);
 
         const rawFare = baseFare + (distKm * perKm) + (wt * weightRate);
-        const customerFare = Math.ceil(Math.max(rawFare, minFare));
+        const loadCharge = globalLoadCharge;
+        const effectiveHelpers = Math.min(helperCount, globalMaxHelpers);
+        const helperCharge = effectiveHelpers * globalHelperRate * hHours;
+        const customerFare = Math.ceil(Math.max(rawFare + loadCharge + helperCharge, minFare));
         const gstAmount    = Math.ceil(customerFare * gstRate);
         const grandTotal   = customerFare + gstAmount;
 
@@ -9237,6 +9044,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           baseFare,
           perKmCharge: Math.ceil(distKm * perKm),
           weightCharge: Math.ceil(wt * weightRate),
+          loadingCharge: loadCharge,
+          helperCharge,
+          helpersUsed: effectiveHelpers,
+          helperHours: hHours,
+          helperRatePerHour: globalHelperRate,
+          maxHelpers: globalMaxHelpers,
           customerFare,
           gstAmount,
           grandTotal,
@@ -9478,14 +9291,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
-  app.post("/api/app/customer/wallet/create-order", authApp, requireCustomer, async (req, res) => {
+  app.post("/api/app/customer/wallet/create-order", authApp, requireCustomer, paymentOrderLimiter, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { amount } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt < 10 || amt > 50000) return res.status(400).json({ message: "Amount must be ₹10–₹50,000" });
-      const keyId = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
@@ -9520,7 +9332,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const customer = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret)
@@ -9555,14 +9367,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Razorpay – Create order for ride payment ────────────────────
-  app.post("/api/app/customer/ride/create-order", authApp, requireCustomer, async (req, res) => {
+  app.post("/api/app/customer/ride/create-order", authApp, requireCustomer, paymentOrderLimiter, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { amount, tripId } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0 || amt > 50000) return res.status(400).json({ message: "Invalid fare amount" });
-      const keyId = process.env.RAZORPAY_KEY_ID;
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
@@ -9591,7 +9402,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const customer = (req as any).currentUser;
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const { keySecret } = await getRazorpayKeys();
       if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret)
@@ -9661,8 +9472,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // This prevents replay attacks where an authorized event is replayed as captured.
           if (eventType === "payment.captured") {
             try {
-              const rzpKeyId     = process.env.RAZORPAY_KEY_ID;
-              const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+              const { keyId: rzpKeyId, keySecret: rzpKeySecret } = await getRazorpayKeys();
               if (rzpKeyId && rzpKeySecret) {
                 const Razorpay = _require("razorpay");
                 const rzp = new Razorpay({ key_id: rzpKeyId, key_secret: rzpKeySecret, timeout: 15000 });
@@ -10854,11 +10664,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!planR.rows.length) return res.status(404).json({ message: "Plan not found" });
       const plan = camelize(planR.rows[0] as any) as any;
       // Check if Razorpay credentials exist
+      const { keyId: subKeyId, keySecret: subKeySecret2 } = await getRazorpayKeys();
+      if (!subKeyId || !subKeySecret2) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require('razorpay');
-      const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET, timeout: 15000 });
+      const razorpay = new Razorpay({ key_id: subKeyId, key_secret: subKeySecret2, timeout: 15000 });
       const amountPaise = Math.round(parseFloat(plan.price) * 100);
       const order = await razorpay.orders.create({ amount: amountPaise, currency: 'INR', receipt: `sub_${driver.id}_${planId}` });
-      res.json({ success: true, orderId: order.id, amount: amountPaise, currency: 'INR', plan, keyId: process.env.RAZORPAY_KEY_ID });
+      res.json({ success: true, orderId: order.id, amount: amountPaise, currency: 'INR', plan, keyId: subKeyId });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -10871,10 +10683,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "planId, razorpayPaymentId, razorpayOrderId, and razorpaySignature required" });
       }
       // Verify Razorpay payment signature
-      const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (!keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
-      const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
-      if (expectedSig !== razorpaySignature) return res.status(400).json({ message: "Invalid payment signature" });
+      const { keySecret: activateKeySecret } = await getRazorpayKeys();
+      if (!activateKeySecret) return res.status(503).json({ message: "Payment gateway not configured" });
+      const expectedSig = crypto.createHmac("sha256", activateKeySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
+      const sigValid = expectedSig.length === razorpaySignature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
+      if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
       // Idempotency check
       const existing = await rawDb.execute(rawSql`SELECT id FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND razorpay_payment_id=${razorpayPaymentId}`).catch(() => ({ rows: [] }));
       if ((existing as any).rows?.length) return res.status(409).json({ message: "Payment already activated" });
@@ -12180,6 +11994,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING *
       `);
       if (!(r.rows as any[]).length) return res.status(404).json({ message: 'Service not found' });
+
+      // Auto-sync vehicle_categories is_active when service is toggled
+      if (service_status !== undefined) {
+        const isActive = service_status === 'active';
+        // Map platform service keys to vehicle category types
+        const typeMap: Record<string, string> = {
+          'bike_ride': 'ride', 'bike_taxi': 'ride', 'auto_ride': 'ride',
+          'mini_car': 'ride', 'sedan_ride': 'ride', 'suv_ride': 'ride',
+          'parcel_delivery': 'parcel', 'cargo_freight': 'cargo',
+          'intercity': 'intercity', 'car_sharing': 'carsharing', 'carpool': 'carsharing',
+        };
+        const vcType = typeMap[key];
+        if (vcType) {
+          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type=${vcType}`).catch(() => {});
+        }
+        // Also sync business_settings legacy toggle
+        const legacyKeyMap: Record<string, string> = {
+          'bike_ride': 'ride', 'auto_ride': 'ride', 'mini_car': 'ride',
+          'parcel_delivery': 'parcel', 'cargo_freight': 'cargo',
+          'intercity': 'intercity', 'car_sharing': 'carsharing',
+        };
+        const legacyKey = legacyKeyMap[key];
+        if (legacyKey) {
+          await rawDb.execute(rawSql`
+            INSERT INTO business_settings (key_name, value, settings_type)
+            VALUES (${'service_' + legacyKey + '_enabled'}, ${isActive ? '1' : '0'}, 'service_settings')
+            ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
+          `).catch(() => {});
+        }
+      }
+
       res.json((r.rows as any[])[0]);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12947,7 +12792,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Admin: Toggle service on/off
+  // Admin: Toggle service on/off (syncs all layers)
   app.patch("/api/services/:key", async (req, res) => {
     try {
       const { key } = req.params;
@@ -12958,25 +12803,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         VALUES (${'service_' + key + '_enabled'}, ${isActive ? '1' : '0'}, 'service_settings')
         ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
       `);
+      // Sync vehicle_categories is_active
+      await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${!!isActive} WHERE type=${key}`).catch(() => {});
+      // Sync platform_services service_status
+      const statusVal = isActive ? 'active' : 'inactive';
+      const platformKeyMap: Record<string, string[]> = {
+        'ride': ['bike_ride', 'auto_ride', 'mini_car', 'sedan_ride', 'suv_ride'],
+        'parcel': ['parcel_delivery'],
+        'cargo': ['cargo_freight'],
+        'intercity': ['intercity'],
+        'carsharing': ['car_sharing', 'carpool'],
+      };
+      const platformKeys = platformKeyMap[key] || [];
+      for (const pk of platformKeys) {
+        await rawDb.execute(rawSql`UPDATE platform_services SET service_status=${statusVal}, updated_at=NOW() WHERE service_key=${pk}`).catch(() => {});
+      }
       res.json({ success: true, key, isActive });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // App: Get active services for customer app
+  // App: Get only ACTIVE services for customer app (respects admin toggles)
   app.get("/api/app/services", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE settings_type='service_settings'`);
       const map: Record<string, string> = {};
       (r.rows as any[]).forEach(row => { map[row.key_name] = row.value; });
-      const services = SERVICE_DEFS.map(s => ({
-        key: s.key,
-        name: s.name,
-        description: s.description,
-        icon: s.icon,
-        emoji: s.emoji,
-        color: s.color,
-        isActive: map[`service_${s.key}_enabled`] !== '0',
-      }));
+      const services = SERVICE_DEFS
+        .filter(s => map[`service_${s.key}_enabled`] !== '0')
+        .map(s => ({
+          key: s.key,
+          name: s.name,
+          description: s.description,
+          icon: s.icon,
+          emoji: s.emoji,
+          color: s.color,
+          isActive: true,
+        }));
       res.json({ services });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

@@ -202,8 +202,8 @@ app.use((req, res, next) => {
     try {
       const { rawDb, rawSql } = await import("./db");
       const { io: socketIo } = await import("./socket");
-      const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
-      const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+      const { getRazorpayKeys } = await import("./routes");
+      const { keyId: RAZORPAY_KEY_ID, keySecret: RAZORPAY_KEY_SECRET } = await getRazorpayKeys();
       if (!RAZORPAY_KEY_ID) return;
       // Find trips stuck in payment_pending for > 5 minutes
       const stuckTrips = await rawDb.execute(rawSql`

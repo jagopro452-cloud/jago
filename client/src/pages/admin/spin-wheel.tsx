@@ -7,7 +7,7 @@ export default function SpinWheelPage() {
   const { toast } = useToast();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ label: "", rewardAmount: "", rewardType: "amount", probability: "", isActive: true });
+  const [form, setForm] = useState({ label: "", rewardAmount: "", rewardType: "wallet", probability: "", isActive: true });
 
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/spin-wheel"] });
   const items = Array.isArray(data) ? data : [];
@@ -51,7 +51,7 @@ export default function SpinWheelPage() {
         <div className="container-fluid">
           <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
             <h2 className="h5 mb-0">Spin Wheel Setup</h2>
-            <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setForm({ label: "", rewardAmount: "", rewardType: "amount", probability: "", isActive: true }); setShowModal(true); }} data-testid="btn-add-spin">
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setForm({ label: "", rewardAmount: "", rewardType: "wallet", probability: "", isActive: true }); setShowModal(true); }} data-testid="btn-add-spin">
               <i className="bi bi-plus me-1"></i>Add Slot
             </button>
           </div>
@@ -132,8 +132,8 @@ export default function SpinWheelPage() {
                   <div className="col-6">
                     <label className="form-label fw-semibold">Type</label>
                     <select className="form-select" value={form.rewardType} onChange={e => setForm({ ...form, rewardType: e.target.value })}>
-                      <option value="amount">Amount (₹)</option>
-                      <option value="points">Points</option>
+                      <option value="wallet">Wallet Amount (₹)</option>
+                      <option value="coins">JAGO Coins</option>
                       <option value="none">No Reward</option>
                     </select>
                   </div>

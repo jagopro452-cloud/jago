@@ -12,6 +12,9 @@ import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/call_service.dart';
+import '../call/call_screen.dart';
+import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
 
 class TripScreen extends StatefulWidget {
@@ -38,6 +41,7 @@ class _TripScreenState extends State<TripScreen> {
   Timer? _locationTimer;
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
+  StreamSubscription? _incomingCallSub;
   final Set<Marker> _markers = {};
 
   @override
@@ -54,6 +58,8 @@ class _TripScreenState extends State<TripScreen> {
     _startLocationUpdates();
     _loadCancelReasons();
     _listenForCancel();
+    CallService().init();
+    _listenForIncomingCalls();
     WidgetsBinding.instance.addPostFrameCallback((_) => _initMapMarkers());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_status == 'accepted' || _status == 'driver_assigned') {
@@ -98,7 +104,52 @@ class _TripScreenState extends State<TripScreen> {
     _otpCtrl.dispose();
     _locationTimer?.cancel();
     _cancelSub?.cancel();
+    _incomingCallSub?.cancel();
     super.dispose();
+  }
+
+  void _listenForIncomingCalls() {
+    _incomingCallSub = _socket.onCallIncoming.listen((data) {
+      if (!mounted) return;
+      final callerName = data['callerName']?.toString() ?? 'Customer';
+      final callerId = data['callerId']?.toString() ?? '';
+      final tripId = data['tripId']?.toString() ?? (_trip?['id']?.toString() ?? '');
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CallScreen(
+          contactName: callerName,
+          tripId: tripId,
+          targetUserId: callerId,
+          isIncoming: true,
+          callerIdForIncoming: callerId,
+        ),
+      ));
+    });
+  }
+
+  void _startInAppCall(String contactName) {
+    final customerId = _trip?['customerId']?.toString() ?? _trip?['customer_id']?.toString();
+    final tripId = _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+    if (customerId == null || customerId.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CallScreen(
+        contactName: contactName,
+        tripId: tripId,
+        targetUserId: customerId,
+      ),
+    ));
+  }
+
+  void _openTripChat() {
+    final tripId = _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TripChatSheet(
+        tripId: tripId,
+        senderName: 'Driver',
+      ),
+    );
   }
 
   void _startLocationUpdates() {
@@ -1022,12 +1073,17 @@ class _TripScreenState extends State<TripScreen> {
         ])),
         if (passengerPhone != null && passengerPhone.isNotEmpty)
           GestureDetector(
-            onTap: () async {
-              final uri = Uri(scheme: 'tel', path: passengerPhone);
-              try {
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
-                else _showSnack('Call: $passengerPhone');
-              } catch (_) { _showSnack('Call: $passengerPhone'); }
+            onTap: () {
+              final customerId = _trip?['customerId']?.toString() ?? _trip?['customer_id']?.toString();
+              final tripId = _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+              if (customerId == null || customerId.isEmpty) return;
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CallScreen(
+                  contactName: passengerName,
+                  tripId: tripId,
+                  targetUserId: customerId,
+                ),
+              ));
             },
             child: Container(
               width: 38, height: 38,
@@ -1186,13 +1242,7 @@ class _TripScreenState extends State<TripScreen> {
             ])),
             if (phone != null)
               GestureDetector(
-                onTap: () async {
-                  final uri = Uri(scheme: 'tel', path: phone);
-                  try {
-                    if (await canLaunchUrl(uri)) await launchUrl(uri);
-                    else _showSnack('Call: $phone');
-                  } catch (_) { _showSnack('Call: $phone'); }
-                },
+                onTap: () => _startInAppCall(name),
                 child: Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
@@ -1357,13 +1407,9 @@ class _TripScreenState extends State<TripScreen> {
     return Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
       if (phone != null)
         GestureDetector(
-          onTap: () async {
-            final uri = Uri(scheme: 'tel', path: phone);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri);
-            } else {
-              _showSnack('Call: $phone');
-            }
+          onTap: () {
+            final customerName = _trip?['customerName'] ?? _trip?['customer_name'] ?? 'Customer';
+            _startInAppCall(customerName.toString());
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1379,6 +1425,22 @@ class _TripScreenState extends State<TripScreen> {
             ]),
           ),
         ),
+      GestureDetector(
+        onTap: _openTripChat,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: JT.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JT.border),
+          ),
+          child: Row(children: [
+            const Icon(Icons.chat_rounded, color: JT.primary, size: 16),
+            const SizedBox(width: 6),
+            Text('Chat', style: GoogleFonts.poppins(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      ),
       GestureDetector(
         onTap: _triggerSos,
         child: Container(
