@@ -23,10 +23,10 @@ class JT {
   );
 
   static List<BoxShadow> get cardShadow => [
-    BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 2)),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 2)),
   ];
   static List<BoxShadow> get btnShadow => [
-    BoxShadow(color: primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+    BoxShadow(color: primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
   ];
 
   static TextStyle get h1 => GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: textPrimary);

@@ -505,8 +505,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: sugg.demandLevel == 'high'
-                  ? JT.error.withOpacity(0.10)
-                  : JT.warning.withOpacity(0.10),
+                  ? JT.error.withValues(alpha: 0.10)
+                  : JT.warning.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.local_fire_department_rounded,
@@ -527,9 +527,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: JT.success.withOpacity(0.08),
+              color: JT.success.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: JT.success.withOpacity(0.25)),
+              border: Border.all(color: JT.success.withValues(alpha: 0.25)),
             ),
             child: Row(children: [
               const Icon(Icons.currency_rupee_rounded, color: JT.success, size: 18),
@@ -642,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: JT.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: JT.warning.withOpacity(0.4), width: 2)),
+          border: Border(top: BorderSide(color: JT.warning.withValues(alpha: 0.4), width: 2)),
           boxShadow: JT.cardShadow,
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -658,7 +658,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: JT.warning.withOpacity(0.12),
+                color: JT.warning.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(vehicleEmoji, style: const TextStyle(fontSize: 30)),
@@ -675,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 gradient: JT.grad,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: JT.primary.withOpacity(0.25), blurRadius: 8)],
+                boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.25), blurRadius: 8)],
               ),
               child: Text('₹${parcel['totalFare'] ?? 0}',
                 style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
@@ -786,9 +786,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: color),
@@ -819,15 +819,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: JT.error.withOpacity(0.3), width: 1),
+          side: BorderSide(color: JT.error.withValues(alpha: 0.3), width: 1),
         ),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 70, height: 70,
             decoration: BoxDecoration(
-              color: JT.error.withOpacity(0.08),
+              color: JT.error.withValues(alpha: 0.08),
               shape: BoxShape.circle,
-              border: Border.all(color: JT.error.withOpacity(0.25)),
+              border: Border.all(color: JT.error.withValues(alpha: 0.25)),
             ),
             child: const Icon(Icons.account_balance_wallet_rounded, color: JT.error, size: 34),
           ),
@@ -1000,7 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               backgroundColor: JT.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: JT.warning.withOpacity(0.4), width: 1),
+                side: BorderSide(color: JT.warning.withValues(alpha: 0.4), width: 1),
               ),
               title: Row(children: [
                 const Icon(Icons.warning_amber_rounded, color: JT.warning, size: 28),
@@ -1083,7 +1083,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withOpacity(0.92),
+                    Colors.white.withValues(alpha: 0.92),
                     Colors.transparent,
                   ],
                 ),
@@ -1125,13 +1125,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: JT.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.4), width: 1.5),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.15), blurRadius: 14, offset: const Offset(0, 4))],
+          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 14, offset: const Offset(0, 4))],
         ),
         child: Row(children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 10),
@@ -1238,7 +1238,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             shape: BoxShape.circle,
                             color: JT.success,
                             boxShadow: [BoxShadow(
-                              color: JT.success.withOpacity(0.4 + _pulseCtrl.value * 0.4),
+                              color: JT.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
                               blurRadius: 3 + _pulseCtrl.value * 4,
                             )],
                           ),
@@ -1258,7 +1258,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       Container(
                         width: 6, height: 6,
                         margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: JT.error.withOpacity(0.6)),
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: JT.error.withValues(alpha: 0.6)),
                       ),
                       Text(
                         'Offline — tap to go online',
@@ -1341,7 +1341,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: JT.border, width: 1),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, -4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 28, offset: const Offset(0, -4)),
         ],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1390,9 +1390,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      color: JT.success.withOpacity(0.10),
+                      color: JT.success.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: JT.success.withOpacity(0.3)),
+                      border: Border.all(color: JT.success.withValues(alpha: 0.3)),
                     ),
                     child: Text(
                       '$_tripsToday trips',
@@ -1507,7 +1507,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           shape: BoxShape.circle,
                           color: _isOnline ? Colors.white : JT.textSecondary,
                           boxShadow: _isOnline ? [BoxShadow(
-                            color: Colors.white.withOpacity(0.5 + _pulseCtrl.value * 0.3),
+                            color: Colors.white.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3),
                             blurRadius: 3 + _pulseCtrl.value * 4,
                           )] : [],
                         ),
@@ -1532,9 +1532,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: JT.success.withOpacity(0.06),
+                  color: JT.success.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.success.withOpacity(0.2), width: 1),
+                  border: Border.all(color: JT.success.withValues(alpha: 0.2), width: 1),
                 ),
                 child: Row(children: [
                   AnimatedBuilder(
@@ -1545,7 +1545,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         shape: BoxShape.circle,
                         color: JT.success,
                         boxShadow: [BoxShadow(
-                          color: JT.success.withOpacity(0.4 + _pulseCtrl.value * 0.4),
+                          color: JT.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
                           blurRadius: 4 + _pulseCtrl.value * 6,
                         )],
                       ),
@@ -1579,9 +1579,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: JT.success.withOpacity(0.06),
+                  color: JT.success.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.success.withOpacity(0.25)),
+                  border: Border.all(color: JT.success.withValues(alpha: 0.25)),
                 ),
                 child: Row(children: [
                   const Text('🎉', style: TextStyle(fontSize: 18)),
@@ -1608,9 +1608,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.04),
+                  color: JT.primary.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.primary.withOpacity(0.15)),
+                  border: Border.all(color: JT.primary.withValues(alpha: 0.15)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Your Eligible Services',
@@ -1622,8 +1622,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     return Chip(
                       avatar: Text(icon, style: const TextStyle(fontSize: 14)),
                       label: Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
-                      backgroundColor: JT.primary.withOpacity(0.08),
-                      side: BorderSide(color: JT.primary.withOpacity(0.2)),
+                      backgroundColor: JT.primary.withValues(alpha: 0.08),
+                      side: BorderSide(color: JT.primary.withValues(alpha: 0.2)),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     );
@@ -1640,9 +1640,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
-                  color: JT.warning.withOpacity(0.06),
+                  color: JT.warning.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.warning.withOpacity(0.25), width: 1),
+                  border: Border.all(color: JT.warning.withValues(alpha: 0.25), width: 1),
                 ),
                 child: Row(children: [
                   const Text('📦', style: TextStyle(fontSize: 16)),
@@ -1661,7 +1661,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: JT.warning.withOpacity(0.12),
+                      color: JT.warning.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -1754,9 +1754,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: JT.success.withOpacity(0.08),
+                color: JT.success.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JT.success.withOpacity(0.25)),
+                border: Border.all(color: JT.success.withValues(alpha: 0.25)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.location_on_rounded, color: JT.success, size: 10),
@@ -1792,7 +1792,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(28 + _pulseCtrl.value * 4),
                   border: Border.all(
-                    color: JT.primary.withOpacity(0.35 - _pulseCtrl.value * 0.35),
+                    color: JT.primary.withValues(alpha: 0.35 - _pulseCtrl.value * 0.35),
                     width: 1.5,
                   ),
                 ),
@@ -1937,16 +1937,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               height: 3, width: 32,
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [iconColor, iconColor.withOpacity(0.2)]),
+                gradient: LinearGradient(colors: [iconColor, iconColor.withValues(alpha: 0.2)]),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.10),
+                color: iconColor.withValues(alpha: 0.10),
                 shape: BoxShape.circle,
-                border: Border.all(color: iconColor.withOpacity(0.2)),
+                border: Border.all(color: iconColor.withValues(alpha: 0.2)),
               ),
               child: Icon(icon, size: 18, color: iconColor),
             ),
@@ -2047,9 +2047,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Container(
             width: 38, height: 38,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
+              color: color.withValues(alpha: 0.08),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.2)),
+              border: Border.all(color: color.withValues(alpha: 0.2)),
             ),
             child: Icon(icon, color: color, size: 19),
           ),
@@ -2068,7 +2068,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: JT.surface,
         border: const Border(top: BorderSide(color: JT.border, width: 1)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, -4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, -4))],
       ),
       child: SafeArea(
         top: false,
@@ -2147,7 +2147,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: Row(children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: Colors.white.withOpacity(0.2),
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
                   child: Text(
                     _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
                     style: GoogleFonts.poppins(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
@@ -2164,14 +2164,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(height: 2),
                     Text(
                       '+91 $_userPhone',
-                      style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.75), fontSize: 12),
+                      style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.75), fontSize: 12),
                     ),
                     const SizedBox(height: 6),
                     Row(children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -2236,9 +2236,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    color: JT.error.withOpacity(0.06),
+                    color: JT.error.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: JT.error.withOpacity(0.2), width: 1),
+                    border: Border.all(color: JT.error.withValues(alpha: 0.2), width: 1),
                   ),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.logout_rounded, color: JT.error, size: 18),
@@ -2289,9 +2289,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ? Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: JT.success.withOpacity(0.08),
+              color: JT.success.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: JT.success.withOpacity(0.25)),
+              border: Border.all(color: JT.success.withValues(alpha: 0.25)),
             ),
             child: Text(
               badge,

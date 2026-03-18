@@ -49,3 +49,4 @@ attached_assets/
 
 # Local development PostgreSQL cluster (generated at runtime)
 .local-postgres/
+*.hprof

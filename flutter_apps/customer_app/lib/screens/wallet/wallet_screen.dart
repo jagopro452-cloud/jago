@@ -642,7 +642,7 @@ class _WalletScreenState extends State<WalletScreen>
                       height: 50,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? (m['color'] as Color).withOpacity(0.15)
+                            ? (m['color'] as Color).withValues(alpha: 0.15)
                             : m['bg'] as Color,
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -730,7 +730,7 @@ class _WalletScreenState extends State<WalletScreen>
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: (isCredit ? JT.success : JT.error).withOpacity(0.1),
+            color: (isCredit ? JT.success : JT.error).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(

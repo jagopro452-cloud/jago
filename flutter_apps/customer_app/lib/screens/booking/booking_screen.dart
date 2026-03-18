@@ -1317,7 +1317,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: JT.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: Text('1.25x', style: TextStyle(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w800)),
           ),
         ]),

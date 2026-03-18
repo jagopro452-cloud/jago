@@ -263,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('Welcome!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                        Text('Here\'s a quick guide to get you started', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 12)),
+                        Text('Here\'s a quick guide to get you started', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
                       ]),
                     ),
                   ],
@@ -791,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: JT.error,
                     borderRadius: BorderRadius.circular(10),
-                    boxShadow: [BoxShadow(color: JT.error.withOpacity(0.4), blurRadius: 4)],
+                    boxShadow: [BoxShadow(color: JT.error.withValues(alpha: 0.4), blurRadius: 4)],
                   ),
                   child: Center(child: Text(
                     _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
@@ -1185,7 +1185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: _bannerIndex == i ? 16 : 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: _bannerIndex == i ? JT.primary : JT.primary.withOpacity(0.3),
+                    color: _bannerIndex == i ? JT.primary : JT.primary.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ))),
@@ -1222,7 +1222,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
           JT.logoWhite(height: 28),
           const SizedBox(height: 8),
-          Text('Safe, fast and affordable rides', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 12)),
+          Text('Safe, fast and affordable rides', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
           const SizedBox(height: 10),
           GestureDetector(
             onTap: _openSearch,
@@ -1397,7 +1397,7 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border(top: BorderSide(color: isDark ? const Color(0xFF334155) : JT.border, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -1450,7 +1450,7 @@ class _HomeScreenState extends State<HomeScreen> {
           duration: const Duration(milliseconds: 200),
           width: 40, height: 32,
           decoration: BoxDecoration(
-            color: active ? JT.primary.withOpacity(0.1) : Colors.transparent,
+            color: active ? JT.primary.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Icon(active ? activeIcon : inactiveIcon, size: 20, color: active ? JT.primary : JT.iconInactive),
@@ -1480,7 +1480,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
             decoration: BoxDecoration(
               gradient: isDark
-                ? LinearGradient(colors: [JT.primary.withOpacity(0.15), _darkCard.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+                ? LinearGradient(colors: [JT.primary.withValues(alpha: 0.15), _darkCard.withValues(alpha: 0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight)
                 : const LinearGradient(colors: [JT.bgSoft, JT.bg], begin: Alignment.topLeft, end: Alignment.bottomRight),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

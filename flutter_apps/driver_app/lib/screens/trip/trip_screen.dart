@@ -351,9 +351,9 @@ class _TripScreenState extends State<TripScreen> {
               Container(
                 width: 72, height: 72,
                 decoration: BoxDecoration(
-                  color: JT.success.withOpacity(0.10),
+                  color: JT.success.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
-                  border: Border.all(color: JT.success.withOpacity(0.3), width: 2),
+                  border: Border.all(color: JT.success.withValues(alpha: 0.3), width: 2),
                 ),
                 child: const Icon(Icons.check_rounded, color: JT.success, size: 40)),
               const SizedBox(height: 16),
@@ -624,7 +624,7 @@ class _TripScreenState extends State<TripScreen> {
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: JT.primary.withOpacity(0.10), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.10), shape: BoxShape.circle),
                 child: const Icon(Icons.camera_alt_rounded, color: JT.primary, size: 26)),
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -714,7 +714,7 @@ class _TripScreenState extends State<TripScreen> {
           const SizedBox(height: 20),
           Row(children: [
             Container(padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: JT.error.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: JT.error.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.cancel_rounded, color: JT.error, size: 20)),
             const SizedBox(width: 12),
             Text('Cancel Reason',
@@ -763,7 +763,7 @@ class _TripScreenState extends State<TripScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: JT.warning.withOpacity(0.10), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: JT.warning.withValues(alpha: 0.10), shape: BoxShape.circle),
               child: const Icon(Icons.local_shipping_rounded, color: JT.warning, size: 32)),
             const SizedBox(height: 16),
             Text('Delivery OTP',
@@ -776,7 +776,7 @@ class _TripScreenState extends State<TripScreen> {
               decoration: BoxDecoration(
                 color: JT.bgSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: JT.warning.withOpacity(0.3)),
+                border: Border.all(color: JT.warning.withValues(alpha: 0.3)),
               ),
               child: TextField(
                 controller: deliveryOtpCtrl,
@@ -897,7 +897,7 @@ class _TripScreenState extends State<TripScreen> {
               decoration: BoxDecoration(
                 color: JT.surface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 24)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 24)],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 44, height: 4,
@@ -951,9 +951,9 @@ class _TripScreenState extends State<TripScreen> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: isOnTheWay ? JT.success.withOpacity(0.10) : JT.surfaceAlt,
+            color: isOnTheWay ? JT.success.withValues(alpha: 0.10) : JT.surfaceAlt,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isOnTheWay ? JT.success.withOpacity(0.25) : JT.border),
+            border: Border.all(color: isOnTheWay ? JT.success.withValues(alpha: 0.25) : JT.border),
           ),
           child: Icon(step['icon'] as IconData,
             color: isOnTheWay ? JT.success : JT.primary, size: 24)),
@@ -972,7 +972,7 @@ class _TripScreenState extends State<TripScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: JT.success.withOpacity(0.08),
+            color: JT.success.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1002,9 +1002,9 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: JT.warning.withOpacity(0.06),
+        color: JT.warning.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JT.warning.withOpacity(0.25), width: 1),
+        border: Border.all(color: JT.warning.withValues(alpha: 0.25), width: 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -1054,7 +1054,7 @@ class _TripScreenState extends State<TripScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: JT.primary.withOpacity(0.10),
+            color: JT.primary.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(Icons.person_pin_rounded, color: JT.primary, size: 18)),
@@ -1088,7 +1088,7 @@ class _TripScreenState extends State<TripScreen> {
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.10),
+                color: JT.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.phone_rounded, color: JT.primary, size: 17)),
@@ -1104,9 +1104,9 @@ class _TripScreenState extends State<TripScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         margin: const EdgeInsets.only(bottom: 4),
         decoration: BoxDecoration(
-          color: JT.warning.withOpacity(0.10),
+          color: JT.warning.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: JT.warning.withOpacity(0.3)),
+          border: Border.all(color: JT.warning.withValues(alpha: 0.3)),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           const Icon(Icons.lock_open_rounded, color: JT.warning, size: 18),
@@ -1137,7 +1137,7 @@ class _TripScreenState extends State<TripScreen> {
         child: Row(children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.payments_rounded, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 14),
@@ -1156,9 +1156,9 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: JT.success.withOpacity(0.08),
+          color: JT.success.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: JT.success.withOpacity(0.20)),
+          border: Border.all(color: JT.success.withValues(alpha: 0.20)),
         ),
         child: const Row(children: [
           Icon(Icons.payments_rounded, color: JT.success, size: 16),
@@ -1173,7 +1173,7 @@ class _TripScreenState extends State<TripScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: JT.primary.withOpacity(0.06),
+          color: JT.primary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: JT.border),
         ),
@@ -1273,9 +1273,9 @@ class _TripScreenState extends State<TripScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
+        color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.15)),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
       ),
       child: Column(children: [
         Text(value,
@@ -1298,9 +1298,9 @@ class _TripScreenState extends State<TripScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: JT.success.withOpacity(0.12),
+              color: JT.success.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: JT.success.withOpacity(0.4)),
+              border: Border.all(color: JT.success.withValues(alpha: 0.4)),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Container(width: 8, height: 8,
@@ -1326,7 +1326,7 @@ class _TripScreenState extends State<TripScreen> {
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: (showNearGlow ? JT.success : isComplete ? JT.success : JT.primary).withOpacity(showNearGlow ? 0.55 : 0.35),
+                  color: (showNearGlow ? JT.success : isComplete ? JT.success : JT.primary).withValues(alpha: showNearGlow ? 0.55 : 0.35),
                   blurRadius: showNearGlow ? 28 : 20, offset: const Offset(0, 6)),
               ],
               border: showNearGlow ? Border.all(color: JT.success, width: 2) : null,
@@ -1342,7 +1342,7 @@ class _TripScreenState extends State<TripScreen> {
                 : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Container(
                       width: 36, height: 36,
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
                       child: Icon(step['icon'] as IconData, color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 12),
@@ -1446,9 +1446,9 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: JT.error.withOpacity(0.06),
+            color: JT.error.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: JT.error.withOpacity(0.25)),
+            border: Border.all(color: JT.error.withValues(alpha: 0.25)),
           ),
           child: Row(children: [
             const Icon(Icons.sos_rounded, color: JT.error, size: 16),
@@ -1478,9 +1478,9 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: JT.warning.withOpacity(0.06),
+            color: JT.warning.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: JT.warning.withOpacity(0.2)),
+            border: Border.all(color: JT.warning.withValues(alpha: 0.2)),
           ),
           child: Row(children: [
             const Icon(Icons.cancel_rounded, color: JT.warning, size: 16),
@@ -1498,9 +1498,9 @@ class _TripScreenState extends State<TripScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: JT.success.withOpacity(0.06),
+            color: JT.success.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: JT.success.withOpacity(0.20)),
+            border: Border.all(color: JT.success.withValues(alpha: 0.20)),
           ),
           child: Row(children: [
             const Icon(Icons.phone_in_talk_rounded, color: JT.success, size: 16),

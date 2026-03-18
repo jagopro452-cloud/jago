@@ -269,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: BorderSide(color: _amber.withValues(alpha: 0.3)),
                   ),
                   title: Text('Deactivate Account?',
-                    style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800)),
+                    style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w800)),
                   content: Text('Your account will be deactivated. Your data is kept. Contact support to reactivate.',
                     style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
                   actions: [
@@ -447,7 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(width: 16),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 3),
             Text(subtitle, style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
           ]),
@@ -869,7 +869,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10, letterSpacing: 0.3)),
           const SizedBox(height: 2),
           Text(value, style: GoogleFonts.poppins(
-              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+              color: const Color(0xFF1A1A2E), fontSize: 13, fontWeight: FontWeight.w700)),
         ]),
         if (trailing != null) ...[const Spacer(), trailing],
       ]),
@@ -877,7 +877,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildDriverLanguageTile() {
-    const textColor = Colors.white;
+    const textColor = Color(0xFF1A1A2E);
     final currentLang = L.supportedLanguages.firstWhere(
       (l) => l['code'] == L.lang,
       orElse: () => L.supportedLanguages.first,
@@ -937,7 +937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(label, style: GoogleFonts.poppins(
-          fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+          fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1A1A2E))),
       trailing: Icon(Icons.chevron_right_rounded, color: _textHint, size: 20),
     );
   }

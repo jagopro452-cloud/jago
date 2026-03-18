@@ -114,7 +114,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    JT.secondary.withOpacity(0.12),
+                    JT.secondary.withValues(alpha: 0.12),
                     JT.bg,
                   ],
                 ),
