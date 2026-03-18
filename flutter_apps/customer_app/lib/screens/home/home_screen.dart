@@ -48,6 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _recentTrips = [];
   Map<String, dynamic>? _activeTrip;
   StreamSubscription? _driverAssignedSub;
+  StreamSubscription? _tripCancelledSub;
+  StreamSubscription? _tripStatusSub;
   int _navIndex = 0;
   bool _homeLoading = true;
   Timer? _loadingTimeout;
@@ -313,6 +315,19 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           }
         });
+
+        // Clear active trip state when trip is cancelled or completed
+        _tripCancelledSub = _socket.onTripCancelled.listen((data) {
+          if (!mounted) return;
+          setState(() => _activeTrip = null);
+        });
+        _tripStatusSub = _socket.onTripStatus.listen((data) {
+          if (!mounted) return;
+          final status = data['status']?.toString() ?? '';
+          if (status == 'completed' || status == 'cancelled') {
+            setState(() => _activeTrip = null);
+          }
+        });
       });
     });
   }
@@ -323,6 +338,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _bannerTimer?.cancel();
     _bannerPageCtrl.dispose();
     _driverAssignedSub?.cancel();
+    _tripCancelledSub?.cancel();
+    _tripStatusSub?.cancel();
     _socket.disconnect();
     super.dispose();
   }
@@ -529,6 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
               destLng: lng != 0 ? lng : 78.4867,
               vehicleCategoryId: cat?['id']?.toString(),
               vehicleCategoryName: cat?['name']?.toString(),
+              category: cat?['type']?.toString() ?? 'ride',
             ),
           ));
         },
@@ -586,6 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
               destLng: lng != 0 ? lng : 78.4867,
               vehicleCategoryId: cat['id']?.toString(),
               vehicleCategoryName: cat['name']?.toString(),
+              category: cat['type']?.toString() ?? 'ride',
             ),
           ));
         },
@@ -1782,8 +1801,6 @@ class _AllServicesSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Build services list from active vehicle categories (filtered by admin)
-    // If vehicle categories available, use them (already filtered by is_active on server)
-    // Also merge with activeServices from platform_services for non-ride services
     List<Map<String, dynamic>> services = [];
 
     if (vehicleCategories.isNotEmpty) {
@@ -1818,9 +1835,23 @@ class _AllServicesSheet extends StatelessWidget {
       services = [{'id': null, 'name': 'No services available', 'type': 'none', 'emoji': '🔒', 'key': ''}];
     }
 
+    // Group services by category
+    final rideServices = services.where((s) {
+      final t = s['type']?.toString() ?? '';
+      return t == 'ride' && !(s['name']?.toString().toLowerCase().contains('pool') ?? false);
+    }).toList();
+    final parcelServices = services.where((s) {
+      final t = s['type']?.toString() ?? '';
+      return t == 'parcel' || t == 'cargo';
+    }).toList();
+    final poolServices = services.where((s) {
+      final t = s['type']?.toString() ?? '';
+      final name = s['name']?.toString().toLowerCase() ?? '';
+      return name.contains('pool') || name.contains('share') || t == 'pool';
+    }).toList();
+
     const isDark = false;
     final sheetBg = isDark ? JT.textPrimary : Colors.white;
-    final cardBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
     final textColor = isDark ? Colors.white : JT.textPrimary;
     final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
 
@@ -1830,78 +1861,113 @@ class _AllServicesSheet extends StatelessWidget {
         color: sheetBg,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 36, height: 4,
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white24 : const Color(0xFFDCE9FF),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('All Services', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : const Color(0xFFF5F8FF),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.close, size: 18, color: subColor),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : const Color(0xFFDCE9FF),
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
-        ]),
-        const SizedBox(height: 20),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3, childAspectRatio: 0.88, crossAxisSpacing: 12, mainAxisSpacing: 12,
-          ),
-          itemCount: services.length,
-          itemBuilder: (_, i) {
-            final s = services[i];
-            return GestureDetector(
-              onTap: () => onServiceTap(s),
+          const SizedBox(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('All Services', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
               child: Container(
+                width: 32, height: 32,
                 decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
-                      blurRadius: 8, offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: isDark ? Colors.white10 : const Color(0xFFF5F8FF),
+                  shape: BoxShape.circle,
                 ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(s['emoji'] as String, style: const TextStyle(fontSize: 36)),
-                  const SizedBox(height: 8),
-                  Text(
-                    s['name'] as String,
-                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
-                    textAlign: TextAlign.center, maxLines: 2,
-                  ),
-                ]),
+                child: Icon(Icons.close, size: 18, color: subColor),
               ),
-            );
-          },
-        ),
-      ]),
+            ),
+          ]),
+          const SizedBox(height: 20),
+          if (rideServices.isNotEmpty) ...[
+            _sectionHeader('🚗 Ride', textColor),
+            const SizedBox(height: 10),
+            _serviceGrid(rideServices, isDark, textColor),
+            const SizedBox(height: 20),
+          ],
+          if (parcelServices.isNotEmpty) ...[
+            _sectionHeader('📦 Parcel & Logistics', textColor),
+            const SizedBox(height: 10),
+            _serviceGrid(parcelServices, isDark, textColor),
+            const SizedBox(height: 20),
+          ],
+          if (poolServices.isNotEmpty) ...[
+            _sectionHeader('🚐 Car Pool', textColor),
+            const SizedBox(height: 10),
+            _serviceGrid(poolServices, isDark, textColor),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, Color textColor) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(title,
+        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: textColor)),
+    );
+  }
+
+  Widget _serviceGrid(List<Map<String, dynamic>> items, bool isDark, Color textColor) {
+    final cardBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3, childAspectRatio: 0.88, crossAxisSpacing: 12, mainAxisSpacing: 12,
+      ),
+      itemCount: items.length,
+      itemBuilder: (_, i) {
+        final s = items[i];
+        return GestureDetector(
+          onTap: () => onServiceTap(s),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                  blurRadius: 8, offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(s['emoji'] as String, style: const TextStyle(fontSize: 36)),
+              const SizedBox(height: 8),
+              Text(
+                s['name'] as String,
+                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                textAlign: TextAlign.center, maxLines: 2,
+              ),
+            ]),
+          ),
+        );
+      },
     );
   }
 
   static String _emojiForCategory(String name) {
     final lower = name.toLowerCase();
+    if (lower.contains('bike') && lower.contains('parcel')) return '📦';
     if (lower.contains('bike') || lower.contains('moto')) return '🏍️';
+    if (lower.contains('auto') && lower.contains('parcel')) return '📦';
     if (lower.contains('auto')) return '🛺';
+    if (lower.contains('cargo') || lower.contains('truck') || lower.contains('bolero')) return '🚛';
+    if (lower.contains('parcel')) return '📦';
+    if (lower.contains('pool') || lower.contains('shar')) return '🚐';
     if (lower.contains('car') || lower.contains('cab')) return '🚗';
-    if (lower.contains('parcel') || lower.contains('cargo')) return '📦';
+    if (lower.contains('suv')) return '🚙';
     if (lower.contains('intercity')) return '🛣️';
-    if (lower.contains('shar')) return '🚘';
     return '🚖';
   }
 }

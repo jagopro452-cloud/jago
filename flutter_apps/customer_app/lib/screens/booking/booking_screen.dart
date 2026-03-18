@@ -18,6 +18,7 @@ class BookingScreen extends StatefulWidget {
   final double pickupLat, pickupLng, destLat, destLng;
   final String? vehicleCategoryId;
   final String? vehicleCategoryName;
+  final String? category; // 'ride' | 'parcel' | 'pool'
   const BookingScreen({
     super.key,
     required this.pickup,
@@ -26,6 +27,7 @@ class BookingScreen extends StatefulWidget {
     this.destLat = 0, this.destLng = 0,
     this.vehicleCategoryId,
     this.vehicleCategoryName,
+    this.category,
   });
   @override
   State<BookingScreen> createState() => _BookingScreenState();
@@ -242,6 +244,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       destLng: _popularForPickup ? widget.destLng : lng,
       vehicleCategoryId: widget.vehicleCategoryId,
       vehicleCategoryName: widget.vehicleCategoryName,
+      category: widget.category,
     );
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
@@ -327,6 +330,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'distanceKm': _distanceKm,
       };
       if (widget.vehicleCategoryId != null) body['vehicleCategoryId'] = widget.vehicleCategoryId;
+      if (widget.category != null) body['category'] = widget.category;
       final res = await http.post(Uri.parse(ApiConfig.estimateFare),
         headers: headers,
         body: jsonEncode(body));
@@ -697,6 +701,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               patterns: [PatternItem.dash(20), PatternItem.gap(10)]),
           },
           zoomControlsEnabled: false, mapToolbarEnabled: false,
+          myLocationEnabled: true, myLocationButtonEnabled: false,
         ),
         // Back button + address overlays on map
         SafeArea(

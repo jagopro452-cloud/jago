@@ -2806,11 +2806,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Vehicle Categories
+  // Vehicle Categories (filtered by is_active; optional ?type=ride|parcel|pool)
   app.get("/api/vehicle-categories", async (req, res) => {
     try {
-      const cats = await storage.getVehicleCategories();
-      res.json(cats);
+      const typeFilter = req.query.type?.toString() || '';
+      const q = typeFilter
+        ? rawSql`SELECT * FROM vehicle_categories WHERE is_active=true AND type=${typeFilter} ORDER BY name`
+        : rawSql`SELECT * FROM vehicle_categories WHERE is_active=true ORDER BY CASE type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 ELSE 3 END, name`;
+      const r = await rawDb.execute(q);
+      res.json(camelize(r.rows));
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
     }
@@ -8443,6 +8447,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/customer/active-trip", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
+
+      // Auto-cancel stale searching trips (no driver found in 5 minutes)
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests
+        SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found'
+        WHERE customer_id=${customer.id}::uuid
+          AND current_status = 'searching'
+          AND driver_id IS NULL
+          AND created_at < NOW() - INTERVAL '5 minutes'
+      `);
+
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
@@ -8587,6 +8602,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           walletRefund = refundAmt;
           console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
         }
+      }
+      // Emit trip:cancelled socket event to customer so UI resets
+      if (io) {
+        io.to(`user:${customer.id}`).emit("trip:cancelled", {
+          tripId: effectiveTripId,
+          reason: reason || 'Customer cancelled',
+          cancelledBy: 'customer',
+        });
+        io.to(`trip:${effectiveTripId}`).emit("trip:status_update", {
+          tripId: effectiveTripId,
+          status: 'cancelled',
+        });
       }
       res.json({ success: true, walletRefund });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -8791,6 +8818,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destinationLat, destinationLng,
         vehicleCategoryId, distanceKm, durationMin = 0,
         userId, // optional — if provided, include launch offer info
+        category, // optional — 'ride' | 'parcel' | 'pool' to filter vehicle types
       } = req.body;
       const destLat = _destLat ?? destinationLat;
       const destLng = _destLng ?? destinationLng;
@@ -8855,6 +8883,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
         WHERE vc.is_active = true
         ${vehicleCategoryId ? rawSql`AND f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+        ${category ? rawSql`AND vc.type = ${category}` : rawSql``}
         ORDER BY f.vehicle_category_id, vc.name
       `);
       const fares = camelize(fareR.rows).map((f: any) => {
