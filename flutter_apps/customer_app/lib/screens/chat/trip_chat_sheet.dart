@@ -29,6 +29,8 @@ class _TripChatSheetState extends State<TripChatSheet> {
     // Listen for new messages
     _subs.add(_socket.onChatMessage.listen((msg) {
       if (!mounted) return;
+      // Skip echo of own messages (already added locally in _send)
+      if (msg['senderType'] == 'customer') return;
       setState(() => _messages.add(msg));
       _scrollToBottom();
     }));

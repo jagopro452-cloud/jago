@@ -85,8 +85,8 @@ class CallService {
     _isCaller = false;
     activeCallTargetId = callerId;
     activeCallTripId = tripId;
-    _setState(CallState.connected);
-    _callStartTime = DateTime.now();
+    // Actually establish the WebRTC connection with the pending offer
+    await acceptIncomingCall();
   }
 
   /// Reject an incoming call.
@@ -154,11 +154,24 @@ class CallService {
     }
   }
 
+  /// Stored SDP from incoming offer — used when user accepts
+  Map<String, dynamic>? _pendingOfferSdp;
+
   Future<void> _handleOffer(Map<String, dynamic> data) async {
     if (_state == CallState.connected || _state == CallState.outgoing) return;
     final sdp = data['sdp'];
     if (sdp == null) return;
     activeCallTargetId = data['callerId']?.toString();
+    // Show incoming call state — user must accept before we answer
+    _pendingOfferSdp = sdp;
+    _setState(CallState.incoming);
+  }
+
+  /// Call this when user taps Accept on the incoming call UI
+  Future<void> acceptIncomingCall() async {
+    final sdp = _pendingOfferSdp;
+    if (sdp == null) return;
+    _pendingOfferSdp = null;
 
     await _createPeerConnection();
     await _startLocalAudio();
@@ -197,6 +210,18 @@ class CallService {
     _setState(CallState.rejected);
     Future.delayed(const Duration(seconds: 2), () {
       if (_state == CallState.rejected) _setState(CallState.idle);
+    });
+  }
+
+  /// Mute or unmute the local microphone.
+  void setMuted(bool muted) {
+    _localStream?.getAudioTracks().forEach((t) => t.enabled = !muted);
+  }
+
+  /// Switch between speaker and earpiece.
+  Future<void> setSpeakerphone(bool enabled) async {
+    _localStream?.getAudioTracks().forEach((t) {
+      t.enableSpeakerphone(enabled);
     });
   }
 

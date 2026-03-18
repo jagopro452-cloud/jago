@@ -1,3 +1,4 @@
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
 import '../../config/jago_theme.dart';
 import 'dart:convert';
@@ -152,12 +153,19 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
     }
     setState(() => _booking = true);
     try {
+      // Get user's actual location
+      double pickupLat = 17.385044;
+      double pickupLng = 78.486671;
+      try {
+        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high).timeout(const Duration(seconds: 5));
+        pickupLat = pos.latitude;
+        pickupLng = pos.longitude;
+      } catch (_) {}
       final headers = await AuthService.getHeaders();
       final res = await http.post(Uri.parse(ApiConfig.scheduleRide), headers: headers,
         body: jsonEncode({
-          'pickupAddress': _pickupCtrl.text, 'pickupLat': 17.385044, 'pickupLng': 78.486671,
-          'destinationAddress': _destCtrl.text, 'destinationLat': 17.4, 'destinationLng': 78.5,
-          'vehicleCategoryId': 'auto', 'estimatedFare': 100, 'estimatedDistance': 5,
+          'pickupAddress': _pickupCtrl.text, 'pickupLat': pickupLat, 'pickupLng': pickupLng,
+          'destinationAddress': _destCtrl.text,
           'paymentMethod': _payment, 'scheduledAt': _selectedDate.toIso8601String(),
         }),
       );

@@ -340,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _driverAssignedSub?.cancel();
     _tripCancelledSub?.cancel();
     _tripStatusSub?.cancel();
-    _socket.disconnect();
+    // Don't disconnect socket — it's a shared singleton used by other screens
     super.dispose();
   }
 

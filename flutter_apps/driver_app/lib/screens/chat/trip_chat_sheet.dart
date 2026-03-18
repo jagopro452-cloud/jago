@@ -28,6 +28,8 @@ class _TripChatSheetState extends State<TripChatSheet> {
     super.initState();
     _subs.add(_socket.onChatMessage.listen((msg) {
       if (!mounted) return;
+      // Skip echo of own messages (already added locally in _send)
+      if (msg['senderType'] == 'driver') return;
       setState(() => _messages.add(msg));
       _scrollToBottom();
     }));

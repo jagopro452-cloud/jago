@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -327,11 +328,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   double _haversine(double lat1, double lng1, double lat2, double lng2) {
     const r = 6371.0;
-    final dLat = (lat2 - lat1) * 3.14159 / 180;
-    final dLng = (lng2 - lng1) * 3.14159 / 180;
-    final a = 0.5 - (dLat / 2 * (1 - (dLat > 0 ? 1 : -1))) +
-        (lat1 * 3.14159 / 180) * (lat2 * 3.14159 / 180) * 0.5 * dLng * dLng;
-    return r * 2 * (a < 1 ? a : 1);
+    final lat1Rad = lat1 * pi / 180;
+    final lat2Rad = lat2 * pi / 180;
+    final dLat = (lat2 - lat1) * pi / 180;
+    final dLng = (lng2 - lng1) * pi / 180;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1Rad) * cos(lat2Rad) * sin(dLng / 2) * sin(dLng / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return (r * c * 1.3).clamp(0.5, 200.0);
   }
 
   // ── Book ─────────────────────────────────────────────────────────────────────

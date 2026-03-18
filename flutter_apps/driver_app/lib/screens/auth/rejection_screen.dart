@@ -83,7 +83,7 @@ class RejectionScreen extends StatelessWidget {
   }
 
   void _launchWhatsApp() async {
-    final url = Uri.parse('https://wa.me/910000000000');
+    final url = Uri.parse('https://wa.me/916303000000');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     }

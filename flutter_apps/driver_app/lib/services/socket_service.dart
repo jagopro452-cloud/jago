@@ -271,6 +271,8 @@ class SocketService {
     _chatMessageController.close();
     _messageHistoryController.close();
     _newParcelController.close();
+    _noDriversController.close();
+    _walletRechargedController.close();
     _callIncomingController.close();
     _callOfferController.close();
     _callAnswerController.close();

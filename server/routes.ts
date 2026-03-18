@@ -6388,6 +6388,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { firebaseIdToken, phone, userType = "customer" } = req.body;
       if (!firebaseIdToken) return res.status(400).json({ message: "Firebase ID token required" });
+      if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
 
       let phoneStr = "";
 
@@ -6486,6 +6487,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
+      if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
       if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
       if (fullName.length > 100) return res.status(400).json({ message: "Name too long (max 100 chars)" });
       if (email && email.length > 200) return res.status(400).json({ message: "Email too long" });
@@ -7272,8 +7274,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const estimatedFareVal = parseFloat(tripRow.estimated_fare) || 0;
       let fare = parseFloat(actualFare) || estimatedFareVal;
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
-      // Cap actual fare to 3x estimated fare to prevent fare manipulation
-      if (estimatedFareVal > 0 && fare > estimatedFareVal * 3) fare = estimatedFareVal * 3;
+      // Cap actual fare to 1.5x estimated fare to prevent fare manipulation
+      if (estimatedFareVal > 0 && fare > estimatedFareVal * 1.5) fare = Math.round(estimatedFareVal * 1.5 * 100) / 100;
       // Absolute cap at ₹10,000 per ride
       if (fare > 10000) fare = 10000;
       // SECURITY: All money math in integer paise to avoid floating-point drift
@@ -8810,7 +8812,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── CUSTOMER: Fare estimate ────────────────────────────────────────────────
-  app.post("/api/app/customer/estimate-fare", async (req, res) => {
+  app.post("/api/app/customer/estimate-fare", authApp, async (req, res) => {
     try {
       const {
         pickupLat, pickupLng,
@@ -8989,7 +8991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── PARCEL FARE ESTIMATE (weight + distance + helpers based) ────────────────
   // Formula: customerFare = base_fare + (distanceKm × fare_per_km) + (weightKg × weight_rate) + loadingCharge + (helpers × helperChargePerHour × hours)
   // driverFare  = customerFare — platform commission (per parcels_model setting)
-  app.post("/api/app/customer/estimate-parcel-fare", async (req, res) => {
+  app.post("/api/app/customer/estimate-parcel-fare", authApp, async (req, res) => {
     try {
       const { pickupLat, pickupLng, destLat, destLng, weightKg = 0, helpers = 0, helperHours = 1 } = req.body;
 
@@ -9174,7 +9176,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── ADMIN: Voice booking logs ───────────────────────────────────────────────
-  app.get("/api/admin/voice-logs", async (_req, res) => {
+  app.get("/api/admin/voice-logs", requireAdminAuth, async (_req, res) => {
     const logs = [...voiceLogs].reverse();
     const totalRequests = voiceLogs.length;
     const successCount = voiceLogs.filter(l => l.success).length;
@@ -9298,8 +9300,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Wallet recharge (manual / legacy) ───────────────────────────
-  app.post("/api/app/customer/wallet/recharge", authApp, async (req, res) => {
+  // ── CUSTOMER: Wallet recharge — DISABLED (use Razorpay verify-payment instead) ──
+  app.post("/api/app/customer/wallet/recharge", authApp, async (_req, res) => {
+    // This legacy endpoint credited wallet without payment verification.
+    // All wallet recharges must go through create-order → Razorpay → verify-payment.
+    return res.status(410).json({ message: "Please use the payment gateway to recharge your wallet." });
+    /* DISABLED — security fix
     try {
       const customer = (req as any).currentUser;
       const { amount, paymentRef, paymentMethod = "upi" } = req.body;
@@ -9317,6 +9323,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => {});
       res.json({ success: true, balance: newBal, message: `₹${amt} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    */
   });
 
   // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
@@ -10386,9 +10393,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       const { newPin, newPassword, currentPassword } = req.body;
       const newPass = newPassword || newPin;
-      if (!newPass || String(newPass).length < 4) return res.status(400).json({ message: "Password must be at least 4 characters" });
-      // Verify current password if provided
-      if (currentPassword) {
+      if (!newPass || String(newPass).length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      // Verify current password — required
+      {
         const userRow = await rawDb.execute(rawSql`SELECT password_hash FROM users WHERE id=${user.id}::uuid`);
         const stored = (userRow.rows[0] as any)?.password_hash;
         if (stored) {

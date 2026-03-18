@@ -188,7 +188,10 @@ class _CallScreenState extends State<CallScreen> {
           icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
           label: _isMuted ? 'Unmute' : 'Mute',
           color: _isMuted ? Colors.white24 : Colors.white12,
-          onTap: () => setState(() => _isMuted = !_isMuted),
+          onTap: () {
+            setState(() => _isMuted = !_isMuted);
+            _callService.setMuted(_isMuted);
+          },
         ),
         // Hang up
         GestureDetector(
@@ -204,7 +207,10 @@ class _CallScreenState extends State<CallScreen> {
           icon: _isSpeaker ? Icons.volume_up_rounded : Icons.volume_down_rounded,
           label: _isSpeaker ? 'Speaker' : 'Earpiece',
           color: _isSpeaker ? Colors.white24 : Colors.white12,
-          onTap: () => setState(() => _isSpeaker = !_isSpeaker),
+          onTap: () {
+            setState(() => _isSpeaker = !_isSpeaker);
+            _callService.setSpeakerphone(_isSpeaker);
+          },
         ),
       ],
     );

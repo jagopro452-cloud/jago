@@ -114,12 +114,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 24),
             Text('Edit Display Name',
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+              style: GoogleFonts.poppins(color: _primary, fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 20),
             TextField(
               controller: ctrl,
               autofocus: true,
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
+              style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontSize: 15),
               decoration: InputDecoration(
                 hintText: 'Your full name',
                 hintStyle: GoogleFonts.poppins(color: _textHint),
@@ -250,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(width: 14),
             Text('Delete Account', style: GoogleFonts.poppins(
-                color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 8),
           Text('Choose how you want to remove your account.',
@@ -390,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 14),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Support', style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                  color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w800)),
               Text('JAGO Pilot support team always ready!',
                   style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
             ]),

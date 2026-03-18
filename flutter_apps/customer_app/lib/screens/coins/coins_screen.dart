@@ -172,38 +172,42 @@ class _CoinsScreenState extends State<CoinsScreen> {
                   if (history.isNotEmpty) ...[
                     const Text('Transaction History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    ...history.take(20).map((h) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                      child: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: (h['amount'] > 0 ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
+                    ...history.take(20).map((h) {
+                      final amt = (h['amount'] as num?) ?? 0;
+                      final isPositive = amt > 0;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                        child: Row(children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(isPositive ? Icons.add : Icons.remove,
+                                color: isPositive ? Colors.green : Colors.red, size: 16),
                           ),
-                          child: Icon(h['amount'] > 0 ? Icons.add : Icons.remove,
-                              color: h['amount'] > 0 ? Colors.green : Colors.red, size: 16),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(h['description'] ?? h['type'] ?? '', style: const TextStyle(fontSize: 13)),
-                            Text(h['createdAt']?.toString().substring(0, 10) ?? '',
-                                style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          ],
-                        )),
-                        Text(
-                          '${h['amount'] > 0 ? '+' : ''}${h['amount']} coins',
-                          style: TextStyle(
-                            color: h['amount'] > 0 ? Colors.green : Colors.red,
-                            fontWeight: FontWeight.bold,
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(h['description'] ?? h['type'] ?? '', style: const TextStyle(fontSize: 13)),
+                              Text(h['createdAt']?.toString().substring(0, 10) ?? '',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            ],
+                          )),
+                          Text(
+                            '${isPositive ? '+' : ''}$amt coins',
+                            style: TextStyle(
+                              color: isPositive ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ]),
-                    )),
+                        ]),
+                      );
+                    }),
                   ],
                 ],
               ),

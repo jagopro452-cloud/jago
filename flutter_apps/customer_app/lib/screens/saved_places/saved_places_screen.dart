@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../config/jago_theme.dart';
 import '../../services/trip_service.dart';
 
@@ -32,7 +33,7 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
           title: const Text('Add Saved Place'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
-              initialValue: label,
+              value: label,
               items: ['Home', 'Work', 'Other'].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
               onChanged: (v) => setS(() => label = v!),
               decoration: const InputDecoration(labelText: 'Label', border: OutlineInputBorder()),
@@ -51,7 +52,14 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
               onPressed: () async {
                 Navigator.pop(ctx);
                 if (addrCtrl.text.isEmpty) return;
-                await TripService.addSavedPlace(label: label, address: addrCtrl.text, lat: 0, lng: 0);
+                // Get current location for saved place coordinates
+                double lat = 0, lng = 0;
+                try {
+                  final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high).timeout(const Duration(seconds: 5));
+                  lat = pos.latitude;
+                  lng = pos.longitude;
+                } catch (_) {}
+                await TripService.addSavedPlace(label: label, address: addrCtrl.text, lat: lat, lng: lng);
                 _load();
               },
               child: const Text('Save'),
