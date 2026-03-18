@@ -14,6 +14,7 @@ import '../history/trips_history_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../profile/profile_screen.dart';
 import '../booking/booking_screen.dart';
+import '../booking/map_location_picker.dart';
 import '../tracking/tracking_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../booking/intercity_booking_screen.dart';
@@ -705,10 +706,26 @@ class _HomeScreenState extends State<HomeScreen> {
           child: isDark ? JT.logoWhite(height: 32) : JT.logoBlue(height: 32),
         ),
         const SizedBox(width: 8),
-        // Location indicator
+        // Location indicator — tap to pick on map
         Expanded(
           child: GestureDetector(
-            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+            onTap: () async {
+              final result = await Navigator.push<PickedLocation>(
+                context,
+                MaterialPageRoute(builder: (_) => MapLocationPicker(
+                  title: 'Select Pickup Location',
+                  initialLat: _pickupLat,
+                  initialLng: _pickupLng,
+                )),
+              );
+              if (result != null && mounted) {
+                setState(() {
+                  _pickupLat = result.lat;
+                  _pickupLng = result.lng;
+                  _pickup = result.address;
+                });
+              }
+            },
             child: Row(children: [
               Icon(Icons.location_on_rounded, color: JT.primary, size: 13),
               const SizedBox(width: 3),
@@ -1538,6 +1555,21 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     _fetchNearby();
   }
 
+  void _openMapPicker() async {
+    Navigator.pop(context);
+    final result = await Navigator.push<PickedLocation>(
+      context,
+      MaterialPageRoute(builder: (_) => MapLocationPicker(
+        title: 'Select Destination',
+        initialLat: widget.pickupLat,
+        initialLng: widget.pickupLng,
+      )),
+    );
+    if (result != null) {
+      widget.onPlaceSelected(result.address, result.lat, result.lng);
+    }
+  }
+
   Future<void> _fetchPopularLocations() async {
     try {
       final r = await http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'));
@@ -1686,6 +1718,28 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                 _debounce = Timer(const Duration(milliseconds: 400), () => _search(v));
                 setState(() {});
               },
+            ),
+          ),
+          // Pick on Map option
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: GestureDetector(
+              onTap: _openMapPicker,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F7FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDCE9FF)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.map_rounded, color: _primary, size: 20),
+                  const SizedBox(width: 10),
+                  Text('Pick on Map', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _primary)),
+                  const Spacer(),
+                  const Icon(Icons.chevron_right_rounded, color: _primary, size: 20),
+                ]),
+              ),
             ),
           ),
           const SizedBox(height: 8),

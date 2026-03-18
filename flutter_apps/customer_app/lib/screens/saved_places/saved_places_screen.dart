@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../config/jago_theme.dart';
 import '../../services/trip_service.dart';
+import '../booking/map_location_picker.dart';
 
 class SavedPlacesScreen extends StatefulWidget {
   const SavedPlacesScreen({super.key});
@@ -24,7 +25,6 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
   }
 
   void _addPlace() {
-    final addrCtrl = TextEditingController();
     String label = 'Home';
     showDialog(
       context: context,
@@ -38,31 +38,26 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
               onChanged: (v) => setS(() => label = v!),
               decoration: const InputDecoration(labelText: 'Label', border: OutlineInputBorder()),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: addrCtrl,
-              decoration: const InputDecoration(labelText: 'Address', border: OutlineInputBorder(), hintText: 'Enter full address'),
-              maxLines: 2,
-            ),
+            const SizedBox(height: 16),
+            Text('Tap below to pick location on map', style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.map_rounded, size: 18),
+              label: const Text('Pick on Map'),
+              style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white),
               onPressed: () async {
                 Navigator.pop(ctx);
-                if (addrCtrl.text.isEmpty) return;
-                // Get current location for saved place coordinates
-                double lat = 0, lng = 0;
-                try {
-                  final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high).timeout(const Duration(seconds: 5));
-                  lat = pos.latitude;
-                  lng = pos.longitude;
-                } catch (_) {}
-                await TripService.addSavedPlace(label: label, address: addrCtrl.text, lat: lat, lng: lng);
-                _load();
+                final result = await Navigator.push<PickedLocation>(
+                  context,
+                  MaterialPageRoute(builder: (_) => MapLocationPicker(title: 'Set $label Location')),
+                );
+                if (result != null) {
+                  await TripService.addSavedPlace(label: label, address: result.address, lat: result.lat, lng: result.lng);
+                  _load();
+                }
               },
-              child: const Text('Save'),
             ),
           ],
         ),
