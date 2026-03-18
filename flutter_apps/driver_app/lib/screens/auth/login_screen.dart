@@ -100,61 +100,75 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
     // Now actually send OTP via Firebase Phone Auth
-    await FirebaseOtpService.sendOtp(
-      phoneNumber: '+91$phone',
-      onCodeSent: (verificationId) {
-        if (!mounted) return;
-        _firebaseVerificationId = verificationId;
-        setState(() { _otpSent = true; _loading = false; });
-        _startTimer();
-        _snack('OTP sent to +91$phone');
-        SmsAutoFill().listenForCode();
-      },
-      onError: (error) {
-        if (!mounted) return;
-        setState(() => _loading = false);
-        _snack(error, error: true);
-      },
-      onAutoVerify: (idToken) async {
-        if (!mounted) return;
-        final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
-        if (!mounted) return;
-        setState(() => _loading = false);
-        if (verifyRes['success'] == true) {
-          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-        } else {
-          _snack(verifyRes['message'] ?? 'Verification failed', error: true);
-        }
-      },
-    );
+    try {
+      await FirebaseOtpService.sendOtp(
+        phoneNumber: '+91$phone',
+        onCodeSent: (verificationId) {
+          if (!mounted) return;
+          _firebaseVerificationId = verificationId;
+          setState(() { _otpSent = true; _loading = false; });
+          _startTimer();
+          _snack('OTP sent to +91$phone');
+          SmsAutoFill().listenForCode();
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() => _loading = false);
+          _snack(error, error: true);
+        },
+        onAutoVerify: (idToken) async {
+          if (!mounted) return;
+          setState(() => _loading = true);
+          final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+          if (!mounted) return;
+          setState(() => _loading = false);
+          if (verifyRes['success'] == true) {
+            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+          } else {
+            setState(() => _otpSent = true);
+            _startTimer();
+            _snack('Enter the OTP sent to your phone');
+          }
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _snack('Failed to send OTP. Please try again.', error: true);
+    }
   }
 
   Future<void> _verifyOtp() async {
     final phone = _phoneCtrl.text.trim();
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _snack('Enter the 6-digit OTP', error: true); return; }
+    if (_loading) return;
     setState(() => _loading = true);
     try {
-      // Verify OTP with Firebase and get ID token
       final idToken = await FirebaseOtpService.verifyOtp(
         smsCode: otp,
         verificationId: _firebaseVerificationId,
       );
       if (!mounted) return;
-      // Send Firebase token to our server for auth
       final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
       if (!mounted) return;
       setState(() => _loading = false);
       if (res['success'] == true) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
-        _snack(res['message'] ?? 'Verification failed', error: true);
+        _snack(res['message'] ?? 'Verification failed. Try again.', error: true);
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _snack(e.toString().replaceAll('Exception: ', ''), error: true);
-      _otpCtrl.clear();
+      String msg = e.toString().replaceAll('Exception: ', '');
+      if (msg.contains('missing') || msg.contains('null')) {
+        msg = 'Session expired. Please resend OTP.';
+        setState(() { _otpSent = false; _otpCtrl.clear(); });
+      } else if (msg.contains('invalid-verification-code') || msg.contains('invalid-verification-id')) {
+        msg = 'Wrong OTP. Please check and try again.';
+      }
+      _snack(msg, error: true);
     }
   }
 
@@ -183,7 +197,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Scaffold(
         backgroundColor: _blue,
         resizeToAvoidBottomInset: true,
-        body: Stack(
+        body: Theme(
+          data: ThemeData.light().copyWith(
+            textTheme: GoogleFonts.poppinsTextTheme(),
+          ),
+          child: Stack(
           children: [
             // Blue background
             Positioned.fill(
@@ -365,6 +383,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             ),
           ],
         ),
+        ),  // Theme
       ),
     );
   }
