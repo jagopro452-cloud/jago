@@ -200,7 +200,7 @@ class JagoPilotApp extends StatelessWidget {
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: themeNotifier,
           builder: (_, mode, __) => MaterialApp(
-            title: 'JAGO Pilot',
+            title: 'JAGO Pro Pilot',
             debugShowCheckedModeBanner: false,
             themeMode: mode,
             theme: _lightTheme(),

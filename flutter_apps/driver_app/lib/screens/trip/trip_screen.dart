@@ -515,7 +515,7 @@ class _TripScreenState extends State<TripScreen> {
             Text('Customer OTP',
               style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
-            Text('Ask customer for OTP from their JAGO app',
+            Text('Ask customer for OTP from their JAGO Pro',
               style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13), textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(

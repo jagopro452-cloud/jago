@@ -595,7 +595,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'key': keyId,
         'amount': order['amount'],
         'currency': 'INR',
-        'name': 'JAGO Rides',
+        'name': 'JAGO Pro Rides',
         'description': 'Ride to ${_shortLocation(widget.destination)}',
         'order_id': order['id'],
         'prefill': {

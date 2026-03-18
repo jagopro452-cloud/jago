@@ -21,7 +21,7 @@ class AuthService {
 
   static const Map<String, String> _base = {
     'Content-Type': 'application/json',
-    'User-Agent': 'JAGO-Customer/1.0 (Android)',
+    'User-Agent': 'JAGOPro-Customer/1.0 (Android)',
     'Accept': 'application/json',
   };
 

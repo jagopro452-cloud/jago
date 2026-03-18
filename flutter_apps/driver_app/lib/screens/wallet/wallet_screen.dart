@@ -278,7 +278,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         'amount': order['amount'],
         'currency': 'INR',
         'order_id': order['id'],
-        'name': 'JAGO Pilot',
+        'name': 'JAGO Pro Pilot',
         'description': 'Wallet Recharge ₹${amount.toInt()}',
         'timeout': 300,
         'prefill': {'contact': driverPhone, 'email': ''},

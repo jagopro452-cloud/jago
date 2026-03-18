@@ -391,7 +391,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Support', style: GoogleFonts.poppins(
                   color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w800)),
-              Text('JAGO Pilot support team always ready!',
+              Text('JAGO Pro Pilot support team always ready!',
                   style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
             ]),
           ]),
@@ -787,7 +787,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 const SizedBox(height: 36),
                 Center(
-                  child: Text('JAGO Pilot v1.0.2 · MindWhile IT Solutions Pvt Ltd',
+                  child: Text('JAGO Pro Pilot v1.0.31 · MindWhile IT Solutions Pvt Ltd',
                     style: GoogleFonts.poppins(color: _textHint, fontSize: 11)),
                 ),
                 const SizedBox(height: 28),

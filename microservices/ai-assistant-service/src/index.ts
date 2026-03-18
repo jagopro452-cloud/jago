@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 
 const app = express();
 const port = Number(process.env.AI_ASSISTANT_PORT || 7104);
@@ -60,7 +60,7 @@ app.get("/health", (_req, res) => {
 app.post("/internal/voice/intent", (req, res) => {
   const { transcript = "" } = req.body || {};
   const text = normalizeTranscript(transcript);
-  const wakeWordDetected = /^(hey\s+jago|hi\s+jago|jago)/.test(text);
+  const wakeWordDetected = /^(hey\s+jago\s*pro|hi\s+jago\s*pro|jago\s*pro)/.test(text);
   const intent = detectIntent(text);
   const serviceSuggestion = detectService(text);
   const route = parseFromTo(text);
@@ -69,7 +69,7 @@ app.post("/internal/voice/intent", (req, res) => {
   const confidence = Math.min(0.98, confidenceBase + (route.destination ? 0.12 : 0) + (wakeWordDetected ? 0.04 : 0));
 
   res.json({
-    wakeWord: "hey jago",
+    wakeWord: "hey jago pro",
     wakeWordDetected,
     transcript,
     intent,

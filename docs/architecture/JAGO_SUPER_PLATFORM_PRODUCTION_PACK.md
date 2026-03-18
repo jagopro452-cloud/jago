@@ -1,4 +1,4 @@
-# JAGO Super Platform Production Pack
+﻿# JAGO Pro Super Platform Production Pack
 
 Date: 2026-03-06
 
@@ -126,7 +126,7 @@ Driver app can consume:
 
 ### 5.3 Voice assistant
 
-- Wake word: "Hey Jago"
+- Wake word: "Hey JAGO Pro"
 - Intent parser endpoint:
   - `POST /internal/voice/intent`
 - Handles Telugu-English phrase style:

@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useTheme } from "@/components/theme-provider";
 
 const COMPANY = "MindWhile IT Solutions Pvt Ltd";
-const BRAND   = "JAGO";
+const BRAND   = "JAGO Pro";
 const EMAIL   = "info@jagopro.org";
 const WEBSITE = "jagopro.org";
 const ADDRESS = "Hyderabad, Telangana, India";

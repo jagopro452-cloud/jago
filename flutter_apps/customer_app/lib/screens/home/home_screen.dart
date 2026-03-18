@@ -1615,7 +1615,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
         '&lat=$lat&lon=$lng&bounded=0&featuretype=settlement,suburb,city'
         '&viewbox=${lng - 0.15},${lat + 0.15},${lng + 0.15},${lat - 0.15}'
       );
-      final resp = await http.get(url, headers: {'User-Agent': 'JAGOApp/1.0'});
+      final resp = await http.get(url, headers: {'User-Agent': 'JAGOPro/1.0'});
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as List;
         if (mounted && data.isNotEmpty) {
@@ -1648,7 +1648,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=8&addressdetails=1$locationBias'
       );
-      final resp = await http.get(url, headers: {'User-Agent': 'JAGOApp/1.0'});
+      final resp = await http.get(url, headers: {'User-Agent': 'JAGOPro/1.0'});
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as List;
         setState(() {

@@ -818,7 +818,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
 
   Future<void> _shareRide() async {
     final tripId = widget.tripId;
-    final shareText = '🚗 Track my JAGO ride!\nLive location: https://jagopro.org/track/$tripId\nDownload JAGO app: https://jagopro.org/download';
+    final shareText = '🚗 Track my JAGO ride!\nLive location: https://jagopro.org/track/$tripId\nDownload JAGO Pro: https://jagopro.org/download';
     final encoded = Uri.encodeComponent(shareText);
     final uri = Uri.parse('whatsapp://send?text=$encoded');
     if (await canLaunchUrl(uri)) {

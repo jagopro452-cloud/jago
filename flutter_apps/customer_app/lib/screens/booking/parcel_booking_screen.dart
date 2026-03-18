@@ -11,7 +11,7 @@ import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JAGO Logistics — Porter-style parcel booking screen
+// JAGO Pro Logistics — Porter-style parcel booking screen
 // Vehicles: Bike Parcel (≤10 kg) · Mini Truck / Tata Ace (≤500 kg) · Pickup Truck (≤2000 kg)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -445,7 +445,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             ),
             const SizedBox(width: 4),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('JAGO Logistics', style: GoogleFonts.poppins(
+              Text('JAGO Pro Logistics', style: GoogleFonts.poppins(
                   color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
               Text('Porter-style parcel delivery', style: GoogleFonts.poppins(
                   color: Colors.white70, fontSize: 12)),
@@ -540,7 +540,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             Row(children: [
               const Text('🚚', style: TextStyle(fontSize: 20)),
               const SizedBox(width: 8),
-              Text('About JAGO Logistics', style: GoogleFonts.poppins(
+              Text('About JAGO Pro Logistics', style: GoogleFonts.poppins(
                   fontSize: 14, fontWeight: FontWeight.w700, color: JT.textPrimary)),
             ]),
             const SizedBox(height: 10),

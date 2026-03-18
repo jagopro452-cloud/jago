@@ -1,8 +1,8 @@
-import { db as rawDb } from "./db";
+﻿import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 
 // ════════════════════════════════════════════════════════════════════════════
-//  JAGO AI Intelligence Layer
+//  JAGO Pro AI Intelligence Layer
 //  - Smart Suggestions (frequent destinations, predicted rides, time-based)
 //  - AI Driver Matching (distance + rating + response speed + traffic)
 //  - AI Safety Monitor (route deviation, abnormal stops, inactivity)

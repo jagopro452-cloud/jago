@@ -1,7 +1,7 @@
-# JAGO - India's Smart Mobility Platform
+﻿# JAGO Pro - India's Smart Mobility Platform
 
 ## Overview
-JAGO is a comprehensive ride-sharing platform designed for the Indian market, featuring a full-stack Node.js/React admin panel and Flutter mobile applications for both drivers (JAGO Pilot) and customers (JAGO). The platform aims to provide a robust, scalable, and feature-rich solution for urban mobility, covering various services like bike rides, auto rides, car rides, parcel delivery, cargo, and intercity travel. It is built for deployment on major app stores. The business vision is to capture a significant share of the Indian ride-hailing and logistics market by offering a localized and efficient service.
+JAGO is a comprehensive ride-sharing platform designed for the Indian market, featuring a full-stack Node.js/React admin panel and Flutter mobile applications for both drivers (JAGO Pro Pilot) and customers (JAGO). The platform aims to provide a robust, scalable, and feature-rich solution for urban mobility, covering various services like bike rides, auto rides, car rides, parcel delivery, cargo, and intercity travel. It is built for deployment on major app stores. The business vision is to capture a significant share of the Indian ride-hailing and logistics market by offering a localized and efficient service.
 
 ## User Preferences
 I want iterative development.

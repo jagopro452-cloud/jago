@@ -69,7 +69,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   void _shareCode() {
     if (_code.isEmpty) return;
-    final shareText = 'JAGO Pilot app download చేయండి! 🚗\nనా referral code: $_code\nDownload: https://jagopro.org/download/pilot\nSign up చేసి trips complete చేయండి — మీకు + నాకు both కి wallet bonus!';
+    final shareText = 'JAGO Pro Pilot app download చేయండి! 🚗\nనా referral code: $_code\nDownload: https://jagopro.org/download/pilot\nSign up చేసి trips complete చేయండి — మీకు + నాకు both కి wallet bonus!';
     _shareViaWhatsApp(shareText);
   }
 
@@ -227,7 +227,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         children: [
                           _howStep('1', 'మీ referral code share చేయండి', Icons.share_rounded, _blue),
                           Divider(height: 1, color: Colors.white.withValues(alpha: 0.08), indent: 46),
-                          _howStep('2', 'Friend JAGO Pilot download చేసి register చేయాలి', Icons.person_add_alt_1_rounded, Colors.purple),
+                          _howStep('2', 'Friend JAGO Pro Pilot download చేసి register చేయాలి', Icons.person_add_alt_1_rounded, Colors.purple),
                           Divider(height: 1, color: Colors.white.withValues(alpha: 0.08), indent: 46),
                           _howStep('3', 'First 10 trips complete అవగానే bonus!', Icons.star_rounded, Colors.amber),
                         ],

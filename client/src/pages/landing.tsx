@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 
 /* --- Hooks --- */
 function useReveal() {
@@ -382,9 +382,9 @@ export default function LandingPage() {
         {/* NAV */}
         <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, backdropFilter: "blur(20px)", background: scrolled ? "rgba(6,9,26,0.96)" : "rgba(10,15,46,.7)", borderBottom: `1px solid ${scrolled ? BORDER : "transparent"}`, transition: "all .3s" }}>
           <div className="container" style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <a href="/"><img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain" }} /></a>
+            <a href="/"><img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 36, width: "auto", objectFit: "contain" }} /></a>
             <div className="hide-mobile" style={{ display: "flex", gap: 32, alignItems: "center" }}>
-              {[["#services","Services"],["#how","How It Works"],["#why","Why Jago"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
+              {[["#services","Services"],["#how","How It Works"],["#why","Why JAGO Pro"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
                 <a key={href} href={href} className="nav-link">{label}</a>
               ))}
             </div>
@@ -402,7 +402,7 @@ export default function LandingPage() {
             {/* LEFT */}
             <div style={{ animation: "jago-fade-up .9s ease forwards" }}>
               <div style={{ marginBottom: 32 }}>
-                <img src="/jago-logo.png" alt="JAGO" style={{ height: 56, width: "auto", objectFit: "contain" }} />
+                <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 56, width: "auto", objectFit: "contain" }} />
               </div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: W06, border: `1px solid ${BORDER}`, borderRadius: 30, padding: "6px 14px", marginBottom: 30 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
@@ -535,7 +535,7 @@ export default function LandingPage() {
             <div ref={secWhy.ref} className={`reveal${secWhy.vis ? " vis" : ""}`}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 72, alignItems: "center" }} className="hero-grid">
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why Jago</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why JAGO Pro</div>
                   <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
                   <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first — for both riders and pilots.</p>
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -601,7 +601,7 @@ export default function LandingPage() {
               <div className="apps-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 {[
                   { title: "Jago Customer App", sub: "For Riders",  desc: "Book rides instantly, track in real-time, earn Jago coins on every trip, pay seamlessly — all in one app.", cta: "Get Customer App", shade: "#1035A8" },
-                  { title: "Jago Pilot App",    sub: "For Drivers", desc: "Accept trips, manage earnings, grow with Jago's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", shade: "#0A0F2E" },
+                  { title: "Jago Pilot App",    sub: "For Drivers", desc: "Accept trips, manage earnings, grow with JAGO Pro's daily pay + rewards model. Your wheels, your income.", cta: "Join as Pilot", shade: "#0A0F2E" },
                 ].map((d, i) => (
                   <div key={i} style={{ borderRadius: 24, padding: "44px 40px", background: `linear-gradient(135deg,${N500} 0%,${d.shade} 100%)`, position: "relative", overflow: "hidden" }}>
                     <div style={{ position: "absolute", top: -44, right: -44, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
@@ -712,7 +712,7 @@ export default function LandingPage() {
                       Your vehicle.<br />Your schedule.<br /><span style={{ color: "#60a5fa" }}>Your income.</span>
                     </h2>
                     <p style={{ fontSize: 16, color: W70, lineHeight: 1.8, maxWidth: 440, marginBottom: 36 }}>
-                      Join thousands of pilots earning ₹2,500+ daily with Jago. Zero commission for 90 days, daily payouts, and full insurance on every trip.
+                      Join thousands of pilots earning ₹2,500+ daily with JAGO Pro. Zero commission for 90 days, daily payouts, and full insurance on every trip.
                     </p>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                       <a href="/auth" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, background: W, color: N800, textDecoration: "none", fontSize: 15, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}>
@@ -756,12 +756,12 @@ export default function LandingPage() {
                 <div style={{ position: "absolute", bottom: -50, left: -50, width: 220, height: 220, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
                 <div style={{ position: "relative", zIndex: 1 }}>
                   <div style={{ width: 64, height: 64, borderRadius: 18, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-                    <img src="/jago-logo.png" alt="JAGO" style={{ height: 42, width: "auto", objectFit: "contain" }} />
+                    <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 42, width: "auto", objectFit: "contain" }} />
                   </div>
-                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with Jago?</h2>
+                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with JAGO Pro?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
                     Download now and get your first ride up to <strong style={{ color: W }}>₹50 OFF</strong> with code{" "}
-                    <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGO50</strong>
+                    <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGOPRO50</strong>
                   </p>
                   <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
                     {[{ label: "App Store", sub: "Download on", isApple: true, href: "https://apps.apple.com" }, { label: "Google Play", sub: "Get it on", isApple: false, href: "https://play.google.com/store" }].map(d => (
@@ -785,7 +785,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 40, marginBottom: 52 }}>
               <div>
-                <img src="/jago-logo.png" alt="JAGO" style={{ height: 36, width: "auto", objectFit: "contain", marginBottom: 18 }} />
+                <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 36, width: "auto", objectFit: "contain", marginBottom: 18 }} />
                 <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
               </div>
               {[
@@ -806,7 +806,7 @@ export default function LandingPage() {
               ))}
             </div>
             <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 Jago Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 JAGO Pro Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
               <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ❤️ in India</p>
             </div>
           </div>

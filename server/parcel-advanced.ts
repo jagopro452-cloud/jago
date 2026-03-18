@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Advanced Parcel Delivery System — Production-Grade (Porter-Level)
  *
  * Features:
@@ -213,9 +213,9 @@ export async function notifyReceiver(opts: {
   if (!receiverPhone) return;
 
   const messages: Record<string, string> = {
-    pickup_started: `Hi ${receiverName}, your parcel has been picked up by ${driverName || "the driver"}. Track: ${trackingUrl || "JAGO App"}`,
-    arriving: `Hi ${receiverName}, your parcel is arriving soon! Driver: ${driverName || "JAGO Pilot"}. Keep OTP ready.`,
-    otp_share: `Hi ${receiverName}, your JAGO parcel delivery OTP is ${otp}. Share with the driver to confirm delivery.`,
+    pickup_started: `Hi ${receiverName}, your parcel has been picked up by ${driverName || "the driver"}. Track: ${trackingUrl || "JAGO Pro"}`,
+    arriving: `Hi ${receiverName}, your parcel is arriving soon! Driver: ${driverName || "JAGO Pro Pilot"}. Keep OTP ready.`,
+    otp_share: `Hi ${receiverName}, your JAGO Pro parcel delivery OTP is ${otp}. Share with the driver to confirm delivery.`,
     delivered: `Hi ${receiverName}, your parcel has been delivered successfully! Order: ${orderId.slice(0, 8).toUpperCase()}`,
   };
 

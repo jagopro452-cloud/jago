@@ -173,7 +173,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
           'key': keyId,
           'amount': order['amount'],
           'currency': 'INR',
-          'name': 'JAGO Pilot',
+          'name': 'JAGO Pro Pilot',
           'order_id': order['id'],
           'description': 'Subscription: ${_selectedPlan?['name']}',
           'timeout': 300,

@@ -1,4 +1,4 @@
-# JAGO Pilot Launch — Execution Checklist
+﻿# JAGO Pro Pilot Launch — Execution Checklist
 
 This document lists every action that requires human access to external systems.
 All code changes are already committed and deployed.

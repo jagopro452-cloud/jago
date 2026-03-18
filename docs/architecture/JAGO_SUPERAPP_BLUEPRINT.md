@@ -1,8 +1,8 @@
-# JAGO Super App: Architecture and Development Blueprint
+﻿# JAGO Pro Super App: Architecture and Development Blueprint
 
 ## 1. Executive Architecture Summary
 
-JAGO will evolve from the current modular monolith (`server/routes.ts` + `server/ai.ts` + Socket.IO) into a domain-driven microservices platform behind an API Gateway, with event-driven real-time workflows and AI-first intelligence modules.
+JAGO Pro will evolve from the current modular monolith (`server/routes.ts` + `server/ai.ts` + Socket.IO) into a domain-driven microservices platform behind an API Gateway, with event-driven real-time workflows and AI-first intelligence modules.
 
 Design goals:
 - Serve 10M+ MAU with low-latency ride matching (<1.5s P95 decisioning)
@@ -145,7 +145,7 @@ Core topics:
 
 ## 4. AI Voice Assistant Architecture
 
-Wake command: `Hey Jago`
+Wake command: `Hey JAGO Pro`
 
 Pipeline:
 1. On-device wake-word detector (low power)

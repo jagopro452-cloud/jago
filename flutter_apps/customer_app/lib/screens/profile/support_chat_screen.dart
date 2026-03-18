@@ -98,7 +98,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
         backgroundColor: _blue,
         foregroundColor: Colors.white,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('JAGO Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Text('JAGO Pro Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           Row(children: [
             Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle)),
             const SizedBox(width: 4),
@@ -129,7 +129,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
               ),
               const SizedBox(width: 12),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('JAGO Support Team', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text('JAGO Pro Support Team', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 SizedBox(height: 4),
                 Text('Mee query ki meeru message cheyyandi. Meeru 24/7 available.',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),

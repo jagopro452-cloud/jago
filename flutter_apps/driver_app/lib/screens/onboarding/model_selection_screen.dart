@@ -103,7 +103,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'How would you like to earn with JAGO Pilot?',
+                        'How would you like to earn with JAGO Pro Pilot?',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 16,
@@ -121,7 +121,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                         _buildModelCard(
                           id: 'commission',
                           title: 'Commission Model',
-                          subtitle: '₹0 upfront — JAGO takes 15% per ride',
+                          subtitle: '₹0 upfront — JAGO Pro takes 15% per ride',
                           icon: Icons.handshake_outlined,
                           badge: 'FREE TO START',
                           badgeColor: Colors.green,

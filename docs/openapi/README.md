@@ -1,4 +1,4 @@
-# JAGO OpenAPI Specs
+﻿# JAGO Pro OpenAPI Specs
 
 This folder contains production-oriented OpenAPI 3.1 specifications for JAGO microservices and gateway contracts.
 

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final localeNotifier = ValueNotifier<String>('en');
@@ -38,7 +38,7 @@ class L {
   static const Map<String, Map<String, String>> _strings = {
     'en': {
       // Auth
-      'welcome': 'Welcome to\nJAGO 👋',
+      'welcome': 'Welcome to\\nJAGO Pro 👋',
       'welcome_sub': 'Safe, affordable rides — anywhere',
       'enter_otp': 'Enter OTP\n📱',
       'otp_sent_to': 'OTP sent to +91 ',
@@ -93,7 +93,7 @@ class L {
       'saved_places': 'Saved Places',
       'ride_preferences': 'Ride Preferences',
       'monthly_pass': 'Monthly Pass',
-      'my_coins': 'My JAGO Coins',
+      'my_coins': 'My JAGO Pro Coins',
       'safety_contacts': 'Safety & Emergency',
       'refer_earn': 'Refer & Earn',
       'support_chat': 'Support Chat',
@@ -158,7 +158,7 @@ class L {
     },
     'te': {
       // Auth
-      'welcome': 'JAGO కి\nస్వాగతం 👋',
+      'welcome': 'JAGO Pro కి\nస్వాగతం 👋',
       'welcome_sub': 'సురక్షితమైన, చవకైన రైడ్లు — ఎక్కడైనా',
       'enter_otp': 'OTP నమోదు\nచేయండి 📱',
       'otp_sent_to': 'OTP పంపించబడింది +91 ',
@@ -213,7 +213,7 @@ class L {
       'saved_places': 'సేవ్ చేసిన స్థలాలు',
       'ride_preferences': 'రైడ్ ప్రాధాన్యతలు',
       'monthly_pass': 'నెలవారీ పాస్',
-      'my_coins': 'నా JAGO కాయిన్లు',
+      'my_coins': 'నా JAGO Pro కాయిన్లు',
       'safety_contacts': 'సురక్షత & అత్యవసర',
       'refer_earn': 'రెఫర్ & సంపాదించండి',
       'support_chat': 'మద్దతు చాట్',
@@ -278,7 +278,7 @@ class L {
     },
     'hi': {
       // Auth
-      'welcome': 'JAGO में\nस्वागत है 👋',
+      'welcome': 'JAGO Pro में\nस्वागत है 👋',
       'welcome_sub': 'सुरक्षित, किफायती सवारी — कहीं भी',
       'enter_otp': 'OTP दर्ज\nकरें 📱',
       'otp_sent_to': 'OTP भेजा गया +91 ',
@@ -333,7 +333,7 @@ class L {
       'saved_places': 'सहेजे गए स्थान',
       'ride_preferences': 'सवारी प्राथमिकताएं',
       'monthly_pass': 'मासिक पास',
-      'my_coins': 'मेरे JAGO सिक्के',
+      'my_coins': 'मेरे JAGO Pro सिक्के',
       'safety_contacts': 'सुरक्षा और आपातकाल',
       'refer_earn': 'रेफर करें & कमाएं',
       'support_chat': 'सहायता चैट',
@@ -397,7 +397,7 @@ class L {
       'enter_destination': 'गंतव्य दर्ज करें',
     },
     'ta': {
-      'welcome': 'JAGO-க்கு\nவரவேற்கிறோம் 👋',
+      'welcome': 'JAGO Pro-க்கு\nவரவேற்கிறோம் 👋',
       'welcome_sub': 'பாதுகாப்பான, மலிவான சவாரிகள் — எங்கும்',
       'enter_otp': 'OTP உள்ளிடவும் 📱',
       'otp_sent_to': 'OTP அனுப்பப்பட்டது +91 ',
@@ -449,7 +449,7 @@ class L {
       'saved_places': 'சேமிக்கப்பட்ட இடங்கள்',
       'ride_preferences': 'சவாரி விருப்பங்கள்',
       'monthly_pass': 'மாதாந்திர பாஸ்',
-      'my_coins': 'என் JAGO நாணயங்கள்',
+      'my_coins': 'என் JAGO Pro நாணயங்கள்',
       'safety_contacts': 'பாதுகாப்பு & அவசரநிலை',
       'refer_earn': 'பரிந்துரை & சம்பாதி',
       'support_chat': 'ஆதரவு அரட்டை',
@@ -511,7 +511,7 @@ class L {
       'enter_destination': 'இலக்கை உள்ளிடவும்',
     },
     'kn': {
-      'welcome': 'JAGO ಗೆ\nಸ್ವಾಗತ 👋',
+      'welcome': 'JAGO Pro ಗೆ\nಸ್ವಾಗತ 👋',
       'welcome_sub': 'ಸುರಕ್ಷಿತ, ಕಡಿಮೆ ಬೆಲೆಯ ರೈಡ್‌ಗಳು — ಎಲ್ಲಿಯಾದರೂ',
       'enter_otp': 'OTP ನಮೂದಿಸಿ 📱',
       'otp_sent_to': 'OTP ಕಳಿಸಲಾಗಿದೆ +91 ',
@@ -563,7 +563,7 @@ class L {
       'saved_places': 'ಉಳಿಸಿದ ಸ್ಥಳಗಳು',
       'ride_preferences': 'ರೈಡ್ ಆದ್ಯತೆಗಳು',
       'monthly_pass': 'ಮಾಸಿಕ ಪಾಸ್',
-      'my_coins': 'ನನ್ನ JAGO ನಾಣ್ಯಗಳು',
+      'my_coins': 'ನನ್ನ JAGO Pro ನಾಣ್ಯಗಳು',
       'safety_contacts': 'ಸುರಕ್ಷತೆ & ತುರ್ತು',
       'refer_earn': 'ರೆಫರ್ ಮಾಡಿ & ಗಳಿಸಿ',
       'support_chat': 'ಬೆಂಬಲ ಚಾಟ್',
@@ -625,7 +625,7 @@ class L {
       'enter_destination': 'ಗಮ್ಯಸ್ಥಾನ ನಮೂದಿಸಿ',
     },
     'ml': {
-      'welcome': 'JAGO-ലേക്ക്\nസ്വാഗതം 👋',
+      'welcome': 'JAGO Pro-ലേക്ക്\nസ്വാഗതം 👋',
       'welcome_sub': 'സുരക്ഷിതമായ, താങ്ങാനാവുന്ന യാത്രകൾ — എവിടെയും',
       'enter_otp': 'OTP നൽകൂ 📱',
       'otp_sent_to': 'OTP അയച്ചു +91 ',
@@ -677,7 +677,7 @@ class L {
       'saved_places': 'സേവ് ചെയ്ത സ്ഥലങ്ങൾ',
       'ride_preferences': 'യാത്ര മുൻഗണനകൾ',
       'monthly_pass': 'മാസ പാസ്',
-      'my_coins': 'എന്റെ JAGO നാണയങ്ങൾ',
+      'my_coins': 'എന്റെ JAGO Pro നാണയങ്ങൾ',
       'safety_contacts': 'സുരക്ഷ & അടിയന്തരം',
       'refer_earn': 'റഫർ ചെയ്ത് നേടൂ',
       'support_chat': 'സഹായ ചാറ്റ്',
@@ -739,7 +739,7 @@ class L {
       'enter_destination': 'ലക്ഷ്യസ്ഥാനം നൽകുക',
     },
     'bn': {
-      'welcome': 'JAGO-তে স্বাগতম\nJAGO Pilot 🏍️',
+      'welcome': 'JAGO Pro-তে স্বাগতম\nJAGO Pro Pilot 🏍️',
       'welcome_sub': 'প্রতিটি যাত্রায় উপার্জন করুন',
       'enter_otp': 'OTP লিখুন\n📱',
       'otp_sent_to': 'OTP পাঠানো হয়েছে +91 ',
@@ -794,7 +794,7 @@ class L {
       'no_data': 'কোনো ডেটা নেই',
     },
     'mr': {
-      'welcome': 'JAGO मध्ये स्वागत\nJAGO Pilot 🏍️',
+      'welcome': 'JAGO Pro मध्ये स्वागत\nJAGO Pro Pilot 🏍️',
       'welcome_sub': 'प्रत्येक प्रवासात कमवा',
       'enter_otp': 'OTP टाका\n📱',
       'otp_sent_to': 'OTP पाठवले +91 ',

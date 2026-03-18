@@ -1,4 +1,4 @@
-import { useLocation, Link } from "wouter";
+﻿import { useLocation, Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { useTheme } from "@/components/theme-provider";
 
@@ -348,7 +348,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
         background: "#f8fafc", flexDirection: "column", gap: 12
       }}>
-        <img src="/jago-logo-blue.png" alt="JAGO" style={{ height: 40, objectFit: "contain" }} />
+        <img src="/jago-logo-blue.png" alt="JAGO Pro" style={{ height: 40, objectFit: "contain" }} />
         <div style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Loading JAGO Admin…</div>
         <div style={{
           width: 40, height: 3, borderRadius: 2, background: "#e2e8f0", overflow: "hidden"
@@ -380,7 +380,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             onClick={(e) => { e.preventDefault(); setLocation("/admin/dashboard"); }}
             style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
           >
-            <img src="/jago-logo-white.png" alt="JAGO" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
+            <img src="/jago-logo-white.png" alt="JAGO Pro" style={{ height: 28, objectFit: "contain", flexShrink: 0 }} />
             <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: 2.5, marginTop: 1, alignSelf: "flex-end", paddingBottom: 2 }}>ADMIN PANEL</span>
           </a>
           <button

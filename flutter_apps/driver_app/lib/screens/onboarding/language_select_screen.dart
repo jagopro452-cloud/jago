@@ -250,7 +250,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                   const SizedBox(height: 6),
                   const Text('Hello,',
                     style: TextStyle(color: Colors.white70, fontSize: 13)),
-                  const Text('Welcome to JAGO Pilot',
+                  const Text('Welcome to JAGO Pro Pilot',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 17,

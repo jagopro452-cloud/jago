@@ -122,7 +122,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                     child: Row(children: [
                       const Icon(Icons.info_outline, color: Colors.amber),
                       const SizedBox(width: 8),
-                      const Expanded(child: Text('Save up to 35% on rides with Monthly Pass!\nBonus JAGO Coins on every purchase.',
+                      const Expanded(child: Text('Save up to 35% on rides with Monthly Pass!\nBonus JAGO Pro Coins on every purchase.',
                           style: TextStyle(fontSize: 13))),
                     ]),
                   ),
@@ -191,7 +191,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                       children: const [
                         Text('Pass Terms', style: TextStyle(fontWeight: FontWeight.bold)),
                         SizedBox(height: 8),
-                        Text('• Payment via JAGO Wallet balance\n• Pass valid for 30 days from purchase\n• Rides within city limits only\n• Non-refundable after first ride\n• Bonus JAGO Coins credited instantly', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.8)),
+                        Text('• Payment via JAGO Pro Wallet balance\n• Pass valid for 30 days from purchase\n• Rides within city limits only\n• Non-refundable after first ride\n• Bonus JAGO Pro Coins credited instantly', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.8)),
                       ],
                     ),
                   ),

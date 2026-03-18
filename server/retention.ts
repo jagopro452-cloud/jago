@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Customer Retention System
  *
  * Detects inactive customers and sends promotional notifications to re-engage them.
@@ -39,7 +39,7 @@ const RETENTION_RULES: RetentionRule[] = [
     inactiveDays: 7,
     discountAmount: 50,
     messageTitle: "🎉 We miss you!",
-    messageBody: "₹50 off on your next ride! Use code {PROMO}. Book now on JAGO!",
+    messageBody: "₹50 off on your next ride! Use code {PROMO}. Book now on JAGO Pro!",
     promoCode: "COMEBACK50",
   },
   {
@@ -52,7 +52,7 @@ const RETENTION_RULES: RetentionRule[] = [
   {
     inactiveDays: 30,
     discountAmount: 150,
-    messageTitle: "🚗 Come back to JAGO!",
+    messageTitle: "🚗 Come back to JAGO Pro!",
     messageBody: "We really miss you! Here's ₹150 off. Use code {PROMO}. Ride with us today!",
     promoCode: "RETURN150",
   },

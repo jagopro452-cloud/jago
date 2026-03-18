@@ -186,7 +186,7 @@ class FcmService {
 
     _localNotif.show(
       message.hashCode,
-      isTrip ? '🚗 New Ride Request!' : (message.notification?.title ?? 'JAGO Pilot'),
+      isTrip ? '🚗 New Ride Request!' : (message.notification?.title ?? 'JAGO Pro Pilot'),
       isTrip
         ? '$customerName • ₹$fare • $pickupAddress'
         : (message.notification?.body ?? ''),

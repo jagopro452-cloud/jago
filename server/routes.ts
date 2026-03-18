@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
@@ -401,8 +401,8 @@ async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
       max_tokens: 256,
       messages: [{
         role: "user",
-        content: `You are a multi-service booking assistant for JAGO mobility app in India.
-JAGO offers: ride-hailing (Bike/Auto/Car), parcel logistics, and intercity carpool.
+        content: `You are a multi-service booking assistant for JAGO Pro mobility app in India.
+JAGO Pro offers: ride-hailing (Bike/Auto/Car), parcel logistics, and intercity carpool.
 Extract the booking intent from the user's voice command.
 
 User said: "${text}"
@@ -6339,7 +6339,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -6443,7 +6443,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -6501,7 +6501,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING *
       `);
       // Set referral_code separately (handles DB where column may not exist yet)
-      const refCode = 'JAGO' + phone.slice(-6);
+      const refCode = 'JAGOPRO' + phone.slice(-6);
       await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(() => {});
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
@@ -7106,7 +7106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 📦 For parcel — send delivery OTP to receiver via SMS when pickup is done
       if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
         sendCustomSms(trip.receiver_phone,
-          `JAGO Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
+          `JAGO Pro Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
         ).catch(() => {});
       }
       if (io) {
@@ -7184,14 +7184,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 📱 If booked for someone else — send OTP as SMS to passenger phone
       if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {
         sendCustomSms(tripRow.passenger_phone,
-          `JAGO: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
+          `JAGO Pro: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
         ).catch(() => {});
       }
       // 📦 For parcel — remind sender with pickup OTP via SMS
       if (tripRow?.trip_type === 'parcel' || tripRow?.trip_type === 'delivery') {
         const senderPhone = tripRow.customer_phone;
         if (senderPhone) sendCustomSms(senderPhone,
-          `JAGO Parcel: Driver ${driver.fullName || ''} arrived. Pickup OTP: ${otp}. Share to hand over parcel.`
+          `JAGO Pro Parcel: Driver ${driver.fullName || ''} arrived. Pickup OTP: ${otp}. Share to hand over parcel.`
         ).catch(() => {});
       }
 
@@ -10470,7 +10470,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const summary = camelize(countRes.rows[0]) as any;
       res.json({
-        referralCode: user.referral_code || ('JAGO' + user.phone.slice(-6)),
+        referralCode: user.referral_code || ('JAGOPRO' + user.phone.slice(-6)),
         totalReferrals: parseInt(summary.total || "0"),
         totalEarned: parseFloat(summary.totalEarned || "0"),
         referrals: r.rows.map(camelize),
@@ -10889,7 +10889,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             fcmToken: driverRow.fcm_token,
             title: status === 'approved' ? '✅ Account Approved!' : '❌ Verification Issue',
             body: status === 'approved'
-              ? 'Congratulations! Your JAGO Pilot account is approved. You can now go online.'
+              ? 'Congratulations! Your JAGO Pro Pilot account is approved. You can now go online.'
               : `Account issue: ${note || 'Please re-upload documents or contact support.'}`,
             data: { type: 'verification_update', verificationStatus: status },
           });
@@ -11405,7 +11405,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const base = process.env.APP_BASE_URL || "https://oyster-app-9e9cd.ondigitalocean.app";
     res.send(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Download JAGO App</title>
+<title>Download JAGO Pro App</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -11421,7 +11421,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .version{color:#475569;font-size:12px;margin-top:20px}
 </style></head><body>
 <div class="card">
-  <div class="logo">JAGO</div>
+  <div class="logo">JAGO Pro</div>
   <div class="sub">Ride. Deliver. Earn.</div>
   <a class="btn btn-blue" href="/apks/jago-customer-v1.0.31.apk" download>
     📱 Download Customer App
@@ -11530,7 +11530,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   })();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 1. JAGO COINS — Loyalty Program
+  // 1. JAGO Pro COINS — Loyalty Program
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.get("/api/app/customer/coins", async (req, res) => {
     try {
@@ -11548,7 +11548,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         rupeeValue: Math.floor(balance / 10),
         history: histRes.rows.map(camelize),
         howItWorks: [
-          "Every ₹10 fare = 1 JAGO Coin",
+          "Every ₹10 fare = 1 JAGO Pro Coin",
           "100 Coins = ₹10 discount on next ride",
           "Coins valid for 12 months",
           "Bonus coins on referrals & first rides",
@@ -11687,7 +11687,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         INSERT INTO coins_ledger (user_id, amount, type, description, trip_id)
         VALUES (${trip.driver_id}::uuid, ${amount * 10}, 'tip_bonus', 'Tip received for ride — bonus coins', ${tripId}::uuid)
       `);
-      res.json({ success: true, message: `₹${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Coins 🎉` });
+      res.json({ success: true, message: `₹${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Pro Coins 🎉` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -11733,8 +11733,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // 5. MONTHLY PASS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const MONTHLY_PLANS = [
-    { name: 'JAGO Basic', rides: 20, price: 699, discount: '15%' },
-    { name: 'JAGO Plus', rides: 40, price: 1199, discount: '25%' },
+    { name: 'JAGO Pro Basic', rides: 20, price: 699, discount: '15%' },
+    { name: 'JAGO Pro Plus', rides: 40, price: 1199, discount: '25%' },
     { name: 'JAGO Pro', rides: 80, price: 1999, discount: '35%' },
   ];
 
@@ -11777,7 +11777,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         INSERT INTO coins_ledger (user_id, amount, type, description)
         VALUES (${user.id}::uuid, ${bonusCoins}, 'pass_bonus', 'Welcome bonus for ${plan.name} purchase')
       `);
-      res.json({ success: true, message: `${plan.name} activated! ${plan.rides} rides for 30 days. Bonus: ${bonusCoins} JAGO Coins credited!` });
+      res.json({ success: true, message: `${plan.name} activated! ${plan.rides} rides for 30 days. Bonus: ${bonusCoins} JAGO Pro Coins credited!` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -12373,7 +12373,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
       // Get driver name for notifications
       const driverR = await rawDb.execute(rawSql`SELECT full_name FROM users WHERE id=${driverId}::uuid`);
-      const driverName = (driverR.rows[0] as any)?.full_name || "JAGO Pilot";
+      const driverName = (driverR.rows[0] as any)?.full_name || "JAGO Pro Pilot";
 
       // Emit lifecycle event
       emitParcelLifecycle(order.id, order.customer_id, driverId, "in_transit", { driverName });

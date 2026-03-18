@@ -1,4 +1,4 @@
-import { log } from "./index";
+﻿import { log } from "./index";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 const rawDb = db;
@@ -197,7 +197,7 @@ export async function notifyCustomerTripCompleted(opts: {
   return sendFcmNotification({
     fcmToken: opts.fcmToken,
     title: "Trip Completed!",
-    body: `Fare: ₹${opts.fare}. Thank you for riding with JAGO!`,
+    body: `Fare: ₹${opts.fare}. Thank you for riding with JAGO Pro!`,
     sound: "default",
     channelId: "trip_updates",
     data: {

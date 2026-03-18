@@ -40,7 +40,7 @@
     </queries>
 
     <application
-        android:label="JAGO"
+        android:label="JAGO Pro"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

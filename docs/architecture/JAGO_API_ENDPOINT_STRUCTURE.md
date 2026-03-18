@@ -1,4 +1,4 @@
-# JAGO API Endpoint Structure (Target + Compatibility)
+﻿# JAGO Pro API Endpoint Structure (Target + Compatibility)
 
 This structure keeps existing app APIs stable while introducing versioned gateway routes.
 

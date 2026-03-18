@@ -1,4 +1,4 @@
-# JAGO Master Prompt (Corrected)
+﻿# JAGO Pro Master Prompt (Corrected)
 
 Act as a world-class software architect, product designer, and AI engineer.
 
@@ -36,10 +36,10 @@ Each service should use a unified booking engine, while retaining separate servi
 
 ## AI Voice Assistant
 
-Wake command: **"Hey Jago"**
+Wake command: **"Hey JAGO Pro"**
 
 Example flow:
-- User: "Hey Jago"
+- User: "Hey JAGO Pro"
 - AI: "Where do you want to go?"
 - User: "Benz Circle nundi Railway Station ki vellali"
 

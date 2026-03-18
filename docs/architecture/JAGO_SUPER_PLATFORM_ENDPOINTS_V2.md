@@ -1,4 +1,4 @@
-# JAGO Super Platform API Endpoint Catalog (V2)
+﻿# JAGO Pro Super Platform API Endpoint Catalog (V2)
 
 ## Gateway
 

@@ -100,7 +100,7 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
         backgroundColor: _card,
         foregroundColor: Colors.white,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('JAGO Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Text('JAGO Pro Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           Row(children: [
             Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle)),
             const SizedBox(width: 4),
@@ -130,7 +130,7 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
               ),
               const SizedBox(width: 12),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('JAGO Pilot Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                Text('JAGO Pro Pilot Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                 SizedBox(height: 4),
                 Text('Trip issues, payments, documents — meeru ready ga unnamu!',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),

@@ -71,7 +71,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
             child: const Icon(Icons.monetization_on, color: Color(0xFF2563EB), size: 20),
           ),
           const SizedBox(width: 8),
-          const Text('JAGO Coins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('JAGO Pro Coins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ]),
       ),
       body: _loading
@@ -98,7 +98,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         const Icon(Icons.stars_rounded, color: Colors.amber, size: 48),
                         const SizedBox(height: 8),
                         Text('$balance', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.bold)),
-                        const Text('JAGO Coins', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                        const Text('JAGO Pro Coins', style: TextStyle(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -154,7 +154,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('How JAGO Coins work', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const Text('How JAGO Pro Coins work', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
                         ...tips.map((t) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),

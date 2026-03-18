@@ -246,7 +246,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
               statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
             ));
             return MaterialApp(
-              title: 'JAGO',
+              title: 'JAGO Pro',
               debugShowCheckedModeBanner: false,
               navigatorKey: _navKey,
               themeMode: mode,

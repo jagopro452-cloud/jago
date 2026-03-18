@@ -93,7 +93,7 @@ class _WalletScreenState extends State<WalletScreen>
       final options = {
         'key': keyId,
         'amount': (amount * 100).toInt(),
-        'name': 'JAGO Rides',
+        'name': 'JAGO Pro Rides',
         'description': 'Wallet Recharge',
         'order_id': order['id'],
         'prefill': {'contact': '+91$phone', 'email': email},
