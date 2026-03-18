@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -26,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _loading = false;
   int _seconds = 0;
   Timer? _timer;
+  String? _firebaseVerificationId;
 
   late AnimationController _cardCtrl;
   late Animation<Offset> _cardSlide;
@@ -89,17 +91,42 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
+    // Server rate-limit check first
     final res = await AuthService.sendOtp(phone, 'driver');
     if (!mounted) return;
-    setState(() => _loading = false);
-    if (res['success'] == true) {
-      setState(() => _otpSent = true);
-      _startTimer();
-      _snack('OTP sent to +91$phone');
-      SmsAutoFill().listenForCode();
-    } else {
+    if (res['success'] != true) {
+      setState(() => _loading = false);
       _snack(res['message'] ?? 'Failed to send OTP', error: true);
+      return;
     }
+    // Now actually send OTP via Firebase Phone Auth
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (verificationId) {
+        if (!mounted) return;
+        _firebaseVerificationId = verificationId;
+        setState(() { _otpSent = true; _loading = false; });
+        _startTimer();
+        _snack('OTP sent to +91$phone');
+        SmsAutoFill().listenForCode();
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        _snack(error, error: true);
+      },
+      onAutoVerify: (idToken) async {
+        if (!mounted) return;
+        final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+        if (!mounted) return;
+        setState(() => _loading = false);
+        if (verifyRes['success'] == true) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        } else {
+          _snack(verifyRes['message'] ?? 'Verification failed', error: true);
+        }
+      },
+    );
   }
 
   Future<void> _verifyOtp() async {
@@ -107,13 +134,27 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _snack('Enter the 6-digit OTP', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.verifyOtp(phone, otp, 'driver');
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (res['success'] == true) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-    } else {
-      _snack(res['message'] ?? 'Verification failed', error: true);
+    try {
+      // Verify OTP with Firebase and get ID token
+      final idToken = await FirebaseOtpService.verifyOtp(
+        smsCode: otp,
+        verificationId: _firebaseVerificationId,
+      );
+      if (!mounted) return;
+      // Send Firebase token to our server for auth
+      final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (res['success'] == true) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      } else {
+        _snack(res['message'] ?? 'Verification failed', error: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _snack(e.toString().replaceAll('Exception: ', ''), error: true);
+      _otpCtrl.clear();
     }
   }
 
