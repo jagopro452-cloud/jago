@@ -16,7 +16,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin, CodeAutoFill {
   final _phoneCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -28,6 +28,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   int _seconds = 0;
   Timer? _timer;
   String? _firebaseVerificationId;
+
+  @override
+  void codeUpdated() {
+    // Called by CodeAutoFill when SMS is auto-read
+    if (code != null) {
+      final match = RegExp(r'\d{6}').firstMatch(code!);
+      if (match != null && mounted) {
+        final otp = match.group(0)!;
+        setState(() => _otpCtrl.text = otp);
+        _verifyOtp();
+      }
+    }
+  }
 
   late AnimationController _cardCtrl;
   late Animation<Offset> _cardSlide;
@@ -56,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    cancel(); // Stop SMS auto-read listening
     _cardCtrl.dispose();
     _logoCtrl.dispose();
     _timer?.cancel();
@@ -131,7 +145,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           setState(() { _otpSent = true; _loading = false; });
           _startTimer();
           _snack('OTP sent to +91$phone');
-          SmsAutoFill().listenForCode();
+          listenForCode(); // Start SMS auto-read via CodeAutoFill mixin
         },
         onError: (error) {
           if (!mounted) return;
@@ -483,26 +497,36 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _buildOtpField() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _blue.withValues(alpha: 0.4), width: 2),
       ),
-      child: PinFieldAutoFill(
+      child: TextField(
         controller: _otpCtrl,
-        codeLength: 6,
         keyboardType: TextInputType.number,
-        decoration: UnderlineDecoration(
-          textStyle: GoogleFonts.poppins(
-            fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 4, color: _dark,
-          ),
-          colorBuilder: FixedColorBuilder(Colors.transparent),
+        textAlign: TextAlign.center,
+        autofocus: true,
+        maxLength: 6,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(6),
+        ],
+        style: GoogleFonts.poppins(
+          fontSize: 28, fontWeight: FontWeight.w900,
+          letterSpacing: 16, color: _dark,
         ),
-        onCodeSubmitted: (code) { if (code.length == 6) _verifyOtp(); },
-        onCodeChanged: (code) {
-          _otpCtrl.text = code ?? '';
-          if ((code?.length ?? 0) == 6) _verifyOtp();
+        decoration: InputDecoration(
+          counterText: '',
+          border: InputBorder.none,
+          hintText: '• • • • • •',
+          hintStyle: GoogleFonts.poppins(
+            fontSize: 20, color: const Color(0xFFCBD5E1), letterSpacing: 12,
+          ),
+        ),
+        onChanged: (code) {
+          if (code.length == 6) _verifyOtp();
         },
       ),
     );
