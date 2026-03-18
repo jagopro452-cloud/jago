@@ -78,6 +78,28 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     ));
   }
 
+  void _showErrorDialog(String title, String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 24),
+          const SizedBox(width: 8),
+          Expanded(child: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16))),
+        ]),
+        content: Text(message, style: GoogleFonts.poppins(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: const Color(0xFF2F80ED))),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _startTimer() {
     _timer?.cancel();
     _seconds = 30;
@@ -117,18 +139,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _snack(error, error: true);
         },
         onAutoVerify: (idToken) async {
+          // Auto-verified! Try silent login — don't block manual OTP entry
           if (!mounted) return;
-          setState(() => _loading = true);
-          final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
-          if (!mounted) return;
-          setState(() => _loading = false);
-          if (verifyRes['success'] == true) {
-            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-          } else {
-            setState(() => _otpSent = true);
-            _startTimer();
-            _snack('Enter the OTP sent to your phone');
-          }
+          try {
+            final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+            if (!mounted) return;
+            if (verifyRes['success'] == true) {
+              Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+            }
+            // If failed, silently let user enter OTP manually
+          } catch (_) {}
         },
       );
     } catch (e) {
@@ -156,19 +176,20 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       if (res['success'] == true) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
-        _snack(res['message'] ?? 'Verification failed. Try again.', error: true);
+        _otpCtrl.clear();
+        _showErrorDialog('Login Failed', res['message'] ?? 'Verification failed. Please try again.');
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
       String msg = e.toString().replaceAll('Exception: ', '');
-      if (msg.contains('missing') || msg.contains('null')) {
-        msg = 'Session expired. Please resend OTP.';
-        setState(() { _otpSent = false; _otpCtrl.clear(); });
+      if (msg.contains('missing') || msg.contains('null') || msg.contains('session-expired')) {
+        msg = 'Session expired. Tap Resend OTP to try again.';
       } else if (msg.contains('invalid-verification-code') || msg.contains('invalid-verification-id')) {
-        msg = 'Wrong OTP. Please check and try again.';
+        msg = 'Wrong OTP code. Please check and try again.';
       }
-      _snack(msg, error: true);
+      _otpCtrl.clear();
+      _showErrorDialog('Verification Failed', msg);
     }
   }
 
