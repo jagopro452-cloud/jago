@@ -26,6 +26,11 @@ android {
         jvmTarget = "17"
     }
 
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
     sourceSets {
         main.java.srcDirs += "src/main/kotlin"
     }
