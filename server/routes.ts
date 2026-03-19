@@ -1802,7 +1802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               type=${v.type}, icon=${v.icon}, service_type=${svcType}, description=${desc},
               base_fare=${v.base_fare}, fare_per_km=${v.fare_per_km},
               minimum_fare=${v.minimum_fare}, waiting_charge_per_min=${v.waiting_charge_per_min},
-              is_carpool=${isCarpool}, total_seats=${totalSeats}, is_active=true
+              is_carpool=${isCarpool}, total_seats=${totalSeats}
             WHERE id=${vid}::uuid
           `);
         } else {
@@ -1858,8 +1858,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // ── 3. Activate all platform services ────────────────────────────────────
-      await rawDb.execute(rawSql`UPDATE platform_services SET service_status='active' WHERE service_status='inactive'`).catch(() => {});
+      // ── 3. Platform services — do NOT override admin toggles on restart ──────
+      // (removed auto-activate: admin inactive settings must be preserved)
 
       // ── 4. Surge pricing rules (peak hours) ─────────────────────────────────
       const surges = [
