@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class JT {
-  static const Color primary = Color(0xFF2F7BFF);
-  static const Color secondary = Color(0xFF4FA9FF);
-  static const Color bg = Color(0xFFFFFFFF);
-  static const Color bgSoft = Color(0xFFF7FAFF);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceAlt = Color(0xFFF0F5FF);
-  static const Color border = Color(0xFFDDE8FF);
-  static const Color textPrimary = Color(0xFF0F1829);
-  static const Color textSecondary = Color(0xFF6B7FA8);
-  static const Color iconInactive = Color(0xFFB0C4E8);
-  static const Color error = Color(0xFFE53935);
-  static const Color success = Color(0xFF1DB954);
-  static const Color warning = Color(0xFFFFA726);
+  // ── Design System Colors (spec v2) ──────────────────────────────────────
+  static const Color primary     = Color(0xFF2F6BFF);
+  static const Color secondary   = Color(0xFF5B8FFF);
+  static const Color bg          = Color(0xFFFFFFFF);
+  static const Color bgSoft      = Color(0xFFF9FAFB);
+  static const Color surface     = Color(0xFFFFFFFF);
+  static const Color surfaceAlt  = Color(0xFFF3F6FF);
+  static const Color border      = Color(0xFFE5E7EB);
+  static const Color textPrimary = Color(0xFF111827);
+  static const Color textSecondary = Color(0xFF6B7280);
+  static const Color iconInactive  = Color(0xFFD1D5DB);
+  static const Color error   = Color(0xFFDC2626);
+  static const Color success = Color(0xFF16A34A);
+  static const Color warning = Color(0xFFF59E0B);
 
   static const LinearGradient grad = LinearGradient(
-    colors: [Color(0xFF4FA9FF), Color(0xFF2F7BFF)],
+    colors: [Color(0xFF5B8FFF), Color(0xFF2F6BFF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -56,12 +58,70 @@ class JT {
     );
   }
 
-  static Widget logoBlue({double height = 36}) =>
-      Image.asset('assets/images/jago_logo.png', height: height, fit: BoxFit.contain);
+  static Widget logoBlue({double height = 36}) => _logoWidget(
+        height: height,
+        iconAsset: 'assets/images/jago_icon.svg',
+        sublabel: 'PRO',
+        wordmarkColor: textPrimary,
+        sublabelColor: primary,
+      );
 
-  static Widget logoPilot({double height = 36}) =>
-      Image.asset('assets/images/pilot_logo.png', height: height, fit: BoxFit.contain);
+  static Widget logoPilot({double height = 36}) => _logoWidget(
+        height: height,
+        iconAsset: 'assets/images/jago_icon.svg',
+        sublabel: 'PILOT',
+        wordmarkColor: textPrimary,
+        sublabelColor: primary,
+      );
 
-  static Widget logoWhite({double height = 36}) =>
-      Image.asset('assets/images/jago_logo_white.png', height: height, fit: BoxFit.contain);
+  static Widget logoWhite({double height = 36}) => _logoWidget(
+        height: height,
+        iconAsset: 'assets/images/jago_icon_white.svg',
+        sublabel: 'PILOT',
+        wordmarkColor: Colors.white,
+        sublabelColor: Colors.white.withValues(alpha: 0.85),
+      );
+
+  static Widget _logoWidget({
+    required double height,
+    required String iconAsset,
+    required String sublabel,
+    required Color wordmarkColor,
+    required Color sublabelColor,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SvgPicture.asset(iconAsset, height: height, width: height),
+        SizedBox(width: height * 0.18),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'JAGO',
+              style: GoogleFonts.poppins(
+                fontSize: height * 0.50,
+                fontWeight: FontWeight.w900,
+                color: wordmarkColor,
+                height: 1.1,
+                letterSpacing: -0.5,
+              ),
+            ),
+            Text(
+              sublabel,
+              style: GoogleFonts.poppins(
+                fontSize: height * 0.22,
+                fontWeight: FontWeight.w700,
+                color: sublabelColor,
+                letterSpacing: 2.5,
+                height: 1.0,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }

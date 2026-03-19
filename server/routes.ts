@@ -6789,15 +6789,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
       }
-      const lat = req.body.lat ?? 0;
-      const lng = req.body.lng ?? 0;
+      const lat = req.body.lat;
+      const lng = req.body.lng;
+      const hasValidCoords = lat != null && lng != null && isFinite(Number(lat)) && isFinite(Number(lng)) && (Number(lat) !== 0 || Number(lng) !== 0);
       await rawDb.execute(rawSql`UPDATE users SET is_online=${isOnline} WHERE id=${driver.id}::uuid`);
-      // UPSERT driver_locations — creates row for new drivers, always updates lat/lng
-      await rawDb.execute(rawSql`
-        INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
-        VALUES (${driver.id}::uuid, ${lat}, ${lng}, ${isOnline}, NOW())
-        ON CONFLICT (driver_id) DO UPDATE SET lat=${lat}, lng=${lng}, is_online=${isOnline}, updated_at=NOW()
-      `);
+      // UPSERT driver_locations — only update lat/lng if we have a real GPS fix; never write 0,0
+      if (hasValidCoords) {
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
+          VALUES (${driver.id}::uuid, ${Number(lat)}, ${Number(lng)}, ${isOnline}, NOW())
+          ON CONFLICT (driver_id) DO UPDATE SET lat=${Number(lat)}, lng=${Number(lng)}, is_online=${isOnline}, updated_at=NOW()
+        `);
+      } else {
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
+          VALUES (${driver.id}::uuid, 0, 0, ${isOnline}, NOW())
+          ON CONFLICT (driver_id) DO UPDATE SET is_online=${isOnline}, updated_at=NOW()
+        `);
+      }
       res.json({ success: true, isOnline });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7244,7 +7253,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }).catch(() => {});
       res.json({ success: true, message: "Trip started" });
-    } catch (e: any) { res.status(500).json({ message: "Failed to create payment order. Please try again." }); }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // ── DRIVER: Complete trip ─────────────────────────────────────────────────
@@ -8263,13 +8272,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const finalFareAfterDiscount = Math.max(0, computedFare - discountAmount);
 
-      // Auto-cancel any trips stuck in 'searching' for more than 3 minutes
+      // Auto-cancel any previous 'searching' trips — user is explicitly requesting a new ride
       await rawDb.execute(rawSql`
         UPDATE trip_requests
-        SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found within 3 minutes'
+        SET current_status='cancelled', cancel_reason='Auto-cancelled: customer started a new booking'
         WHERE customer_id=${customer.id}::uuid
           AND current_status = 'searching'
-          AND created_at < NOW() - INTERVAL '3 minutes'
       `);
 
       // Check if customer already has a genuinely active trip

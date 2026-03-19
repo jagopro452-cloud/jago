@@ -25,13 +25,14 @@ export interface DispatchConfig {
 }
 
 const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
-  bike:       { radiusStepsKm: [2, 4, 6, 8],     driverTimeoutMs: 8000,  maxTotalTimeMs: 180000, driversPerStep: 10 },
-  auto:       { radiusStepsKm: [2, 4, 6, 8],     driverTimeoutMs: 8000,  maxTotalTimeMs: 180000, driversPerStep: 10 },
-  cab:        { radiusStepsKm: [2, 4, 6, 8, 10], driverTimeoutMs: 10000, maxTotalTimeMs: 210000, driversPerStep: 10 },
-  parcel:     { radiusStepsKm: [2, 4, 6],         driverTimeoutMs: 10000, maxTotalTimeMs: 120000, driversPerStep: 8 },
-  b2b_parcel: { radiusStepsKm: [3, 6, 10],        driverTimeoutMs: 12000, maxTotalTimeMs: 180000, driversPerStep: 8 },
-  carpool:    { radiusStepsKm: [3, 6, 10, 15],    driverTimeoutMs: 12000, maxTotalTimeMs: 240000, driversPerStep: 10 },
-  outstation: { radiusStepsKm: [5, 10, 15, 25],   driverTimeoutMs: 15000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  // driverTimeoutMs=40s: FCM delivery (~3s) + app wake (~2s) + driver reads+decides (~20s) + buffer
+  bike:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  auto:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  cab:        { radiusStepsKm: [5, 8, 12, 15, 20],driverTimeoutMs: 40000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  parcel:     { radiusStepsKm: [5, 8, 12],         driverTimeoutMs: 40000, maxTotalTimeMs: 240000, driversPerStep: 8 },
+  b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 8 },
+  carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 40000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 40000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
 function getConfig(serviceType: string): DispatchConfig {
@@ -159,7 +160,7 @@ export async function startDispatch(
     }
   }, config.maxTotalTimeMs);
 
-  console.log(`[DISPATCH] Started for trip ${tripId} (${serviceType}) — radius steps: ${config.radiusStepsKm.join("→")}km`);
+  console.log(`[DISPATCH] ✅ RIDE CREATED — trip=${tripId} type=${serviceType} pickup=(${pickupLat},${pickupLng}) vehicleCategory=${vehicleCategoryId ?? "any"} — radius steps: ${config.radiusStepsKm.join("→")}km timeout=${config.driverTimeoutMs / 1000}s/driver`);
 
   // Begin the first radius step
   await searchAndDispatchNextRadius(session);
@@ -186,7 +187,7 @@ export function onDriverAccepted(tripId: string, driverId: string): void {
   }
 
   activeDispatches.delete(tripId);
-  console.log(`[DISPATCH] Trip ${tripId} accepted by driver ${driverId}`);
+  console.log(`[DISPATCH] ✅ PILOT ACCEPTED — trip=${tripId} pilot=${driverId}`);
 }
 
 /**
@@ -462,7 +463,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     }).catch(() => {});
   }
 
-  console.log(`[DISPATCH] Trip ${session.tripId} → offered to driver ${driver.driverId} (score: ${driver.score}, dist: ${driver.distanceKm}km, timeout: ${session.config.driverTimeoutMs / 1000}s)`);
+  console.log(`[DISPATCH] 📣 PILOT NOTIFIED — trip=${session.tripId} → pilot=${driver.driverId} (${driver.fullName}, ${driver.distanceKm}km away, score=${driver.score}) socket=${!!io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`)} fcm=${!!driver.fcmToken} timeout=${session.config.driverTimeoutMs / 1000}s`);
 
   // Start timeout timer — if driver doesn't respond, auto-skip
   session.offerTimer = setTimeout(async () => {
@@ -537,9 +538,12 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       WHERE u.id = ${driverId}::uuid
       LIMIT 1
     `);
-    if (!r.rows.length) return false;
+    if (!r.rows.length) {
+      console.log(`[DISPATCH] ⚠ Driver ${driverId} — NOT FOUND in DB`);
+      return false;
+    }
     const d = r.rows[0] as any;
-    return (
+    const available = (
       d.is_active === true &&
       d.is_locked !== true &&
       d.is_online === true &&
@@ -547,6 +551,17 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       d.current_trip_id === null &&
       d.verification_status === "approved"
     );
+    if (!available) {
+      const reasons: string[] = [];
+      if (!d.is_active)                  reasons.push("not active");
+      if (d.is_locked)                   reasons.push("locked");
+      if (!d.is_online)                  reasons.push("users.is_online=false");
+      if (!d.dl_online)                  reasons.push("driver_locations.is_online=false");
+      if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
+      if (d.verification_status !== "approved") reasons.push(`verification=${d.verification_status}`);
+      console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
+    }
+    return available;
   } catch {
     return false;
   }
@@ -596,6 +611,8 @@ async function findDriversInRadius(
       AND u.is_active = true
       AND u.is_locked = false
       AND dl.is_online = true
+      AND dl.updated_at > NOW() - INTERVAL '10 minutes'
+      AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
       AND u.verification_status = 'approved'
       ${vcFilter}
@@ -607,6 +624,53 @@ async function findDriversInRadius(
     ORDER BY distance_km ASC
     LIMIT ${limit}
   `);
+
+  // Debug: log total online drivers vs filtered results
+  const totalOnlineCheck = await rawDb.execute(rawSql`
+    SELECT COUNT(*) as total FROM driver_locations WHERE is_online=true
+  `).catch(() => ({ rows: [{ total: '?' }] }));
+  const onlineCount = (totalOnlineCheck.rows[0] as any)?.total ?? 0;
+  console.log(`[DISPATCH] Radius ${radiusKm}km search — found ${drivers.rows.length} eligible drivers (${onlineCount} total is_online=true in system) vehicleCategoryId=${vehicleCategoryId ?? "any"}`);
+
+  // Debug: if no drivers found but some are online, log exclusion reasons for nearby drivers
+  if (!drivers.rows.length && Number(onlineCount) > 0) {
+    try {
+      const nearbyAll = await rawDb.execute(rawSql`
+        SELECT u.id, u.full_name, u.is_active, u.is_locked, u.current_trip_id, u.verification_status,
+               dl.is_online as dl_online, dl.lat, dl.lng, dl.updated_at,
+               dd.vehicle_category_id,
+               SQRT(
+                 POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+                 POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+               ) as distance_km
+        FROM users u
+        JOIN driver_locations dl ON dl.driver_id = u.id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        WHERE u.user_type = 'driver' AND dl.is_online = true
+        ORDER BY distance_km ASC
+        LIMIT 10
+      `);
+      for (const row of nearbyAll.rows) {
+        const r = row as any;
+        const reasons: string[] = [];
+        if (!r.is_active)                        reasons.push("is_active=false");
+        if (r.is_locked)                          reasons.push("is_locked=true");
+        if (!r.dl_online)                         reasons.push("dl.is_online=false");
+        if (r.current_trip_id)                    reasons.push(`on trip ${r.current_trip_id}`);
+        if (r.verification_status !== "approved") reasons.push(`verification=${r.verification_status}`);
+        if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
+        const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
+        if (staleMins > 10)                       reasons.push(`stale location (${staleMins}min ago)`);
+        if (vehicleCategoryId && r.vehicle_category_id !== vehicleCategoryId)
+          reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${vehicleCategoryId})`);
+        const distKm = Number(r.distance_km).toFixed(1);
+        if (Number(distKm) > radiusKm)            reasons.push(`outside radius (${distKm}km > ${radiusKm}km)`);
+        console.log(`[DISPATCH] ⚠ Nearby driver ${r.id} (${r.full_name || "?"}, ${distKm}km away) EXCLUDED — ${reasons.length ? reasons.join(", ") : "in exclude list or already notified"}`);
+      }
+    } catch (e: any) {
+      console.error("[DISPATCH] Exclusion debug query failed:", e.message);
+    }
+  }
 
   if (!drivers.rows.length) return [];
 

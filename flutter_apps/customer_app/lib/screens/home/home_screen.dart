@@ -24,6 +24,7 @@ import '../referral/referral_screen.dart';
 import '../saved_places/saved_places_screen.dart';
 import '../booking/parcel_booking_screen.dart';
 import '../booking/voice_booking_screen.dart';
+import '../booking/location_screen.dart';
 import '../../services/trip_service.dart';
 import '../auth/login_screen.dart';
 
@@ -51,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _driverAssignedSub;
   StreamSubscription? _tripCancelledSub;
   StreamSubscription? _tripStatusSub;
+  Timer? _searchingTimer; // auto-cancel if no pilot found within 5 min
   int _navIndex = 0;
   bool _homeLoading = true;
   Timer? _loadingTimeout;
@@ -63,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _bannerPageCtrl = PageController();
 
   // Brand colors — mapped to JT design system
-  static const Color _primary = Color(0xFF2F7BFF);
+  static const Color _primary = JT.primary;
   static const Color _secondary = JT.secondary;
   static const Color _lightAccent = JT.secondary;
   static const Color _darkBg = JT.textPrimary;
@@ -87,12 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _connectSocket();
     // Safety fallback: never show loading more than 6 seconds
     _loadingTimeout = Timer(const Duration(seconds: 6), () {
-      if (mounted && _homeLoading) {
-        setState(() {
-          _homeLoading = false;
-          if (_vehicleCategories.isEmpty) _vehicleCategories = _defaultVehicleCategories();
-        });
-      }
+      if (mounted && _homeLoading) setState(() => _homeLoading = false);
     });
     // Auto-scroll banner every 4 seconds
     _bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
@@ -186,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final type = data['type']?.toString() ?? '';
         final tripId = data['tripId']?.toString() ?? '';
         if (!mounted || tripId.isEmpty) return;
-        if (type == 'trip_accepted' || type == 'driver_arrived') {
+        if (type == 'trip_accepted' || type == 'driver_assigned' || type == 'driver_arrived') {
           // Verify trip is still active — prevents stale FCM from causing blank screen
           try {
             final verifyHeaders = await AuthService.getHeaders();
@@ -212,19 +209,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _checkActiveTrip() async {
     try {
       final headers = await AuthService.getHeaders();
-      final r = await http.get(Uri.parse(ApiConfig.activeTrip),
-        headers: headers);
-      if (r.statusCode == 200 && mounted) {
+      final r = await http.get(Uri.parse(ApiConfig.activeTrip), headers: headers);
+      if (!mounted) return;
+      if (r.statusCode == 401) { _handleUnauthorized(); return; }
+      if (r.statusCode == 200) {
         final data = jsonDecode(r.body);
         final trip = data['trip'] as Map<String, dynamic>?;
         if (trip != null) {
           final status = trip['currentStatus']?.toString() ?? '';
           if (status != 'completed' && status != 'cancelled') {
             setState(() => _activeTrip = trip);
+            // Start auto-cancel timer if searching and no pilot found yet
+            if (status == 'searching') {
+              _startSearchingTimer(trip['id']?.toString() ?? '');
+            }
           }
         }
       }
     } catch (_) {}
+  }
+
+  void _startSearchingTimer(String tripId) {
+    _searchingTimer?.cancel();
+    // Auto-cancel after 5 minutes if still searching
+    _searchingTimer = Timer(const Duration(minutes: 5), () => _autoCancelSearching(tripId));
+  }
+
+  Future<void> _autoCancelSearching(String tripId) async {
+    if (!mounted || _activeTrip == null) return;
+    final status = _activeTrip!['currentStatus']?.toString() ?? '';
+    if (status != 'searching') return;
+    try {
+      final h = await AuthService.getHeaders();
+      await http.post(Uri.parse(ApiConfig.cancelTrip),
+        headers: {...h, 'Content-Type': 'application/json'},
+        body: jsonEncode({'tripId': tripId, 'reason': 'Auto-cancelled: no pilot available nearby'}));
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _activeTrip = null);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('No pilot found nearby. Ride auto-cancelled.',
+        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+      backgroundColor: JT.warning,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 5),
+    ));
   }
 
   Future<void> _maybeShowTutorial() async {
@@ -320,12 +351,14 @@ class _HomeScreenState extends State<HomeScreen> {
         // Clear active trip state when trip is cancelled or completed
         _tripCancelledSub = _socket.onTripCancelled.listen((data) {
           if (!mounted) return;
+          _searchingTimer?.cancel();
           setState(() => _activeTrip = null);
         });
         _tripStatusSub = _socket.onTripStatus.listen((data) {
           if (!mounted) return;
           final status = data['status']?.toString() ?? '';
           if (status == 'completed' || status == 'cancelled') {
+            _searchingTimer?.cancel();
             setState(() => _activeTrip = null);
           }
         });
@@ -337,6 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _loadingTimeout?.cancel();
     _bannerTimer?.cancel();
+    _searchingTimer?.cancel();
     _bannerPageCtrl.dispose();
     _driverAssignedSub?.cancel();
     _tripCancelledSub?.cancel();
@@ -417,45 +451,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchHome() async {
     try {
       final headers = await AuthService.getHeaders();
-      final results = await Future.wait([
-        http.get(Uri.parse(ApiConfig.customerHomeData), headers: headers)
-            .timeout(const Duration(seconds: 6)),
-        http.get(Uri.parse('${ApiConfig.baseUrl}/api/app/services'), headers: headers)
-            .timeout(const Duration(seconds: 6)),
-      ]);
-      // 401 = token expired — logout and go to login
-      if (results[0].statusCode == 401) {
+      final r = await http.get(Uri.parse(ApiConfig.customerHomeData), headers: headers)
+          .timeout(const Duration(seconds: 6));
+      if (r.statusCode == 401) {
         if (mounted) setState(() => _homeLoading = false);
         _handleUnauthorized();
         return;
       }
-      if (results[0].statusCode == 200) {
-        final data = jsonDecode(results[0].body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
         final cats = (data['vehicleCategories'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-        if (mounted) setState(() {
-          _vehicleCategories = cats.isNotEmpty ? cats : _defaultVehicleCategories();
-        });
-      } else {
-        if (mounted) setState(() => _vehicleCategories = _defaultVehicleCategories());
+        setState(() => _vehicleCategories = cats);
       }
-      // Service payload currently not used in UI; request kept for warm backend cache/health.
-      if (results[1].statusCode == 200) {
-        jsonDecode(results[1].body) as Map<String, dynamic>;
-      }
-    } catch (_) {
-      if (mounted) setState(() {
-        _vehicleCategories = _defaultVehicleCategories();
-      });
-    }
+    } catch (_) {}
     if (mounted) setState(() => _homeLoading = false);
   }
-
-  List<Map<String, dynamic>> _defaultVehicleCategories() => [
-    {'name': 'Auto', 'type': 'ride', 'minimumFare': '30', 'baseFare': '30'},
-    {'name': 'Bike', 'type': 'ride', 'minimumFare': '20', 'baseFare': '20'},
-    {'name': 'Car', 'type': 'ride', 'minimumFare': '80', 'baseFare': '80'},
-    {'name': 'Parcel', 'type': 'parcel', 'minimumFare': '25', 'baseFare': '25'},
-  ];
 
   Future<void> _fetchActiveServices() async {
     try {
@@ -519,40 +529,52 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) { return fallback; }
   }
 
+  Map<String, dynamic> _vehicleStyle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bike parcel') || n.contains('parcel bike')) return {
+      'icon': Icons.inventory_2_rounded, 'color': const Color(0xFF10B981),
+      'gradient': [const Color(0xFF059669), const Color(0xFF10B981)],
+    };
+    if (n.contains('bike')) return {
+      'icon': Icons.electric_bike_rounded, 'color': const Color(0xFFF59E0B),
+      'gradient': [const Color(0xFFD97706), const Color(0xFFFBBF24)],
+    };
+    if (n.contains('auto')) return {
+      'icon': Icons.electric_rickshaw_rounded, 'color': const Color(0xFFF97316),
+      'gradient': [const Color(0xFFEA580C), const Color(0xFFFB923C)],
+    };
+    if (n.contains('truck') || n.contains('cargo') || n.contains('tata') || n.contains('pickup')) return {
+      'icon': Icons.local_shipping_rounded, 'color': const Color(0xFF0EA5E9),
+      'gradient': [const Color(0xFF0284C7), const Color(0xFF38BDF8)],
+    };
+    if (n.contains('parcel') || n.contains('delivery')) return {
+      'icon': Icons.inventory_2_rounded, 'color': const Color(0xFF10B981),
+      'gradient': [const Color(0xFF059669), const Color(0xFF34D399)],
+    };
+    if (n.contains('suv') || n.contains('car') || n.contains('cab')) return {
+      'icon': Icons.directions_car_filled_rounded, 'color': const Color(0xFF6366F1),
+      'gradient': [const Color(0xFF4F46E5), const Color(0xFF818CF8)],
+    };
+    if (n.contains('pool') || n.contains('share') || n.contains('all') || n.contains('service')) return {
+      'icon': Icons.grid_view_rounded, 'color': JT.primary,
+      'gradient': [const Color(0xFF1D4ED8), const Color(0xFF3B82F6)],
+    };
+    return {
+      'icon': Icons.directions_car_filled_rounded, 'color': JT.primary,
+      'gradient': [const Color(0xFF1D4ED8), JT.primary],
+    };
+  }
+
   void _openSearch({String? presetVehicle}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _PlaceSearchSheet(
+    // Rule: ALL ride entry points go Home → LocationScreen → BookingScreen
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => LocationScreen(
+        serviceType: 'ride',
+        pickupAddress: _pickup.isNotEmpty ? _pickup : null,
         pickupLat: _pickupLat,
         pickupLng: _pickupLng,
-        onPlaceSelected: (name, lat, lng) {
-          final cat = presetVehicle != null
-            ? _vehicleCategories.firstWhere(
-                (c) => c['name'].toString().toLowerCase().contains(presetVehicle.toLowerCase()),
-                orElse: () => _vehicleCategories.isNotEmpty ? _vehicleCategories[0] : {},
-              )
-            : (_vehicleCategories.isNotEmpty ? _vehicleCategories[0] : null);
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => BookingScreen(
-              pickup: _pickup,
-              destination: name,
-              pickupLat: _pickupLat,
-              pickupLng: _pickupLng,
-              destLat: lat != 0 ? lat : 17.3850,
-              destLng: lng != 0 ? lng : 78.4867,
-              vehicleCategoryId: cat?['id']?.toString(),
-              vehicleCategoryName: cat?['name']?.toString(),
-              category: cat?['type']?.toString() ?? 'ride',
-            ),
-          ));
-        },
       ),
-    );
+    ));
   }
 
   void _showAllServicesSheet() {
@@ -584,33 +606,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSearchWithCategory(Map<String, dynamic> cat) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _PlaceSearchSheet(
+    final isParcel = cat['type'] == 'parcel' ||
+        (cat['key']?.toString().contains('parcel') ?? false);
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => LocationScreen(
+        serviceType: isParcel ? 'parcel' : 'ride',
+        pickupAddress: _pickup.isNotEmpty ? _pickup : null,
         pickupLat: _pickupLat,
         pickupLng: _pickupLng,
-        onPlaceSelected: (name, lat, lng) {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => BookingScreen(
-              pickup: _pickup,
-              destination: name,
-              pickupLat: _pickupLat,
-              pickupLng: _pickupLng,
-              destLat: lat != 0 ? lat : 17.3850,
-              destLng: lng != 0 ? lng : 78.4867,
-              vehicleCategoryId: cat['id']?.toString(),
-              vehicleCategoryName: cat['name']?.toString(),
-              category: cat['type']?.toString() ?? 'ride',
-            ),
-          ));
-        },
       ),
-    );
+    ));
   }
 
   @override
@@ -807,174 +812,235 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── SEARCH BAR ────────────────────────────────────────────────────────────
   Widget _buildSearchBar(bool isDark, Color cardBg, Color textColor) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: GestureDetector(
-        onTap: _openSearch,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: isDark ? _darkCard : JT.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: JT.border, width: 1.5),
-            boxShadow: JT.cardShadow,
-          ),
-          child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                color: JT.surfaceAlt,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.location_on_rounded, color: JT.primary, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(
-                  'Where to go?',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white54 : JT.textSecondary,
-                  ),
-                ),
-                if (_pickup.isNotEmpty && _pickup != 'Getting location...')
-                  Text(
-                    _pickup.split(',').first,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(fontSize: 10, color: JT.primary, fontWeight: FontWeight.w600),
-                  ),
-              ]),
-            ),
-            GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 40, height: 40,
-                    decoration: BoxDecoration(
-                      gradient: JT.grad,
-                      shape: BoxShape.circle,
-                      boxShadow: JT.btnShadow,
-                    ),
-                    child: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
-                  ),
-                  Positioned(
-                    top: -4, right: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: JT.success,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.white, width: 1),
-                      ),
-                      child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  // ── FEATURED SERVICES GRID (Dynamic, city-based) ───────────────────────
-  Widget _buildFeaturedGrid(bool isDark) {
-    // Use dynamic active services if available
-    final displayServices = _activeServices.isNotEmpty ? _activeServices : <Map<String, dynamic>>[];
-
-    // Build static fallback from vehicle categories (already filtered by is_active on server)
-    final hasParcel = _vehicleCategories.any((c) => (c['type']?.toString() ?? '').contains('parcel'));
-    final hasBike = _vehicleCategories.any((c) => (c['name']?.toString() ?? '').toLowerCase().contains('bike'));
-
+    final firstName = _userName == 'there' ? 'there' : _userName.split(' ').first;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Everything In Minutes',
+        // Profile greeting row
+        Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF5B8FFF), Color(0xFF2F6BFF)]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(child: Text(
+              firstName.isNotEmpty ? firstName[0].toUpperCase() : 'U',
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+            )),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              'Hello, $firstName!',
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: JT.textPrimary),
+            ),
+            Text(
+              'Where are you heading today?',
+              style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w400),
+            ),
+          ])),
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
+            child: Stack(clipBehavior: Clip.none, children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: JT.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: JT.border),
+                ),
+                child: const Icon(Icons.mic_rounded, color: JT.primary, size: 19),
+              ),
+              Positioned(
+                top: -3, right: -3,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    gradient: JT.grad,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                  child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        // "Where to?" search pill
+        GestureDetector(
+          onTap: _openSearch,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: JT.border, width: 1.5),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 4)),
+              ],
+            ),
+            child: Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: const BoxDecoration(gradient: JT.grad, shape: BoxShape.circle),
+                child: const Icon(Icons.search_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                  'Where to?',
+                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: JT.textPrimary),
+                ),
+                if (_pickup.isNotEmpty && _pickup != 'Getting location...')
+                  Text(
+                    'From: ${_pickup.split(',').first}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(fontSize: 10, color: JT.primary, fontWeight: FontWeight.w600),
+                  )
+                else
+                  Text('Search pickup or destination', style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: JT.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('Go', style: GoogleFonts.poppins(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w800)),
+              ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── FEATURED SERVICES — RIDE + PARCEL (2 cards only) ─────────────────────
+  // Rule 1: BOTH services go to LocationScreen FIRST, then vehicles.
+  Widget _buildFeaturedGrid(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Our Services',
           style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
         const SizedBox(height: 14),
-        if (displayServices.isEmpty) ...[
-          // Fallback grid based on active vehicle categories from server
-          Row(children: [
-            if (hasParcel)
-              Expanded(child: _featuredCard(
-                subtitle: 'Send anything', title: 'Parcel', emoji: '📦',
-                onTap: () { HapticFeedback.selectionClick();
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-                    pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng))); },
-              )),
-            if (hasParcel && hasBike) const SizedBox(width: 12),
-            if (hasBike)
-              Expanded(child: _featuredCard(
-                subtitle: 'Beat the traffic', title: 'Bike Taxi', emoji: '🏍️',
-                onTap: () { HapticFeedback.selectionClick(); _openSearch(presetVehicle: 'Bike'); },
-              )),
-          ]),
-          if (hasParcel || hasBike) const SizedBox(height: 12),
-          Row(children: [
-            if (_vehicleCategories.isNotEmpty)
-              Expanded(child: _featuredCard(
-                subtitle: 'Your everyday rides', title: 'Book now', emoji: '🛺',
-                tall: true,
-                onTap: () { HapticFeedback.selectionClick(); _openSearch(); },
-              )),
-            if (_vehicleCategories.isNotEmpty) const SizedBox(width: 12),
-            Expanded(child: _featuredCard(
-              subtitle: '', title: 'All\nServices', emoji: '📋',
-              onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
-            )),
-          ]),
-        ] else ...[
-          // Dynamic grid from active services
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.2,
-            children: [
-              ...displayServices.take(3).map((svc) {
-                final key = svc['key']?.toString() ?? '';
-                final name = svc['name']?.toString() ?? key;
-                final defaults = _serviceDefaults(key);
-                final emoji = svc['icon']?.toString() ?? defaults['emoji']?.toString() ?? '🚗';
-                final desc = svc['short_description']?.toString() ?? svc['description']?.toString() ?? '';
-                final etaLabel = svc['eta_label']?.toString() ?? '';
-                final imageUrl = svc['image_url']?.toString() ?? '';
-                return _dynamicServiceCard(
-                  title: name, emoji: emoji, subtitle: desc.isNotEmpty ? desc : etaLabel,
-                  imageUrl: imageUrl,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    _onServiceTap(key);
-                  },
-                );
-              }),
-              _featuredCard(
-                subtitle: '', title: 'All\nServices', emoji: '📋',
-                onTap: () { HapticFeedback.selectionClick(); _showAllServicesSheet(); },
-              ),
-            ],
-          ),
-        ],
+        Row(children: [
+          // ── Ride card ──
+          Expanded(child: _buildServiceCard(
+            icon: Icons.electric_rickshaw_rounded,
+            title: 'Ride',
+            subtitle: 'Bike · Auto · Car',
+            gradient: const [Color(0xFF1244A2), JT.primary],
+            onTap: () {
+              HapticFeedback.selectionClick();
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => LocationScreen(
+                  serviceType: 'ride',
+                  pickupAddress: _pickup.isNotEmpty ? _pickup : null,
+                  pickupLat: _pickupLat,
+                  pickupLng: _pickupLng,
+                )));
+            },
+          )),
+          const SizedBox(width: 14),
+          // ── Parcel card ──
+          Expanded(child: _buildServiceCard(
+            icon: Icons.local_shipping_rounded,
+            title: 'Parcel',
+            subtitle: 'Bike · Truck · Van',
+            gradient: const [Color(0xFFEA580C), Color(0xFFF97316)],
+            onTap: () {
+              HapticFeedback.selectionClick();
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => LocationScreen(
+                  serviceType: 'parcel',
+                  pickupAddress: _pickup.isNotEmpty ? _pickup : null,
+                  pickupLat: _pickupLat,
+                  pickupLng: _pickupLng,
+                )));
+            },
+          )),
+        ]),
       ]),
+    );
+  }
+
+  Widget _buildServiceCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required List<Color> gradient,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 164,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: gradient.first.withValues(alpha: 0.40),
+              blurRadius: 20, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: Stack(children: [
+          Positioned(
+            right: -14, bottom: -14,
+            child: Icon(icon, size: 96, color: Colors.white.withValues(alpha: 0.09))),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
+            const Spacer(),
+            Text(subtitle, style: GoogleFonts.poppins(
+              fontSize: 11, color: Colors.white.withValues(alpha: 0.80),
+              fontWeight: FontWeight.w500)),
+            const SizedBox(height: 3),
+            Text(title, style: GoogleFonts.poppins(
+              fontSize: 26, fontWeight: FontWeight.w900,
+              color: Colors.white, letterSpacing: -0.5)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('Book Now', style: GoogleFonts.poppins(
+                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
+              ]),
+            ),
+          ]),
+        ]),
+      ),
     );
   }
 
   void _onServiceTap(String serviceKey) {
     if (serviceKey.contains('parcel')) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-        pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng)));
-    } else if (serviceKey.contains('bike')) {
-      _openSearch(presetVehicle: 'Bike');
-    } else if (serviceKey.contains('auto')) {
-      _openSearch(presetVehicle: 'Auto');
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => LocationScreen(
+          serviceType: 'parcel',
+          pickupAddress: _pickup.isNotEmpty ? _pickup : null,
+          pickupLat: _pickupLat,
+          pickupLng: _pickupLng,
+        )));
     } else if (serviceKey.contains('pool') || serviceKey.contains('intercity')) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
     } else {
@@ -986,36 +1052,47 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title, required String emoji, required String subtitle,
     required VoidCallback onTap, String imageUrl = '',
   }) {
+    final style = _vehicleStyle(title);
+    final iconData = style['icon'] as IconData;
+    final gradColors = style['gradient'] as List<Color>;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
+        padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFEEF4FF),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: JT.border),
-          boxShadow: JT.cardShadow,
+          gradient: LinearGradient(colors: gradColors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: gradColors.first.withValues(alpha: 0.32), blurRadius: 16, offset: const Offset(0, 5))],
         ),
         child: Stack(children: [
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (subtitle.isNotEmpty) ...[
-              Text(subtitle, style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w500),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
-            ],
-            Text(title,
-              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary),
-              maxLines: 2, overflow: TextOverflow.ellipsis),
-          ]),
           Positioned(
-            right: 0, bottom: 0,
+            right: -8, top: -8,
             child: imageUrl.isNotEmpty
               ? ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(imageUrl, width: 54, height: 54, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Text(emoji, style: const TextStyle(fontSize: 48))))
-              : Text(emoji, style: const TextStyle(fontSize: 48)),
+                  child: Image.network(imageUrl, width: 64, height: 64, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(iconData, size: 72, color: Colors.white.withValues(alpha: 0.1))))
+              : Icon(iconData, size: 72, color: Colors.white.withValues(alpha: 0.1)),
           ),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(iconData, size: 19, color: Colors.white),
+            ),
+            const Spacer(),
+            if (subtitle.isNotEmpty) ...[
+              Text(subtitle, style: GoogleFonts.poppins(fontSize: 10, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w500),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+            ],
+            Text(title,
+              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
         ]),
       ),
     );
@@ -1024,99 +1101,91 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _featuredCard({
     required String subtitle, required String title, required String emoji,
     required VoidCallback onTap, bool tall = false,
+    IconData icon = Icons.directions_car_filled_rounded,
+    List<Color> gradient = const [JT.primary, Color(0xFF4FA9FF)],
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: tall ? 172 : 148,
-        padding: const EdgeInsets.fromLTRB(14, 14, 8, 10),
+        padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFEEF4FF),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: JT.border),
-          boxShadow: JT.cardShadow,
+          gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: gradient.first.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 6))],
         ),
         child: Stack(children: [
+          Positioned(
+            right: -10, top: -10,
+            child: Icon(icon, size: 90, color: Colors.white.withValues(alpha: 0.08))),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, size: 20, color: Colors.white),
+            ),
+            const Spacer(),
             if (subtitle.isNotEmpty) ...[
-              Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 4),
+              Text(subtitle, style: GoogleFonts.poppins(fontSize: 11, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w500)),
+              const SizedBox(height: 3),
             ],
             Text(title,
-              style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
           ]),
-          Positioned(
-            right: 0, bottom: 0,
-            child: Text(emoji, style: const TextStyle(fontSize: 54))),
         ]),
       ),
     );
   }
 
-  // ── EXPLORE STRIP (Rapido-style horizontal scroll) ────────────────────────
+  // ── QUICK ACCESS STRIP (Bike / Auto / Car / Parcel) ──────────────────────
   Widget _buildExploreSection(bool isDark) {
-    // Build explore items: ride vehicles + parcel options
-    final rideItems = _vehicleCategories.where((c) => c['type'] != 'parcel').map((cat) {
-      final name = cat['name']?.toString() ?? '';
-      String emoji = '🚖';
-      if (name.toLowerCase().contains('bike')) emoji = '🏍️';
-      else if (name.toLowerCase().contains('auto')) emoji = '🛺';
-      else if (name.toLowerCase().contains('car') || name.toLowerCase().contains('cab')) emoji = '🚗';
-      else if (name.toLowerCase().contains('pool') || name.toLowerCase().contains('carpool')) emoji = '🚌';
-      return {...cat, 'emoji': emoji};
-    }).toList();
-
-    final exploreItems = [
-      ...rideItems,
-      {'name': 'Bike Parcel', 'emoji': '📦', 'type': 'parcel', 'vehicleKey': 'bike_parcel'},
-      {'name': 'Mini Truck',  'emoji': '🚛', 'type': 'parcel', 'vehicleKey': 'tata_ace'},
-      {'name': 'Pickup',      'emoji': '🛻', 'type': 'parcel', 'vehicleKey': 'pickup_truck'},
+    // Static quick-access chips — always shown, fast tap to book
+    final chips = <Map<String, dynamic>>[
+      {'name': 'Bike', 'icon': Icons.electric_bike_rounded, 'color': const Color(0xFFF59E0B), 'type': 'ride'},
+      {'name': 'Auto', 'icon': Icons.electric_rickshaw_rounded, 'color': const Color(0xFFF97316), 'type': 'ride'},
+      {'name': 'Car', 'icon': Icons.directions_car_filled_rounded, 'color': const Color(0xFF6366F1), 'type': 'ride'},
+      {'name': 'Parcel Bike', 'icon': Icons.inventory_2_rounded, 'color': const Color(0xFF10B981), 'type': 'parcel', 'vehicleKey': 'bike_parcel'},
+      {'name': 'Mini Truck', 'icon': Icons.local_shipping_rounded, 'color': const Color(0xFF0EA5E9), 'type': 'parcel', 'vehicleKey': 'tata_ace'},
+      {'name': 'Pickup Van', 'icon': Icons.fire_truck_rounded, 'color': const Color(0xFF7C3AED), 'type': 'parcel', 'vehicleKey': 'pickup_truck'},
     ];
-    if (rideItems.isEmpty) {
-      exploreItems.insertAll(0, [
-        {'name': 'Shared Auto', 'emoji': '🛺', 'type': 'ride'},
-        {'name': 'Bike',        'emoji': '🏍️', 'type': 'ride'},
-        {'name': 'Auto',        'emoji': '🛺', 'type': 'ride'},
-      ]);
-    }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
-        child: Row(children: [
-          Text('Explore', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
-          const Spacer(),
-          GestureDetector(
-            onTap: _showAllServicesSheet,
-            child: Row(children: [
-              Text('View All', style: GoogleFonts.poppins(fontSize: 13, color: JT.primary, fontWeight: FontWeight.w600)),
-              const Icon(Icons.chevron_right_rounded, color: JT.primary, size: 18),
-            ]),
-          ),
-        ]),
+        child: Text('Quick Book',
+          style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: JT.textPrimary)),
       ),
       const SizedBox(height: 12),
       SizedBox(
-        height: 92,
+        height: 90,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          itemCount: exploreItems.length,
+          itemCount: chips.length,
           itemBuilder: (_, i) {
-            final item = exploreItems[i];
-            final name = item['name']?.toString() ?? '';
-            final emoji = item['emoji']?.toString() ?? '🚖';
-            final type = item['type']?.toString() ?? 'ride';
-            final vKey = item['vehicleKey']?.toString();
+            final item = chips[i];
+            final name = item['name'] as String;
+            final icon = item['icon'] as IconData;
+            final color = item['color'] as Color;
+            final type = item['type'] as String;
+            final vKey = item['vehicleKey'] as String?;
             return GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
                 if (type == 'parcel') {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelBookingScreen(
-                    pickupAddress: _pickup, pickupLat: _pickupLat, pickupLng: _pickupLng,
-                    initialVehicleKey: vKey)));
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => LocationScreen(
+                      serviceType: 'parcel',
+                      pickupAddress: _pickup.isNotEmpty ? _pickup : null,
+                      pickupLat: _pickupLat,
+                      pickupLng: _pickupLng,
+                    )));
                 } else {
-                  _openSearchWithCategory(item);
+                  _openSearch();
                 }
               },
               child: Container(
@@ -1124,17 +1193,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 child: Column(children: [
                   Container(
-                    width: 60, height: 60,
+                    width: 58, height: 58,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF4FF),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: JT.border),
+                      color: color.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
                     ),
-                    child: Center(child: Text(emoji, style: const TextStyle(fontSize: 28))),
+                    child: Icon(icon, color: color, size: 26),
                   ),
                   const SizedBox(height: 5),
                   Text(name,
-                    style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w600, color: JT.textPrimary),
                     maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
                 ]),
               ),
@@ -1233,7 +1302,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ])),
-        const Text('🚗', style: TextStyle(fontSize: 64)),
+        Icon(Icons.directions_car_filled_rounded, size: 72, color: Colors.white.withValues(alpha: 0.25)),
       ]),
     );
   }
@@ -1334,8 +1403,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final tripId = trip['id']?.toString() ?? '';
     final driverName = trip['driverName']?.toString() ?? 'your Pilot';
     final dest = trip['destinationAddress']?.toString() ?? 'destination';
+    final isSearching = status == 'searching';
 
     final statusLabel = {
+      'searching': 'Finding a Pilot...',
       'accepted': 'Pilot is on the way',
       'driver_assigned': 'Pilot assigned',
       'arrived': 'Pilot has arrived!',
@@ -1343,48 +1414,94 @@ class _HomeScreenState extends State<HomeScreen> {
     }[status] ?? 'Ride active';
 
     final isArrived = status == 'arrived';
-    final bannerColor = isArrived ? JT.success : JT.primary;
+    final bannerColor = isSearching ? JT.warning : isArrived ? JT.success : JT.primary;
 
-    return GestureDetector(
-      onTap: () {
-        if (tripId.isEmpty) return;
-        Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
-      },
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [bannerColor, bannerColor.withValues(alpha: 0.75)],
-            begin: Alignment.centerLeft, end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: bannerColor.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 4))],
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [bannerColor, bannerColor.withValues(alpha: 0.80)],
+          begin: Alignment.centerLeft, end: Alignment.centerRight,
         ),
-        child: Row(children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
-            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(statusLabel,
-              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
-            Text('$driverName → ${dest.length > 30 ? '${dest.substring(0, 28)}...' : dest}',
-              style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w500)),
-          ])),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text('Track →', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
-          ),
-        ]),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: bannerColor.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 4))],
       ),
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+          child: Icon(
+            isSearching ? Icons.search_rounded : Icons.navigation_rounded,
+            color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(statusLabel,
+            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+          Text(isSearching
+            ? 'Looking for nearby pilots...'
+            : '$driverName → ${dest.length > 28 ? '${dest.substring(0, 26)}...' : dest}',
+            style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w500)),
+        ])),
+        if (isSearching)
+          // Cancel button for stuck searching trips
+          GestureDetector(
+            onTap: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: JT.surface,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  title: Text('Cancel Ride?', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: JT.textPrimary, fontSize: 16)),
+                  content: Text('No pilot found yet. Do you want to cancel this request?',
+                    style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false),
+                      child: Text('Wait', style: GoogleFonts.poppins(color: JT.textSecondary))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: JT.error, foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text('Cancel Ride', style: GoogleFonts.poppins(fontWeight: FontWeight.w700))),
+                  ],
+                ),
+              );
+              if (confirm == true && mounted) {
+                try {
+                  final h = await AuthService.getHeaders();
+                  await http.post(Uri.parse(ApiConfig.cancelTrip), headers: h,
+                    body: jsonEncode({'tripId': tripId, 'reason': 'No pilot found'}));
+                } catch (_) {}
+                if (mounted) setState(() => _activeTrip = null);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+            ),
+          )
+        else
+          GestureDetector(
+            onTap: () {
+              if (tripId.isEmpty) return;
+              Navigator.pushReplacement(context,
+                MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('Track →', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+            ),
+          ),
+      ]),
     );
   }
 
@@ -1546,7 +1663,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   bool _loading = false;
   Timer? _debounce;
 
-  static const Color _primary = Color(0xFF2F7BFF);
+  static const Color _primary = JT.primary;
 
   @override
   void initState() {
@@ -1850,7 +1967,7 @@ class _AllServicesSheet extends StatelessWidget {
     required this.onServiceTap,
   });
 
-  static const Color _primary = Color(0xFF2F7BFF);
+  static const Color _primary = JT.primary;
 
   @override
   Widget build(BuildContext context) {

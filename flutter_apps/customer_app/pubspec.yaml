@@ -1,7 +1,7 @@
 ﻿name: jago_customer
 description: JAGO Pro - Ride Sharing App by MindWhile IT Solutions
 publish_to: 'none'
-version: 1.0.32+32
+version: 1.0.47+47
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -33,6 +33,7 @@ dependencies:
   app_links: ^3.5.1
   audioplayers: ^6.1.0
   google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
   sms_autofill: ^2.4.1
   flutter_webrtc: ^0.12.11
 

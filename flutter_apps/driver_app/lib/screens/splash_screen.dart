@@ -31,11 +31,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF1A50D0),
+      systemNavigationBarIconBrightness: Brightness.light,
     ));
 
     _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    _logoScale = Tween<double>(begin: 0.5, end: 1.0)
+    _logoScale = Tween<double>(begin: 0.75, end: 1.0)
         .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack));
     _logoOpacity = Tween<double>(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.65)));
@@ -46,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _textOpacity = Tween<double>(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut));
 
-    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
       ..forward();
 
     _runSequence();
@@ -54,7 +56,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _runSequence() async {
-    await Future.delayed(const Duration(milliseconds: 200));
+    await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     _logoCtrl.forward();
     await Future.delayed(const Duration(milliseconds: 600));
@@ -71,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _navigate() async {
-    await Future.delayed(const Duration(milliseconds: 2800));
+    await Future.delayed(const Duration(milliseconds: 3000));
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
     final onboardingSeen = prefs.getBool('driver_onboarding_seen') ?? false;
@@ -101,23 +103,46 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: JT.bg,
+      backgroundColor: JT.primary,
       body: Stack(
         children: [
-          // Subtle blue gradient at very top (10% height)
-          Positioned(
-            top: 0, left: 0, right: 0,
+          // Full gradient background
+          Positioned.fill(
             child: Container(
-              height: size.height * 0.10,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    JT.secondary.withValues(alpha: 0.12),
-                    JT.bg,
-                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF5B8FFF), Color(0xFF1A50D0)],
                 ),
+              ),
+            ),
+          ),
+
+          // Decorative circle — top right
+          Positioned(
+            top: -size.width * 0.25,
+            right: -size.width * 0.15,
+            child: Container(
+              width: size.width * 0.72,
+              height: size.width * 0.72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+
+          // Decorative circle — bottom left
+          Positioned(
+            bottom: -size.width * 0.18,
+            left: -size.width * 0.12,
+            child: Container(
+              width: size.width * 0.55,
+              height: size.width * 0.55,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
           ),
@@ -127,34 +152,45 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo with scale + fade animation
+                // Logo — scale + fade
                 AnimatedBuilder(
                   animation: _logoCtrl,
                   builder: (_, child) => Opacity(
                     opacity: _logoOpacity.value,
                     child: Transform.scale(scale: _logoScale.value, child: child),
                   ),
-                  child: JT.logoPilot(height: 48),
+                  child: JT.logoWhite(height: 100),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
-                // Tagline
+                // Tagline — slide up + fade
                 AnimatedBuilder(
                   animation: _textCtrl,
-                  builder: (_, child) => SlideTransition(
-                    position: _textSlide,
-                    child: FadeTransition(opacity: _textOpacity, child: child),
+                  builder: (_, child) => FadeTransition(
+                    opacity: _textOpacity,
+                    child: SlideTransition(position: _textSlide, child: child),
                   ),
-                  child: Text(
-                    'Move Smarter.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: JT.textSecondary,
-                      letterSpacing: 0.3,
+                  child: Column(children: [
+                    Text(
+                      'Pilot Partner App',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Drive. Earn. Grow.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ]),
                 ),
               ],
             ),
@@ -170,8 +206,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   animation: _progressCtrl,
                   builder: (_, __) => LinearProgressIndicator(
                     value: _progressCtrl.value,
-                    backgroundColor: JT.border,
-                    valueColor: const AlwaysStoppedAnimation<Color>(JT.primary),
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                     minHeight: 2,
                   ),
                 ),
@@ -179,12 +215,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 Text(
                   'Mindwhile IT Solutions Pvt Ltd',
                   style: GoogleFonts.poppins(
-                    color: JT.iconInactive,
+                    color: Colors.white.withValues(alpha: 0.45),
                     fontSize: 11,
                     letterSpacing: 0.8,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
               ],
             ),
           ),

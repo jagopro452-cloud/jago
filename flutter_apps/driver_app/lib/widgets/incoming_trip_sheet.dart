@@ -25,7 +25,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     with TickerProviderStateMixin {
   late AnimationController _ringCtrl;
   late AnimationController _pulseCtrl;
-  int _countdown = 15;
+  int _countdown = 40;
   Timer? _countdownTimer;
   bool _responded = false;
 
@@ -47,7 +47,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
 
     _ringCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 15),
+      duration: const Duration(seconds: 40),
     )..forward();
 
     _pulseCtrl = AnimationController(
@@ -130,7 +130,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     final dist = trip['estimatedDistance'] ?? trip['driverDistanceKm'] ?? '--';
     final fare = trip['estimatedFare'] ?? '--';
     final eta = trip['eta'] ?? 5;
-    final urgency = _countdown <= 7;
+    final urgency = _countdown <= 10;
 
     return PopScope(
       canPop: false, // Disable back-button dismiss
@@ -265,17 +265,17 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
           ]),
         ),
         const SizedBox(width: 16),
-        // Circular countdown timer
+        // Circular countdown timer — large and prominent
         Stack(alignment: Alignment.center, children: [
           SizedBox(
-            width: 68,
-            height: 68,
+            width: 84,
+            height: 84,
             child: AnimatedBuilder(
               animation: _ringCtrl,
               builder: (_, __) => CircularProgressIndicator(
                 value: 1.0 - _ringCtrl.value,
-                strokeWidth: 5,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                strokeWidth: 6,
+                backgroundColor: Colors.white.withValues(alpha: 0.10),
                 valueColor: AlwaysStoppedAnimation<Color>(
                   urgency ? const Color(0xFFF59E0B) : _blue,
                 ),
@@ -287,7 +287,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               '$_countdown',
               style: TextStyle(
                 color: urgency ? const Color(0xFFF59E0B) : Colors.white,
-                fontSize: 22,
+                fontSize: 28,
                 fontWeight: FontWeight.w900,
                 height: 1.0,
               ),
@@ -295,8 +295,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             Text(
               'sec',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.3),
-                fontSize: 9,
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -542,63 +542,70 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
       margin: const EdgeInsets.symmetric(horizontal: 4));
 
   Widget _buildButtons() {
-    return Row(children: [
-      // Reject
-      Expanded(
-        child: GestureDetector(
-          onTap: () => _stopAndRespond(false),
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(18),
-              border:
-                  Border.all(color: Colors.red.withValues(alpha: 0.30), width: 1.5),
+    return Column(children: [
+      // ACCEPT — full width, dominant green button
+      GestureDetector(
+        onTap: () => _stopAndRespond(true),
+        child: Container(
+          width: double.infinity,
+          height: 76,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF16A34A), Color(0xFF15803D)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: const Center(
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.close_rounded, color: Color(0xFFF87171), size: 22),
-                SizedBox(width: 8),
-                Text('Reject',
-                    style: TextStyle(
-                        color: Color(0xFFF87171),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15)),
-              ]),
-            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF16A34A).withValues(alpha: 0.45),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 30),
+              SizedBox(width: 12),
+              Text(
+                'ACCEPT TRIP',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ]),
           ),
         ),
       ),
-      const SizedBox(width: 14),
-      // Accept
-      Expanded(
-        flex: 2,
-        child: GestureDetector(
-          onTap: () => _stopAndRespond(true),
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [Color(0xFF16A34A), Color(0xFF15803D)]),
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                    color: const Color(0xFF16A34A).withValues(alpha: 0.35),
-                    blurRadius: 16,
-                    offset: const Offset(0, 5))
-              ],
-            ),
-            child: const Center(
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.check_circle_rounded, color: Colors.white, size: 24),
-                SizedBox(width: 10),
-                Text('Accept Trip',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17)),
-              ]),
-            ),
+      const SizedBox(height: 12),
+      // REJECT — smaller, de-emphasised
+      GestureDetector(
+        onTap: () => _stopAndRespond(false),
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.red.withValues(alpha: 0.22), width: 1.5),
+          ),
+          child: const Center(
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.close_rounded, color: Color(0xFFF87171), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Skip this trip',
+                style: TextStyle(
+                  color: Color(0xFFF87171),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ]),
           ),
         ),
       ),

@@ -126,10 +126,13 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("driver:location", async (data: { lat: number; lng: number; heading?: number; speed?: number }) => {
         try {
           const { lat, lng, heading = 0, speed = 0 } = data;
+          if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) return; // ignore invalid GPS
+          // Update location; also set is_online=true — active location streaming means driver IS online
           await rawDb.execute(rawSql`
-            UPDATE driver_locations
-            SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed}, updated_at=NOW()
-            WHERE driver_id=${userId}::uuid
+            INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
+            VALUES (${userId}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, true, NOW())
+            ON CONFLICT (driver_id) DO UPDATE
+              SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed}, is_online=true, updated_at=NOW()
           `);
           const tripR = await rawDb.execute(rawSql`
             SELECT current_trip_id FROM users WHERE id=${userId}::uuid
@@ -186,10 +189,25 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("driver:online", async (data: { isOnline: boolean; lat?: number; lng?: number }) => {
         try {
           const { isOnline, lat, lng } = data;
-          await rawDb.execute(rawSql`
-            UPDATE driver_locations SET is_online=${isOnline}, updated_at=NOW()
-            WHERE driver_id=${userId}::uuid
-          `);
+          const hasValidCoords = lat != null && lng != null && isFinite(lat) && isFinite(lng) && (lat !== 0 || lng !== 0);
+
+          // UPSERT — creates the row if it doesn't exist (new drivers have no row yet)
+          // Only write lat/lng if we have a valid GPS fix; never store 0,0 as it breaks radius search
+          if (hasValidCoords) {
+            await rawDb.execute(rawSql`
+              INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
+              VALUES (${userId}::uuid, ${lat}, ${lng}, ${isOnline}, NOW())
+              ON CONFLICT (driver_id) DO UPDATE
+                SET lat=${lat}, lng=${lng}, is_online=${isOnline}, updated_at=NOW()
+            `);
+          } else {
+            await rawDb.execute(rawSql`
+              INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
+              VALUES (${userId}::uuid, 0, 0, ${isOnline}, NOW())
+              ON CONFLICT (driver_id) DO UPDATE
+                SET is_online=${isOnline}, updated_at=NOW()
+            `);
+          }
           await rawDb.execute(rawSql`
             UPDATE users
             SET is_online=${isOnline},
@@ -197,16 +215,11 @@ export function setupSocket(httpServer: HttpServer) {
                 current_lng=COALESCE(${lng ?? null}, current_lng)
             WHERE id=${userId}::uuid
           `);
-          if (lat && lng) {
-            await rawDb.execute(rawSql`
-              UPDATE driver_locations SET lat=${lat}, lng=${lng} WHERE driver_id=${userId}::uuid
-            `);
-          }
           socket.emit("driver:online_ack", { isOnline });
-          console.log(`[SOCKET] Driver ${userId} ${isOnline ? "online" : "offline"}`);
+          console.log(`[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng}`);
 
           // If driver just came online, check for searching trips nearby
-          if (isOnline && lat && lng) {
+          if (isOnline && hasValidCoords && lat != null && lng != null) {
             await notifyDriverNearbyTrips(userId, lat, lng);
 
             // Send rebalancing suggestion if driver is in a low-demand area

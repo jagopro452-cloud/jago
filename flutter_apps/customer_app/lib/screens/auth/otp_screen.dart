@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/firebase_otp_service.dart';
@@ -16,18 +17,27 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMixin {
+class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMixin, CodeAutoFill {
   final _otpCtrl = TextEditingController();
   bool _loading = false;
-  int _seconds = 30;
+  int _seconds = 60;
   Timer? _timer;
   String? _verificationId;
   bool _hasError = false;
 
+  @override
+  void codeUpdated() {
+    // SMS auto-read fired — fill the box and auto-verify
+    if (code != null && code!.length == 6 && mounted) {
+      _otpCtrl.text = code!;
+      _verify();
+    }
+  }
+
   late AnimationController _slideCtrl;
   late Animation<Offset> _slideAnim;
 
-  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _blue = JT.primary;
   static const Color _navy = JT.textPrimary;
 
   @override
@@ -35,6 +45,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
     super.initState();
     _verificationId = widget.firebaseVerificationId;
     _startTimer();
+    SmsAutoFill().listenForCode(); // start listening for SMS OTP auto-read
 
     _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
@@ -46,7 +57,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
 
   void _startTimer() {
     _timer?.cancel();
-    setState(() => _seconds = 30);
+    setState(() => _seconds = 60);
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_seconds == 0) { t.cancel(); return; }
       if (mounted) setState(() => _seconds--);
@@ -64,7 +75,8 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
       final res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'customer');
       if (!mounted) return;
       setState(() => _loading = false);
-      if (res['success'] == true) {
+      // success = true OR token present (server may return token without explicit success flag)
+      if (res['success'] == true || res['token'] != null) {
         Navigator.pushAndRemoveUntil(context,
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const HomeScreen(),
@@ -102,6 +114,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
     _timer?.cancel();
     _otpCtrl.dispose();
     _slideCtrl.dispose();
+    cancel(); // stop SMS listener
     super.dispose();
   }
 
