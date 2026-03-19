@@ -72,7 +72,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   static const Color _jagoPrimary = JT.primary;
   static const Color _jagoSecondary = JT.secondary;
 
-  static const Color _blue = Color(0xFF2F7BFF);
+  static const Color _blue = JT.primary;
   static const Color _green = JT.success;
 
   LatLng get _pickupLatLng => LatLng(widget.pickupLat, widget.pickupLng);
@@ -86,41 +86,154 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   static IconData _iconForVehicle(String name) {
     final n = name.toLowerCase();
-    if (n.contains('bike parcel') || n.contains('parcel bike')) return Icons.delivery_dining;
-    if (n.contains('bike')) return Icons.electric_bike;
-    if (n.contains('mini auto') || n.contains('temo auto')) return Icons.electric_rickshaw;
-    if (n.contains('auto')) return Icons.electric_rickshaw;
-    if (n.contains('tata ace') || n.contains('mini cargo')) return Icons.local_shipping;
-    if (n.contains('cargo truck')) return Icons.fire_truck;
-    if (n.contains('cargo')) return Icons.local_shipping;
-    if (n.contains('parcel')) return Icons.delivery_dining;
-    if (n.contains('suv')) return Icons.directions_car;
-    if (n.contains('car')) return Icons.directions_car_filled;
-    return Icons.directions_car;
+    if (n.contains('pickup van') || n.contains('pickup')) return Icons.fire_truck_rounded;
+    if (n.contains('mini truck') || n.contains('tata ace') || n.contains('mini cargo')) return Icons.local_shipping_rounded;
+    if (n.contains('parcel bike') || n.contains('bike parcel') || n.contains('parcel auto')) return Icons.delivery_dining_rounded;
+    if (n.contains('parcel')) return Icons.inventory_2_rounded;
+    if (n.contains('bike')) return Icons.electric_bike_rounded;
+    if (n.contains('auto')) return Icons.electric_rickshaw_rounded;
+    if (n.contains('cargo truck')) return Icons.fire_truck_rounded;
+    if (n.contains('cargo')) return Icons.local_shipping_rounded;
+    if (n.contains('suv')) return Icons.directions_car_filled_rounded;
+    if (n.contains('car')) return Icons.directions_car_filled_rounded;
+    return Icons.directions_car_filled_rounded;
   }
 
   static String _emojiForVehicle(String name) {
     final n = name.toLowerCase();
-    if (n.contains('bike parcel') || n.contains('parcel bike')) return '🛵';
+    // Parcel vehicles — MUST show goods/delivery vehicles, NOT passenger
+    if (n.contains('pickup van') || n.contains('pickup')) return '🚛';     // Heavy pickup van
+    if (n.contains('mini truck') || n.contains('tata ace')) return '🚐';   // Mini cargo truck
+    if (n.contains('parcel bike') || n.contains('bike parcel')) return '🛵'; // Delivery bike
+    if (n.contains('parcel auto')) return '🛻';  // ✅ GOODS AUTO — pickup/cargo truck feel (not passenger auto 🛺, not bus)
+    if (n.contains('parcel')) return '🚐';       // Generic parcel vehicle
+    // Ride vehicles
     if (n.contains('bike')) return '🏍️';
-    if (n.contains('auto')) return '🛺';
+    if (n.contains('auto')) return '🛺';         // Passenger auto only for ride
     if (n.contains('cargo truck')) return '🚛';
-    if (n.contains('cargo') || n.contains('tata ace')) return '🚐';
-    if (n.contains('parcel')) return '🛵';
+    if (n.contains('cargo')) return '🚐';
     if (n.contains('suv')) return '🚙';
     if (n.contains('car')) return '🚗';
     return '🚗';
   }
 
+  // Rule 3: Parcel Auto subtitle must clearly say GOODS ONLY
+  static String _subtitleForVehicle(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('parcel auto')) return 'Goods Carrier Auto · CARGO ONLY';
+    if (n.contains('parcel bike')) return 'Delivery bike · Up to 10 kg';
+    if (n.contains('mini truck') || n.contains('tata ace')) return 'Mini cargo truck · Up to 500 kg';
+    if (n.contains('pickup van') || n.contains('pickup')) return 'Large pickup van · Up to 2000 kg';
+    if (n.contains('parcel')) return 'Parcel delivery';
+    if (n.contains('bike')) return '1 passenger · Fastest';
+    if (n.contains('auto')) return 'Up to 3 passengers';
+    if (n.contains('suv')) return 'Up to 6 passengers · AC';
+    if (n.contains('car')) return 'Up to 4 passengers · AC';
+    return '';
+  }
+
+  // Rule 4: Returns true if vehicle should be HIDDEN (inactive services)
+  static bool _shouldHideVehicle(String name) {
+    final n = name.toLowerCase();
+    // Hide Carpool, Outerpool, SUV, Sedan if not explicitly enabled
+    if (n.contains('pool') || n.contains('carpool') || n.contains('outerpool')) return true;
+    if (n.contains('sedan') && !n.contains('mini')) return true;
+    return false;
+  }
+
   static Color _accentForVehicle(String name) {
     final n = name.toLowerCase();
+    if (n.contains('pickup van') || n.contains('pickup')) return const Color(0xFF7C3AED);
+    if (n.contains('mini truck') || n.contains('tata ace')) return const Color(0xFF0EA5E9);
+    if (n.contains('parcel bike') || n.contains('bike parcel')) return const Color(0xFF10B981);
+    if (n.contains('parcel auto')) return const Color(0xFFF59E0B);
+    if (n.contains('parcel')) return const Color(0xFFF97316);
     if (n.contains('bike')) return JT.primary;
     if (n.contains('auto')) return const Color(0xFF059669);
     if (n.contains('cargo') || n.contains('truck')) return const Color(0xFF7C3AED);
-    if (n.contains('parcel')) return const Color(0xFFF59E0B);
     if (n.contains('suv')) return const Color(0xFF0EA5E9);
     if (n.contains('car')) return const Color(0xFF2563EB);
     return JT.primary;
+  }
+
+  // ── Vehicle image URLs (real vehicle images, network with emoji fallback) ──
+  // Replace these with your own CDN/server static asset URLs for production.
+  static const Map<String, String> _vehicleImageUrls = {
+    'bike':        'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png',
+    'auto':        'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png',
+    'car':         'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png',
+    'parcel_bike': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png',
+    'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
+    'mini_truck':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/mini_truck.png',
+    'pickup_van':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/pickup_van.png',
+  };
+
+  static String? _vehicleImageKey(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('pickup van') || n.contains('pickup')) return 'pickup_van';
+    if (n.contains('mini truck') || n.contains('tata ace')) return 'mini_truck';
+    if (n.contains('parcel bike') || n.contains('bike parcel')) return 'parcel_bike';
+    if (n.contains('parcel auto')) return 'parcel_auto';
+    if (n.contains('parcel')) return 'parcel_bike';
+    if (n.contains('bike')) return 'bike';
+    if (n.contains('auto')) return 'auto';
+    if (n.contains('car') || n.contains('suv')) return 'car';
+    return null;
+  }
+
+  /// Renders vehicle artwork using styled Material Icons (no network dependency).
+  Widget _buildVehicleArtwork(String name, Color accent, bool isSelected, {double size = 96}) {
+    final icon = _iconForVehicle(name);
+    final isParcel = widget.category == 'parcel';
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      width: size, height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isSelected
+              ? [accent.withValues(alpha: 0.18), accent.withValues(alpha: 0.06)]
+              : [accent.withValues(alpha: 0.08), accent.withValues(alpha: 0.02)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(14), bottomLeft: Radius.circular(14)),
+      ),
+      child: Stack(alignment: Alignment.center, children: [
+        // Background circle
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          width: size * 0.70, height: size * 0.70,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: accent.withValues(alpha: isSelected ? 0.15 : 0.08),
+            border: Border.all(color: accent.withValues(alpha: 0.2), width: 1),
+          ),
+        ),
+        // Vehicle icon — clean Material icon, no network / no emoji
+        AnimatedScale(
+          scale: isSelected ? 1.10 : 1.0,
+          duration: const Duration(milliseconds: 220),
+          child: Icon(icon, size: size * 0.46, color: accent.withValues(alpha: isSelected ? 0.92 : 0.68)),
+        ),
+        // DELIVERY / RIDE badge at bottom
+        Positioned(
+          bottom: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              isParcel ? 'DELIVERY' : 'RIDE',
+              style: const TextStyle(color: Colors.white, fontSize: 7,
+                fontWeight: FontWeight.w900, letterSpacing: 0.5),
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _buildVehicleHero() {
@@ -198,13 +311,17 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   static String _capacityForVehicle(String name) {
     final n = name.toLowerCase();
+    if (n.contains('pickup van') || n.contains('pickup')) return 'Up to 2000 kg';
+    if (n.contains('mini truck') || n.contains('tata ace')) return 'Up to 500 kg';
+    if (n.contains('parcel bike') || n.contains('bike parcel')) return 'Up to 10 kg';
+    if (n.contains('parcel auto')) return 'Up to 50 kg';
+    if (n.contains('parcel')) return 'Package delivery';
     if (n.contains('suv')) return '6 seats';
     if (n.contains('car')) return '4 seats';
     if (n.contains('auto')) return '3 seats';
     if (n.contains('bike')) return '1 rider';
     if (n.contains('cargo truck')) return 'Up to 1000 kg';
-    if (n.contains('cargo') || n.contains('tata ace')) return 'Up to 500 kg';
-    if (n.contains('parcel')) return 'Package delivery';
+    if (n.contains('cargo')) return 'Up to 500 kg';
     return '';
   }
 
@@ -339,7 +456,29 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final fares = data['fares'] as List<dynamic>?;
         if (fares != null && fares.isNotEmpty) {
           setState(() {
-            _allFares = fares.cast<Map<String, dynamic>>();
+            // Rule 2: Strict service separation — filter by category, hide inactive
+            var filtered = fares.cast<Map<String, dynamic>>();
+            final cat = widget.category ?? 'ride';
+            if (cat == 'parcel') {
+              filtered = filtered.where((f) {
+                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
+                return vtype == 'parcel' || vname.contains('parcel') ||
+                    vname.contains('truck') || vname.contains('van') ||
+                    vname.contains('tata') || vname.contains('mini');
+              }).toList();
+            } else {
+              filtered = filtered.where((f) {
+                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
+                // Exclude parcel/cargo vehicles from ride
+                if (vtype == 'parcel' || vname.contains('parcel') || vname.contains('truck') || vname.contains('cargo')) return false;
+                // Rule 4: Hide inactive services
+                if (_shouldHideVehicle(vname)) return false;
+                return true;
+              }).toList();
+            }
+            _allFares = filtered.isNotEmpty ? filtered : _buildFallbackFares();
             if (widget.vehicleCategoryId != null) {
               final idx = _allFares.indexWhere((f) =>
                 f['vehicleCategoryId']?.toString() == widget.vehicleCategoryId ||
@@ -348,12 +487,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             }
           });
         } else {
-          // Server returned no fares — compute client-side estimates so the UI always shows a price
-          if (mounted) setState(() => _allFares = _buildFallbackFares());
+          // Server returned no fares — service is inactive for this category
+          if (mounted) setState(() => _allFares = []);
         }
       }
     } catch (_) {
-      // Network error — show client-side estimates
+      // Network error — show client-side estimates only on connectivity failure
       if (mounted) setState(() => _allFares = _buildFallbackFares());
     }
     if (mounted) setState(() => _estimating = false);
@@ -391,6 +530,16 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'estimatedTime': '$eta min',
       };
     }
+    // Parcel-specific vehicles — never mix with ride vehicles
+    if (widget.category == 'parcel') {
+      return [
+        make('Parcel Bike',  20,  8,  25, (dist * 4).ceil()),
+        make('Parcel Auto',  30, 10,  35, (dist * 4).ceil()),
+        make('Mini Truck',  100, 25, 120, (dist * 5).ceil()),
+        make('Pickup Van',  150, 35, 180, (dist * 5).ceil()),
+      ];
+    }
+    // Ride vehicles (default)
     return [
       make('Bike', 25, 10, 28, (dist * 3).ceil()),
       make('Auto', 35, 13, 40, (dist * 3.5).ceil()),
@@ -981,7 +1130,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     boxShadow: JT.btnShadow,
                   ),
                   child: ElevatedButton(
-                    onPressed: _loading || _estimating ? null : _handleOnConfirm,
+                    onPressed: _loading || _estimating || _allFares.isEmpty ? null : _handleOnConfirm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent, foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey[200],
@@ -1396,34 +1545,32 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         ])));
     }
     if (_allFares.isEmpty) {
-      final fbDist = _distanceKm;
-      final fbSubtotal = (25.0 + fbDist * 10.0).clamp(28.0, double.infinity);
-      final fbTotal = fbSubtotal * 1.05;
-      final fbMin = (fbTotal * 0.95).floor();
-      final fbMax = (fbTotal * 1.05).ceil();
-      return Row(children: [
-        Container(width: 52, height: 52,
-          decoration: BoxDecoration(color: _jagoPrimary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
-          child: Icon(_iconForVehicle(_vehicleName), color: _jagoPrimary, size: 26)),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_vehicleName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: textMain)),
-          Text('${fbDist.toStringAsFixed(1)} km • Est. ~${(fbDist * 3).ceil()} min',
-            style: TextStyle(fontSize: 13, color: textSub, fontWeight: FontWeight.w500)),
-        ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('₹$fbMin–₹$fbMax',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _jagoPrimary)),
-          Text('est. fare', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFED7AA)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded, color: Color(0xFFEA580C), size: 24),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Service Unavailable',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: textMain)),
+            const SizedBox(height: 2),
+            Text('This service is not available right now. Please try again later.',
+              style: TextStyle(fontSize: 12, color: textSub)),
+          ])),
         ]),
-      ]);
+      );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildVehicleHero(),
       Row(children: [
         const Icon(Icons.directions_rounded, color: _jagoPrimary, size: 18),
         const SizedBox(width: 6),
-        Text('Choose Your Ride',
+        Text(widget.category == 'parcel' ? 'Choose Parcel Vehicle' : 'Choose Your Ride',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: textMain, letterSpacing: -0.3)),
         const Spacer(),
         Container(
@@ -1470,107 +1617,173 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         ]),
       ),
       const SizedBox(height: 10),
+      // Rule 6: Vehicle cards with artwork image, title, subtitle, ETA, price
+      // Scale animation on selection, blue border when selected
       ..._allFares.asMap().entries.map((entry) {
         final i = entry.key;
         final f = entry.value;
         final isSelected = i == _selectedFareIndex;
         final name = f['vehicleCategoryName']?.toString() ?? f['vehicleName']?.toString() ?? f['name']?.toString() ?? 'Vehicle';
         final fareVal = (f['estimatedFare'] ?? 0).toDouble();
-        final rawMin = (f['fareMin'] ?? (fareVal * 0.95)).toDouble();
-        final rawMax = (f['fareMax'] ?? (fareVal * 1.05)).toDouble();
         final time = f['estimatedTime']?.toString() ?? '~5 min';
         final displayFare = isSelected ? (fareVal - _promoDiscount).clamp(0.0, double.infinity) : fareVal;
-        final displayMin = (isSelected ? rawMin - _promoDiscount : rawMin).clamp(0.0, double.infinity);
-        final displayMax = (isSelected ? rawMax - _promoDiscount : rawMax).clamp(0.0, double.infinity);
         final tag = _getVehicleTag(i);
-        final minFareVal = (f['minimumFare'] ?? 0).toDouble();
-        final farePerKmVal = (f['farePerKm'] ?? 0).toDouble();
+        final accent = _accentForVehicle(name);
+        final emoji = _emojiForVehicle(name);
+        final subtitle = _subtitleForVehicle(name);
+        final etaMins = _etaMins(time);
+        final dropTime = _dropTimeStr(time);
+        final isParcel = widget.category == 'parcel';
+
         return GestureDetector(
           key: ValueKey(i),
           onTap: () {
             HapticFeedback.selectionClick();
             setState(() => _selectedFareIndex = i);
           },
-          child: Stack(
-            children: [
+          child: AnimatedScale(
+            scale: isSelected ? 1.02 : 1.0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: Stack(children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: isSelected ? _accentForVehicle(name).withValues(alpha: 0.06) : cardBg,
+                  color: isSelected ? accent.withValues(alpha: 0.05) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected ? _accentForVehicle(name) : borderCol,
-                    width: isSelected ? 2 : 1),
-                  boxShadow: isSelected ? [
-                    BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 4))
-                  ] : [],
+                    color: isSelected ? accent : const Color(0xFFE8EFFF),
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [BoxShadow(color: accent.withValues(alpha: 0.18), blurRadius: 20, offset: const Offset(0, 6))]
+                      : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
                 ),
                 child: Row(children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 56, height: 56,
-                    decoration: BoxDecoration(
-                      gradient: isSelected ? LinearGradient(
-                        colors: [_accentForVehicle(name), _accentForVehicle(name).withValues(alpha: 0.7)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
-                      color: isSelected ? null : _accentForVehicle(name).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: _accentForVehicle(name).withValues(alpha: isSelected ? 0.8 : 0.15), width: isSelected ? 2 : 1),
-                      boxShadow: isSelected ? [BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))] : [],
-                    ),
-                    child: Center(child: Text(_emojiForVehicle(name), style: TextStyle(fontSize: isSelected ? 28 : 24)))),
-                  const SizedBox(width: 14),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Flexible(child: Text(name, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15,
-                        color: isSelected ? _accentForVehicle(name) : textMain), overflow: TextOverflow.ellipsis)),
-                      if (tag != null) ...[
-                        const SizedBox(width: 8),
-                        _vehicleTagBadge(tag),
-                      ],
-                    ]),
-                    const SizedBox(height: 4),
-                    Row(children: [
-                      Text(
-                        '${_etaMins(time)} mins away · Drop ${_dropTimeStr(time)}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500),
+                  // ── Vehicle Artwork — network image + emoji fallback ──
+                  _buildVehicleArtwork(name, accent, isSelected),
+
+                  // ── Vehicle Details ──
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Name + tag
+                          Row(children: [
+                            Flexible(
+                              child: Text(name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  color: isSelected ? accent : textMain,
+                                  letterSpacing: -0.3,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (tag != null) ...[
+                              const SizedBox(width: 6),
+                              _vehicleTagBadge(tag),
+                            ],
+                          ]),
+
+                          // Subtitle — capacity/type description
+                          if (subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(subtitle,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isParcel && name.toLowerCase().contains('parcel auto')
+                                    ? const Color(0xFFD97706)  // Amber for goods auto
+                                    : Colors.grey.shade500,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+
+                          const SizedBox(height: 6),
+
+                          // ETA row
+                          Row(children: [
+                            Icon(Icons.access_time_rounded, size: 12, color: Colors.grey.shade400),
+                            const SizedBox(width: 3),
+                            Text('$etaMins min',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                            Icon(Icons.circle, size: 3, color: Colors.grey.shade300),
+                            const SizedBox(width: 8),
+                            Text('Drop $dropTime',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                          ]),
+
+                          const SizedBox(height: 6),
+
+                          // Price + savings
+                          Row(children: [
+                            Text('₹${displayFare.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: accent,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            if (isSelected && _promoDiscount > 0) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text('−₹${_promoDiscount.toInt()} off',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFF16A34A),
+                                    fontWeight: FontWeight.w800,
+                                  )),
+                              ),
+                            ],
+                          ]),
+                        ],
                       ),
-                      if (_capacityForVehicle(name).isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Icon(Icons.person_rounded, size: 11, color: Colors.grey[400]),
-                        Text(' ${_capacityForVehicle(name)}',
-                          style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                      ],
-                    ]),
-                  ])),
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('₹${displayFare.toStringAsFixed(0)}',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: _accentForVehicle(name))),
-                    if (isSelected && _promoDiscount > 0)
-                      Text('saved ₹${_promoDiscount.toInt()}',
-                        style: const TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
-                  ]),
-                  const SizedBox(width: 24),
+                    ),
+                  ),
                 ]),
               ),
+
+              // Selected checkmark badge
               if (isSelected)
                 Positioned(
-                  top: 0, right: 0,
+                  top: 10, right: 10,
                   child: Container(
-                    width: 28, height: 28,
+                    width: 26, height: 26,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_accentForVehicle(name), _accentForVehicle(name).withValues(alpha: 0.75)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        colors: [accent, accent.withValues(alpha: 0.75)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: _accentForVehicle(name).withValues(alpha: 0.45), blurRadius: 8, offset: const Offset(0, 2))],
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.check_rounded, color: Colors.white, size: 17)),
+                    child: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                  ),
                 ),
-            ],
+            ]),
           ),
         );
       }).toList(),

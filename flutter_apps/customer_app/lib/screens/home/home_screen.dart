@@ -917,9 +917,32 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── FEATURED SERVICES — RIDE + PARCEL (2 cards only) ─────────────────────
-  // Rule 1: BOTH services go to LocationScreen FIRST, then vehicles.
+  // ── FEATURED SERVICES — RIDE + PARCEL (admin-controlled) ────────────────
+  // Only shows cards for services that have active vehicle categories in DB.
   Widget _buildFeaturedGrid(bool isDark) {
+    final hasRide = _vehicleCategories.any((v) => v['type']?.toString() == 'ride');
+    final hasParcel = _vehicleCategories.any((v) => v['type']?.toString() == 'parcel');
+
+    if (!hasRide && !hasParcel) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Our Services',
+            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: JT.surfaceAlt,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(child: Text('No services available in your area',
+              style: GoogleFonts.poppins(fontSize: 14, color: JT.textSecondary))),
+          ),
+        ]),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -927,8 +950,8 @@ class _HomeScreenState extends State<HomeScreen> {
           style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
         const SizedBox(height: 14),
         Row(children: [
-          // ── Ride card ──
-          Expanded(child: _buildServiceCard(
+          // ── Ride card — only if admin has active ride vehicles ──
+          if (hasRide) Expanded(child: _buildServiceCard(
             icon: Icons.electric_rickshaw_rounded,
             title: 'Ride',
             subtitle: 'Bike · Auto · Car',
@@ -944,9 +967,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 )));
             },
           )),
-          const SizedBox(width: 14),
-          // ── Parcel card ──
-          Expanded(child: _buildServiceCard(
+          if (hasRide && hasParcel) const SizedBox(width: 14),
+          // ── Parcel card — only if admin has active parcel vehicles ──
+          if (hasParcel) Expanded(child: _buildServiceCard(
             icon: Icons.local_shipping_rounded,
             title: 'Parcel',
             subtitle: 'Bike · Truck · Van',

@@ -1242,6 +1242,31 @@ async function ensureOperationalSchema() {
     `);
     console.log('[seed] Vehicle categories seeded/updated');
 
+    // ── Sync vehicle_categories.is_active with platform_services.service_status ──
+    // platform_services is the source of truth for which services admin has enabled.
+    // On every restart, align vehicle visibility with the service toggle state.
+    await rawDb.execute(rawSql`
+      UPDATE vehicle_categories vc
+      SET is_active = (
+        CASE vc.vehicle_type
+          WHEN 'bike'     THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='bike_ride'  LIMIT 1), vc.is_active)
+          WHEN 'auto'     THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='auto_ride'  LIMIT 1), vc.is_active)
+          WHEN 'mini_car' THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='mini_car'   LIMIT 1), vc.is_active)
+          WHEN 'sedan'    THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='sedan'      LIMIT 1), vc.is_active)
+          WHEN 'suv'      THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='suv'        LIMIT 1), vc.is_active)
+          WHEN 'carpool'  THEN COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='city_pool'  LIMIT 1), vc.is_active)
+          ELSE vc.is_active
+        END
+      )
+      WHERE vc.type = 'ride'
+    `).catch(() => {});
+    await rawDb.execute(rawSql`
+      UPDATE vehicle_categories vc
+      SET is_active = COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='parcel_delivery' LIMIT 1), vc.is_active)
+      WHERE vc.type = 'parcel'
+    `).catch(() => {});
+    console.log('[seed] vehicle_categories.is_active synced with platform_services');
+
     // ── Seed trip_fares using vehicle_categories pricing as source of truth ──
     // Inserts only where no fare row exists yet. Safe to re-run.
     await rawDb.execute(rawSql`
