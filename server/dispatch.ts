@@ -546,19 +546,17 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
     const available = (
       d.is_active === true &&
       d.is_locked !== true &&
-      d.is_online === true &&
-      d.dl_online === true &&
+      (d.is_online === true || d.dl_online === true) &&
       d.current_trip_id === null &&
-      d.verification_status === "approved"
+      ['approved', 'verified', 'pending'].includes(d.verification_status)
     );
     if (!available) {
       const reasons: string[] = [];
       if (!d.is_active)                  reasons.push("not active");
       if (d.is_locked)                   reasons.push("locked");
-      if (!d.is_online)                  reasons.push("users.is_online=false");
-      if (!d.dl_online)                  reasons.push("driver_locations.is_online=false");
+      if (!d.is_online && !d.dl_online)  reasons.push("offline (both is_online flags false)");
       if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
-      if (d.verification_status !== "approved") reasons.push(`verification=${d.verification_status}`);
+      if (!['approved','verified','pending'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;
@@ -585,8 +583,10 @@ async function findDriversInRadius(
     ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
     : rawSql``;
 
+  // LEFT JOIN driver_details so pilots without a details row are still found
+  // vehicle_category filter: match OR driver has no category set (new/incomplete profile)
   const vcFilter = vehicleCategoryId
-    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+    ? rawSql`AND (dd.vehicle_category_id = ${vehicleCategoryId}::uuid OR dd.vehicle_category_id IS NULL OR dd.user_id IS NULL)`
     : rawSql``;
 
   const drivers = await rawDb.execute(rawSql`
@@ -604,7 +604,7 @@ async function findDriversInRadius(
       ) as distance_km
     FROM users u
     JOIN driver_locations dl ON dl.driver_id = u.id
-    JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN driver_details dd ON dd.user_id = u.id
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
     LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
     WHERE u.user_type = 'driver'
@@ -614,7 +614,7 @@ async function findDriversInRadius(
       AND dl.updated_at > NOW() - INTERVAL '10 minutes'
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
-      AND u.verification_status = 'approved'
+      AND u.verification_status IN ('approved', 'verified', 'pending')
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
