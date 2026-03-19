@@ -87,7 +87,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                Center(child: Image.asset('assets/images/pilot_logo.png', height: 80, errorBuilder: (_, __, ___) => Icon(Icons.verified_user, size: 80, color: JT.primary))),
+                Center(child: JT.logoBlue(height: 60)),
                 const SizedBox(height: 32),
                 Text(
                   status == 'approved' ? 'Account Approved!' : (status == 'rejected' ? 'Verification Rejected' : 'Account Under Review'),

@@ -62,59 +62,9 @@ class JT {
     );
   }
 
-  static Widget logoBlue({double height = 36}) => _logoWidget(
-        height: height,
-        iconAsset: 'assets/images/jago_icon.svg',
-        wordmarkColor: textPrimary,
-        sublabelColor: primary,
-      );
+  static Widget logoBlue({double height = 36}) =>
+      SvgPicture.asset('assets/images/jago_logo_full.svg', height: height, fit: BoxFit.contain);
 
-  static Widget logoWhite({double height = 36}) => _logoWidget(
-        height: height,
-        iconAsset: 'assets/images/jago_icon_white.svg',
-        wordmarkColor: Colors.white,
-        sublabelColor: Colors.white.withValues(alpha: 0.85),
-      );
-
-  static Widget _logoWidget({
-    required double height,
-    required String iconAsset,
-    required Color wordmarkColor,
-    required Color sublabelColor,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SvgPicture.asset(iconAsset, height: height, width: height),
-        SizedBox(width: height * 0.18),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'JAGO',
-              style: GoogleFonts.poppins(
-                fontSize: height * 0.50,
-                fontWeight: FontWeight.w900,
-                color: wordmarkColor,
-                height: 1.1,
-                letterSpacing: -0.5,
-              ),
-            ),
-            Text(
-              'PRO',
-              style: GoogleFonts.poppins(
-                fontSize: height * 0.22,
-                fontWeight: FontWeight.w700,
-                color: sublabelColor,
-                letterSpacing: 2.5,
-                height: 1.0,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  static Widget logoWhite({double height = 36}) =>
+      SvgPicture.asset('assets/images/jago_logo_full_white.svg', height: height, fit: BoxFit.contain);
 }

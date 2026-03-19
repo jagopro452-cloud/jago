@@ -19,10 +19,14 @@ class FirebaseOtpService {
         forceResendingToken: _resendToken,
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
+          // Auto-retrieval disabled — user must always enter OTP manually.
+          // signInWithCredential here would consume the session and cause
+          // "session expired" when user tries to verify manually.
+          if (onAutoVerify == null) return;
           try {
             final userCred = await _auth.signInWithCredential(credential);
-            final idToken = await userCred.user?.getIdToken();
-            if (idToken != null) onAutoVerify?.call(idToken);
+            final idToken = await userCred.user?.getIdToken(true);
+            if (idToken != null) onAutoVerify.call(idToken);
           } catch (_) {}
         },
         verificationFailed: (FirebaseAuthException e) {
@@ -65,12 +69,17 @@ class FirebaseOtpService {
   }) async {
     final vId = verificationId ?? _verificationId;
     if (vId == null) throw Exception('Verification ID missing. Please resend OTP.');
+
+    // Sign out any stale session before creating a new one — prevents "session expired"
+    try { await _auth.signOut(); } catch (_) {}
+
     final credential = PhoneAuthProvider.credential(
       verificationId: vId,
       smsCode: smsCode,
     );
     final userCred = await _auth.signInWithCredential(credential);
-    final idToken = await userCred.user?.getIdToken();
+    // Force-refresh = true ensures we always get a fresh, non-expired token
+    final idToken = await userCred.user?.getIdToken(true);
     if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
     return idToken;
   }

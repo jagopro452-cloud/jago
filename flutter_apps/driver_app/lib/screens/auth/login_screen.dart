@@ -152,18 +152,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           setState(() => _loading = false);
           _snack(error, error: true);
         },
-        onAutoVerify: (idToken) async {
-          // Auto-verified! Try silent login — don't block manual OTP entry
-          if (!mounted) return;
-          try {
-            final verifyRes = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
-            if (!mounted) return;
-            if (verifyRes['success'] == true) {
-              Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-            }
-            // If failed, silently let user enter OTP manually
-          } catch (_) {}
-        },
+        // onAutoVerify intentionally omitted — auto-sign-in consumes Firebase
+        // session and causes "session expired" when user enters OTP manually.
       );
     } catch (e) {
       if (!mounted) return;
@@ -187,7 +177,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
       if (!mounted) return;
       setState(() => _loading = false);
-      if (res['success'] == true) {
+      // Navigate if token present — server may return token without explicit success flag
+      if (res['success'] == true || res['token'] != null) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
         _otpCtrl.clear();
@@ -216,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final res = await AuthService.loginWithPassword(phone, pass);
     if (!mounted) return;
     setState(() => _loading = false);
-    if (res['success'] == true) {
+    if (res['success'] == true || res['token'] != null) {
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
     } else {
       _snack(res['message'] ?? 'Login failed', error: true);
@@ -276,27 +267,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             ),
                           ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.asset(
-                            'assets/images/pilot_logo.png',
-                            fit: BoxFit.contain,
-                            color: Colors.white,
-                            colorBlendMode: BlendMode.srcIn,
-                            errorBuilder: (_, __, ___) => Center(
-                              child: Text('P', style: GoogleFonts.poppins(
-                                fontSize: 40, fontWeight: FontWeight.w900, color: Colors.white, height: 1,
-                              )),
-                            ),
-                          ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: JT.logoWhite(height: 44),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      Text('PILOT', style: GoogleFonts.poppins(
-                        fontSize: 22, fontWeight: FontWeight.w900,
-                        color: Colors.white, letterSpacing: 4,
-                      )),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 18),
+                      JT.logoWhite(height: 36),
+                      const SizedBox(height: 6),
                       Text('Earn. Drive. Grow.', style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.w400,
                         color: Colors.white.withValues(alpha: 0.75),
