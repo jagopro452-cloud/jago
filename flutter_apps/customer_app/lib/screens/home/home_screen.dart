@@ -223,6 +223,18 @@ class _HomeScreenState extends State<HomeScreen> {
             if (status == 'searching') {
               _startSearchingTimer(trip['id']?.toString() ?? '');
             }
+            // Fix 7: if driver already assigned/in-progress, go straight to TrackingScreen
+            if (['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) {
+              final tripId = trip['id']?.toString() ?? '';
+              if (tripId.isNotEmpty && mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TrackingScreen(tripId: tripId),
+                  ),
+                );
+              }
+            }
           }
         }
       }

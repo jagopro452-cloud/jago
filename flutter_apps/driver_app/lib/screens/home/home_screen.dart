@@ -112,7 +112,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _fetchLaunchBenefit();
     _fetchEligibleServices();
     _connectSocket();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmTrip());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _recoverActiveTrip();   // Fix 7: state recovery — must run before FCM check
+      await _checkPendingFcmTrip();
+    });
   }
 
   Future<void> _checkVerificationStatus() async {
@@ -143,6 +146,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
         }
       }
+    } catch (_) {}
+  }
+
+  // ── App state recovery: if driver has an active trip, go to TripScreen directly ──
+  Future<void> _recoverActiveTrip() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/driver/active-trip'),
+        headers: headers,
+      );
+      if (res.statusCode != 200) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final trip = data['trip'];
+      if (trip == null) return;
+      final status = trip['currentStatus'] ?? trip['current_status'] ?? '';
+      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) return;
+      if (!mounted) return;
+      // Navigate directly to trip screen — driver was mid-trip when app crashed
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TripScreen(tripData: trip),
+        ),
+      );
     } catch (_) {}
   }
 

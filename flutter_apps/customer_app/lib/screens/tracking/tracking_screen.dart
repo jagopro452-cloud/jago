@@ -1078,6 +1078,46 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               ]),
             ),
           ],
+          // ── Payment receipt breakdown ──────────────────────────────────
+          if (actualFare != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Payment Receipt',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700, fontSize: 12,
+                    color: const Color(0xFF6B7280))),
+                const SizedBox(height: 8),
+                _receiptRow('Trip Fare', '₹$actualFare'),
+                if ((_trip?['userDiscount'] ?? _trip?['user_discount'] ?? 0) > 0)
+                  _receiptRow('Discount', '- ₹${_trip?['userDiscount'] ?? _trip?['user_discount']}',
+                    valueColor: const Color(0xFF16A34A)),
+                _receiptRow(
+                  'Payment',
+                  () {
+                    final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
+                    if (pm == 'wallet') return 'Wallet';
+                    if (pm == 'online') return 'Online Paid';
+                    return 'Cash to Pilot';
+                  }(),
+                  valueColor: const Color(0xFF2563EB),
+                ),
+                if (walletPendingAmount > 0)
+                  _receiptRow(
+                    'Cash to Pilot',
+                    '₹${walletPendingAmount.toStringAsFixed(0)}',
+                    valueColor: const Color(0xFFF97316),
+                  ),
+              ]),
+            ),
+          ],
           // Trip details chips
           if (dist != null || vehicle != null) ...[
             const SizedBox(height: 12),
@@ -1158,6 +1198,22 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
         )),
     ]);
+  }
+
+  Widget _receiptRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.poppins(
+            fontSize: 12, color: const Color(0xFF6B7280))),
+          Text(value, style: GoogleFonts.poppins(
+            fontSize: 12, fontWeight: FontWeight.w700,
+            color: valueColor ?? const Color(0xFF111827))),
+        ],
+      ),
+    );
   }
 
   Widget _completedChip(IconData icon, String label, Color color) {

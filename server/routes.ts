@@ -2380,6 +2380,99 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
 
 
+  // ── REAL-TIME ADMIN KPIs (production-grade live metrics) ─────────────────
+  app.get("/api/admin/live-kpis", requireAdminAuth, async (req, res) => {
+    try {
+      const [liveR, cancelR, surgeR, ghostR, penaltyR, etaR] = await Promise.all([
+        // Live trip states right now
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE current_status='searching')::int           AS searching,
+            COUNT(*) FILTER (WHERE current_status IN ('driver_assigned','accepted'))::int AS dispatching,
+            COUNT(*) FILTER (WHERE current_status='arrived')::int             AS arrived,
+            COUNT(*) FILTER (WHERE current_status='on_the_way')::int         AS in_progress,
+            COUNT(*) FILTER (WHERE current_status='completed' AND ride_ended_at > NOW() - INTERVAL '1 hour')::int AS completed_last_hour,
+            COUNT(*) FILTER (WHERE current_status='cancelled' AND updated_at > NOW() - INTERVAL '1 hour')::int AS cancelled_last_hour,
+            COALESCE(AVG(EXTRACT(EPOCH FROM (driver_accepted_at - created_at))/60) FILTER (
+              WHERE driver_accepted_at IS NOT NULL AND created_at > NOW() - INTERVAL '1 hour'), 0)::numeric(5,1)
+              AS avg_pickup_wait_min
+          FROM trip_requests
+          WHERE created_at > NOW() - INTERVAL '24 hours'
+        `),
+        // Driver cancel rate today
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE cancelled_by='driver')::int   AS driver_cancels_today,
+            COUNT(*) FILTER (WHERE cancelled_by='customer')::int AS customer_cancels_today,
+            COUNT(*)::int                                         AS total_cancels_today
+          FROM trip_requests
+          WHERE current_status='cancelled' AND DATE(updated_at) = CURRENT_DATE
+        `),
+        // Active surge zones
+        rawDb.execute(rawSql`
+          SELECT name, surge_factor FROM zones
+          WHERE is_active=true AND surge_factor > 1
+          ORDER BY surge_factor DESC
+        `).catch(() => ({ rows: [] as any[] })),
+        // Ghost drivers (online but no ping in > 5 min)
+        rawDb.execute(rawSql`
+          SELECT COUNT(*)::int AS ghost_count
+          FROM driver_locations
+          WHERE is_online=true AND updated_at < NOW() - INTERVAL '5 minutes'
+        `).catch(() => ({ rows: [{ ghost_count: 0 }] as any[] })),
+        // Cancel penalty revenue today
+        rawDb.execute(rawSql`
+          SELECT COALESCE(SUM(amount), 0)::numeric(10,2) AS penalty_collected_today
+          FROM driver_payments
+          WHERE payment_type='cancel_penalty' AND DATE(created_at)=CURRENT_DATE
+        `).catch(() => ({ rows: [{ penalty_collected_today: 0 }] as any[] })),
+        // Average estimated distance for today's completed trips (proxy for avg trip length)
+        rawDb.execute(rawSql`
+          SELECT
+            COALESCE(AVG(actual_distance) FILTER (WHERE current_status='completed'), 0)::numeric(5,1) AS avg_distance_km,
+            COALESCE(AVG(actual_fare) FILTER (WHERE current_status='completed'), 0)::numeric(8,2) AS avg_fare
+          FROM trip_requests
+          WHERE DATE(created_at) = CURRENT_DATE
+        `),
+      ]);
+
+      const live    = (liveR.rows[0] as any) || {};
+      const cancel  = (cancelR.rows[0] as any) || {};
+      const ghost   = (ghostR.rows[0] as any) || {};
+      const penalty = (penaltyR.rows[0] as any) || {};
+      const eta     = (etaR.rows[0] as any) || {};
+      const surgeZones = (surgeR.rows as any[]).map(z => ({ name: z.name, factor: parseFloat(z.surge_factor) }));
+
+      res.json({
+        live: {
+          searching:           parseInt(live.searching || 0),
+          dispatching:         parseInt(live.dispatching || 0),
+          arrived:             parseInt(live.arrived || 0),
+          inProgress:          parseInt(live.in_progress || 0),
+          completedLastHour:   parseInt(live.completed_last_hour || 0),
+          cancelledLastHour:   parseInt(live.cancelled_last_hour || 0),
+          avgPickupWaitMin:    parseFloat(live.avg_pickup_wait_min || 0),
+        },
+        cancellations: {
+          driverCancelsToday:  parseInt(cancel.driver_cancels_today || 0),
+          customerCancelsToday: parseInt(cancel.customer_cancels_today || 0),
+          totalToday:          parseInt(cancel.total_cancels_today || 0),
+          penaltyCollectedToday: parseFloat(penalty.penalty_collected_today || 0),
+        },
+        quality: {
+          avgDistanceKm:       parseFloat(eta.avg_distance_km || 0),
+          avgFare:             parseFloat(eta.avg_fare || 0),
+          ghostDriverCount:    parseInt(ghost.ghost_count || 0),
+        },
+        surge: {
+          activeSurgeZones: surgeZones,
+          surgeActive: surgeZones.length > 0,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   app.get("/api/dashboard/chart", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -7010,6 +7103,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── DRIVER: Active trip (app state recovery) ─────────────────────────────
+  // Returns the driver's current in-progress trip so the app can restore TripScreen
+  // after a crash, kill, or network loss.
+  app.get("/api/app/driver/active-trip", authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
+          vc.name as vehicle_name
+        FROM trip_requests t
+        LEFT JOIN users c ON c.id = t.customer_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        WHERE t.driver_id = ${driver.id}::uuid
+          AND t.current_status IN ('driver_assigned','accepted','arrived','on_the_way')
+        ORDER BY t.updated_at DESC LIMIT 1
+      `);
+      res.json({ trip: r.rows.length ? camelize(r.rows[0]) : null });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   // ── DRIVER: Accept trip ───────────────────────────────────────────────────
   app.post("/api/app/driver/accept-trip", authApp, requireDriver, driverTripActionLimiter, async (req, res) => {
     try {
@@ -7620,6 +7733,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await logRideLifecycleEvent(tripId, 'driver_reassigned', driver.id, 'driver', { reason: reason || 'Driver cancelled' });
       // Free the driver
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
+
+      // ── Cancel penalty: ₹10 fine after 3rd cancel in 24 hours ─────────────
+      try {
+        const cancelCountR = await rawDb.execute(rawSql`
+          SELECT COUNT(*) as cnt FROM trip_requests
+          WHERE driver_id = ${driver.id}::uuid
+            AND cancelled_by = 'driver'
+            AND updated_at > NOW() - INTERVAL '24 hours'
+        `);
+        const cancelCount = parseInt((cancelCountR.rows[0] as any)?.cnt || '0', 10) + 1;
+        if (cancelCount >= 3) {
+          const penaltyR = await rawDb.execute(rawSql`
+            SELECT value FROM business_settings WHERE key_name='driver_cancel_penalty' LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          const penalty = parseFloat((penaltyR.rows[0] as any)?.value || '10');
+          await rawDb.execute(rawSql`
+            UPDATE users SET wallet_balance = wallet_balance - ${penalty}
+            WHERE id = ${driver.id}::uuid AND wallet_balance >= 0
+          `);
+          await rawDb.execute(rawSql`
+            INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+            VALUES (${driver.id}::uuid, ${penalty}, 'cancel_penalty', 'completed',
+              ${'Auto-deducted: ' + cancelCount + ' cancellations in 24h'})
+          `).catch(() => {});
+          log(`[CancelPenalty] Driver ${driver.id} fined ₹${penalty} (${cancelCount} cancels in 24h)`, 'cancel');
+        }
+        // Mark this cancel as cancelled_by=driver on the trip
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET cancelled_by='driver' WHERE id=${tripId}::uuid
+        `).catch(() => {});
+      } catch (_) {}
       clearTripWaypoints(tripId);
 
       // Notify customer — driver cancelled, now searching again
@@ -8306,7 +8450,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const hr = new Date().getHours();
             const isNight = hr >= 22 || hr < 6;
             const nightMult = isNight ? parseFloat(fc.night_charge_multiplier || "1") : 1;
-            const raw = (base + perKm * dist + perMin * 0) * nightMult;
+            // Apply zone surge factor based on pickup location
+            let surgeMult = 1.0;
+            if (Number(pickupLat) && Number(pickupLng)) {
+              try {
+                const surgeZones = await rawDb.execute(rawSql`
+                  SELECT surge_factor, coordinates FROM zones
+                  WHERE is_active=true AND surge_factor > 1 AND coordinates IS NOT NULL
+                `);
+                const pLat = Number(pickupLat), pLng = Number(pickupLng);
+                for (const zr of surgeZones.rows as any[]) {
+                  try {
+                    const geo = JSON.parse(zr.coordinates);
+                    if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
+                      const ring: number[][] = geo.coordinates[0];
+                      let inside = false;
+                      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                        const xi = ring[i][0], yi = ring[i][1];
+                        const xj = ring[j][0], yj = ring[j][1];
+                        if (((yi > pLat) !== (yj > pLat)) && (pLng < ((xj - xi) * (pLat - yi) / (yj - yi) + xi))) inside = !inside;
+                      }
+                      if (inside) { surgeMult = parseFloat(zr.surge_factor) || 1.0; break; }
+                    }
+                  } catch {}
+                }
+              } catch {}
+            }
+            // Also check time-based surge pricing rules
+            try {
+              const now = new Date();
+              const timeStr = now.toTimeString().slice(0, 5); // HH:MM
+              const activeSurge = await rawDb.execute(rawSql`
+                SELECT multiplier FROM surge_pricing
+                WHERE is_active=true
+                  AND start_time <= ${timeStr}
+                  AND end_time >= ${timeStr}
+                  AND (zone_id IS NULL)
+                ORDER BY multiplier DESC LIMIT 1
+              `);
+              if (activeSurge.rows.length) {
+                const timeSurge = parseFloat((activeSurge.rows[0] as any).multiplier || '1');
+                surgeMult = Math.max(surgeMult, timeSurge);
+              }
+            } catch {}
+            const raw = (base + perKm * dist + perMin * 0) * nightMult * surgeMult;
             computedFare = Math.max(raw, minFare);
           } else {
             // Absolute fallback: ₹30 + ₹12/km (standard bike fare)
@@ -8718,19 +8905,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
         }
       }
+      // ── Customer cancel penalty: fee if driver was already assigned ─────────
+      let cancelFee = 0;
+      try {
+        if (trip.driver_id && ['accepted','arrived','driver_assigned'].includes(trip.current_status)) {
+          const feeR = await rawDb.execute(rawSql`
+            SELECT value FROM business_settings WHERE key_name='customer_cancel_penalty' LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          cancelFee = parseFloat((feeR.rows[0] as any)?.value || '20');
+          // Deduct from wallet if balance available
+          const walletR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid LIMIT 1`);
+          const walBal = parseFloat((walletR.rows[0] as any)?.wallet_balance || '0');
+          if (walBal >= cancelFee) {
+            await rawDb.execute(rawSql`
+              UPDATE users SET wallet_balance = wallet_balance - ${cancelFee} WHERE id=${customer.id}::uuid
+            `);
+            await rawDb.execute(rawSql`
+              INSERT INTO transactions (user_id, trip_id, account, debit, credit, balance, transaction_type)
+              VALUES (${customer.id}::uuid, ${effectiveTripId}::uuid, ${'Cancel Fee'}, ${cancelFee}, 0,
+                ${walBal - cancelFee}, ${'cancel_fee'})
+            `).catch(() => {});
+            log(`[CancelFee] Customer ${customer.id} charged ₹${cancelFee} for late cancellation`, 'cancel');
+          } else {
+            cancelFee = 0; // Don't charge if wallet empty — just log
+          }
+        }
+      } catch (_) { cancelFee = 0; }
+
       // Emit trip:cancelled socket event to customer so UI resets
       if (io) {
         io.to(`user:${customer.id}`).emit("trip:cancelled", {
           tripId: effectiveTripId,
           reason: reason || 'Customer cancelled',
           cancelledBy: 'customer',
+          cancelFee,
         });
         io.to(`trip:${effectiveTripId}`).emit("trip:status_update", {
           tripId: effectiveTripId,
           status: 'cancelled',
         });
       }
-      res.json({ success: true, walletRefund });
+      res.json({ success: true, walletRefund, cancelFee });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -9098,6 +9313,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── ETA: Google Distance Matrix API ─────────────────────────────────────────
+  // Returns real drive time (traffic-aware) between driver and customer pickup.
+  // Falls back to straight-line Haversine estimate if Google API unavailable.
+  app.get("/api/app/eta", authApp, async (req, res) => {
+    try {
+      const { originLat, originLng, destLat, destLng } = req.query as Record<string, string>;
+      if (!originLat || !originLng || !destLat || !destLng) {
+        return res.status(400).json({ message: "originLat, originLng, destLat, destLng required" });
+      }
+      const oLat = parseFloat(originLat), oLng = parseFloat(originLng);
+      const dLat = parseFloat(destLat), dLng = parseFloat(destLng);
+
+      // Try Google Distance Matrix first
+      const gmapsKeyR = await rawDb.execute(rawSql`
+        SELECT value FROM business_settings WHERE key_name='google_maps_api_key' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const gmapsKey = (gmapsKeyR.rows[0] as any)?.value || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI';
+
+      let etaMinutes: number;
+      let distanceKm: number;
+      let source = 'haversine';
+
+      try {
+        const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${oLat},${oLng}&destinations=${dLat},${dLng}&mode=driving&departure_time=now&traffic_model=best_guess&key=${gmapsKey}`;
+        const gmRes = await fetch(url).then(r => r.json()) as any;
+        const element = gmRes?.rows?.[0]?.elements?.[0];
+        if (element?.status === 'OK') {
+          const durationInTraffic = element.duration_in_traffic?.value || element.duration?.value || 0;
+          const distanceM = element.distance?.value || 0;
+          etaMinutes = Math.ceil(durationInTraffic / 60);
+          distanceKm = Math.round(distanceM / 100) / 10;
+          source = 'google';
+        } else {
+          throw new Error('Google API element not OK');
+        }
+      } catch (_) {
+        // Haversine fallback: avg speed 20 km/h in city
+        const R = 6371;
+        const dLat2 = (dLat - oLat) * Math.PI / 180;
+        const dLng2 = (dLng - oLng) * Math.PI / 180;
+        const a = Math.sin(dLat2/2) ** 2 + Math.cos(oLat * Math.PI/180) * Math.cos(dLat * Math.PI/180) * Math.sin(dLng2/2) ** 2;
+        distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
+        etaMinutes = Math.ceil(distanceKm / 20 * 60); // 20 km/h average
+      }
+
+      res.json({ etaMinutes, distanceKm, source });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

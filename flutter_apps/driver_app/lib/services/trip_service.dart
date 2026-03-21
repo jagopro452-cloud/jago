@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/trip_model.dart';
 import 'auth_service.dart';
+import 'api_retry.dart';
 
 Map<String, dynamic> _safeJson(http.Response res) {
   try {
@@ -28,7 +29,11 @@ class TripService {
   static Future<Map<String, dynamic>> acceptTrip(String tripId) async {
     try {
       final headers = await AuthService.getHeaders();
-      final res = await http.post(Uri.parse(ApiConfig.driverAcceptTrip), headers: headers, body: jsonEncode({'tripId': tripId}));
+      final res = await apiRetry(
+        () => http.post(Uri.parse(ApiConfig.driverAcceptTrip),
+            headers: headers, body: jsonEncode({'tripId': tripId})),
+        maxAttempts: 3,
+      );
       return _safeJson(res);
     } catch (e) { return {'error': e.toString()}; }
   }
@@ -36,7 +41,10 @@ class TripService {
   static Future<Map<String, dynamic>> rejectTrip(String tripId) async {
     try {
       final headers = await AuthService.getHeaders();
-      final res = await http.post(Uri.parse(ApiConfig.driverRejectTrip), headers: headers, body: jsonEncode({'tripId': tripId}));
+      final res = await apiRetry(
+        () => http.post(Uri.parse(ApiConfig.driverRejectTrip),
+            headers: headers, body: jsonEncode({'tripId': tripId})),
+      );
       return _safeJson(res);
     } catch (e) { return {'error': e.toString()}; }
   }
@@ -44,7 +52,10 @@ class TripService {
   static Future<Map<String, dynamic>> markArrived(String tripId) async {
     try {
       final headers = await AuthService.getHeaders();
-      final res = await http.post(Uri.parse(ApiConfig.driverArrived), headers: headers, body: jsonEncode({'tripId': tripId}));
+      final res = await apiRetry(
+        () => http.post(Uri.parse(ApiConfig.driverArrived),
+            headers: headers, body: jsonEncode({'tripId': tripId})),
+      );
       return _safeJson(res);
     } catch (e) { return {'error': e.toString()}; }
   }
@@ -52,7 +63,10 @@ class TripService {
   static Future<Map<String, dynamic>> verifyPickupOtp(String tripId, String otp) async {
     try {
       final headers = await AuthService.getHeaders();
-      final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp), headers: headers, body: jsonEncode({'tripId': tripId, 'otp': otp}));
+      final res = await apiRetry(
+        () => http.post(Uri.parse(ApiConfig.driverVerifyOtp),
+            headers: headers, body: jsonEncode({'tripId': tripId, 'otp': otp})),
+      );
       return _safeJson(res);
     } catch (e) { return {'error': e.toString()}; }
   }

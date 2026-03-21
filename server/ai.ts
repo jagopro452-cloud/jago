@@ -205,6 +205,7 @@ export async function findBestDrivers(
     WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
       AND dl.is_online=true AND u.current_trip_id IS NULL
       AND u.verification_status='approved'
+      AND dl.updated_at > NOW() - INTERVAL '30 seconds'
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
@@ -765,5 +766,33 @@ export async function refreshAllDriverStats(): Promise<void> {
     console.log(`[AI] Refreshed stats for ${drivers.rows.length} drivers`);
   } catch (e: any) {
     console.error("[AI] Refresh all driver stats error:", formatDbError(e));
+  }
+}
+
+
+// ── 10. GHOST DRIVER AUTO-OFFLINE JOB ────────────────────────────────────
+// Drivers inactive > 5 minutes (no location ping) are marked offline automatically.
+// This prevents ghost drivers appearing in matching even after app crash / network loss.
+export async function autoOfflineInactiveDrivers(): Promise<void> {
+  try {
+    const r = await rawDb.execute(rawSql`
+      UPDATE driver_locations
+      SET is_online = false
+      WHERE is_online = true
+        AND updated_at < NOW() - INTERVAL '5 minutes'
+      RETURNING driver_id
+    `);
+    if (r.rows.length > 0) {
+      const ids = (r.rows as any[]).map(row => row.driver_id);
+      // Also update users table
+      for (const driverId of ids) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET is_online = false WHERE id = ${driverId}::uuid
+        `).catch(() => {});
+      }
+      console.log(`[AI] Auto-offlined ${r.rows.length} inactive drivers: ${ids.join(', ')}`);
+    }
+  } catch (e: any) {
+    console.error("[AI] Auto-offline error:", formatDbError(e));
   }
 }

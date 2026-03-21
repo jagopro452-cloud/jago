@@ -104,6 +104,7 @@ export default function Dashboard() {
   const { data: svcData } = useQuery<any>({ queryKey: ["/api/admin/dashboard"], staleTime: 30_000 });
   const { data: chart = [] } = useQuery<any[]>({ queryKey: ["/api/dashboard/chart"] });
   const { data: notifs = [] } = useQuery<any[]>({ queryKey: ["/api/notifications"] });
+  const { data: liveKpis } = useQuery<any>({ queryKey: ["/api/admin/live-kpis"], refetchInterval: 15_000 });
 
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const adminName = (() => { try { return JSON.parse(localStorage.getItem("jago-admin") || "{}").name || "Admin"; } catch { return "Admin"; } })();
@@ -167,9 +168,9 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="jd-banner-kpis">
-          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{liveKpis?.live?.inProgress ?? stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
           <div className="jd-kpi-sep"></div>
-          <div className="jd-kpi"><span className="jd-kpi-n">{Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Pilots</span></div>
+          <div className="jd-kpi"><span className="jd-kpi-n">{svcData?.drivers?.online ?? Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Pilots</span></div>
           <div className="jd-kpi-sep"></div>
           <div className="jd-kpi"><span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span><span className="jd-kpi-l">Total Revenue</span></div>
           <div className="jd-kpi-sep"></div>
@@ -278,6 +279,73 @@ export default function Dashboard() {
               </>
             );
           })()}
+
+          {/* ── Live Production KPIs (auto-refresh every 15s) ── */}
+          {liveKpis && (
+            <div className="mb-3">
+              <div className="mb-2 d-flex align-items-center justify-content-between">
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>
+                  Live Operations
+                </span>
+                <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>
+                  <i className="bi bi-circle-fill me-1" style={{ fontSize: 7 }}></i>
+                  Live · refreshes every 15s
+                </span>
+              </div>
+              <div className="row g-2">
+                {[
+                  { label: "Searching", val: liveKpis.live?.searching ?? 0, icon: "bi-search", color: "#f59e0b", bg: "#fffbeb" },
+                  { label: "Dispatching", val: liveKpis.live?.dispatching ?? 0, icon: "bi-lightning-charge-fill", color: "#2563eb", bg: "#eff6ff" },
+                  { label: "In Progress", val: liveKpis.live?.inProgress ?? 0, icon: "bi-car-front-fill", color: "#16a34a", bg: "#f0fdf4" },
+                  { label: "Done (1h)", val: liveKpis.live?.completedLastHour ?? 0, icon: "bi-check-circle-fill", color: "#0891b2", bg: "#ecfeff" },
+                  { label: "Cancelled (1h)", val: liveKpis.live?.cancelledLastHour ?? 0, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fef2f2" },
+                  { label: "Avg Wait (min)", val: `${liveKpis.live?.avgPickupWaitMin ?? 0}`, icon: "bi-clock-fill", color: "#7c3aed", bg: "#f5f3ff" },
+                  { label: "Ghost Pilots", val: liveKpis.quality?.ghostDriverCount ?? 0, icon: "bi-wifi-off", color: "#6b7280", bg: "#f9fafb" },
+                  { label: "Surge Zones", val: liveKpis.surge?.activeSurgeZones?.length ?? 0, icon: "bi-arrow-up-circle-fill", color: "#ea580c", bg: "#fff7ed" },
+                ].map((k, i) => (
+                  <div key={i} className="col-xl-3 col-sm-6 col-6">
+                    <div style={{
+                      background: k.bg, borderRadius: 12, padding: "10px 14px",
+                      border: `1.5px solid ${k.color}20`,
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: 8, background: `${k.color}18`,
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}>
+                        <i className={`bi ${k.icon}`} style={{ color: k.color, fontSize: 14 }}></i>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.val}</div>
+                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{k.label}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Cancel penalty row */}
+              {(liveKpis.cancellations?.penaltyCollectedToday > 0 || liveKpis.cancellations?.totalToday > 0) && (
+                <div className="mt-2 d-flex gap-2 flex-wrap">
+                  <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                    {liveKpis.cancellations?.driverCancelsToday ?? 0} driver cancels today
+                  </span>
+                  <span style={{ fontSize: 11, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                    {liveKpis.cancellations?.customerCancelsToday ?? 0} customer cancels today
+                  </span>
+                  {liveKpis.cancellations?.penaltyCollectedToday > 0 && (
+                    <span style={{ fontSize: 11, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                      ₹{liveKpis.cancellations?.penaltyCollectedToday} penalty collected today
+                    </span>
+                  )}
+                  {liveKpis.surge?.activeSurgeZones?.length > 0 && (
+                    <span style={{ fontSize: 11, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                      Surge: {liveKpis.surge.activeSurgeZones.map((z: any) => `${z.name} ${z.factor}x`).join(", ")}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Charts Row */}
           <div className="row g-3 mb-3">

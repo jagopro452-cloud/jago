@@ -245,6 +245,14 @@ app.use((req, res, next) => {
     }
   }, 5 * 60 * 1000); // every 5 minutes
 
+  // Ghost driver auto-offline: every 60 seconds, mark drivers with no location ping > 5min as offline
+  setInterval(async () => {
+    try {
+      const { autoOfflineInactiveDrivers } = await import("./ai");
+      await autoOfflineInactiveDrivers();
+    } catch (_) {}
+  }, 60 * 1000); // every 60 seconds
+
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
