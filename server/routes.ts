@@ -12316,6 +12316,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const pickupOtp  = Math.floor(100000 + Math.random() * 900000).toString();
       const expectedMinutes = calculateExpectedDeliveryMinutes(vehicleCategory, dist);
 
+      // Check if customer already has an active/searching parcel order
+      const activeParcel = await rawDb.execute(rawSql`
+        SELECT id FROM parcel_orders
+        WHERE customer_id=${customerId}::uuid
+          AND current_status IN ('searching','driver_assigned','accepted','picked_up','in_transit')
+        LIMIT 1
+      `);
+      if (activeParcel.rows.length) {
+        return res.status(400).json({ message: "You already have an active parcel delivery in progress.", orderId: (activeParcel.rows[0] as any).id });
+      }
+
       // Attach a 6-digit OTP to each drop location for delivery verification
       const dropsWithOtp = (dropLocations as any[]).map((d: any, i: number) => ({
         ...d,
