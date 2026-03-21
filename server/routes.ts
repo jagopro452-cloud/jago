@@ -7311,6 +7311,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
       const trip = r.rows[0] as any;
       if (trip.pickup_otp !== otp) return res.status(400).json({ message: "Wrong OTP. Please check with sender." });
+      // OTP expiry: valid for 40 minutes from when driver accepted the trip
+      if (trip.driver_accepted_at) {
+        const acceptedAt = new Date(trip.driver_accepted_at).getTime();
+        if (Date.now() - acceptedAt > 40 * 60 * 1000) {
+          return res.status(400).json({ message: "OTP has expired. Please ask customer to regenerate." });
+        }
+      }
       const updated = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='on_the_way', ride_started_at=NOW()
         WHERE id=${tripId}::uuid RETURNING *
@@ -7594,12 +7601,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let walletPaidAmount = 0;    // amount successfully deducted from wallet
       if (tripPaymentMethod === 'wallet' && tripCustomerId) {
         try {
-          const custWalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
-          const custBal = parseFloat((custWalRes.rows[0] as any)?.wallet_balance || '0');
-          if (custBal >= userPayable) {
-            // Full wallet deduction
-            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${userPayable} WHERE id=${tripCustomerId}::uuid`);
-            const newCustBal = parseFloat((custBal - userPayable).toFixed(2));
+          // ATOMIC: Single UPDATE prevents race condition — balance can never go negative
+          const fullDeductR = await rawDb.execute(rawSql`
+            UPDATE users SET wallet_balance = wallet_balance - ${userPayable}
+            WHERE id=${tripCustomerId}::uuid AND wallet_balance >= ${userPayable}
+            RETURNING wallet_balance
+          `);
+          const custBal = fullDeductR.rows.length
+            ? parseFloat((fullDeductR.rows[0] as any).wallet_balance || '0') + userPayable
+            : parseFloat(((await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`)).rows[0] as any)?.wallet_balance || '0');
+          if (fullDeductR.rows.length) {
+            // Full wallet deduction succeeded atomically
+            const newCustBal = parseFloat((fullDeductR.rows[0] as any).wallet_balance || '0');
             walletPaidAmount = userPayable;
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
@@ -7610,7 +7623,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Partial wallet deduction — deduct what's available, remainder customer must pay by cash/UPI
             const deducted = parseFloat(custBal.toFixed(2));
             const remaining = parseFloat((userPayable - deducted).toFixed(2));
-            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = 0 WHERE id=${tripCustomerId}::uuid`);
+            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = 0 WHERE id=${tripCustomerId}::uuid AND wallet_balance > 0`);
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='partial_payment',
                 pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
@@ -7797,9 +7810,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(() => {});
         }
       } else {
+        // No drivers available — cancel trip and notify customer via both socket + FCM
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
+          WHERE id=${tripId}::uuid AND current_status='searching'
+        `).catch(() => {});
         const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
         const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
         notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
+        if (io && trip.customerId) {
+          io.to(`user:${trip.customerId}`).emit("trip:no_drivers", {
+            tripId, message: "Sorry, no pilots available in your area right now. Please try again.",
+          });
+        }
       }
       res.json({ success: true, reassigned: cancelNextBest.length > 0 });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -8325,17 +8348,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
-      // Idempotency: reject duplicate payment IDs
-      const dupCheck = await rawDb.execute(rawSql`
-        SELECT id FROM driver_payments WHERE razorpay_payment_id=${razorpayPaymentId} AND status='completed' LIMIT 1
+      // IDEMPOTENCY (atomic): Mark payment completed FIRST — only one request can succeed this UPDATE.
+      // If razorpay_payment_id is already set (duplicate call), rows=0 → 409 immediately, wallet NOT credited.
+      const claimR = await rawDb.execute(rawSql`
+        UPDATE driver_payments
+        SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
+        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending'
+          AND (razorpay_payment_id IS NULL OR razorpay_payment_id=${razorpayPaymentId})
+        RETURNING amount
       `);
-      if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
-      // Amount from DB — never trust client-sent amount
-      const pendingRec = await rawDb.execute(rawSql`
-        SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
-      `);
-      if (!pendingRec.rows.length) return res.status(400).json({ message: "No pending order found for this payment" });
-      const amt = parseFloat((pendingRec.rows[0] as any).amount);
+      if (!claimR.rows.length) {
+        // Check if already completed (duplicate call vs genuinely not found)
+        const existR = await rawDb.execute(rawSql`
+          SELECT status FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid LIMIT 1
+        `);
+        if ((existR.rows[0] as any)?.status === 'completed') {
+          return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
+        }
+        return res.status(400).json({ message: "No pending order found for this payment" });
+      }
+      const amt = parseFloat((claimR.rows[0] as any).amount);
       const wUpd = await rawDb.execute(rawSql`
         UPDATE users SET wallet_balance = wallet_balance + ${amt}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amt})
         WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
@@ -8350,11 +8382,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
         autoUnlocked = true;
       }
-      // Mark the pending driver_payment record as completed
-      await rawDb.execute(rawSql`
-        UPDATE driver_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
-        WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid
-      `).catch(() => {});
       res.json({ success: true, newBalance, autoUnlocked, message: `₹${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -8873,6 +8900,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const drvDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.driver_id}::uuid`);
         const drvFcm = (drvDevRes.rows[0] as any)?.fcm_token || null;
         notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
+        // Real-time socket: ensures driver TripScreen closes immediately even if FCM is delayed
+        io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
       }
       // ── Auto-refund to wallet if customer paid online ────────────────────────
       // SECURITY: Atomic UPDATE (not SELECT→UPDATE) prevents double-refund race condition.
@@ -12195,14 +12224,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!rideRes.rows.length) return res.status(404).json({ message: 'Ride not found' });
       const ride = camelize(rideRes.rows[0]);
-      const available = Math.max(0, (parseInt(String(ride.maxSeats || 0), 10) || 0) - (parseInt(String(ride.bookedCount || 0), 10) || 0));
-      if (available < seats) return res.status(400).json({ message: 'Only ' + available + ' seat(s) available' });
       const totalFare = parseFloat((parseFloat(ride.seatPrice || 0) * seats).toFixed(2));
-      const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
-      const bal = parseFloat(String(walRes.rows[0]?.wallet_balance || '0'));
-      if (bal < totalFare) return res.status(400).json({ message: 'Insufficient wallet balance. Need ₹' + totalFare });
-      await rawDb.execute(rawSql`INSERT INTO car_sharing_bookings (ride_id, customer_id, seats_booked, total_fare, status) VALUES (${rideId}::uuid, ${user.id}::uuid, ${seats}, ${totalFare}, 'confirmed')`);
-      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${totalFare} WHERE id=${user.id}::uuid`);
+      // ATOMIC: deduct wallet only if balance sufficient — prevents negative balance race
+      const walUpd = await rawDb.execute(rawSql`
+        UPDATE users SET wallet_balance = wallet_balance - ${totalFare}
+        WHERE id=${user.id}::uuid AND wallet_balance >= ${totalFare}
+        RETURNING wallet_balance
+      `);
+      if (!walUpd.rows.length) {
+        const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
+        const bal = parseFloat(String(walRes.rows[0]?.wallet_balance || '0'));
+        return res.status(400).json({ message: 'Insufficient wallet balance. Need ₹' + totalFare + ', have ₹' + bal.toFixed(0) });
+      }
+      // ATOMIC: insert booking only if seats still available (re-check under write lock)
+      const bookingR = await rawDb.execute(rawSql`
+        INSERT INTO car_sharing_bookings (ride_id, customer_id, seats_booked, total_fare, status)
+        SELECT ${rideId}::uuid, ${user.id}::uuid, ${seats}, ${totalFare}, 'confirmed'
+        WHERE (SELECT COALESCE(SUM(b2.seats_booked),0) FROM car_sharing_bookings b2 WHERE b2.ride_id=${rideId}::uuid AND b2.status!='cancelled') + ${seats} <= ${parseInt(String(ride.maxSeats || 0), 10)}
+        RETURNING id
+      `);
+      if (!bookingR.rows.length) {
+        // Seats were taken between our check and insert — refund the wallet deduction
+        await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${totalFare} WHERE id=${user.id}::uuid`);
+        return res.status(409).json({ message: 'No seats available. Please try again.' });
+      }
       res.json({ success: true, message: seats + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

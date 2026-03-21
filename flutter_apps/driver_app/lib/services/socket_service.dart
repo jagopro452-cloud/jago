@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +13,7 @@ class SocketService {
   bool _wasOnline = false;
   double? _lastLat;
   double? _lastLng;
+  String? _activeTripId; // tracks current trip for room rejoin on reconnect
 
   final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
@@ -54,8 +56,26 @@ class SocketService {
     if (_isConnected) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('user_id') ?? '';
+    var userId = prefs.getString('user_id') ?? '';
     final token = prefs.getString('auth_token') ?? '';
+
+    // Recovery: existing installs before the user_id fix may have empty user_id.
+    // Attempt to extract it from the saved user JSON so they don't need to reinstall.
+    if (userId.isEmpty) {
+      final userJson = prefs.getString('user_data') ?? '';
+      if (userJson.isNotEmpty) {
+        try {
+          final user = jsonDecode(userJson) as Map<String, dynamic>;
+          final recovered = user['id']?.toString() ??
+              user['userId']?.toString() ??
+              user['user_id']?.toString() ?? '';
+          if (recovered.isNotEmpty) {
+            await prefs.setString('user_id', recovered);
+            userId = recovered;
+          }
+        } catch (_) {}
+      }
+    }
 
     if (userId.isEmpty) return;
 
@@ -85,6 +105,14 @@ class SocketService {
           if (_lastLng != null) 'lng': _lastLng,
         });
       }
+      // Rejoin active trip room so server routes trip events to this socket again
+      if (_activeTripId != null) {
+        _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
+        // Also re-emit last location so server has fresh data for this trip
+        if (_lastLat != null && _lastLng != null) {
+          _socket!.emit('driver:location', {'lat': _lastLat, 'lng': _lastLng, 'heading': 0, 'speed': 0});
+        }
+      }
     });
 
     _socket!.on('disconnect', (_) {
@@ -108,6 +136,11 @@ class SocketService {
       _tripTakenController.add(Map<String, dynamic>.from(data));
     });
 
+    // Backend emits 'trip:offer_timeout' when driver doesn't respond in time
+    _socket!.on('trip:offer_timeout', (data) {
+      _tripTimeoutController.add(Map<String, dynamic>.from(data));
+    });
+    // Also handle legacy event name
     _socket!.on('trip:timeout', (data) {
       _tripTimeoutController.add(Map<String, dynamic>.from(data));
     });
@@ -160,7 +193,14 @@ class SocketService {
     _socket!.connect();
   }
 
+  /// Call when driver enters/exits a trip so socket can rejoin room on reconnect
+  void setActiveTrip(String? tripId) {
+    _activeTripId = tripId;
+  }
+
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
+    _lastLat = lat;
+    _lastLng = lng;
     if (!_isConnected) return;
     _socket!.emit('driver:location', {
       'lat': lat,

@@ -21,7 +21,7 @@ class ApiConfig {
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static const String googleMapsApiKey = 'AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0';
+  static const String googleMapsApiKey = 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI';
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
@@ -46,6 +46,7 @@ class ApiConfig {
   static String get driverProfile => '$baseUrl/api/app/driver/profile';
   static String get driverLocation => '$baseUrl/api/app/driver/location';
   static String get driverOnlineStatus => '$baseUrl/api/app/driver/online-status';
+  static String get driverActiveTrip => '$baseUrl/api/app/driver/active-trip';
   static String get driverIncomingTrip => '$baseUrl/api/app/driver/incoming-trip';
   static String get driverAcceptTrip => '$baseUrl/api/app/driver/accept-trip';
   static String get driverRejectTrip => '$baseUrl/api/app/driver/reject-trip';

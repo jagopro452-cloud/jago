@@ -211,6 +211,25 @@ export function setupSocket(httpServer: HttpServer) {
         }
       });
 
+      // ── Driver: rejoin trip room after reconnect ───────────────────────────
+      socket.on("driver:rejoin_trip", async (data: { tripId: string }) => {
+        try {
+          const { tripId } = data;
+          if (!tripId) return;
+          // Verify driver still owns this active trip before joining
+          const r = await rawDb.execute(rawSql`
+            SELECT id FROM trip_requests
+            WHERE id=${tripId}::uuid AND driver_id=${userId}::uuid
+              AND current_status IN ('accepted','driver_assigned','arrived','on_the_way')
+            LIMIT 1
+          `);
+          if (r.rows.length) {
+            socket.join(`trip:${tripId}`);
+            console.log(`[SOCKET] Driver ${userId} rejoined trip room trip:${tripId} after reconnect`);
+          }
+        } catch (_) {}
+      });
+
       // ── Driver: go online/offline ──────────────────────────────────────────
       socket.on("driver:online", async (data: { isOnline: boolean; lat?: number; lng?: number }) => {
         try {

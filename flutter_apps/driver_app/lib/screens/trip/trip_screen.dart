@@ -106,6 +106,9 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     _trip = widget.trip;
     if (_trip != null) {
       _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
+      // Register active trip so socket can rejoin room on reconnect
+      final tripId = _trip!['tripId'] ?? _trip!['id'];
+      if (tripId != null) _socket.setActiveTrip(tripId.toString());
       final lat = double.tryParse(_trip!['pickupLat']?.toString() ?? '');
       final lng = double.tryParse(_trip!['pickupLng']?.toString() ?? '');
       if (lat != null && lng != null && lat != 0) _center = LatLng(lat, lng);
@@ -120,8 +123,35 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       _fetchRouteForCurrentStatus();
       if (_status == 'accepted' || _status == 'driver_assigned') _openNavigation();
       if (_status == 'in_progress' || _status == 'on_the_way') _startTripTimer();
+      _validateActiveTrip();
     });
     print('[TRIP] Screen init — tripId=${_trip?['tripId'] ?? _trip?['id']} status=$_status');
+  }
+
+  // ── Validate trip still active on screen load ─────────────────────────────
+
+  Future<void> _validateActiveTrip() async {
+    final tripId = _trip?['tripId'] ?? _trip?['id'];
+    if (tripId == null) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers);
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final serverTrip = data['trip'];
+        if (serverTrip == null) {
+          // No active trip on server — this screen is stale
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Trip no longer active. Returning home.'), backgroundColor: Colors.orange),
+          );
+          Navigator.pushAndRemoveUntil(
+            context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        }
+      }
+    } catch (_) {
+      // Network error — keep screen, socket cancel handler will catch real cancels
+    }
   }
 
   // ── Timers ────────────────────────────────────────────────────────────────
@@ -458,6 +488,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
         final commission = pricing['platformDeduction'] ?? 0;
         _socket.updateTripStatus(tripId, 'completed');
+        _socket.setActiveTrip(null); // clear trip room tracking
         _locationTimer?.cancel();
         _stopTripTimer();
         print('[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
@@ -468,14 +499,16 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           commission: commission.toString(),
         );
       } else {
-        final err = jsonDecode(res.body);
+        String errMsg = 'Error completing trip';
+        try { errMsg = (jsonDecode(res.body) as Map)['message'] ?? errMsg; } catch (_) {}
         if (!mounted) return;
-        _showSnack(err['message'] ?? 'Error completing trip', error: true);
+        _showSnack(errMsg, error: true);
         setState(() => _loading = false);
       }
-    } catch (_) {
+    } catch (e) {
+      print('[TRIP] ❌ complete-trip network error: $e');
       if (!mounted) return;
-      _showSnack('Network error. Try again.', error: true);
+      _showSnack('Network error. Please tap "Complete" again.', error: true);
       setState(() => _loading = false);
     }
   }
@@ -490,6 +523,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         body: jsonEncode({'tripId': tripId, 'reason': reason}));
     } catch (_) {}
     _socket.updateTripStatus(tripId, 'cancelled');
+    _socket.setActiveTrip(null); // clear trip room tracking
     _locationTimer?.cancel();
     _stopTripTimer();
     if (!mounted) return;
