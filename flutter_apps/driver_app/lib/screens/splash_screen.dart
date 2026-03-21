@@ -8,6 +8,7 @@ import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
 import 'onboarding/driver_onboarding_screen.dart';
+import 'onboarding/terms_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -76,6 +77,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     await Future.delayed(const Duration(milliseconds: 3000));
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
+    final termsAccepted = prefs.getBool('terms_accepted') ?? false;
+    if (!termsAccepted) {
+      Navigator.pushReplacement(context, PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const TermsScreen(),
+        transitionDuration: const Duration(milliseconds: 500),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+      ));
+      return;
+    }
     final onboardingSeen = prefs.getBool('driver_onboarding_seen') ?? false;
     if (!onboardingSeen) {
       Navigator.pushReplacement(context, PageRouteBuilder(

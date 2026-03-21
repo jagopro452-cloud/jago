@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
@@ -33,7 +35,18 @@ void main() async {
   try {
     await Firebase.initializeApp();
     await FcmService().init();
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
   } catch (_) {}
+  // Forward Flutter framework errors to Crashlytics
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+  };
+  // Forward async/platform errors to Crashlytics
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
   // Catch any widget build error — show message instead of blank screen
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return MaterialApp(

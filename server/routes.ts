@@ -6570,7 +6570,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         // Fallback: verify token via Firebase REST API (only needs Web API key — no service account needed)
         // Try the Web API key from env var first, then fall back to the known app key
-        const webApiKey = process.env.FIREBASE_WEB_API_KEY || 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI';
+        const webApiKey = process.env.FIREBASE_WEB_API_KEY || '';
         let restVerified = false;
         try {
           const lookupRes = await fetch(
@@ -9361,13 +9361,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const gmapsKeyR = await rawDb.execute(rawSql`
         SELECT value FROM business_settings WHERE key_name='google_maps_api_key' LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
-      const gmapsKey = (gmapsKeyR.rows[0] as any)?.value || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI';
+      const gmapsKey = (gmapsKeyR.rows[0] as any)?.value || process.env.GOOGLE_MAPS_API_KEY || '';
 
       let etaMinutes: number;
       let distanceKm: number;
       let source = 'haversine';
 
       try {
+        if (!gmapsKey) throw new Error('Google Maps API key not configured — using Haversine fallback');
         const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${oLat},${oLng}&destinations=${dLat},${dLng}&mode=driving&departure_time=now&traffic_model=best_guess&key=${gmapsKey}`;
         const gmRes = await fetch(url).then(r => r.json()) as any;
         const element = gmRes?.rows?.[0]?.elements?.[0];
