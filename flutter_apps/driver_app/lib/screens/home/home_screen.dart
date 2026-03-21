@@ -619,7 +619,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 duration: Duration(seconds: 4),
               ));
             }
-            Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
+            // Fetch full trip data from server (includes destinationLat/Lng, customerId, customerPhone)
+            Map<String, dynamic> fullTrip = trip;
+            try {
+              final hdrs = await AuthService.getHeaders();
+              final res = await http.get(Uri.parse(ApiConfig.driverIncomingTrip), headers: hdrs)
+                .timeout(const Duration(seconds: 6));
+              if (res.statusCode == 200) {
+                final data = jsonDecode(res.body) as Map<String, dynamic>;
+                if (data['trip'] != null) {
+                  fullTrip = Map<String, dynamic>.from(trip)
+                    ..addAll(Map<String, dynamic>.from(data['trip'] as Map));
+                }
+              }
+            } catch (_) {}
+            if (!mounted) return;
+            Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
           },
           onReject: () async {
             final trip = Map<String, dynamic>.from(_incomingTrip!);
