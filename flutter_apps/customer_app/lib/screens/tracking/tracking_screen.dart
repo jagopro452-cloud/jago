@@ -200,13 +200,30 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     );
   }
 
+  BitmapDescriptor _vehicleMarkerIcon() {
+    final vehicle = (_trip?['vehicleName'] ?? _trip?['vehicle_name'] ?? '').toString().toLowerCase();
+    if (vehicle.contains('bike') || vehicle.contains('moto') || vehicle.contains('two')) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);   // Bike → Orange
+    } else if (vehicle.contains('auto') || vehicle.contains('rick')) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);    // Auto → Green
+    } else if (vehicle.contains('suv') || vehicle.contains('innova')) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);   // SUV → Violet
+    } else if (vehicle.contains('parcel') || vehicle.contains('truck') || vehicle.contains('tata')) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta);  // Parcel → Magenta
+    } else if (vehicle.contains('car') || vehicle.contains('sedan') || vehicle.contains('mini')) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);    // Car → Azure
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);       // Default → Blue
+  }
+
   void _updateDriverMarker(LatLng pos) {
     _markers.removeWhere((m) => m.markerId.value == 'driver');
+    final vehicleName = (_trip?['vehicleName'] ?? _trip?['vehicle_name'] ?? 'Pilot').toString();
     _markers.add(Marker(
       markerId: const MarkerId('driver'),
       position: pos,
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      infoWindow: const InfoWindow(title: 'Your Pilot'),
+      icon: _vehicleMarkerIcon(),
+      infoWindow: InfoWindow(title: vehicleName.isNotEmpty ? vehicleName : 'Your Pilot'),
     ));
     // Keep camera on driver when trip is in progress (driver arriving or started)
     if (_status == 'driver_assigned' || _status == 'accepted' ||
