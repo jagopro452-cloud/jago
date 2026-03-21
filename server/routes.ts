@@ -1267,6 +1267,23 @@ async function ensureOperationalSchema() {
     `).catch(() => {});
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
+    // ── Auto-promote pending drivers to verified so they can go online ──────
+    // Drivers who registered but were never admin-reviewed stay stuck at 'pending'.
+    // 'verified' = registered and active, 'approved' = explicitly admin-approved.
+    // Both 'verified' and 'approved' are allowed to go online and receive trips.
+    await rawDb.execute(rawSql`
+      UPDATE users SET verification_status='verified'
+      WHERE user_type='driver' AND verification_status='pending' AND is_active=true
+    `).catch(() => {});
+    // Backfill model_selected_at so drivers aren't blocked by the model selection gate
+    await rawDb.execute(rawSql`
+      UPDATE users SET
+        revenue_model = COALESCE(NULLIF(revenue_model,''), 'commission'),
+        model_selected_at = COALESCE(model_selected_at, NOW())
+      WHERE user_type='driver' AND is_active=true
+    `).catch(() => {});
+    console.log('[seed] pending drivers promoted to verified, model_selected_at backfilled');
+
     // ── Seed trip_fares using vehicle_categories pricing as source of truth ──
     // Inserts only where no fare row exists yet. Safe to re-run.
     await rawDb.execute(rawSql`
@@ -6703,7 +6720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Check verification status FIRST — driver cannot go online until approved
         const verR = await rawDb.execute(rawSql`SELECT verification_status, rejection_note FROM users WHERE id=${driver.id}::uuid`);
         const vs = (verR.rows[0] as any)?.verification_status;
-        if (vs !== 'approved') {
+        if (!['approved', 'verified'].includes(vs)) {
           const msg = vs === 'rejected'
             ? `Account rejected: ${(verR.rows[0] as any)?.rejection_note || 'Contact support for details'}`
             : 'Account pending verification. You will be notified once approved.';
