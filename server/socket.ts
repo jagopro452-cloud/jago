@@ -23,6 +23,12 @@ export let io: SocketIOServer;
 const driverSockets = new Map<string, string>();
 const customerSockets = new Map<string, string>();
 
+// Grace-period timers: when a driver socket disconnects we wait before marking them offline.
+// If they reconnect within the grace window the timer is cancelled and they stay online.
+// This prevents momentary network blips from removing drivers from active dispatch searches.
+const pendingOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const DRIVER_OFFLINE_GRACE_MS = 90_000; // 90 seconds
+
 function camelize(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
   return Object.fromEntries(
@@ -120,6 +126,26 @@ export function setupSocket(httpServer: HttpServer) {
     if (userType === "driver") {
       driverSockets.set(userId, socket.id);
       socket.join(`drivers`);
+
+      // Cancel any pending offline timer (driver reconnected within grace window)
+      const pendingTimer = pendingOfflineTimers.get(userId);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingOfflineTimers.delete(userId);
+        console.log(`[SOCKET] Driver ${userId} reconnected within grace window — offline timer cancelled`);
+      }
+
+      // Re-sync driver_locations.is_online with users.is_online.
+      // When the app restarts after a crash/kill, is_online may be true in users table
+      // but driver_locations.is_online was set false by the previous disconnect handler.
+      // This ensures dispatch finds them immediately without waiting for the first location update.
+      rawDb.execute(rawSql`
+        UPDATE driver_locations SET is_online=true, updated_at=NOW()
+        WHERE driver_id=${userId}::uuid
+          AND (SELECT is_online FROM users WHERE id=${userId}::uuid LIMIT 1) = true
+          AND is_online = false
+      `).catch(() => {});
+
       console.log(`[SOCKET] Driver ${userId} connected`);
 
       // ── Driver: send location update ───────────────────────────────────────
@@ -216,6 +242,11 @@ export function setupSocket(httpServer: HttpServer) {
             WHERE id=${userId}::uuid
           `);
           socket.emit("driver:online_ack", { isOnline });
+          // If driver explicitly went offline, cancel any pending grace-period timer
+          if (!isOnline) {
+            const pending = pendingOfflineTimers.get(userId);
+            if (pending) { clearTimeout(pending); pendingOfflineTimers.delete(userId); }
+          }
           console.log(`[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng}`);
 
           // If driver just came online, check for searching trips nearby
@@ -823,19 +854,32 @@ export function setupSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", (reason) => {
       driverSockets.delete(userId);
       customerSockets.delete(userId);
       if (userType === "driver") {
-        rawDb.execute(rawSql`
-          UPDATE driver_locations SET is_online=false, updated_at=NOW()
-          WHERE driver_id=${userId}::uuid
-        `).catch(() => {});
-        rawDb.execute(rawSql`
-          UPDATE users SET is_online=false WHERE id=${userId}::uuid
-        `).catch(() => {});
+        // Grace period: don't mark offline immediately — reconnect within 90s keeps driver visible.
+        // This prevents momentary network blips from removing driver from active dispatch.
+        // If driver explicitly called driver:online with isOnline=false, that already updated DB directly.
+        const timer = setTimeout(() => {
+          pendingOfflineTimers.delete(userId);
+          // Only mark offline if still not reconnected (no entry in driverSockets)
+          if (!driverSockets.has(userId)) {
+            rawDb.execute(rawSql`
+              UPDATE driver_locations SET is_online=false, updated_at=NOW()
+              WHERE driver_id=${userId}::uuid
+            `).catch(() => {});
+            rawDb.execute(rawSql`
+              UPDATE users SET is_online=false WHERE id=${userId}::uuid
+            `).catch(() => {});
+            console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
+          }
+        }, DRIVER_OFFLINE_GRACE_MS);
+        pendingOfflineTimers.set(userId, timer);
+        console.log(`[SOCKET] Driver ${userId} socket disconnected (reason=${reason}) — grace period started, not offline yet`);
+      } else {
+        console.log(`[SOCKET] ${userType} ${userId} disconnected`);
       }
-      console.log(`[SOCKET] ${userType} ${userId} disconnected`);
     });
   });
 
@@ -874,7 +918,8 @@ export async function notifyNearbyDriversNewTrip(
       JOIN driver_locations dl ON dl.driver_id = u.id
       JOIN driver_details dd ON dd.user_id = u.id
       WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
-        AND dl.is_online=true AND u.current_trip_id IS NULL AND u.verification_status='approved'
+        AND dl.is_online=true AND u.current_trip_id IS NULL
+        AND u.verification_status IN ('approved', 'verified', 'pending')
         ${vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
         ${excludeClause}
         AND ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) < 0.06
@@ -956,7 +1001,9 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
       WHERE t.current_status='searching'
         AND t.driver_id IS NULL
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
-        ${driverVehicleCategoryId ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid` : rawSql``}
+        ${driverVehicleCategoryId
+          ? rawSql`AND (t.vehicle_category_id = ${driverVehicleCategoryId}::uuid OR t.vehicle_category_id IS NULL)`
+          : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06
       LIMIT 3
     `);

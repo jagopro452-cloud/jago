@@ -6746,19 +6746,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { lat, lng, heading = 0, speed = 0, isOnline } = req.body;
-      // Upsert location
+      // isOnline defaults to true — if you're sending location, you are online.
+      // Fallback chain: body.isOnline → true (never false here; going offline is via online-status endpoint)
+      const effectiveOnline = isOnline !== undefined ? Boolean(isOnline) : true;
+      // Upsert location — always include updated_at=NOW() in both INSERT and ON CONFLICT
       await rawDb.execute(rawSql`
-        INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online)
-        VALUES (${driver.id}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, ${isOnline ?? driver.isOnline ?? false})
+        INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
+        VALUES (${driver.id}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, ${effectiveOnline}, NOW())
         ON CONFLICT (driver_id) DO UPDATE SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed},
-          is_online=${isOnline ?? driver.isOnline ?? false}, updated_at=NOW()
+          is_online=${effectiveOnline}, updated_at=NOW()
       `);
       // Also update users table
-      if (isOnline !== undefined) {
-        await rawDb.execute(rawSql`UPDATE users SET is_online=${isOnline}, current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
-      } else {
-        await rawDb.execute(rawSql`UPDATE users SET current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
-      }
+      await rawDb.execute(rawSql`UPDATE users SET is_online=${effectiveOnline}, current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

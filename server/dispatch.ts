@@ -65,6 +65,8 @@ interface DispatchSession {
   status: "searching" | "offered" | "accepted" | "cancelled" | "no_drivers" | "expired";
   createdAt: number;
   totalTimer: ReturnType<typeof setTimeout> | null;
+  retryCount: number;      // how many full-radius restarts have been done
+  retryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface TripMeta {
@@ -149,6 +151,8 @@ export async function startDispatch(
     status: "searching",
     createdAt: Date.now(),
     totalTimer: null,
+    retryCount: 0,
+    retryTimer: null,
   };
 
   activeDispatches.set(tripId, session);
@@ -499,9 +503,32 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
 
 /**
  * Expire/fail the dispatch session — no driver found.
+ * Before giving up: retry once from radius step 0 after 45s (catches drivers who just came online).
  */
 async function expireDispatch(session: DispatchSession, message: string): Promise<void> {
   if (session.status === "accepted" || session.status === "cancelled") return;
+
+  // Allow ONE retry from scratch — a driver may have just come online
+  const MAX_RETRIES = 1;
+  if (session.retryCount < MAX_RETRIES) {
+    session.retryCount++;
+    session.radiusIndex = 0;
+    session.driverQueue = [];
+    session.queueIndex = 0;
+    session.status = "searching";
+    console.log(`[DISPATCH] No drivers found for trip ${session.tripId} — scheduling retry #${session.retryCount} in 45s`);
+
+    // Notify customer we're still searching
+    emitCustomerSearchStatus(session);
+
+    session.retryTimer = setTimeout(async () => {
+      session.retryTimer = null;
+      if (session.status !== "searching") return; // may have been accepted/cancelled
+      console.log(`[DISPATCH] Retry #${session.retryCount} starting for trip ${session.tripId}`);
+      await searchAndDispatchNextRadius(session);
+    }, 45000);
+    return;
+  }
 
   session.status = "no_drivers";
   clearTimers(session);
@@ -619,7 +646,10 @@ async function findDriversInRadius(
       AND u.is_active = true
       AND u.is_locked = false
       AND dl.is_online = true
-      AND dl.updated_at > NOW() - INTERVAL '10 minutes'
+      AND (
+        dl.updated_at > NOW() - INTERVAL '30 minutes'
+        OR (u.is_online = true AND dl.updated_at > NOW() - INTERVAL '4 hours')
+      )
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
       AND u.verification_status IN ('approved', 'verified', 'pending')
@@ -644,7 +674,7 @@ async function findDriversInRadius(
   if (!drivers.rows.length && Number(onlineCount) > 0) {
     try {
       const nearbyAll = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.is_active, u.is_locked, u.current_trip_id, u.verification_status,
+        SELECT u.id, u.full_name, u.is_active, u.is_locked, u.is_online, u.current_trip_id, u.verification_status,
                dl.is_online as dl_online, dl.lat, dl.lng, dl.updated_at,
                dd.vehicle_category_id,
                SQRT(
@@ -668,7 +698,8 @@ async function findDriversInRadius(
         if (!['approved', 'verified', 'pending'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified/pending)`);
         if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
-        if (staleMins > 10)                       reasons.push(`stale location (${staleMins}min ago)`);
+        const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
+        if (isStale)                               reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
         if (vehicleCategoryId && r.vehicle_category_id !== vehicleCategoryId)
           reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${vehicleCategoryId})`);
         const distKm = Number(r.distance_km).toFixed(1);
@@ -762,6 +793,10 @@ function clearTimers(session: DispatchSession): void {
   if (session.totalTimer) {
     clearTimeout(session.totalTimer);
     session.totalTimer = null;
+  }
+  if (session.retryTimer) {
+    clearTimeout(session.retryTimer);
+    session.retryTimer = null;
   }
 }
 
