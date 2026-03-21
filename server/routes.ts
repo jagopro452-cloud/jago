@@ -7427,6 +7427,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // ── Customer wallet deduction: use userPayable (discounted amount) ────
       const tripPaymentMethod = tripRow.payment_method || 'cash';
       const tripCustomerId = tripRow.customer_id;
+      let walletPendingAmount = 0; // amount still owed after wallet attempt
+      let walletPaidAmount = 0;    // amount successfully deducted from wallet
       if (tripPaymentMethod === 'wallet' && tripCustomerId) {
         try {
           const custWalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
@@ -7435,12 +7437,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Full wallet deduction
             await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${userPayable} WHERE id=${tripCustomerId}::uuid`);
             const newCustBal = parseFloat((custBal - userPayable).toFixed(2));
+            walletPaidAmount = userPayable;
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
               VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
             `).catch(() => {});
+            console.log(`[WALLET] ✅ Full deduction ₹${userPayable} from customer ${tripCustomerId}`);
           } else if (custBal > 0) {
-            // Partial wallet deduction — deduct what's available, record remainder as pending
+            // Partial wallet deduction — deduct what's available, remainder customer must pay by cash/UPI
             const deducted = parseFloat(custBal.toFixed(2));
             const remaining = parseFloat((userPayable - deducted).toFixed(2));
             await rawDb.execute(rawSql`UPDATE users SET wallet_balance = 0 WHERE id=${tripCustomerId}::uuid`);
@@ -7452,12 +7456,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
               VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
             `).catch(() => {});
+            walletPaidAmount = deducted;
+            walletPendingAmount = remaining;
+            console.log(`[WALLET] ⚠️  Partial: ₹${deducted} from wallet, ₹${remaining} pending (cash/UPI) — customer ${tripCustomerId}`);
           } else {
-            // No wallet balance — mark full amount as pending
+            // No wallet balance — full amount must be paid by cash/UPI
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='pending_payment',
                 pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
             `).catch(() => {});
+            walletPendingAmount = userPayable;
+            console.log(`[WALLET] ⚠️  No balance: full ₹${userPayable} pending (cash/UPI) — customer ${tripCustomerId}`);
           }
         } catch (_) {}
       }
@@ -7495,7 +7504,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(tripId, 'trip_completed', 'driver', 'Trip completed by driver');
       await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', { fare, actualDistance });
 
-      // 🔌 Socket: notify customer — enriched with discount/GST breakdown
+      // 🔌 Socket: notify customer — enriched with discount/GST breakdown + wallet status
       if (io && completedTrip.customerId) {
         io.to(`user:${completedTrip.customerId}`).emit("trip:completed", {
           tripId,
@@ -7509,6 +7518,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           platformDeduction: deductAmount,
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
+          // Wallet partial/insufficient info — app shows "Pay remaining by cash/UPI" when pendingAmount > 0
+          walletPaidAmount,
+          walletPendingAmount,
+          requiresCashPayment: walletPendingAmount > 0,
         });
       }
 

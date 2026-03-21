@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,8 +51,26 @@ class SocketService {
     if (_isConnected) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('user_id') ?? '';
+    var userId = prefs.getString('user_id') ?? '';
     final token = prefs.getString('auth_token') ?? '';
+
+    // Recovery: existing installs before the user_id fix may have empty user_id.
+    // Attempt to extract it from the saved user JSON so they don't need to reinstall.
+    if (userId.isEmpty) {
+      final userJson = prefs.getString('user_data') ?? '';
+      if (userJson.isNotEmpty) {
+        try {
+          final user = jsonDecode(userJson) as Map<String, dynamic>;
+          final recovered = user['id']?.toString() ??
+              user['userId']?.toString() ??
+              user['user_id']?.toString() ?? '';
+          if (recovered.isNotEmpty) {
+            await prefs.setString('user_id', recovered);
+            userId = recovered;
+          }
+        } catch (_) {}
+      }
+    }
 
     if (userId.isEmpty) return;
 
@@ -84,6 +103,16 @@ class SocketService {
     });
 
     _socket!.on('disconnect', (_) {
+      _isConnected = false;
+      _connectedController.add(false);
+    });
+
+    _socket!.on('connect_error', (err) {
+      _isConnected = false;
+      _connectedController.add(false);
+    });
+
+    _socket!.on('error', (_) {
       _isConnected = false;
       _connectedController.add(false);
     });
@@ -122,6 +151,12 @@ class SocketService {
       _tripStatusController.add({
         'tripId': payload['tripId'],
         'status': 'completed',
+        // Pass through wallet payment info so tracking screen can show correct payment UI
+        if (payload['walletPendingAmount'] != null) 'walletPendingAmount': payload['walletPendingAmount'],
+        if (payload['walletPaidAmount'] != null) 'walletPaidAmount': payload['walletPaidAmount'],
+        if (payload['requiresCashPayment'] != null) 'requiresCashPayment': payload['requiresCashPayment'],
+        if (payload['fare'] != null) 'fare': payload['fare'],
+        if (payload['userPayable'] != null) 'userPayable': payload['userPayable'],
       });
     });
 

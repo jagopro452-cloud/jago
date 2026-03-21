@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -79,17 +80,28 @@ class FcmService {
   Future<void> _saveFcmToken() async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) await _saveTokenToServer(token);
-    } catch (_) {}
+      if (token == null) {
+        debugPrint('[FCM-CUSTOMER] ❌ getToken() returned null — Firebase not ready?');
+        return;
+      }
+      debugPrint('[FCM-CUSTOMER] 🔑 Token obtained: ${token.substring(0, 20)}...');
+      await _saveTokenToServer(token);
+    } catch (e) {
+      debugPrint('[FCM-CUSTOMER] ❌ getToken() threw: $e');
+    }
   }
 
   Future<void> _saveTokenToServer(String token) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final authToken = prefs.getString('auth_token');
-      if (authToken == null) return;
-
-      await http.post(Uri.parse(ApiConfig.fcmToken),
+      if (authToken == null) {
+        debugPrint('[FCM-CUSTOMER] ⚠️  No auth_token in prefs — token NOT saved (login first)');
+        return;
+      }
+      debugPrint('[FCM-CUSTOMER] 📤 Saving token to server: ${token.substring(0, 20)}...');
+      final res = await http.post(
+        Uri.parse(ApiConfig.fcmToken),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json'
@@ -98,8 +110,16 @@ class FcmService {
           'fcmToken': token,
           'platform': 'android',
           'userType': 'customer',
-        }));
-    } catch (_) {}
+        }),
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        debugPrint('[FCM-CUSTOMER] ✅ Token saved to server (HTTP ${res.statusCode})');
+      } else {
+        debugPrint('[FCM-CUSTOMER] ⚠️  Server rejected token: HTTP ${res.statusCode} — ${res.body}');
+      }
+    } catch (e) {
+      debugPrint('[FCM-CUSTOMER] ❌ Token save failed: $e');
+    }
   }
 
   // Call after successful login
@@ -114,7 +134,7 @@ class FcmService {
     final type = message.data['type'] ?? '';
     String channelId = 'trip_updates';
     Importance importance = Importance.high;
-    if (type == 'driver_arrived' || type == 'trip_accepted') {
+    if (type == 'driver_arrived' || type == 'trip_accepted' || type == 'driver_assigned') {
       importance = Importance.max;
     }
 
@@ -147,8 +167,10 @@ class FcmService {
   void _handleMessage(RemoteMessage message) {
     final data = message.data;
     final type = data['type'] ?? '';
-    if (type == 'trip_accepted' || type == 'driver_arrived' ||
-        type == 'trip_completed' || type == 'trip_cancelled') {
+    // Handle all trip-related notification types (driver_assigned = server sends this when trip accepted)
+    if (type == 'trip_accepted' || type == 'driver_assigned' ||
+        type == 'driver_arrived' || type == 'trip_completed' ||
+        type == 'trip_cancelled' || type == 'trip_searching') {
       _storePendingNotification(data);
     }
   }

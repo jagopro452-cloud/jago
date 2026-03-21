@@ -17,6 +17,7 @@ import '../../services/call_service.dart';
 import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
+import '../booking/booking_screen.dart';
 import '../tip/tip_driver_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   Map<String, dynamic>? _trip;
   Timer? _pollTimer;
   int _rated = 0;
+  double _walletPendingAmount = 0; // amount customer still owes after wallet deduction
   List<String> _cancelReasons = [];
   late AnimationController _pulseCtrl;
   final Set<Marker> _markers = {};
@@ -88,6 +90,10 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
           if (otp != null && _trip != null) {
             _trip!['pickupOtp'] = otp;
           }
+          // Capture wallet pending amount when trip completes
+          if (newStatus == 'completed') {
+            _walletPendingAmount = (data['walletPendingAmount'] as num?)?.toDouble() ?? 0.0;
+          }
         });
         _announceStatus(newStatus);
         if (newStatus == 'arrived') {
@@ -110,9 +116,11 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       _subs.add(_socket.onDriverAssigned.listen((data) {
         if (!mounted) return;
         setState(() => _status = 'driver_assigned');
-        AlarmService().playChime(); // play ding-dong sound
+        AlarmService().playChime();
+        HapticFeedback.heavyImpact();
         _announceStatus('driver_assigned');
         _pollStatus();
+        _showPilotFoundBanner();
       }));
 
       // Trip cancelled by driver
@@ -143,24 +151,52 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     });
   }
 
+  // No drivers available → set cancelled state (UI handled by _buildCancelledCard)
   void _showNoDriversDialog() {
     if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text('No Pilots Available', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: const Text('Sorry, no pilots are available in your area right now. Please try again in a few minutes.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-            },
-            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
+    // Update state to show inline cancelled UI with retry option
+    setState(() => _status = 'cancelled');
+    // Light snackbar notification
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.search_off_rounded, color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text('No pilots nearby. Try again!',
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13))),
+      ]),
+      backgroundColor: const Color(0xFFDC2626),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
+  // Retry booking using the same trip's original params
+  void _retryBooking() {
+    final t = _trip;
+    if (t == null) {
+      Navigator.pushAndRemoveUntil(context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      return;
+    }
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BookingScreen(
+          pickup: t['pickupAddress']?.toString() ?? t['pickup_address']?.toString() ?? 'Pickup',
+          destination: t['destinationAddress']?.toString() ?? t['destination_address']?.toString() ?? 'Destination',
+          pickupLat: double.tryParse(t['pickupLat']?.toString() ?? '') ?? 0.0,
+          pickupLng: double.tryParse(t['pickupLng']?.toString() ?? '') ?? 0.0,
+          destLat: double.tryParse(t['destinationLat']?.toString() ?? '') ?? 0.0,
+          destLng: double.tryParse(t['destinationLng']?.toString() ?? '') ?? 0.0,
+          vehicleCategoryId: t['vehicleCategoryId']?.toString(),
+          vehicleCategoryName: t['vehicleName']?.toString(),
+          category: (t['tripType']?.toString() == 'parcel' || t['trip_type']?.toString() == 'parcel')
+              ? 'parcel' : 'ride',
+        ),
       ),
+      (_) => false,
     );
   }
 
@@ -477,7 +513,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                     ],
                     if (_status == 'completed') ...[
                       const SizedBox(height: 16),
-                      _buildCompletedCard(actualFare),
+                      _buildCompletedCard(actualFare, walletPendingAmount: _walletPendingAmount),
                     ] else if (_status == 'cancelled') ...[
                       const SizedBox(height: 16),
                       _buildCancelledCard(),
@@ -946,9 +982,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildCompletedCard(dynamic actualFare) {
+  Widget _buildCompletedCard(dynamic actualFare, {double walletPendingAmount = 0}) {
     const isDark = false;
-    
+
     final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
     final tId = _trip?['id']?.toString() ?? widget.tripId;
     final dist = _trip?['estimatedDistance'] ?? _trip?['estimated_distance'];
@@ -996,6 +1032,34 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                 style: GoogleFonts.poppins(
                   fontSize: 32, fontWeight: FontWeight.w900,
                   color: const Color(0xFF16A34A)))),
+          ],
+          // Wallet insufficient — show "pay remaining" banner
+          if (walletPendingAmount > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF97316), width: 1.5),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFF97316), size: 20),
+                  const SizedBox(width: 8),
+                  Text('Wallet Insufficient',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w800, fontSize: 13,
+                      color: const Color(0xFFEA580C))),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  'Your wallet had less balance. Please pay ₹${walletPendingAmount.toStringAsFixed(0)} to the pilot by Cash or UPI.',
+                  style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF78350F)),
+                ),
+              ]),
+            ),
           ],
           // Trip details chips
           if (dist != null || vehicle != null) ...[
@@ -1097,36 +1161,129 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCancelledCard() {
-    
+    final noDriver = _lastAnnouncedStatus == 'cancelled' || _trip == null ||
+        (_trip!['cancellationReason']?.toString().contains('no') == true);
+
     return Column(children: [
+      // Status banner
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.04),
+          color: noDriver
+              ? const Color(0xFFFEF3C7)
+              : Colors.red.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
+          border: Border.all(
+            color: noDriver ? const Color(0xFFFDE68A) : Colors.red.withValues(alpha: 0.15)),
         ),
         child: Row(children: [
-          Container(padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), shape: BoxShape.circle),
-            child: const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 22)),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: noDriver
+                  ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                  : Colors.red.withValues(alpha: 0.08),
+              shape: BoxShape.circle),
+            child: Icon(
+              noDriver ? Icons.search_off_rounded : Icons.cancel_rounded,
+              color: noDriver ? const Color(0xFFD97706) : const Color(0xFFEF4444),
+              size: 24)),
           const SizedBox(width: 12),
-          Expanded(child: Text('Trip cancelled. Sorry for the inconvenience.',
-            style: TextStyle(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w500))),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              noDriver ? 'No Pilots Available' : 'Trip Cancelled',
+              style: GoogleFonts.poppins(
+                color: noDriver ? const Color(0xFFB45309) : JT.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              noDriver
+                  ? 'No pilots found nearby. You can retry or try later.'
+                  : 'Sorry for the inconvenience.',
+              style: GoogleFonts.poppins(
+                color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ])),
         ]),
       ),
       const SizedBox(height: 12),
-      SizedBox(
-        width: double.infinity, height: 52,
-        child: ElevatedButton(
-          onPressed: () => Navigator.pushAndRemoveUntil(context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _blue, foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-          child: const Text('Book New Ride →', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-        )),
+
+      // Action buttons row
+      Row(children: [
+        // Retry — tries the same booking again
+        Expanded(
+          flex: 3,
+          child: GestureDetector(
+            onTap: _retryBooking,
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1244A2), Color(0xFF2F7BFF)],
+                  begin: Alignment.centerLeft, end: Alignment.centerRight),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(color: _blue.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text('Retry Booking',
+                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 14,
+                    fontWeight: FontWeight.w800)),
+              ])),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Home — go back to start
+        Expanded(
+          flex: 2,
+          child: GestureDetector(
+            onTap: () => Navigator.pushAndRemoveUntil(context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7FF),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE8EFFF)),
+              ),
+              child: Center(child: Text('Go Home',
+                style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13,
+                  fontWeight: FontWeight.w700))),
+            ),
+          ),
+        ),
+      ]),
     ]);
+  }
+
+  void _showPilotFoundBanner() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+          child: const Icon(Icons.electric_bike_rounded, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('Pilot Found!', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+          Text('Your pilot is on the way to you', style: GoogleFonts.poppins(fontSize: 11, color: Colors.white70)),
+        ])),
+      ]),
+      backgroundColor: _blue,
+      duration: const Duration(seconds: 5),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    ));
   }
 
   void _showArrivalBanner() {

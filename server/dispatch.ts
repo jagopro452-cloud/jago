@@ -451,7 +451,9 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     io.to(`user:${driver.driverId}`).emit("trip:new_request", payload);
   }
 
-  // FCM notification (background)
+  // FCM notification (background/killed app)
+  const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);
+  const socketConnected = !!(socketRoom && socketRoom.size > 0);
   if (driver.fcmToken) {
     notifyDriverNewRide({
       fcmToken: driver.fcmToken,
@@ -460,10 +462,16 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
       pickupAddress: session.tripMeta.pickupAddress,
       estimatedFare: session.tripMeta.estimatedFare,
       tripId: session.tripId,
-    }).catch(() => {});
+    }).then(() => {
+      console.log(`[DISPATCH] ✅ FCM sent — trip=${session.tripId} pilot=${driver.driverId} (${driver.fullName}) token=${driver.fcmToken!.substring(0, 15)}...`);
+    }).catch((err: any) => {
+      console.error(`[DISPATCH] ❌ FCM FAILED — trip=${session.tripId} pilot=${driver.driverId} error=${err?.message || err}`);
+    });
+  } else {
+    console.warn(`[DISPATCH] ⚠️  No FCM token for pilot=${driver.driverId} (${driver.fullName}) — background notification impossible`);
   }
 
-  console.log(`[DISPATCH] 📣 PILOT NOTIFIED — trip=${session.tripId} → pilot=${driver.driverId} (${driver.fullName}, ${driver.distanceKm}km away, score=${driver.score}) socket=${!!io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`)} fcm=${!!driver.fcmToken} timeout=${session.config.driverTimeoutMs / 1000}s`);
+  console.log(`[DISPATCH] 📣 PILOT NOTIFIED — trip=${session.tripId} → pilot=${driver.driverId} (${driver.fullName}, ${driver.distanceKm}km away, score=${driver.score}) socketOnline=${socketConnected} fcmToken=${driver.fcmToken ? driver.fcmToken.substring(0, 15) + '...' : 'MISSING'} timeout=${session.config.driverTimeoutMs / 1000}s`);
 
   // Start timeout timer — if driver doesn't respond, auto-skip
   session.offerTimer = setTimeout(async () => {
@@ -657,7 +665,7 @@ async function findDriversInRadius(
         if (r.is_locked)                          reasons.push("is_locked=true");
         if (!r.dl_online)                         reasons.push("dl.is_online=false");
         if (r.current_trip_id)                    reasons.push(`on trip ${r.current_trip_id}`);
-        if (r.verification_status !== "approved") reasons.push(`verification=${r.verification_status}`);
+        if (!['approved', 'verified', 'pending'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified/pending)`);
         if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         if (staleMins > 10)                       reasons.push(`stale location (${staleMins}min ago)`);
