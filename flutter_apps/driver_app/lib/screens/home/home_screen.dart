@@ -168,7 +168,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => TripScreen(tripData: trip),
+          builder: (_) => TripScreen(trip: trip),
         ),
       );
     } catch (_) {}
