@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _walletBalance = 0;
   int _tripsToday = 0;
   double _earningsToday = 0;
+  double _driverRating = 5.0;
   int _unreadNotifCount = 0;
   Map<String, dynamic>? _incomingTrip;
   Map<String, dynamic>? _incomingParcel;
@@ -153,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final tripData = jsonDecode(pendingStr) as Map<String, dynamic>;
         if (!mounted) return;
         if (_incomingTrip == null) {
-          await Future.delayed(const Duration(milliseconds: 800));
+          await Future.delayed(const Duration(milliseconds: 300));
           setState(() => _incomingTrip = tripData);
           _showIncomingTrip();
         }
@@ -335,8 +336,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _vehicleNumber = data['vehicleNumber'] ?? '';
           _vehicleModel = data['vehicleModel'] ?? '';
           _zone = data['zone'] ?? '';
+          _driverRating = double.tryParse(data['rating']?.toString() ?? '') ?? _driverRating;
         });
-        if (_isOnline) _startLocationStreaming();
+        if (_isOnline) {
+          _startLocationStreaming();
+          // Re-announce online status via socket — restores driver_locations.is_online=true
+          // after app restart/crash where socket disconnect handler had set it false.
+          // Without this, dispatch won't find driver until first GPS update arrives (3s delay).
+          _socket.setOnlineStatus(
+            isOnline: true,
+            lat: _center.latitude,
+            lng: _center.longitude,
+          );
+        }
       } else if (res.statusCode == 401) {
         _handleSessionExpired();
         return;
@@ -397,10 +409,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         final reqHeaders = await AuthService.getHeaders();
         _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+        // Send isOnline=true so the server doesn't reset is_online to false on each update
         http.post(
           Uri.parse(ApiConfig.driverLocation),
           headers: reqHeaders,
-          body: jsonEncode({'lat': lat, 'lng': lng}),
+          body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true}),
         ).catchError((_) => http.Response('', 500));
 
         if (_isOnline && _incomingTrip == null) {
@@ -588,14 +601,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (!accepted) {
               try {
                 final hdrs = await AuthService.getHeaders();
-                await http.post(
+                final res = await http.post(
                   Uri.parse(ApiConfig.driverAcceptTrip),
-                  headers: hdrs,
+                  headers: {...hdrs, 'Content-Type': 'application/json'},
                   body: jsonEncode({'tripId': tripId}),
                 );
+                if (res.statusCode == 200) accepted = true;
               } catch (_) {}
             }
             if (!mounted) return;
+            if (!accepted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Network issue — proceeding. Contact support if trip is missing.',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+                backgroundColor: JT.warning,
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 4),
+              ));
+            }
             Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: trip)));
           },
           onReject: () async {
@@ -623,8 +646,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (parcel == null) return;
 
     final vehicleType = parcel['vehicleCategory']?.toString() ?? parcel['vehicle_category']?.toString() ?? 'bike_parcel';
-    final vehicleEmoji = vehicleType.contains('pickup') ? '🛻'
-        : vehicleType.contains('tata') || vehicleType.contains('mini') ? '🚛' : '🏍️';
+    final vehicleIcon = vehicleType.contains('pickup') ? Icons.fire_truck_rounded
+        : vehicleType.contains('tata') || vehicleType.contains('mini') ? Icons.local_shipping_rounded : Icons.electric_bike_rounded;
+    final vehicleIconColor = vehicleType.contains('pickup') ? const Color(0xFF0EA5E9)
+        : vehicleType.contains('tata') || vehicleType.contains('mini') ? const Color(0xFF0284C7) : const Color(0xFFF59E0B);
     final vehicleName = vehicleType.contains('pickup') ? 'Pickup Truck'
         : vehicleType.contains('tata') || vehicleType.contains('mini') ? 'Mini Truck' : 'Bike Parcel';
     final stops = parcel['dropCount'] ?? 1;
@@ -632,149 +657,183 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final itemType = parcel['itemType']?.toString() ?? parcel['item_type']?.toString() ?? '';
     final distKm = parcel['totalDistanceKm']?.toString() ?? parcel['total_distance_km']?.toString() ?? '';
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: JT.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: JT.warning.withValues(alpha: 0.4), width: 2)),
-          boxShadow: JT.cardShadow,
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Handle
-          Center(child: Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(color: JT.border, borderRadius: BorderRadius.circular(2)),
-          )),
-          const SizedBox(height: 16),
-          // Header
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: JT.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(vehicleEmoji, style: const TextStyle(fontSize: 30)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('New Parcel Request',
-                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w800)),
-              Text(vehicleName,
-                style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
-            ])),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: JT.grad,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.25), blurRadius: 8)],
-              ),
-              child: Text('₹${parcel['totalFare'] ?? 0}',
-                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
-            ),
-          ]),
-          const SizedBox(height: 14),
-          // Package details chips
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: [
-              _parcelChip(Icons.place_rounded, '$stops stop${stops > 1 ? 's' : ''}', JT.warning),
-              if (weight.isNotEmpty) _parcelChip(Icons.scale_rounded, '$weight kg', JT.primary),
-              if (distKm.isNotEmpty) _parcelChip(Icons.route_rounded, '${double.tryParse(distKm)?.toStringAsFixed(1) ?? distKm} km', JT.success),
-              if (itemType.isNotEmpty) _parcelChip(Icons.category_rounded, itemType, JT.textSecondary),
-            ],
-          ),
-          const SizedBox(height: 14),
-          // Pickup address
-          if ((parcel['pickupAddress'] ?? parcel['pickup_address'] ?? '').toString().isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: JT.bgSoft,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: JT.border),
-              ),
-              child: Row(children: [
-                const Icon(Icons.store_rounded, color: JT.success, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Pickup', style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary, fontWeight: FontWeight.w600)),
-                  Text(
-                    parcel['pickupAddress']?.toString() ?? parcel['pickup_address']?.toString() ?? '',
-                    style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 2,
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: true,
+        fullscreenDialog: false,
+        barrierDismissible: false,
+        transitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (_, __, ___) => PopScope(
+          canPop: false,
+          child: Scaffold(
+            backgroundColor: JT.bg,
+            body: SafeArea(
+              child: Column(children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  decoration: BoxDecoration(
+                    color: JT.warning.withValues(alpha: 0.10),
+                    border: Border(bottom: BorderSide(color: JT.warning.withValues(alpha: 0.2))),
                   ),
-                ])),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('📦 New Parcel Request',
+                        style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 20, fontWeight: FontWeight.w900)),
+                      Text(vehicleName,
+                        style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
+                    ])),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: JT.grad,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.3), blurRadius: 10)],
+                      ),
+                      child: Text('₹${parcel['totalFare'] ?? 0}',
+                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22)),
+                    ),
+                  ]),
+                ),
+                // Details
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      // Vehicle icon + type
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: vehicleIconColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(vehicleIcon, size: 34, color: vehicleIconColor),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(vehicleName,
+                            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
+                          Text('Parcel Delivery',
+                            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
+                        ])),
+                      ]),
+                      const SizedBox(height: 18),
+                      // Package details chips
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        _parcelChip(Icons.place_rounded, '$stops stop${stops > 1 ? 's' : ''}', JT.warning),
+                        if (weight.isNotEmpty) _parcelChip(Icons.scale_rounded, '$weight kg', JT.primary),
+                        if (distKm.isNotEmpty) _parcelChip(Icons.route_rounded, '${double.tryParse(distKm)?.toStringAsFixed(1) ?? distKm} km', JT.success),
+                        if (itemType.isNotEmpty) _parcelChip(Icons.category_rounded, itemType, JT.textSecondary),
+                      ]),
+                      const SizedBox(height: 18),
+                      // Pickup address
+                      if ((parcel['pickupAddress'] ?? parcel['pickup_address'] ?? '').toString().isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: JT.bgSoft,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: JT.border),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.store_rounded, color: JT.success, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('Pickup Location', style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 3),
+                              Text(
+                                parcel['pickupAddress']?.toString() ?? parcel['pickup_address']?.toString() ?? '',
+                                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                                maxLines: 3,
+                              ),
+                            ])),
+                          ]),
+                        ),
+                    ]),
+                  ),
+                ),
+                // Action buttons
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  child: Column(children: [
+                    // ACCEPT — full width dominant
+                    GestureDetector(
+                      onTap: () async {
+                        final orderId = parcel['orderId']?.toString() ?? parcel['id']?.toString() ?? '';
+                        if (orderId.isEmpty) return;
+                        Navigator.pop(context);
+                        AlarmService().stopAlarm();
+                        setState(() => _incomingParcel = null);
+                        try {
+                          final hdrs = await AuthService.getHeaders();
+                          final r = await http.post(
+                            Uri.parse(ApiConfig.driverParcelAccept(orderId)),
+                            headers: hdrs,
+                          );
+                          if (r.statusCode == 200) {
+                            final data = jsonDecode(r.body);
+                            final order = data['order'] as Map<String, dynamic>? ?? {};
+                            if (mounted) {
+                              Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => ParcelDeliveryScreen(order: order),
+                              ));
+                            }
+                          } else {
+                            _showSnack('Already taken by another driver', error: true);
+                          }
+                        } catch (_) {
+                          _showSnack('Network error, try again', error: true);
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: JT.warning,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: JT.warning.withValues(alpha: 0.40), blurRadius: 20, offset: const Offset(0, 6))],
+                        ),
+                        child: Center(
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            const Icon(Icons.inventory_2_rounded, color: Colors.white, size: 28),
+                            const SizedBox(width: 10),
+                            Text('ACCEPT DELIVERY',
+                              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // PASS — smaller
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        AlarmService().stopAlarm();
+                        setState(() => _incomingParcel = null);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: JT.error.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: JT.error.withValues(alpha: 0.22), width: 1.5),
+                        ),
+                        child: Center(
+                          child: Text('Skip this delivery',
+                            style: GoogleFonts.poppins(color: JT.error, fontWeight: FontWeight.w600, fontSize: 15)),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
               ]),
             ),
-          const SizedBox(height: 20),
-          // Action buttons
-          Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  AlarmService().stopAlarm();
-                  setState(() => _incomingParcel = null);
-                },
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: JT.error),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                child: Text('Pass', style: GoogleFonts.poppins(color: JT.error, fontWeight: FontWeight.w800, fontSize: 15)),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final orderId = parcel['orderId']?.toString() ?? parcel['id']?.toString() ?? '';
-                  if (orderId.isEmpty) return;
-                  Navigator.pop(context);
-                  AlarmService().stopAlarm();
-                  setState(() => _incomingParcel = null);
-                  try {
-                    final hdrs = await AuthService.getHeaders();
-                    final r = await http.post(
-                      Uri.parse(ApiConfig.driverParcelAccept(orderId)),
-                      headers: hdrs,
-                    );
-                    if (r.statusCode == 200) {
-                      final data = jsonDecode(r.body);
-                      final order = data['order'] as Map<String, dynamic>? ?? {};
-                      if (mounted) {
-                        Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => ParcelDeliveryScreen(order: order),
-                        ));
-                      }
-                    } else {
-                      _showSnack('Already taken by another driver', error: true);
-                    }
-                  } catch (_) {
-                    _showSnack('Network error, try again', error: true);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: JT.warning,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                child: Text('Accept Delivery', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15)),
-              ),
-            ),
-          ]),
-        ]),
+          ),
+        ),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
       ),
     ).whenComplete(() {
       AlarmService().stopAlarm();
@@ -1618,9 +1677,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, runSpacing: 6, children: _eligibleServices.map((svc) {
                     final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
-                    final icon = svc['icon']?.toString() ?? '🚗';
                     return Chip(
-                      avatar: Text(icon, style: const TextStyle(fontSize: 14)),
+                      avatar: const Icon(Icons.directions_car_filled_rounded, size: 14, color: JT.primary),
                       label: Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
                       backgroundColor: JT.primary.withValues(alpha: 0.08),
                       side: BorderSide(color: JT.primary.withValues(alpha: 0.2)),
@@ -1645,7 +1703,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   border: Border.all(color: JT.warning.withValues(alpha: 0.25), width: 1),
                 ),
                 child: Row(children: [
-                  const Text('📦', style: TextStyle(fontSize: 16)),
+                  const Icon(Icons.inventory_2_rounded, size: 18, color: Color(0xFFF59E0B)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1780,66 +1838,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isOn = _isOnline;
     return GestureDetector(
       onTap: _toggling ? null : _toggleOnline,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (isOn) ...[
-            AnimatedBuilder(
-              animation: _pulseCtrl,
-              builder: (_, __) => Container(
-                width: 160 + (_pulseCtrl.value * 16),
-                height: 56 + (_pulseCtrl.value * 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28 + _pulseCtrl.value * 4),
-                  border: Border.all(
-                    color: JT.primary.withValues(alpha: 0.35 - _pulseCtrl.value * 0.35),
-                    width: 1.5,
-                  ),
-                ),
-              ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
+        width: double.infinity,
+        height: 76,
+        decoration: BoxDecoration(
+          gradient: isOn
+              ? const LinearGradient(colors: [Color(0xFF16A34A), Color(0xFF15803D)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+              : const LinearGradient(colors: [Color(0xFF2F6BFF), Color(0xFF1A4DC8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: (isOn ? const Color(0xFF16A34A) : const Color(0xFF2F6BFF)).withValues(alpha: 0.40),
+              blurRadius: 20, offset: const Offset(0, 8),
             ),
           ],
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOutCubic,
-            width: 160,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: isOn ? JT.grad : null,
-              color: isOn ? null : JT.surfaceAlt,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: isOn ? JT.btnShadow : [],
-              border: isOn ? null : Border.all(color: JT.border),
-            ),
-            child: Center(
-              child: _toggling
-                ? const SizedBox(
-                    width: 24, height: 24,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                  )
-                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(
-                      isOn ? Icons.power_settings_new_rounded : Icons.play_circle_fill_rounded,
-                      color: isOn ? Colors.white : JT.textSecondary, size: 22,
+        ),
+        child: Center(
+          child: _toggling
+            ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.8))
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                AnimatedBuilder(
+                  animation: _pulseCtrl,
+                  builder: (_, __) => Container(
+                    width: 12, height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      boxShadow: [BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
+                        blurRadius: 4 + _pulseCtrl.value * 8,
+                      )],
                     ),
-                    const SizedBox(width: 7),
-                    Text(
-                      isOn ? 'GO OFFLINE' : 'GO ONLINE',
-                      style: GoogleFonts.poppins(
-                        color: isOn ? Colors.white : JT.textSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    isOn ? 'GO OFFLINE' : 'GO ONLINE',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
                     ),
-                    if (!isOn) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_rounded, color: JT.textSecondary, size: 16),
-                    ],
-                  ]),
-            ),
-          ),
-        ],
+                  ),
+                  Text(
+                    isOn ? 'Tap to stop accepting trips' : 'Tap to start earning',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ]),
+                const SizedBox(width: 16),
+                Icon(
+                  isOn ? Icons.stop_circle_outlined : Icons.play_circle_outline_rounded,
+                  color: Colors.white.withValues(alpha: 0.85),
+                  size: 28,
+                ),
+              ]),
+        ),
       ),
     );
   }
@@ -1903,8 +1964,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         )),
         const SizedBox(width: 8),
         Expanded(child: _statCard(
+          icon: Icons.star_rounded,
+          iconColor: const Color(0xFFF59E0B),
+          label: 'Rating',
+          value: _driverRating.toStringAsFixed(1),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: _statCard(
           icon: Icons.account_balance_wallet_rounded,
-          iconColor: JT.warning,
+          iconColor: const Color(0xFF8B5CF6),
           label: 'Wallet',
           value: '₹${_walletBalance.toStringAsFixed(0)}',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
