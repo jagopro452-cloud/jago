@@ -3518,6 +3518,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // Admin-prefixed aliases (admin panel uses /api/admin/business-settings)
+  app.get("/api/admin/business-settings", requireAdminAuth, async (_req, res) => {
+    try {
+      const settings = await storage.getBusinessSettings();
+      res.json(settings);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+  app.get("/api/admin/business-settings/:key", requireAdminAuth, async (req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE key_name=${req.params.key} LIMIT 1`);
+      if (!r.rows.length) return res.json({ key_name: req.params.key, value: '' });
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+  app.post("/api/admin/business-settings", requireAdminAuth, async (req, res) => {
+    try {
+      const keyName = req.body.key_name || req.body.keyName;
+      const value   = req.body.value ?? '';
+      const settingsType = req.body.settingsType;
+      const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
+      res.json(setting);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   // ── OTP Settings (Admin) ─────────────────────────────────────────────────
   app.get("/api/otp-settings", requireAdminAuth, async (_req, res) => {
     try {
