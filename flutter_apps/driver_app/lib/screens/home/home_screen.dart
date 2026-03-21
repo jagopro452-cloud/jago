@@ -15,6 +15,7 @@ import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/alarm_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
+import '../../widgets/incoming_parcel_sheet.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_verification_screen.dart';
@@ -231,7 +232,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (!_isOnline) return;
       if (_incomingTrip != null || _incomingParcel != null) return;
       setState(() => _incomingParcel = parcel);
-      AlarmService().startAlarm();
       _showIncomingParcel();
     }));
 
@@ -659,217 +659,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _showIncomingParcel() {
     final parcel = _incomingParcel;
     if (parcel == null) return;
-
-    final vehicleType = parcel['vehicleCategory']?.toString() ?? parcel['vehicle_category']?.toString() ?? 'bike_parcel';
-    final vehicleIcon = vehicleType.contains('pickup') ? Icons.fire_truck_rounded
-        : vehicleType.contains('tata') || vehicleType.contains('mini') ? Icons.local_shipping_rounded : Icons.electric_bike_rounded;
-    final vehicleIconColor = vehicleType.contains('pickup') ? const Color(0xFF0EA5E9)
-        : vehicleType.contains('tata') || vehicleType.contains('mini') ? const Color(0xFF0284C7) : const Color(0xFFF59E0B);
-    final vehicleName = vehicleType.contains('pickup') ? 'Pickup Truck'
-        : vehicleType.contains('tata') || vehicleType.contains('mini') ? 'Mini Truck' : 'Bike Parcel';
-    final stops = parcel['dropCount'] ?? 1;
-    final weight = parcel['weightKg']?.toString() ?? parcel['weight_kg']?.toString() ?? '';
-    final itemType = parcel['itemType']?.toString() ?? parcel['item_type']?.toString() ?? '';
-    final distKm = parcel['totalDistanceKm']?.toString() ?? parcel['total_distance_km']?.toString() ?? '';
-
     Navigator.push(
       context,
       PageRouteBuilder(
         opaque: true,
-        fullscreenDialog: false,
         barrierDismissible: false,
         transitionDuration: const Duration(milliseconds: 280),
-        pageBuilder: (_, __, ___) => PopScope(
-          canPop: false,
-          child: Scaffold(
-            backgroundColor: JT.bg,
-            body: SafeArea(
-              child: Column(children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                  decoration: BoxDecoration(
-                    color: JT.warning.withValues(alpha: 0.10),
-                    border: Border(bottom: BorderSide(color: JT.warning.withValues(alpha: 0.2))),
-                  ),
-                  child: Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('📦 New Parcel Request',
-                        style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 20, fontWeight: FontWeight.w900)),
-                      Text(vehicleName,
-                        style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
-                    ])),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        gradient: JT.grad,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.3), blurRadius: 10)],
-                      ),
-                      child: Text('₹${parcel['totalFare'] ?? 0}',
-                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22)),
-                    ),
-                  ]),
-                ),
-                // Details
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      // Vehicle icon + type
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: vehicleIconColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Icon(vehicleIcon, size: 34, color: vehicleIconColor),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(vehicleName,
-                            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
-                          Text('Parcel Delivery',
-                            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
-                        ])),
-                      ]),
-                      const SizedBox(height: 18),
-                      // Package details chips
-                      Wrap(spacing: 8, runSpacing: 8, children: [
-                        _parcelChip(Icons.place_rounded, '$stops stop${stops > 1 ? 's' : ''}', JT.warning),
-                        if (weight.isNotEmpty) _parcelChip(Icons.scale_rounded, '$weight kg', JT.primary),
-                        if (distKm.isNotEmpty) _parcelChip(Icons.route_rounded, '${double.tryParse(distKm)?.toStringAsFixed(1) ?? distKm} km', JT.success),
-                        if (itemType.isNotEmpty) _parcelChip(Icons.category_rounded, itemType, JT.textSecondary),
-                      ]),
-                      const SizedBox(height: 18),
-                      // Pickup address
-                      if ((parcel['pickupAddress'] ?? parcel['pickup_address'] ?? '').toString().isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: JT.bgSoft,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: JT.border),
-                          ),
-                          child: Row(children: [
-                            const Icon(Icons.store_rounded, color: JT.success, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('Pickup Location', style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 3),
-                              Text(
-                                parcel['pickupAddress']?.toString() ?? parcel['pickup_address']?.toString() ?? '',
-                                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                                maxLines: 3,
-                              ),
-                            ])),
-                          ]),
-                        ),
-                    ]),
-                  ),
-                ),
-                // Action buttons
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  child: Column(children: [
-                    // ACCEPT — full width dominant
-                    GestureDetector(
-                      onTap: () async {
-                        final orderId = parcel['orderId']?.toString() ?? parcel['id']?.toString() ?? '';
-                        if (orderId.isEmpty) return;
-                        Navigator.pop(context);
-                        AlarmService().stopAlarm();
-                        setState(() => _incomingParcel = null);
-                        try {
-                          final hdrs = await AuthService.getHeaders();
-                          final r = await http.post(
-                            Uri.parse(ApiConfig.driverParcelAccept(orderId)),
-                            headers: hdrs,
-                          );
-                          if (r.statusCode == 200) {
-                            final data = jsonDecode(r.body);
-                            final order = data['order'] as Map<String, dynamic>? ?? {};
-                            if (mounted) {
-                              Navigator.push(context, MaterialPageRoute(
-                                builder: (_) => ParcelDeliveryScreen(order: order),
-                              ));
-                            }
-                          } else {
-                            _showSnack('Already taken by another driver', error: true);
-                          }
-                        } catch (_) {
-                          _showSnack('Network error, try again', error: true);
-                        }
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: JT.warning,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [BoxShadow(color: JT.warning.withValues(alpha: 0.40), blurRadius: 20, offset: const Offset(0, 6))],
-                        ),
-                        child: Center(
-                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            const Icon(Icons.inventory_2_rounded, color: Colors.white, size: 28),
-                            const SizedBox(width: 10),
-                            Text('ACCEPT DELIVERY',
-                              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
-                          ]),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // PASS — smaller
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                        AlarmService().stopAlarm();
-                        setState(() => _incomingParcel = null);
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: JT.error.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: JT.error.withValues(alpha: 0.22), width: 1.5),
-                        ),
-                        child: Center(
-                          child: Text('Skip this delivery',
-                            style: GoogleFonts.poppins(color: JT.error, fontWeight: FontWeight.w600, fontSize: 15)),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ),
-              ]),
-            ),
-          ),
+        pageBuilder: (_, __, ___) => IncomingParcelSheet(
+          parcel: parcel,
+          onAccept: () async {
+            setState(() => _incomingParcel = null);
+            final orderId = parcel['orderId']?.toString() ?? parcel['id']?.toString() ?? '';
+            if (orderId.isEmpty) return;
+            try {
+              final hdrs = await AuthService.getHeaders();
+              final r = await http.post(Uri.parse(ApiConfig.driverParcelAccept(orderId)), headers: hdrs);
+              if (!mounted) return;
+              if (r.statusCode == 200) {
+                final data = jsonDecode(r.body);
+                final order = data['order'] as Map<String, dynamic>? ?? {};
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelDeliveryScreen(order: order)));
+              } else {
+                _showSnack('Already taken by another driver', error: true);
+              }
+            } catch (_) {
+              if (mounted) _showSnack('Network error, try again', error: true);
+            }
+          },
+          onSkip: () {
+            if (mounted) setState(() => _incomingParcel = null);
+          },
         ),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
       ),
     ).whenComplete(() {
-      AlarmService().stopAlarm();
       if (mounted) setState(() => _incomingParcel = null);
     });
-  }
-
-  Widget _parcelChip(IconData icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 4),
-        Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-      ]),
-    );
   }
 
   void _showSnack(String msg, {bool error = false}) {

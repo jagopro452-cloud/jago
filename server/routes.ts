@@ -1,6 +1,6 @@
 ﻿import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
-import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
+import { notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
 import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
@@ -12370,6 +12370,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           };
           for (const driver of parcelDrivers) {
             io.to(`user:${driver.id}`).emit('parcel:new_request', payload);
+            // FCM: wake driver if app is in background
+            if (driver.fcm_token) {
+              notifyDriverNewParcel({
+                fcmToken: driver.fcm_token,
+                pickupAddress: String(pickupAddress || ''),
+                totalFare: Number(totalFare) || 0,
+                orderId: order.id,
+                vehicleCategory: vehicleCategory as string,
+              }).catch(() => {});
+            }
           }
         } catch (_) {}
       }

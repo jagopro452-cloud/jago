@@ -144,6 +144,31 @@ export async function notifyDriverNewRide(opts: {
   });
 }
 
+/** 📦 New parcel order — notify driver (for background wake-up) */
+export async function notifyDriverNewParcel(opts: {
+  fcmToken: string | null;
+  pickupAddress: string;
+  totalFare: number;
+  orderId: string;
+  vehicleCategory?: string;
+}) {
+  if (!opts.fcmToken) return;
+  const label = (opts.vehicleCategory || 'bike_parcel').replace(/_/g, ' ');
+  return sendFcmNotification({
+    fcmToken: opts.fcmToken,
+    title: "📦 New Parcel Delivery!",
+    body: `${opts.pickupAddress} — ₹${opts.totalFare} — ${label}`,
+    sound: "trip_alert",
+    channelId: "trip_alerts",
+    data: {
+      type: "new_parcel",
+      orderId: opts.orderId,
+      pickupAddress: opts.pickupAddress,
+      totalFare: String(opts.totalFare),
+    },
+  });
+}
+
 /** ✅ Driver accepted — notify customer */
 export async function notifyCustomerDriverAccepted(opts: {
   fcmToken: string | null;
