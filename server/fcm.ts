@@ -64,6 +64,8 @@ export function getFirebaseAdmin(): any {
 }
 
 // ── Send single FCM notification ─────────────────────────────────────────────
+// dataOnly=true → no `notification` key → Android wakes our background handler
+// even when app is killed. REQUIRED for full-screen intent to work.
 export async function sendFcmNotification(opts: {
   fcmToken: string;
   title: string;
@@ -71,35 +73,41 @@ export async function sendFcmNotification(opts: {
   data?: Record<string, string>;
   sound?: string;
   channelId?: string;
+  dataOnly?: boolean;
 }): Promise<boolean> {
   if (!admin) await initFirebaseAsync();
   if (!admin) return false;
 
   try {
-    const message = {
+    // Always embed title+body in data so our background handler can read them
+    const dataPayload: Record<string, string> = {
+      title: opts.title,
+      body: opts.body,
+      ...(opts.data || {}),
+    };
+
+    const message: any = {
       token: opts.fcmToken,
-      notification: {
-        title: opts.title,
-        body: opts.body,
-      },
-      data: opts.data || {},
+      data: dataPayload,
       android: {
         priority: "high" as const,
-        notification: {
-          sound: opts.sound || "trip_alert",
-          channelId: opts.channelId || "trip_alerts",
-          priority: "max" as const,
-          defaultVibrateTimings: false,
-          vibrateTimingsMillis: [0, 500, 200, 500, 200, 500],
-        },
+        directBootOk: true,
+        // For non-alert messages only: let FCM show the system notification
+        ...(opts.dataOnly ? {} : {
+          notification: {
+            sound: opts.sound || "trip_alert",
+            channelId: opts.channelId || "trip_alerts",
+            priority: "max" as const,
+            defaultVibrateTimings: false,
+            vibrateTimingsMillis: [0, 500, 200, 500, 200, 500],
+          },
+        }),
       },
       apns: {
-        headers: {
-          "apns-priority": "10",
-        },
+        headers: { "apns-priority": "10" },
         payload: {
           aps: {
-            sound: opts.sound || "trip_alert.wav",
+            sound: opts.dataOnly ? undefined : (opts.sound || "trip_alert.wav"),
             badge: 1,
             contentAvailable: true,
           },
@@ -107,8 +115,13 @@ export async function sendFcmNotification(opts: {
       },
     };
 
+    // For non-dataOnly messages, include the notification key for system display
+    if (!opts.dataOnly) {
+      message.notification = { title: opts.title, body: opts.body };
+    }
+
     await admin.messaging().send(message);
-    log(`[FCM] Sent to ${opts.fcmToken.substring(0, 20)}... — ${opts.title}`, "fcm");
+    log(`[FCM] Sent to ${opts.fcmToken.substring(0, 20)}... — ${opts.title}${opts.dataOnly ? " (data-only)" : ""}`, "fcm");
     return true;
   } catch (e: any) {
     log(`[FCM] Send failed: ${e.message}`, "fcm");
@@ -134,6 +147,7 @@ export async function notifyDriverNewRide(opts: {
     body: `${opts.customerName} — ${opts.pickupAddress} — ₹${opts.estimatedFare}`,
     sound: "trip_alert",
     channelId: "trip_alerts",
+    dataOnly: true, // background handler shows full-screen intent
     data: {
       type: "new_trip",
       tripId: opts.tripId,
@@ -160,11 +174,13 @@ export async function notifyDriverNewParcel(opts: {
     body: `${opts.pickupAddress} — ₹${opts.totalFare} — ${label}`,
     sound: "trip_alert",
     channelId: "trip_alerts",
+    dataOnly: true, // background handler shows full-screen intent
     data: {
       type: "new_parcel",
       orderId: opts.orderId,
       pickupAddress: opts.pickupAddress,
       totalFare: String(opts.totalFare),
+      vehicleCategory: opts.vehicleCategory || 'bike_parcel',
     },
   });
 }

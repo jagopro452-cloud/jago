@@ -149,15 +149,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _checkPendingFcmTrip() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final pendingStr = prefs.getString('pending_trip_data');
-      if (pendingStr != null && pendingStr.isNotEmpty) {
+
+      // ── Pending ride ──────────────────────────────────────────────────────
+      final pendingTripStr = prefs.getString('pending_trip_data');
+      if (pendingTripStr != null && pendingTripStr.isNotEmpty) {
         await prefs.remove('pending_trip_data');
-        final tripData = jsonDecode(pendingStr) as Map<String, dynamic>;
-        if (!mounted) return;
-        if (_incomingTrip == null) {
+        final tripData = jsonDecode(pendingTripStr) as Map<String, dynamic>;
+        if (mounted && _incomingTrip == null) {
           await Future.delayed(const Duration(milliseconds: 300));
+          if (!mounted) return;
           setState(() => _incomingTrip = tripData);
           _showIncomingTrip();
+          return; // Show trip first; parcel can wait
+        }
+      }
+
+      // ── Pending parcel ────────────────────────────────────────────────────
+      final pendingParcelStr = prefs.getString('pending_parcel_data');
+      if (pendingParcelStr != null && pendingParcelStr.isNotEmpty) {
+        await prefs.remove('pending_parcel_data');
+        final parcelData = jsonDecode(pendingParcelStr) as Map<String, dynamic>;
+        if (mounted && _incomingParcel == null && _incomingTrip == null) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (!mounted) return;
+          setState(() => _incomingParcel = parcelData);
+          _showIncomingParcel();
         }
       }
     } catch (_) {}
@@ -246,6 +262,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ));
+    }));
+
+    // ── FCM foreground stream: app is open, direct-show IncomingTripSheet ─
+    // Fires when FCM arrives while app is in foreground (no notification shown).
+    // Also fires after notification tap when app is in background/terminated.
+    _subs.add(FcmService().onForegroundAlert.listen((data) {
+      if (!mounted || !_isOnline) return;
+      final type = data['type'] ?? '';
+      if (type == 'new_trip' && _incomingTrip == null && _incomingParcel == null) {
+        setState(() => _incomingTrip = data);
+        _showIncomingTrip();
+      } else if (type == 'new_parcel' && _incomingParcel == null && _incomingTrip == null) {
+        setState(() => _incomingParcel = data);
+        _showIncomingParcel();
+      }
     }));
   }
 

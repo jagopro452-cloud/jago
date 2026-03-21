@@ -7,6 +7,9 @@ import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
 
+// Global navigator key — used by FCM service to navigate after notification tap
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 Future<void> loadThemePreference() async {
@@ -200,6 +203,7 @@ class JagoPilotApp extends StatelessWidget {
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: themeNotifier,
           builder: (_, mode, __) => MaterialApp(
+            navigatorKey: navigatorKey,
             title: 'JAGO Pro Pilot',
             debugShowCheckedModeBanner: false,
             themeMode: mode,
