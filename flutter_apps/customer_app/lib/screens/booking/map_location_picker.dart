@@ -55,6 +55,7 @@ class MapLocationPicker extends StatefulWidget {
 
 class _MapLocationPickerState extends State<MapLocationPicker> {
   GoogleMapController? _mapController;
+  LatLng? _pendingCamera; // camera move queued before map ready
 
   // Current center of the map (source of truth)
   double _lat = 17.3850;
@@ -123,7 +124,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         _lng = pos.longitude;
         _locationLoading = false;
       });
-      _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(_lat, _lng)));
+      final target = LatLng(_lat, _lng);
+      if (_mapController != null) {
+        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+      } else {
+        _pendingCamera = target; // map not ready yet — will animate in onMapCreated
+      }
       _reverseGeocode(_lat, _lng);
     } catch (_) {
       setState(() => _locationLoading = false);
@@ -274,7 +280,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               target: LatLng(_lat, _lng),
               zoom: 16,
             ),
-            onMapCreated: (c) => _mapController = c,
+            onMapCreated: (c) {
+              _mapController = c;
+              if (_pendingCamera != null) {
+                c.animateCamera(CameraUpdate.newLatLngZoom(_pendingCamera!, 16));
+                _pendingCamera = null;
+              }
+            },
             onCameraMove: _onCameraMove,
             onCameraIdle: _onCameraIdle,
             myLocationEnabled: true,

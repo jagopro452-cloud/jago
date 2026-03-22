@@ -51,19 +51,19 @@ class _ParcelVehicle {
 const _kVehicles = [
   _ParcelVehicle(
     key: 'bike_parcel', name: 'Bike Parcel', subtitle: 'Fast & lightweight',
-    icon: '🏍️', capacity: 'Up to 10 kg', maxKg: 10,
+    icon: 'bike', capacity: 'Up to 10 kg', maxKg: 10,
     suitable: 'Documents · Small boxes · Groceries · Medicine',
     accentColor: Color(0xFF2F7BFF),
   ),
   _ParcelVehicle(
     key: 'tata_ace', name: 'Mini Truck', subtitle: 'Tata Ace · Medium goods',
-    icon: '🚛', capacity: 'Up to 500 kg', maxKg: 500,
+    icon: 'mini_truck', capacity: 'Up to 500 kg', maxKg: 500,
     suitable: 'Furniture · Appliances · Bulk items · Shop stock',
     accentColor: Color(0xFFFF6B35),
   ),
   _ParcelVehicle(
     key: 'pickup_truck', name: 'Pickup Truck', subtitle: 'Heavy goods & business',
-    icon: '🛻', capacity: 'Up to 2,000 kg', maxKg: 2000,
+    icon: 'pickup_truck', capacity: 'Up to 2,000 kg', maxKg: 2000,
     suitable: 'Heavy machinery · Construction · Business logistics',
     accentColor: Color(0xFF7C3AED),
   ),
@@ -71,14 +71,14 @@ const _kVehicles = [
 
 // ── Static item types ─────────────────────────────────────────────────────────
 const _kItemTypes = [
-  {'icon': '📄', 'label': 'Documents'},
-  {'icon': '👕', 'label': 'Clothing'},
-  {'icon': '📱', 'label': 'Electronics'},
-  {'icon': '🛒', 'label': 'Groceries'},
-  {'icon': '🪑', 'label': 'Furniture'},
-  {'icon': '💊', 'label': 'Medicine'},
-  {'icon': '🏺', 'label': 'Fragile'},
-  {'icon': '📦', 'label': 'Other'},
+  {'icon': 'document', 'label': 'Documents'},
+  {'icon': 'clothing', 'label': 'Clothing'},
+  {'icon': 'electronics', 'label': 'Electronics'},
+  {'icon': 'groceries', 'label': 'Groceries'},
+  {'icon': 'furniture', 'label': 'Furniture'},
+  {'icon': 'medicine', 'label': 'Medicine'},
+  {'icon': 'fragile', 'label': 'Fragile'},
+  {'icon': 'other', 'label': 'Other'},
 ];
 
 // ── Static weight options ─────────────────────────────────────────────────────
@@ -157,7 +157,20 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final list = (data['vehicles'] as List<dynamic>?) ?? [];
-        final parsed = list.map<_ParcelVehicle>((v) {
+        // Filter to only parcel-relevant vehicle types
+        bool _isParcelVehicle(Map<String, dynamic> m) {
+          final key = (m['vehicle_key']?.toString() ?? '').toLowerCase();
+          final type = (m['type']?.toString() ?? '').toLowerCase();
+          final cat = (m['category']?.toString() ?? '').toLowerCase();
+          return type == 'parcel' || cat == 'parcel' ||
+              key.contains('parcel') || key.contains('tata') ||
+              key.contains('pickup') || key.contains('truck') ||
+              key.contains('bike_parcel') || key.contains('mini');
+        }
+
+        final parsed = list
+            .where((v) => _isParcelVehicle(v as Map<String, dynamic>))
+            .map<_ParcelVehicle>((v) {
           final m = v as Map<String, dynamic>;
           final colorStr = m['color']?.toString() ?? '#2F7BFF';
           final colorVal = int.tryParse(colorStr.replaceFirst('#', '0xFF')) ?? 0xFF2F7BFF;
@@ -561,6 +574,26 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     );
   }
 
+  IconData _iconForKey(String key) {
+    if (key.contains('bike')) return Icons.electric_bike_rounded;
+    if (key.contains('tata') || key.contains('mini')) return Icons.local_shipping_rounded;
+    if (key.contains('pickup') || key.contains('truck')) return Icons.fire_truck_rounded;
+    return Icons.inventory_2_rounded;
+  }
+
+  IconData _itemTypeIcon(String key) {
+    switch (key) {
+      case 'document': return Icons.description_rounded;
+      case 'clothing': return Icons.checkroom_rounded;
+      case 'electronics': return Icons.devices_rounded;
+      case 'groceries': return Icons.shopping_basket_rounded;
+      case 'furniture': return Icons.chair_rounded;
+      case 'medicine': return Icons.medication_rounded;
+      case 'fragile': return Icons.local_drink_rounded;
+      default: return Icons.inventory_2_rounded;
+    }
+  }
+
   Widget _buildVehicleCard(int idx) {
     final v = _vehicles[idx];
     final selected = _vehicleIdx == idx;
@@ -592,8 +625,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               decoration: BoxDecoration(
                 color: v.accentColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14)),
-              child: Center(child: Text(v.icon,
-                  style: const TextStyle(fontSize: 32))),
+              child: Icon(_iconForKey(v.key), color: v.accentColor, size: 32),
             ),
             const SizedBox(width: 14),
             // Info
@@ -775,7 +807,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _vehicle.accentColor.withValues(alpha: 0.3))),
           child: Row(children: [
-            Text(_vehicle.icon, style: const TextStyle(fontSize: 24)),
+            Icon(_iconForKey(_vehicle.key), color: _vehicle.accentColor, size: 26),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_vehicle.name, style: GoogleFonts.poppins(
@@ -816,6 +848,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.0,
           children: _kItemTypes.map((t) {
             final sel = _itemType == t['label'];
+            final icon = _itemTypeIcon(t['icon'] as String);
             return GestureDetector(
               onTap: () => setState(() => _itemType = t['label'] as String),
               child: AnimatedContainer(
@@ -827,7 +860,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                       color: sel ? JT.primary : JT.border,
                       width: sel ? 2 : 1)),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(t['icon'] as String, style: const TextStyle(fontSize: 22)),
+                  Icon(icon, color: sel ? JT.primary : JT.textSecondary, size: 24),
                   const SizedBox(height: 4),
                   Text(t['label'] as String, style: GoogleFonts.poppins(
                       fontSize: 10, fontWeight: FontWeight.w600,
