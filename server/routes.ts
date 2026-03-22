@@ -9433,28 +9433,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const hr = nowHr >= 24 ? nowHr - 24 : nowHr;
       const isNight = hr >= 22 || hr < 6;
 
-      // Zone surge factor: check if pickup is inside any active zone
+      // Zone surge factor: use detectZoneId (polygon + radius fallback)
       let zoneSurge = 1.0;
       let activeZoneName = '';
       if (pickupLat && pickupLng) {
         try {
-          const zoneRows = await rawDb.execute(rawSql`SELECT name, coordinates, surge_factor FROM zones WHERE is_active = true AND surge_factor > 1 AND coordinates IS NOT NULL`);
-          const pLat = parseFloat(pickupLat), pLng = parseFloat(pickupLng);
-          for (const zr of zoneRows.rows as any[]) {
-            try {
-              const geo = JSON.parse(zr.coordinates);
-              if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
-                const ring: number[][] = geo.coordinates[0];
-                // Ray-casting point-in-polygon
-                let inside = false;
-                for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-                  const xi = ring[i][0], yi = ring[i][1];
-                  const xj = ring[j][0], yj = ring[j][1];
-                  if (((yi > pLat) !== (yj > pLat)) && (pLng < ((xj - xi) * (pLat - yi) / (yj - yi) + xi))) inside = !inside;
-                }
-                if (inside) { zoneSurge = parseFloat(zr.surge_factor) || 1.0; activeZoneName = zr.name; break; }
-              }
-            } catch {}
+          const detectedZoneId = await detectZoneId(parseFloat(pickupLat), parseFloat(pickupLng));
+          if (detectedZoneId) {
+            const zr = await rawDb.execute(rawSql`SELECT name, surge_factor FROM zones WHERE id=${detectedZoneId}::uuid AND is_active=true LIMIT 1`);
+            if (zr.rows.length) {
+              zoneSurge = parseFloat((zr.rows[0] as any).surge_factor) || 1.0;
+              activeZoneName = (zr.rows[0] as any).name || '';
+            }
           }
         } catch {}
       }
@@ -12689,16 +12679,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // Auto-sync vehicle_categories is_active when service is toggled
       if (service_status !== undefined) {
         const isActive = service_status === 'active';
-        // Map platform service keys to vehicle category types
-        const typeMap: Record<string, string> = {
-          'bike_ride': 'ride', 'bike_taxi': 'ride', 'auto_ride': 'ride',
-          'mini_car': 'ride', 'sedan_ride': 'ride', 'suv_ride': 'ride',
-          'parcel_delivery': 'parcel', 'cargo_freight': 'cargo',
-          'intercity': 'intercity', 'car_sharing': 'carsharing', 'carpool': 'carsharing',
+        // Map service_key → specific vehicle_type for per-vehicle control
+        // Using vehicle_type (not type) so toggling one service doesn't affect others
+        const vehicleTypeMap: Record<string, string> = {
+          'bike_ride':       'bike',
+          'bike_taxi':       'bike',
+          'auto_ride':       'auto',
+          'mini_car':        'mini_car',
+          'sedan':           'sedan',
+          'suv':             'suv',
+          'city_pool':       'carpool',
+          'intercity_pool':  'carpool',
+          'outstation_pool': 'carpool',
         };
-        const vcType = typeMap[key];
-        if (vcType) {
-          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type=${vcType}`).catch(() => {});
+        const vcVehicleType = vehicleTypeMap[key];
+        if (vcVehicleType) {
+          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE vehicle_type=${vcVehicleType}`).catch(() => {});
+        }
+        // Parcel — all parcel vehicles share one service toggle
+        if (key === 'parcel_delivery') {
+          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type='parcel'`).catch(() => {});
         }
         // Also sync business_settings legacy toggle
         const legacyKeyMap: Record<string, string> = {
