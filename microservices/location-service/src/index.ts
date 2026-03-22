@@ -125,14 +125,28 @@ app.get("/internal/location/stream", (_req, res) => {
   });
 });
 
-app.get("/internal/location/demand-zones", (_req, res) => {
-  // Lightweight synthetic demand feed for driver positioning UI.
-  const zones = [
-    { zoneId: "city_centre", lat: 16.5062, lng: 80.648, city: "Vijayawada", demandScore: 0.91, surgeMultiplier: 1.4, recommendation: "High ride probability in next 20 mins" },
-    { zoneId: "railway_station", lat: 16.5174, lng: 80.6305, city: "Vijayawada", demandScore: 0.84, surgeMultiplier: 1.25, recommendation: "Move near station pickup gate" },
-    { zoneId: "it_hub", lat: 17.4435, lng: 78.3772, city: "Hyderabad", demandScore: 0.88, surgeMultiplier: 1.35, recommendation: "Peak office outbound demand" },
-  ];
-  res.json({ ts: new Date().toISOString(), zones });
+app.get("/internal/location/demand-zones", async (_req, res) => {
+  // Proxy to main server's live zone data (dynamic, from DB via /api/zones)
+  const mainServer = process.env.MAIN_SERVER_URL || "http://localhost:5000";
+  try {
+    const resp = await fetch(`${mainServer}/api/zones`);
+    if (!resp.ok) throw new Error(`zones API ${resp.status}`);
+    const dbZones = (await resp.json()) as any[];
+    const zones = dbZones
+      .filter((z: any) => z.isActive !== false && z.is_active !== false)
+      .map((z: any) => ({
+        zoneId: z.id,
+        zoneName: z.name,
+        lat: z.latitude || z.lat || 0,
+        lng: z.longitude || z.lng || 0,
+        surgeMultiplier: parseFloat(z.surgeFactor || z.surge_factor || "1") || 1,
+        serviceType: z.serviceType || z.service_type || "both",
+      }));
+    res.json({ ts: new Date().toISOString(), zones, source: "db" });
+  } catch {
+    // Fallback: empty list (no hardcoded fake data)
+    res.json({ ts: new Date().toISOString(), zones: [], source: "unavailable" });
+  }
 });
 
 app.listen(port, () => {

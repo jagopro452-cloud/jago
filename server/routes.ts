@@ -242,6 +242,40 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * c;
 }
 
+/** GeoJSON [lng, lat] ring ray-cast point-in-polygon */
+function pointInPolygon(lat: number, lng: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1]; // GeoJSON is [lng, lat]
+    const xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi) / (yj - yi) + xi))) inside = !inside;
+  }
+  return inside;
+}
+
+/** Auto-detect which DB zone a lat/lng falls inside. Returns zone UUID or null. */
+async function detectZoneId(lat: number, lng: number): Promise<string | null> {
+  if (!lat || !lng) return null;
+  try {
+    const zones = await rawDb.execute(rawSql`
+      SELECT id, coordinates FROM zones WHERE is_active=true AND coordinates IS NOT NULL
+    `);
+    for (const z of zones.rows as any[]) {
+      try {
+        const geo = JSON.parse(z.coordinates);
+        if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
+          if (pointInPolygon(lat, lng, geo.coordinates[0])) return z.id as string;
+        } else if (geo.type === 'MultiPolygon') {
+          for (const poly of geo.coordinates) {
+            if (poly?.[0] && pointInPolygon(lat, lng, poly[0])) return z.id as string;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
 function computeEtaMinutes(distanceKm: number, avgSpeedKmph = 25): number {
   if (!Number.isFinite(distanceKm) || distanceKm <= 0) return 0;
   return Math.max(1, Math.round((distanceKm / avgSpeedKmph) * 60));
@@ -6927,6 +6961,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       // Also update users table
       await rawDb.execute(rawSql`UPDATE users SET is_online=${effectiveOnline}, current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
+      // Auto-detect and update driver zone from GPS position
+      const autoZoneId = await detectZoneId(Number(lat), Number(lng));
+      if (autoZoneId) {
+        await rawDb.execute(rawSql`
+          UPDATE driver_details SET zone_id=${autoZoneId}::uuid WHERE user_id=${driver.id}::uuid
+        `).catch(() => {});
+      }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -8532,14 +8573,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let computedFare = Number(estimatedFare) || 0;
       if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
         try {
+          // Detect zone from pickup location for accurate zone-specific fares
+          const detectedZoneId = await detectZoneId(Number(pickupLat), Number(pickupLng));
           const fareConfig = await rawDb.execute(rawSql`
             SELECT base_fare, fare_per_km, fare_per_min, minimum_fare, night_charge_multiplier
             FROM trip_fares
             WHERE vehicle_category_id = ${vehicleCategoryId}::uuid
-              AND (zone_id IS NULL OR zone_id IN (
-                SELECT id FROM zones WHERE is_active = true ORDER BY created_at ASC LIMIT 1
-              ))
-            ORDER BY created_at DESC
+              AND (
+                ${detectedZoneId ? rawSql`zone_id = ${detectedZoneId}::uuid` : rawSql`zone_id IS NULL`}
+                OR zone_id IS NULL
+              )
+            ORDER BY (zone_id IS NOT NULL) DESC, created_at DESC
             LIMIT 1
           `);
           if (fareConfig.rows.length) {
@@ -8553,33 +8597,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const hr = new Date().getHours();
             const isNight = hr >= 22 || hr < 6;
             const nightMult = isNight ? parseFloat(fc.night_charge_multiplier || "1") : 1;
-            // Apply zone surge factor based on pickup location
+            // Apply zone surge factor using detected zone (polygon-based, from DB)
             let surgeMult = 1.0;
             if (Number(pickupLat) && Number(pickupLng)) {
               try {
-                const surgeZones = await rawDb.execute(rawSql`
-                  SELECT surge_factor, coordinates FROM zones
-                  WHERE is_active=true AND surge_factor > 1 AND coordinates IS NOT NULL
-                `);
-                const pLat = Number(pickupLat), pLng = Number(pickupLng);
-                for (const zr of surgeZones.rows as any[]) {
-                  try {
-                    const geo = JSON.parse(zr.coordinates);
-                    if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
-                      const ring: number[][] = geo.coordinates[0];
-                      let inside = false;
-                      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-                        const xi = ring[i][0], yi = ring[i][1];
-                        const xj = ring[j][0], yj = ring[j][1];
-                        if (((yi > pLat) !== (yj > pLat)) && (pLng < ((xj - xi) * (pLat - yi) / (yj - yi) + xi))) inside = !inside;
-                      }
-                      if (inside) { surgeMult = parseFloat(zr.surge_factor) || 1.0; break; }
-                    }
-                  } catch {}
-                }
+                const surgeZoneRow = detectedZoneId
+                  ? (await rawDb.execute(rawSql`SELECT surge_factor FROM zones WHERE id=${detectedZoneId}::uuid AND surge_factor > 1 LIMIT 1`)).rows[0] as any
+                  : null;
+                if (surgeZoneRow?.surge_factor) surgeMult = parseFloat(surgeZoneRow.surge_factor) || 1.0;
               } catch {}
             }
-            // Also check time-based surge pricing rules
+            // Also check time-based surge pricing (zone-specific + global)
             try {
               const now = new Date();
               const timeStr = now.toTimeString().slice(0, 5); // HH:MM
@@ -8588,7 +8616,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 WHERE is_active=true
                   AND start_time <= ${timeStr}
                   AND end_time >= ${timeStr}
-                  AND (zone_id IS NULL)
+                  AND (zone_id IS NULL ${detectedZoneId ? rawSql`OR zone_id = ${detectedZoneId}::uuid` : rawSql``})
                 ORDER BY multiplier DESC LIMIT 1
               `);
               if (activeSurge.rows.length) {
@@ -8719,14 +8747,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${finalPickupShort || null}, ${finalDestShort || null}
         ) RETURNING *
       `);
-      // Store coupon/discount in trip (best-effort, columns may not exist yet)
+      // Store zone_id + coupon/discount on trip (best-effort)
+      const newTripId2 = (trip.rows[0] as any).id;
+      detectZoneId(Number(pickupLat), Number(pickupLng)).then(zid => {
+        if (zid) rawDb.execute(rawSql`UPDATE trip_requests SET zone_id=${zid}::uuid WHERE id=${newTripId2}::uuid`).catch(() => {});
+      }).catch(() => {});
       if (validatedCouponCode || discountAmount > 0) {
         rawDb.execute(rawSql`
           UPDATE trip_requests SET
             coupon_code = ${validatedCouponCode},
             discount_amount = ${discountAmount},
             original_fare = ${computedFare}
-          WHERE id = ${(trip.rows[0] as any).id}::uuid
+          WHERE id = ${newTripId2}::uuid
         `).catch(() => {});
       }
       // ── Link online payment to this trip for auto-refund on cancel ──────────
