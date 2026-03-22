@@ -7,8 +7,10 @@ const STATUS_BADGE: Record<string, string> = {
   active: "bg-success", suspended: "bg-danger", pending: "bg-warning text-dark",
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  active: "#16a34a", suspended: "#dc2626", pending: "#d97706",
+const DELIVERY_PLANS: Record<string, string> = {
+  pay_per_delivery: "Pay Per Delivery",
+  subscription: "Subscription",
+  credit: "Credit (Post-paid)",
 };
 
 function CompanyModal({ open, onClose, editing, onSave, saving }: any) {
@@ -22,10 +24,12 @@ function CompanyModal({ open, onClose, editing, onSave, saving }: any) {
     city: editing.city || "",
     status: editing.status || "active",
     commissionPct: editing.commissionPct || "10",
+    creditLimit: editing.creditLimit || "0",
+    deliveryPlan: editing.deliveryPlan || "pay_per_delivery",
   } : {
     companyName: "", contactPerson: "", phone: "", email: "",
     gstNumber: "", address: "", city: "Hyderabad",
-    status: "active", commissionPct: "10",
+    status: "active", commissionPct: "10", creditLimit: "0", deliveryPlan: "pay_per_delivery",
   });
 
   if (!open) return null;
@@ -33,7 +37,7 @@ function CompanyModal({ open, onClose, editing, onSave, saving }: any) {
 
   return (
     <div className="modal-backdrop-jago" onClick={onClose}>
-      <div className="modal-jago" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-jago" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
         <div className="modal-jago-header">
           <h5 className="modal-jago-title">
             <i className={`bi ${editing ? "bi-pencil-fill" : "bi-building-add"} me-2 text-primary`}></i>
@@ -75,6 +79,21 @@ function CompanyModal({ open, onClose, editing, onSave, saving }: any) {
               onChange={e => f("city", e.target.value)} placeholder="Hyderabad" />
           </div>
           <div className="col-6">
+            <label className="form-label-jago">Status</label>
+            <select className="admin-form-control" value={form.status} onChange={e => f("status", e.target.value)}>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div className="col-12">
+            <label className="form-label-jago">Address</label>
+            <textarea className="admin-form-control" rows={2} value={form.address}
+              onChange={e => f("address", e.target.value)} placeholder="Full business address" />
+          </div>
+
+          <div className="col-12"><hr className="my-1" /><p className="text-muted small mb-0">Billing &amp; Revenue</p></div>
+          <div className="col-4">
             <label className="form-label-jago">Commission %</label>
             <div className="input-group">
               <input type="number" min="0" max="100" step="0.5" className="admin-form-control"
@@ -82,17 +101,19 @@ function CompanyModal({ open, onClose, editing, onSave, saving }: any) {
               <span className="input-group-text">%</span>
             </div>
           </div>
-          <div className="col-12">
-            <label className="form-label-jago">Address</label>
-            <textarea className="admin-form-control" rows={2} value={form.address}
-              onChange={e => f("address", e.target.value)} placeholder="Full business address" />
+          <div className="col-4">
+            <label className="form-label-jago">Credit Limit (₹)</label>
+            <div className="input-group">
+              <span className="input-group-text">₹</span>
+              <input type="number" min="0" className="admin-form-control"
+                value={form.creditLimit} onChange={e => f("creditLimit", e.target.value)}
+                placeholder="0" data-testid="input-b2b-credit" />
+            </div>
           </div>
-          <div className="col-6">
-            <label className="form-label-jago">Status</label>
-            <select className="admin-form-control" value={form.status} onChange={e => f("status", e.target.value)}>
-              <option value="active">Active</option>
-              <option value="pending">Pending</option>
-              <option value="suspended">Suspended</option>
+          <div className="col-4">
+            <label className="form-label-jago">Delivery Plan</label>
+            <select className="admin-form-control" value={form.deliveryPlan} onChange={e => f("deliveryPlan", e.target.value)}>
+              {Object.entries(DELIVERY_PLANS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
         </div>
@@ -124,12 +145,17 @@ function WalletModal({ company, open, onClose, onSave, saving }: any) {
           </h5>
           <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
         </div>
-        <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-          <i className="bi bi-wallet-fill text-success" style={{ fontSize: 20 }}></i>
+        <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 11, color: "#64748b" }}>Current Balance</div>
+            <div style={{ fontSize: 11, color: "#64748b" }}>Wallet Balance</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: "#16a34a" }}>
               ₹{Number(company?.walletBalance || 0).toLocaleString("en-IN")}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "#64748b" }}>Credit Limit</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#7c3aed" }}>
+              ₹{Number(company?.creditLimit || 0).toLocaleString("en-IN")}
             </div>
           </div>
         </div>
@@ -163,14 +189,72 @@ function WalletModal({ company, open, onClose, onSave, saving }: any) {
   );
 }
 
+function WebhookModal({ company, open, onClose }: any) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ webhookUrl: company?.webhookUrl || "", webhookSecret: company?.webhookSecret || "" });
+  const [saving, setSaving] = useState(false);
+
+  if (!open) return null;
+
+  const save = async () => {
+    if (!form.webhookUrl) return;
+    setSaving(true);
+    try {
+      const r = await apiRequest("POST", `/api/b2b/${company.id}/webhook`, form);
+      if (!r.ok) throw new Error("Failed");
+      toast({ title: "Webhook configured" });
+      onClose();
+    } catch {
+      toast({ title: "Failed to save webhook", variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-backdrop-jago" onClick={onClose}>
+      <div className="modal-jago" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-jago-header">
+          <h5 className="modal-jago-title">
+            <i className="bi bi-hdd-network me-2 text-primary"></i>Webhook — {company?.companyName}
+          </h5>
+          <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
+        </div>
+        <p className="text-muted small mb-3">Events fired: <code>order_created</code>, <code>driver_assigned</code>, <code>parcel_picked</code>, <code>parcel_delivered</code>, <code>order_cancelled</code></p>
+        <div className="mb-3">
+          <label className="form-label-jago">Webhook URL <span className="text-danger">*</span></label>
+          <input className="admin-form-control" value={form.webhookUrl}
+            onChange={e => setForm(p => ({ ...p, webhookUrl: e.target.value }))}
+            placeholder="https://yourapp.com/webhooks/jago" />
+        </div>
+        <div className="mb-3">
+          <label className="form-label-jago">Secret (HMAC-SHA256 signing key)</label>
+          <input className="admin-form-control" value={form.webhookSecret}
+            onChange={e => setForm(p => ({ ...p, webhookSecret: e.target.value }))}
+            placeholder="Optional — leave blank for unsigned requests" />
+          <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+            Requests will include <code>X-JAGO-Signature</code> header when set.
+          </div>
+        </div>
+        <div className="d-flex gap-2 justify-content-end pt-3 border-top mt-2">
+          <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!form.webhookUrl || saving} onClick={save}>
+            {saving ? "Saving…" : "Save Webhook"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function B2BCompaniesPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState("all");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [walletTarget, setWalletTarget] = useState<any>(null);
+  const [webhookTarget, setWebhookTarget] = useState<any>(null);
   const [bulkTarget, setBulkTarget] = useState<any>(null);
   const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkPickup, setBulkPickup] = useState("");
   const [bulkSending, setBulkSending] = useState(false);
 
   const { data = [], isLoading } = useQuery<any[]>({
@@ -203,6 +287,7 @@ export default function B2BCompaniesPage() {
 
   const sendBulk = async () => {
     if (!bulkTarget || !bulkCsv.trim()) return;
+    if (!bulkPickup.trim()) { toast({ title: "Pickup address required", variant: "destructive" }); return; }
     const lines = bulkCsv.trim().split("\n").map(l => l.trim()).filter(Boolean);
     const deliveries = lines.map(line => {
       const [dropAddress, receiverName, receiverPhone] = line.split(",").map(s => s.trim());
@@ -210,16 +295,16 @@ export default function B2BCompaniesPage() {
     });
     setBulkSending(true);
     try {
-      const r = await fetch(`/api/b2b/${bulkTarget.id}/bulk-delivery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deliveries, vehicleCategory: "bike_parcel", paymentMethod: "b2b_wallet" }),
+      const r = await apiRequest("POST", `/api/b2b/${bulkTarget.id}/bulk-delivery`, {
+        deliveries,
+        pickupAddress: bulkPickup.trim(),
+        vehicleCategory: "bike_parcel",
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Failed");
-      toast({ title: `${data.created} orders created for ${bulkTarget.companyName}` });
-      setBulkTarget(null);
-      setBulkCsv("");
+      const resp = await r.json();
+      if (!r.ok) throw new Error(resp.message || "Failed");
+      toast({ title: `${resp.ordersCreated} orders created — Balance: ₹${resp.remainingBalance?.toFixed(2) ?? "—"}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/b2b-companies"] });
+      setBulkTarget(null); setBulkCsv(""); setBulkPickup("");
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
@@ -306,8 +391,8 @@ export default function B2BCompaniesPage() {
             <table className="table table-borderless align-middle table-hover mb-0">
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  {["#", "Company", "Contact", "GST / City", "Commission", "Wallet", "Trips", "Status", "Actions"].map((h, i) => (
-                    <th key={i} className={i === 0 ? "ps-4" : i === 8 ? "text-center pe-4" : ""}
+                  {["#", "Company", "Contact", "GST / City", "Plan", "Comm%", "Wallet", "Credit", "Trips", "Status", "Actions"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 10 ? "text-center pe-4" : ""}
                       style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", paddingTop: 12, paddingBottom: 12 }}>
                       {h}
                     </th>
@@ -316,9 +401,9 @@ export default function B2BCompaniesPage() {
               </thead>
               <tbody>
                 {isLoading ? Array(3).fill(0).map((_, i) => (
-                  <tr key={i}>{Array(9).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
+                  <tr key={i}>{Array(11).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
                 )) : filtered.length === 0 ? (
-                  <tr><td colSpan={9}>
+                  <tr><td colSpan={11}>
                     <div className="text-center py-5 text-muted">
                       <i className="bi bi-building fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
                       <p className="fw-semibold mb-1">No companies found</p>
@@ -343,26 +428,32 @@ export default function B2BCompaniesPage() {
                       </div>
                     </td>
                     <td>
-                      <div style={{ fontSize: 12 }}>{co.contactPerson || "—"}</div>
-                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{co.phone || "—"}</div>
+                      <div style={{ fontSize: 12 }}>{co.contactPerson || co.contactName || "—"}</div>
+                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{co.phone || co.contactPhone || "—"}</div>
                     </td>
                     <td>
                       <div style={{ fontSize: 11, fontFamily: "monospace", color: "#64748b" }}>{co.gstNumber || "—"}</div>
                       <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{co.city || "—"}</div>
                     </td>
                     <td>
-                      <span className="fw-semibold" style={{ color: "#7c3aed", fontSize: 13 }}>
-                        {co.commissionPct}%
+                      <span style={{ fontSize: 10.5, color: "#0284c7" }}>
+                        {DELIVERY_PLANS[co.deliveryPlan || "pay_per_delivery"] || co.deliveryPlan || "—"}
                       </span>
+                    </td>
+                    <td>
+                      <span className="fw-semibold" style={{ color: "#7c3aed", fontSize: 13 }}>{co.commissionPct}%</span>
                     </td>
                     <td>
                       <div className="fw-semibold" style={{ fontSize: 13, color: "#16a34a" }}>
                         ₹{Number(co.walletBalance || 0).toLocaleString("en-IN")}
                       </div>
                     </td>
-                    <td style={{ fontSize: 13, color: "#d97706", fontWeight: 600 }}>
-                      {co.totalTrips || 0}
+                    <td>
+                      <div style={{ fontSize: 12, color: "#7c3aed" }}>
+                        ₹{Number(co.creditLimit || 0).toLocaleString("en-IN")}
+                      </div>
                     </td>
+                    <td style={{ fontSize: 13, color: "#d97706", fontWeight: 600 }}>{co.totalTrips || 0}</td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[co.status] || "bg-secondary"}`} style={{ fontSize: 10 }}>
                         {co.status}
@@ -375,11 +466,15 @@ export default function B2BCompaniesPage() {
                           <i className="bi bi-wallet2"></i>
                         </button>
                         <button className="btn btn-sm btn-outline-primary" style={{ borderRadius: 8 }}
-                          onClick={() => { setEditing(co); setOpen(true); }} data-testid={`btn-edit-b2b-${co.id}`}>
+                          onClick={() => { setEditing(co); setOpen(true); }} data-testid={`btn-edit-b2b-${co.id}`} title="Edit">
                           <i className="bi bi-pencil-fill"></i>
                         </button>
+                        <button className="btn btn-sm" style={{ borderRadius: 8, background: co.webhookUrl ? "#f0fdf4" : "#f8fafc", color: co.webhookUrl ? "#16a34a" : "#94a3b8", border: `1px solid ${co.webhookUrl ? "#bbf7d0" : "#e2e8f0"}` }}
+                          onClick={() => setWebhookTarget(co)} title="Webhook Config">
+                          <i className="bi bi-hdd-network"></i>
+                        </button>
                         <button className="btn btn-sm" style={{ borderRadius: 8, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa" }}
-                          onClick={() => { setBulkTarget(co); setBulkCsv(""); }}
+                          onClick={() => { setBulkTarget(co); setBulkCsv(""); setBulkPickup(""); }}
                           data-testid={`btn-bulk-${co.id}`} title="Bulk Delivery">
                           <i className="bi bi-box-seam"></i>
                         </button>
@@ -408,9 +503,14 @@ export default function B2BCompaniesPage() {
           saving={wallet.isPending} />
       )}
 
+      {webhookTarget && (
+        <WebhookModal company={webhookTarget} open={!!webhookTarget}
+          onClose={() => setWebhookTarget(null)} />
+      )}
+
       {bulkTarget && (
         <div className="modal-backdrop-jago" onClick={() => setBulkTarget(null)}>
-          <div className="modal-jago" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-jago" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-jago-header">
               <h5 className="modal-jago-title">
                 <i className="bi bi-box-seam-fill me-2" style={{ color: "#ea580c" }} />
@@ -418,12 +518,26 @@ export default function B2BCompaniesPage() {
               </h5>
               <button className="modal-jago-close" onClick={() => setBulkTarget(null)}><i className="bi bi-x-lg" /></button>
             </div>
+
+            <div style={{ background: "#fef3c7", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#92400e" }}>
+              <i className="bi bi-wallet2 me-1"></i>
+              Balance: <strong>₹{Number(bulkTarget.walletBalance || 0).toLocaleString("en-IN")}</strong>
+              &nbsp;+&nbsp;Credit: <strong>₹{Number(bulkTarget.creditLimit || 0).toLocaleString("en-IN")}</strong>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label-jago">Pickup Address <span className="text-danger">*</span></label>
+              <input className="admin-form-control" value={bulkPickup}
+                onChange={e => setBulkPickup(e.target.value)}
+                placeholder="e.g. 123 MG Road, Hyderabad" />
+            </div>
+
             <div style={{ marginBottom: 12 }}>
-              <label className="form-label-jago">Paste CSV — one delivery per line:</label>
+              <label className="form-label-jago">Deliveries CSV — one per line:</label>
               <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>Format: <code>dropAddress, receiverName, receiverPhone</code></div>
               <textarea
                 className="admin-form-control"
-                rows={8}
+                rows={7}
                 value={bulkCsv}
                 onChange={e => setBulkCsv(e.target.value)}
                 placeholder={"123 MG Road Hyderabad, Rahul, 9876543210\nFlat 4B Banjara Hills, Priya, 9123456789"}
@@ -438,7 +552,7 @@ export default function B2BCompaniesPage() {
               <button
                 className="btn btn-sm"
                 style={{ background: "linear-gradient(135deg,#ea580c,#f59e0b)", color: "#fff", fontWeight: 700, border: "none" }}
-                disabled={!bulkCsv.trim() || bulkSending}
+                disabled={!bulkCsv.trim() || !bulkPickup.trim() || bulkSending}
                 onClick={sendBulk}
               >
                 {bulkSending ? "Creating…" : "Create Orders"}

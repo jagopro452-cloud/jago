@@ -294,6 +294,7 @@ export const employees = pgTable("employees", {
 
 export const b2bCompanies = pgTable("b2b_companies", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Admin-managed fields
   companyName: varchar("company_name", { length: 255 }).notNull(),
   contactPerson: varchar("contact_person", { length: 255 }),
   phone: varchar("phone", { length: 20 }),
@@ -305,7 +306,17 @@ export const b2bCompanies = pgTable("b2b_companies", {
   commissionPct: numeric("commission_pct", { precision: 5, scale: 2 }).default("10"),
   walletBalance: numeric("wallet_balance", { precision: 12, scale: 2 }).default("0"),
   totalTrips: integer("total_trips").default(0),
+  // App-registration fields (added via ALTER TABLE migration)
+  ownerId: uuid("owner_id"),
+  contactName: varchar("contact_name", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  deliveryPlan: varchar("delivery_plan", { length: 50 }).default("pay_per_delivery"),
+  creditLimit: numeric("credit_limit", { precision: 10, scale: 2 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  webhookUrl: text("webhook_url"),
+  webhookSecret: varchar("webhook_secret", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const parcelCategories = pgTable("parcel_categories", {

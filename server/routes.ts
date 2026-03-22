@@ -1973,6 +1973,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Referrals: add paid_at column if missing
       await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
 
+      // B2B companies: unify schema — add columns needed by app registration flow
+      await rawDb.execute(rawSql`
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS owner_id UUID;
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS delivery_plan VARCHAR(50) DEFAULT 'pay_per_delivery';
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10,2) DEFAULT 0;
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      `).catch(() => {});
+      // Unique index: one B2B registration per app user
+      await rawDb.execute(rawSql`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_owner ON b2b_companies(owner_id) WHERE owner_id IS NOT NULL
+      `).catch(() => {});
+
       // Add extra columns if not exists
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(() => {});
@@ -4299,7 +4314,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // B2B Companies
-  app.get("/api/b2b-companies", async (req, res) => {
+  app.get("/api/b2b-companies", requireAdminAuth, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const r = status
@@ -13067,9 +13082,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         SET current_status='cancelled', cancelled_reason=${reason}, updated_at=NOW()
         WHERE id=${req.params.id}::uuid AND customer_id=${customerId}::uuid
           AND current_status IN ('pending','searching')
-        RETURNING id
+        RETURNING id, is_b2b, b2b_company_id, total_fare
       `);
       if (!(r.rows as any[]).length) return res.status(400).json({ message: 'Cannot cancel this order' });
+      const cancelled = r.rows[0] as any;
+      // B2B webhook: order_cancelled
+      if (cancelled.is_b2b && cancelled.b2b_company_id) {
+        // Refund fare back to company wallet on cancellation (order was never picked up)
+        await rawDb.execute(rawSql`
+          UPDATE b2b_companies
+          SET wallet_balance = wallet_balance + ${parseFloat(cancelled.total_fare || '0')},
+              total_trips = GREATEST(0, total_trips - 1),
+              updated_at = NOW()
+          WHERE id = ${cancelled.b2b_company_id}::uuid
+        `).catch(() => {});
+        fireB2BWebhook({
+          eventType: "order_cancelled",
+          orderId: cancelled.id,
+          companyId: cancelled.b2b_company_id,
+          timestamp: new Date().toISOString(),
+          data: { reason, refundedFare: parseFloat(cancelled.total_fare || '0') },
+        }).catch(() => {});
+      }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13101,6 +13135,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!(r.rows as any[]).length) return res.status(409).json({ message: 'Already assigned' });
       const order = (r.rows as any[])[0];
       if (io) io.to(`user:${order.customer_id}`).emit('parcel:driver_assigned', { orderId: order.id, driverId });
+      // B2B webhook: driver_assigned
+      if (order.is_b2b && order.b2b_company_id) {
+        const dNameR = await rawDb.execute(rawSql`SELECT full_name FROM users WHERE id=${driverId}::uuid`).catch(() => ({ rows: [] as any[] }));
+        fireB2BWebhook({
+          eventType: "driver_assigned",
+          orderId: order.id,
+          companyId: order.b2b_company_id,
+          timestamp: new Date().toISOString(),
+          data: { driverId, driverName: (dNameR.rows[0] as any)?.full_name || '' },
+        }).catch(() => {});
+      }
       res.json({ success: true, order });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13376,50 +13421,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Company registration ─────────────────────────────────────────────
+  // ── B2B: Company registration (app users) ────────────────────────────────
   app.post("/api/app/b2b/register", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
       const { companyName, gstNumber, address, contactName, contactPhone, deliveryPlan = 'pay_per_delivery' } = req.body;
       if (!companyName) return res.status(400).json({ message: "companyName required" });
 
-      // Ensure b2b_companies table exists
-      await rawDb.execute(rawSql`
-        CREATE TABLE IF NOT EXISTS b2b_companies (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          owner_id UUID NOT NULL,
-          company_name VARCHAR(255) NOT NULL,
-          gst_number VARCHAR(50),
-          address TEXT,
-          contact_name VARCHAR(255),
-          contact_phone VARCHAR(20),
-          delivery_plan VARCHAR(50) DEFAULT 'pay_per_delivery',
-          credit_limit NUMERIC(10,2) DEFAULT 0,
-          is_active BOOLEAN DEFAULT true,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `).catch(() => {});
-
+      // Check if this user already has a B2B company
       const existing = await rawDb.execute(rawSql`
         SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1
-      `);
+      `).catch(() => ({ rows: [] as any[] }));
+
       if (existing.rows.length) {
         await rawDb.execute(rawSql`
-          UPDATE b2b_companies SET company_name=${companyName}, gst_number=${gstNumber || null},
-            address=${address || null}, contact_name=${contactName || null},
-            contact_phone=${contactPhone || null}, delivery_plan=${deliveryPlan}, updated_at=NOW()
+          UPDATE b2b_companies
+          SET company_name=${companyName}, gst_number=${gstNumber || null},
+              address=${address || null}, contact_name=${contactName || null},
+              contact_phone=${contactPhone || null}, delivery_plan=${deliveryPlan},
+              updated_at=NOW()
           WHERE owner_id=${userId}::uuid
         `);
         return res.json({ success: true, message: "B2B profile updated", companyId: (existing.rows[0] as any).id });
       }
+
       const ins = await rawDb.execute(rawSql`
-        INSERT INTO b2b_companies (owner_id, company_name, gst_number, address, contact_name, contact_phone, delivery_plan)
-        VALUES (${userId}::uuid, ${companyName}, ${gstNumber || null}, ${address || null},
-                ${contactName || null}, ${contactPhone || null}, ${deliveryPlan})
+        INSERT INTO b2b_companies
+          (owner_id, company_name, gst_number, address, contact_name, contact_phone, delivery_plan, status, is_active)
+        VALUES
+          (${userId}::uuid, ${companyName}, ${gstNumber || null}, ${address || null},
+           ${contactName || null}, ${contactPhone || null}, ${deliveryPlan}, 'pending', true)
         RETURNING id
       `);
-      res.json({ success: true, message: "B2B company registered", companyId: (ins.rows[0] as any).id });
+      res.json({ success: true, message: "B2B company registered — pending admin approval", companyId: (ins.rows[0] as any).id });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -13504,17 +13538,58 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // B2B: bulk delivery — create multiple parcel orders for a business
-  app.post("/api/b2b/:companyId/bulk-delivery", async (req, res) => {
+  app.post("/api/b2b/:companyId/bulk-delivery", requireAdminAuth, async (req, res) => {
     try {
-      const { companyId } = req.params;
+      const companyId = req.params.companyId as string;
       const { customerId, vehicleCategory = 'bike_parcel', pickupAddress, pickupLat, pickupLng,
               pickupContactName, pickupContactPhone, deliveries = [], weightKg = 1, notes = '' } = req.body;
       if (!pickupAddress) return res.status(400).json({ message: 'pickupAddress required' });
       if (!(deliveries as any[]).length) return res.status(400).json({ message: 'deliveries array required' });
+
+      // Verify company exists and is active
+      const compR = await rawDb.execute(rawSql`
+        SELECT id, wallet_balance, credit_limit, status FROM b2b_companies WHERE id=${companyId}::uuid LIMIT 1
+      `);
+      if (!compR.rows.length) return res.status(404).json({ message: 'B2B company not found' });
+      const company = compR.rows[0] as any;
+      if (company.status === 'suspended') return res.status(403).json({ message: 'Company account is suspended' });
+
       const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
       const wt = parseFloat(weightKg) || 1;
+
+      // Pre-calculate total cost to validate wallet balance
+      let grandTotal = 0;
+      const deliveryList = deliveries as any[];
+      for (const delivery of deliveryList) {
+        const dist  = parseFloat(delivery.distanceKm ?? '5') || 5;
+        grandTotal += (vc.baseFare + Math.round(dist * vc.perKm) + Math.round(wt * vc.perKg));
+      }
+
+      const walletBal  = parseFloat(company.wallet_balance || '0');
+      const creditLimit = parseFloat(company.credit_limit || '0');
+      const available  = walletBal + creditLimit;
+      if (available < grandTotal) {
+        return res.status(402).json({
+          message: `Insufficient balance. Required: ₹${grandTotal}, Available: ₹${available.toFixed(2)} (wallet: ₹${walletBal.toFixed(2)} + credit: ₹${creditLimit.toFixed(2)})`
+        });
+      }
+
+      // Atomic wallet deduction for the full batch
+      const deductR = await rawDb.execute(rawSql`
+        UPDATE b2b_companies
+        SET wallet_balance = wallet_balance - ${grandTotal},
+            total_trips    = total_trips + ${deliveryList.length},
+            updated_at     = NOW()
+        WHERE id=${companyId}::uuid
+          AND (wallet_balance + credit_limit) >= ${grandTotal}
+        RETURNING wallet_balance
+      `);
+      if (!deductR.rows.length) {
+        return res.status(402).json({ message: 'Wallet deduction failed — balance may have changed. Please retry.' });
+      }
+
       const results: any[] = [];
-      for (const delivery of deliveries as any[]) {
+      for (const delivery of deliveryList) {
         const dist     = parseFloat(delivery.distanceKm ?? '5') || 5;
         const baseFare = vc.baseFare;
         const distF    = Math.round(dist * vc.perKm);
@@ -13538,7 +13613,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
              pickup_contact_name, pickup_contact_phone, drop_locations,
              total_distance_km, weight_kg, base_fare, distance_fare, weight_fare,
              total_fare, commission_amt, commission_pct, current_status,
-             pickup_otp, is_b2b, b2b_company_id, notes)
+             pickup_otp, payment_method, is_b2b, b2b_company_id, notes)
           VALUES
             (${customerId ?? null}, ${vehicleCategory}, ${pickupAddress},
              ${pickupLat ?? null}, ${pickupLng ?? null},
@@ -13546,12 +13621,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
              ${JSON.stringify(drops)},
              ${dist}, ${wt}, ${baseFare}, ${distF}, ${wtF},
              ${total}, ${commAmt}, 15, 'searching',
-             ${pickupOtp}, true, ${companyId}::uuid, ${notes})
+             ${pickupOtp}, 'b2b_wallet', true, ${companyId}::uuid, ${notes})
           RETURNING id, total_fare
         `);
         results.push((r.rows as any[])[0]);
+        // Fire webhook per order (non-blocking)
+        fireB2BWebhook({
+          eventType: "order_created",
+          orderId: (r.rows[0] as any).id,
+          companyId,
+          timestamp: new Date().toISOString(),
+          data: { vehicleCategory, totalFare: total, bulkBatch: true },
+        }).catch(() => {});
       }
-      res.json({ success: true, ordersCreated: results.length, orders: results });
+
+      const newBalance = parseFloat((deductR.rows[0] as any).wallet_balance || '0');
+      res.json({ success: true, ordersCreated: results.length, orders: results, remainingBalance: newBalance });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
