@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _tripCancelledSub;
   StreamSubscription? _tripStatusSub;
   Timer? _searchingTimer; // auto-cancel if no pilot found within 5 min
+  Timer? _statePollTimer; // 5s poll during searching — server is source of truth
   int _navIndex = 0;
   bool _homeLoading = true;
   Timer? _loadingTimeout;
@@ -245,6 +246,48 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchingTimer?.cancel();
     // Auto-cancel after 5 minutes if still searching
     _searchingTimer = Timer(const Duration(minutes: 5), () => _autoCancelSearching(tripId));
+    // Poll server every 5s while searching — catches driver acceptance when socket is down
+    _statePollTimer?.cancel();
+    _statePollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollTripState());
+  }
+
+  Future<void> _pollTripState() async {
+    if (!mounted || _activeTrip == null) { _statePollTimer?.cancel(); return; }
+    try {
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(Uri.parse(ApiConfig.activeTrip), headers: headers)
+          .timeout(const Duration(seconds: 4));
+      if (!mounted) return;
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        final trip = data['trip'] as Map<String, dynamic>?;
+        if (trip == null) {
+          // Trip gone — cancelled or completed
+          _statePollTimer?.cancel();
+          _searchingTimer?.cancel();
+          setState(() => _activeTrip = null);
+          return;
+        }
+        final status = trip['currentStatus']?.toString() ?? '';
+        if (status == 'completed' || status == 'cancelled') {
+          _statePollTimer?.cancel();
+          _searchingTimer?.cancel();
+          setState(() => _activeTrip = null);
+          return;
+        }
+        setState(() => _activeTrip = trip);
+        // Driver accepted while socket was down → navigate to tracking
+        if (['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) {
+          _statePollTimer?.cancel();
+          _searchingTimer?.cancel();
+          final tripId = trip['id']?.toString() ?? '';
+          if (tripId.isNotEmpty && mounted) {
+            Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => TrackingScreen(tripId: tripId)));
+          }
+        }
+      }
+    } catch (_) {} // network error — keep polling
   }
 
   Future<void> _autoCancelSearching(String tripId) async {
@@ -364,6 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _tripCancelledSub = _socket.onTripCancelled.listen((data) {
           if (!mounted) return;
           _searchingTimer?.cancel();
+          _statePollTimer?.cancel();
           setState(() => _activeTrip = null);
         });
         _tripStatusSub = _socket.onTripStatus.listen((data) {
@@ -371,6 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final status = data['status']?.toString() ?? '';
           if (status == 'completed' || status == 'cancelled') {
             _searchingTimer?.cancel();
+            _statePollTimer?.cancel();
             setState(() => _activeTrip = null);
           }
         });
@@ -383,6 +428,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadingTimeout?.cancel();
     _bannerTimer?.cancel();
     _searchingTimer?.cancel();
+    _statePollTimer?.cancel();
     _bannerPageCtrl.dispose();
     _driverAssignedSub?.cancel();
     _tripCancelledSub?.cancel();

@@ -13474,6 +13474,48 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   startAIMobilityBrain();
   console.log("[AI-BRAIN] Mobility brain started (10s tick)");
 
+  // ── Driver arrival timeout: notify if driver stays 'accepted' > 15 minutes ──
+  // Prevents customers from waiting indefinitely after driver accepted but never arrived.
+  setInterval(async () => {
+    try {
+      const stale = await rawDb.execute(rawSql`
+        SELECT t.id, t.customer_id, t.driver_id, t.pickup_address, t.driver_accepted_at
+        FROM trip_requests t
+        WHERE t.current_status = 'accepted'
+          AND t.driver_accepted_at IS NOT NULL
+          AND t.driver_accepted_at < NOW() - INTERVAL '15 minutes'
+          AND NOT EXISTS (
+            SELECT 1 FROM trip_status_log l
+            WHERE l.trip_id = t.id AND l.status = 'arrival_delayed'
+          )
+      `);
+      for (const row of stale.rows) {
+        const r = row as any;
+        // Emit notification to customer and driver
+        if (io) {
+          io.to(`user:${r.customer_id}`).emit("trip:status_update", {
+            tripId: r.id, status: "arrival_delayed",
+            message: "Your driver is taking longer than expected. Please wait or cancel.",
+          });
+          if (r.driver_id) {
+            io.to(`user:${r.driver_id}`).emit("trip:status_update", {
+              tripId: r.id, status: "arrival_delayed",
+              message: "Customer is waiting. Please arrive at pickup soon.",
+            });
+          }
+        }
+        // Log so we don't spam notifications
+        await rawDb.execute(rawSql`
+          INSERT INTO trip_status_log (trip_id, status, changed_by, note)
+          VALUES (${r.id}::uuid, 'arrival_delayed', 'system', 'Driver accepted >15 min ago, not yet arrived')
+        `).catch(() => {});
+        console.log(`[ARRIVAL-TIMEOUT] Trip ${r.id} — driver accepted 15+ min ago, notified parties`);
+      }
+    } catch (e: any) {
+      console.error("[ARRIVAL-TIMEOUT] Error:", (e as any).message);
+    }
+  }, 2 * 60 * 1000); // check every 2 minutes
+
   // ── Dispatch: Get status of an active dispatch (admin/debug) ──────────
   app.get("/api/app/dispatch/status/:tripId", authApp, async (req, res) => {
     try {

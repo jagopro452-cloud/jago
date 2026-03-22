@@ -76,6 +76,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   final _otpCtrl = TextEditingController();
   Timer? _locationTimer;
   Timer? _tripTimer;
+  Timer? _statePollTimer; // 5s poll — server is source of truth
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
@@ -114,6 +115,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       if (lat != null && lng != null && lat != 0) _center = LatLng(lat, lng);
     }
     _startLocationUpdates();
+    _startStatePoll();
     _loadCancelReasons();
     _listenForCancel();
     CallService().init();
@@ -152,6 +154,59 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     } catch (_) {
       // Network error — keep screen, socket cancel handler will catch real cancels
     }
+  }
+
+  // ── State polling — server is source of truth ────────────────────────────
+
+  void _startStatePoll() {
+    _statePollTimer?.cancel();
+    _statePollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _syncTripState());
+  }
+
+  void _stopStatePoll() {
+    _statePollTimer?.cancel();
+    _statePollTimer = null;
+  }
+
+  Future<void> _syncTripState() async {
+    if (!mounted) return;
+    final tripId = _trip?['tripId'] ?? _trip?['id'];
+    if (tripId == null) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers)
+          .timeout(const Duration(seconds: 4));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final serverTrip = data['trip'] as Map<String, dynamic>?;
+        if (serverTrip == null) {
+          // Trip ended on server — pop to home
+          _stopStatePoll();
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+          }
+          return;
+        }
+        final serverStatus = serverTrip['currentStatus']?.toString() ?? serverTrip['current_status']?.toString() ?? '';
+        if (serverStatus == 'completed' || serverStatus == 'cancelled') {
+          _stopStatePoll();
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+          }
+          return;
+        }
+        // Sync status if server differs from local (handles race conditions)
+        if (serverStatus.isNotEmpty && serverStatus != _status) {
+          setState(() {
+            _status = serverStatus;
+            _trip = serverTrip;
+          });
+        }
+      }
+    } catch (_) {} // network error — keep polling
   }
 
   // ── Timers ────────────────────────────────────────────────────────────────
@@ -249,6 +304,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     _otpCtrl.dispose();
     _locationTimer?.cancel();
     _stopTripTimer();
+    _stopStatePoll();
     _cancelSub?.cancel();
     _incomingCallSub?.cancel();
     _pulseCtrl.dispose();

@@ -14,6 +14,8 @@ class SocketService {
   double? _lastLat;
   double? _lastLng;
   String? _activeTripId; // tracks current trip for room rejoin on reconnect
+  DateTime? _lastLocationSentAt; // for auto-offline detection
+  Timer? _heartbeatTimer;
 
   final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
@@ -191,6 +193,24 @@ class SocketService {
     });
 
     _socket!.connect();
+    _startHeartbeat();
+  }
+
+  /// Heartbeat: if driver is online but no location sent for 15s → auto-offline.
+  /// Prevents ghost-online drivers who have GPS failures.
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!_wasOnline) return;
+      final last = _lastLocationSentAt;
+      if (last == null) return;
+      final stale = DateTime.now().difference(last).inSeconds >= 15;
+      if (stale && _isConnected) {
+        // GPS failed or app went background — mark driver offline
+        _socket!.emit('driver:online', {'isOnline': false});
+        _wasOnline = false;
+      }
+    });
   }
 
   /// Call when driver enters/exits a trip so socket can rejoin room on reconnect
@@ -201,6 +221,7 @@ class SocketService {
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
     _lastLat = lat;
     _lastLng = lng;
+    _lastLocationSentAt = DateTime.now();
     if (!_isConnected) return;
     _socket!.emit('driver:location', {
       'lat': lat,
@@ -295,6 +316,8 @@ class SocketService {
   }
 
   void disconnect() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     _socket?.disconnect();
     _socket = null;
     _isConnected = false;
