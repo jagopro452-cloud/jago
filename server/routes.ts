@@ -858,6 +858,13 @@ async function ensureOperationalSchema() {
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_rides INTEGER DEFAULT 0;
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS plan_type VARCHAR(30) DEFAULT 'both';
 
+      -- Referral code: unique per user, generated at registration
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(30);
+      -- Backfill existing users who don't have a referral code yet
+      UPDATE users SET referral_code = 'JAGOPRO' || RIGHT(phone, 6)
+        WHERE referral_code IS NULL AND phone IS NOT NULL AND LENGTH(phone) >= 6;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
+
       -- Commission Settlement: per-driver pending balance tracking
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_commission_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_gst_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
@@ -1962,6 +1969,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
       `).catch(() => {});
+
+      // Referrals: add paid_at column if missing
+      await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
 
       // Add extra columns if not exists
       await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
@@ -4378,14 +4388,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
-  app.post("/api/vehicle-brands", async (req, res) => {
+  app.post("/api/vehicle-brands", requireAdminAuth, async (req, res) => {
     try {
       const { name, logo_url, category = 'two_wheeler', is_active } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, logo_url, category, is_active) VALUES (${name}, ${logo_url||null}, ${category}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
-  app.put("/api/vehicle-brands/:id", async (req, res) => {
+  app.put("/api/vehicle-brands/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, logo_url, category, is_active, isActive } = req.body;
       const active = is_active ?? isActive ?? true;
@@ -4393,7 +4403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
-  app.delete("/api/vehicle-brands/:id", async (req, res) => {
+  app.delete("/api/vehicle-brands/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM vehicle_brands WHERE id=${req.params.id}::uuid`);
       res.status(204).end();
@@ -6591,10 +6601,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/referrals/:id/pay", requireAdminAuth, async (req, res) => {
     try {
+      // Atomic: only pay if still pending (prevents double-credit)
       const r = await rawDb.execute(rawSql`
-        UPDATE referrals SET status = 'paid' WHERE id = ${req.params.id}::uuid RETURNING *
+        UPDATE referrals SET status = 'paid', paid_at = NOW()
+        WHERE id = ${req.params.id}::uuid AND status = 'pending'
+        RETURNING *
       `);
-      if (!r.rows.length) return res.status(404).json({ message: "Referral not found" });
+      if (!r.rows.length) return res.status(404).json({ message: "Referral not found or already paid/expired" });
+      const ref = r.rows[0] as any;
+      const rewardAmount = parseFloat(ref.reward_amount || '0');
+      // Credit referrer's wallet and log transaction
+      if (ref.referrer_id && rewardAmount > 0) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET wallet_balance = wallet_balance + ${rewardAmount}
+          WHERE id = ${ref.referrer_id}::uuid
+        `).catch(() => {});
+        const newBal = await rawDb.execute(rawSql`
+          SELECT wallet_balance FROM users WHERE id = ${ref.referrer_id}::uuid
+        `).catch(() => ({ rows: [] as any[] }));
+        const bal = parseFloat((newBal.rows[0] as any)?.wallet_balance || '0');
+        await rawDb.execute(rawSql`
+          INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+          VALUES (${ref.referrer_id}::uuid, ${'Referral bonus'}, ${rewardAmount}, 0, ${bal}, ${'referral_bonus'}, ${ref.id}::uuid)
+        `).catch(() => {});
+      }
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -9686,20 +9716,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const helperCount = Math.min(Math.max(0, parseInt(helpers) || 0), 5); // cap at 5 helpers
       const hHours = Math.max(1, parseFloat(helperHours) || 1);
 
-      // Fetch per-zone helper/loading charges from parcel_fares
-      const pfRes = await rawDb.execute(rawSql`
-        SELECT loading_charge, helper_charge_per_hour, max_helpers FROM parcel_fares LIMIT 1
-      `).catch(() => ({ rows: [] as any[] }));
+      // Fetch zone-specific parcel fare config; fall back to any active config
+      const pickupZoneId = pLat && pLng ? await detectZoneId(pLat, pLng) : null;
+      let pfRes;
+      if (pickupZoneId) {
+        pfRes = await rawDb.execute(rawSql`
+          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+          FROM parcel_fares WHERE zone_id = ${pickupZoneId}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+      }
+      if (!pfRes?.rows?.length) {
+        pfRes = await rawDb.execute(rawSql`
+          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+          FROM parcel_fares ORDER BY created_at DESC LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+      }
       const pf: any = pfRes.rows[0] || {};
       const globalLoadCharge = parseFloat(pf.loading_charge || '0');
       const globalHelperRate = parseFloat(pf.helper_charge_per_hour || '0');
       const globalMaxHelpers = parseInt(pf.max_helpers || '0') || 5;
+      // Zone-specific overrides for base/perKm rates (if configured in parcel_fares)
+      const zoneBaseFare  = pf.base_fare  ? parseFloat(pf.base_fare)  : null;
+      const zonePerKm     = pf.fare_per_km ? parseFloat(pf.fare_per_km) : null;
+      const zonePerKg     = pf.fare_per_kg ? parseFloat(pf.fare_per_kg) : null;
+      const zoneMinFare   = pf.minimum_fare ? parseFloat(pf.minimum_fare) : null;
 
       const fares = (vcRes.rows as any[]).map(vc => {
-        const baseFare   = parseFloat(vc.base_fare   || 0);
-        const perKm      = parseFloat(vc.fare_per_km || 0);
-        const minFare    = parseFloat(vc.minimum_fare || 0);
-        const weightRate = parseFloat(vc.weight_rate  || 0);
+        // Use zone-specific parcel_fares rates when configured, else vehicle_categories defaults
+        const baseFare   = zoneBaseFare  ?? parseFloat(vc.base_fare   || 0);
+        const perKm      = zonePerKm     ?? parseFloat(vc.fare_per_km || 0);
+        const minFare    = zoneMinFare   ?? parseFloat(vc.minimum_fare || 0);
+        const weightRate = zonePerKg     ?? parseFloat(vc.weight_rate  || 0);
 
         const rawFare = baseFare + (distKm * perKm) + (wt * weightRate);
         const loadCharge = globalLoadCharge;
@@ -9913,18 +9960,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: SOS alert ─────────────────────────────────────────────────────
+  // ── CUSTOMER/DRIVER: SOS alert ────────────────────────────────────────────
   app.post("/api/app/sos", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
       const { lat, lng, tripId, message } = req.body;
-      await rawDb.execute(rawSql`
-        INSERT INTO sos_alerts (user_id, trip_id, lat, lng, message, status)
-        VALUES (${user.id}::uuid, ${tripId || null}, ${lat||0}, ${lng||0}, ${message||'SOS triggered from app'}, 'active')
-      `).catch(() => {}); // if sos_alerts table doesn't exist, ignore
-      console.log(`[SOS] ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng}`);
-      res.json({ success: true, message: "SOS alert sent. Help is on the way." });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+      // Insert into safety_alerts (correct table — sos_alerts was wrong table name)
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO safety_alerts (user_id, trip_id, alert_type, triggered_by, latitude, longitude, notes, status)
+        VALUES (
+          ${user.id}::uuid,
+          ${tripId || null},
+          'sos',
+          ${user.userType === 'driver' ? 'driver' : 'customer'},
+          ${lat ? Number(lat) : null},
+          ${lng ? Number(lng) : null},
+          ${message || 'SOS triggered from app'},
+          'active'
+        )
+        RETURNING id
+      `);
+      const alertId = (r.rows[0] as any)?.id || null;
+      console.log(`[SOS] ✅ ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
+      res.json({ success: true, alertId, message: "SOS alert sent. Help is on the way." });
+    } catch (e: any) {
+      console.error(`[SOS] ❌ Failed to create alert:`, e);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // ── CUSTOMER: Wallet balance + transactions ───────────────────────────────
