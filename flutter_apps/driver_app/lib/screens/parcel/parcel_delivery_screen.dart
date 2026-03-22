@@ -231,11 +231,10 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
 
   @override
   Widget build(BuildContext context) {
-    const isDark = false;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1724) : JT.bg,
+      backgroundColor: JT.bg,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF162030) : JT.bg,
+        backgroundColor: JT.bg,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 18),

@@ -477,12 +477,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
     
-    final panelBg = isDark ? JT.textPrimary : JT.surface;
+    final panelBg = JT.surface;
 
     return PopScope(
       canPop: _status == 'completed' || _status == 'cancelled',
       child: Scaffold(
-        backgroundColor: isDark ? JT.textPrimary : JT.bg,
+        backgroundColor: JT.bg,
         body: Stack(children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _center, zoom: 15),
@@ -502,7 +502,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
               decoration: BoxDecoration(
                 color: panelBg,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [BoxShadow(color: isDark ? Colors.black54 : const Color(0x22000000), blurRadius: 24)],
+                boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 24)],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 40, height: 4,
@@ -741,16 +741,14 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildDriverCard(String name, String? phone, dynamic rating, [String? photoUrl]) {
-    const isDark = false;
-    
     final driverModel = _trip?['driverVehicleModel'] ?? '';
     final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
     final vehicleName = _trip?['vehicleName'] ?? '';
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? JT.surface : JT.surface,
+        color: JT.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white12 : JT.border, width: 1.5),
+        border: Border.all(color: JT.border, width: 1.5),
         boxShadow: JT.cardShadow,
       ),
       child: Column(children: [
@@ -780,8 +778,8 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
-                color: isDark ? Colors.white : JT.textPrimary, letterSpacing: -0.3)),
+              Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15,
+                color: JT.textPrimary, letterSpacing: -0.3)),
               const SizedBox(height: 3),
               Row(children: [
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
@@ -1000,7 +998,6 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
   }
 
   Widget _buildCompletedCard(dynamic actualFare, {double walletPendingAmount = 0}) {
-    const isDark = false;
 
     final dName = _trip?['driverName']?.toString() ?? _trip?['driver_name']?.toString() ?? 'Pilot';
     final tId = _trip?['id']?.toString() ?? widget.tripId;
@@ -1134,7 +1131,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(14),
             ),
             child: _rated == 0
@@ -1154,7 +1151,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
                             child: Icon(Icons.star_rounded,
                               color: i <= _rated
                                 ? Colors.amber
-                                : (isDark ? Colors.white12 : Colors.grey.shade200),
+                                : Colors.grey.shade200,
                               size: 40))),
                     ]),
                   ])

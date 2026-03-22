@@ -168,7 +168,6 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   void _showAddMoneySheet() {
-    const isDarkSheet = false;
     double? selectedPreset;
     final customCtrl = TextEditingController();
 
@@ -179,12 +178,9 @@ class _WalletScreenState extends State<WalletScreen>
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: isDarkSheet
-                ? const Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 1))
-                : null,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           padding: EdgeInsets.fromLTRB(
               24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
@@ -260,23 +256,16 @@ class _WalletScreenState extends State<WalletScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 11),
                       decoration: BoxDecoration(
-                        color: sel
-                            ? JT.primary
-                            : isDarkSheet ? JT.surfaceAlt : JT.surfaceAlt,
+                        color: sel ? JT.primary : JT.surfaceAlt,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: sel
-                                ? JT.primary
-                                : isDarkSheet ? const Color(0xFF2A2A2A) : JT.border),
+                        border: Border.all(color: sel ? JT.primary : JT.border),
                         boxShadow: sel ? JT.btnShadow : [],
                       ),
                       child: Text('₹$amt',
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
-                              color: sel
-                                  ? Colors.white
-                                  : isDarkSheet ? Colors.white : const Color(0xFF374151))),
+                              color: sel ? Colors.white : const Color(0xFF374151))),
                     ),
                   );
                 }).toList(),
@@ -291,9 +280,9 @@ class _WalletScreenState extends State<WalletScreen>
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                    color: isDarkSheet ? JT.surfaceAlt : const Color(0xFFF3F6FB),
+                    color: const Color(0xFFF3F6FB),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: isDarkSheet ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB))),
+                    border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Row(children: [
                   Padding(
                     padding: const EdgeInsets.only(left: 16),
@@ -385,8 +374,6 @@ class _WalletScreenState extends State<WalletScreen>
 
   @override
   Widget build(BuildContext context) {
-    const isDarkSheet = false;
-    const isDark = false;
     final balance = _wallet?['balance'] ?? _wallet?['walletBalance'] ?? 0;
     final balanceDouble = balance is num
         ? balance.toDouble()
@@ -397,7 +384,7 @@ class _WalletScreenState extends State<WalletScreen>
 
 
     return Scaffold(
-      backgroundColor: isDark ? JT.textPrimary : JT.bgSoft,
+      backgroundColor: JT.bgSoft,
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: JT.primary))
@@ -413,7 +400,7 @@ class _WalletScreenState extends State<WalletScreen>
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
-                              color: isDark ? Colors.white : JT.textPrimary)),
+                              color: JT.textPrimary)),
                       const Spacer(),
                       Text('${transactions.length} records',
                           style: GoogleFonts.poppins(
@@ -579,7 +566,6 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildPaymentMethods() {
-    const isDark = false;
     final methods = [
       {
         'label': 'UPI',
@@ -612,10 +598,10 @@ class _WalletScreenState extends State<WalletScreen>
       margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? JT.surface : JT.surface,
+        color: JT.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? const Color(0xFF2A2A2A) : JT.border),
-        boxShadow: isDark ? null : JT.cardShadow,
+        border: Border.all(color: JT.border),
+        boxShadow: JT.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,7 +610,7 @@ class _WalletScreenState extends State<WalletScreen>
               style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : JT.textPrimary)),
+                  color: JT.textPrimary)),
           const SizedBox(height: 4),
           Text('Powered by Razorpay — all methods accepted',
               style: GoogleFonts.poppins(
@@ -641,9 +627,7 @@ class _WalletScreenState extends State<WalletScreen>
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? (m['color'] as Color).withValues(alpha: 0.15)
-                            : m['bg'] as Color,
+                        color: m['bg'] as Color,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(m['icon'] as IconData,
@@ -654,7 +638,7 @@ class _WalletScreenState extends State<WalletScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? const Color(0xFFA0A0A0) : const Color(0xFF374151))),
+                            color: const Color(0xFF374151))),
                   ]),
                 ),
               );
@@ -666,8 +650,6 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildEmpty() {
-    const isDark = false;
-
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -676,16 +658,15 @@ class _WalletScreenState extends State<WalletScreen>
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-                color: isDark ? JT.surface : const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(24),
-                border: isDark ? Border.all(color: const Color(0xFF2A2A2A)) : null),
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(24)),
             child: const Icon(Icons.receipt_long_outlined,
                 size: 40, color: JT.primary),
           ),
           const SizedBox(height: 16),
           Text('No transactions yet',
               style: GoogleFonts.poppins(
-                  color: isDark ? Colors.white : const Color(0xFF374151),
+                  color: const Color(0xFF374151),
                   fontSize: 16,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
@@ -698,32 +679,26 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildTransactionItem(Map<String, dynamic> t) {
-    const isDark = false;
     final isCredit = t['type'] == 'credit';
     final method = (t['paymentMethod'] ?? t['payment_method'] ?? '')
         .toString()
         .toLowerCase();
     final isRazorpay = method.contains('razorpay');
-    final date =
-        t['date'] ?? t['created_at'] ?? t['createdAt'] ?? '';
-
+    final date = t['date'] ?? t['created_at'] ?? t['createdAt'] ?? '';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? JT.surface : JT.surface,
+        color: JT.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(
-            color: isCredit ? JT.success : JT.error,
-            width: 3,
-          ),
-          right: BorderSide(color: isDark ? Colors.white12 : JT.border),
-          top: BorderSide(color: isDark ? Colors.white12 : JT.border),
-          bottom: BorderSide(color: isDark ? Colors.white12 : JT.border),
+          left: BorderSide(color: isCredit ? JT.success : JT.error, width: 3),
+          right: BorderSide(color: JT.border),
+          top: BorderSide(color: JT.border),
+          bottom: BorderSide(color: JT.border),
         ),
-        boxShadow: isDark ? null : JT.cardShadow,
+        boxShadow: JT.cardShadow,
       ),
       child: Row(children: [
         Container(
@@ -749,7 +724,7 @@ class _WalletScreenState extends State<WalletScreen>
                   style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: isDark ? Colors.white : JT.textPrimary),
+                      color: JT.textPrimary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),

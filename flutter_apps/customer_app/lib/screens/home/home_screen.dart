@@ -990,12 +990,31 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: JT.surfaceAlt,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(child: Text('No services available in your area',
-              style: GoogleFonts.poppins(fontSize: 14, color: JT.textSecondary))),
+            decoration: BoxDecoration(color: JT.surfaceAlt, borderRadius: BorderRadius.circular(16)),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.wifi_off_rounded, color: JT.textSecondary, size: 36),
+              const SizedBox(height: 10),
+              Text('Could not load services',
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+              const SizedBox(height: 4),
+              Text('Check your connection and tap retry',
+                style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  setState(() => _homeLoading = true);
+                  await Future.wait([_fetchHome(), _fetchActiveServices()]);
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: Text('Retry', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JT.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ]),
           ),
         ]),
       );
@@ -1870,14 +1889,13 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
-    const isDark = false;
     final query = _ctrl.text;
     final items = query.length >= 3 ? _results : _nearby;
 
-    final sheetBg = isDark ? JT.textPrimary : Colors.white;
-    final inputBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
-    final textColor = isDark ? Colors.white : JT.textPrimary;
-    final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
+    const sheetBg = Colors.white;
+    const inputBg = Color(0xFFF5F8FF);
+    const textColor = JT.textPrimary;
+    const subColor = Color(0xFF94A3B8);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -1887,7 +1905,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
             width: 36, height: 4,
             margin: const EdgeInsets.only(top: 10, bottom: 14),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white24 : const Color(0xFFDCE9FF),
+              color: const Color(0xFFDCE9FF),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -2102,74 +2120,68 @@ class _AllServicesSheet extends StatelessWidget {
       return name.contains('pool') || name.contains('share') || t == 'pool';
     }).toList();
 
-    const isDark = false;
-    final sheetBg = isDark ? JT.textPrimary : Colors.white;
-    final textColor = isDark ? Colors.white : JT.textPrimary;
-    final subColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
-
     return Container(
       padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 24),
-      decoration: BoxDecoration(
-        color: sheetBg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 36, height: 4,
             decoration: BoxDecoration(
-              color: isDark ? Colors.white24 : const Color(0xFFDCE9FF),
+              color: const Color(0xFFDCE9FF),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('All Services', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+            Text('All Services', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: JT.textPrimary)),
             GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Container(
                 width: 32, height: 32,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white10 : const Color(0xFFF5F8FF),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF5F8FF),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.close, size: 18, color: subColor),
+                child: const Icon(Icons.close, size: 18, color: Color(0xFF94A3B8)),
               ),
             ),
           ]),
           const SizedBox(height: 20),
           if (rideServices.isNotEmpty) ...[
-            _sectionHeader('🚗 Ride', textColor),
+            _sectionHeader('🚗 Ride'),
             const SizedBox(height: 10),
-            _serviceGrid(rideServices, isDark, textColor),
+            _serviceGrid(rideServices),
             const SizedBox(height: 20),
           ],
           if (parcelServices.isNotEmpty) ...[
-            _sectionHeader('📦 Parcel & Logistics', textColor),
+            _sectionHeader('📦 Parcel & Logistics'),
             const SizedBox(height: 10),
-            _serviceGrid(parcelServices, isDark, textColor),
+            _serviceGrid(parcelServices),
             const SizedBox(height: 20),
           ],
           if (poolServices.isNotEmpty) ...[
-            _sectionHeader('🚐 Car Pool', textColor),
+            _sectionHeader('🚐 Car Pool'),
             const SizedBox(height: 10),
-            _serviceGrid(poolServices, isDark, textColor),
+            _serviceGrid(poolServices),
           ],
         ]),
       ),
     );
   }
 
-  Widget _sectionHeader(String title, Color textColor) {
+  Widget _sectionHeader(String title) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(title,
-        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: textColor)),
+        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: JT.textPrimary)),
     );
   }
 
-  Widget _serviceGrid(List<Map<String, dynamic>> items, bool isDark, Color textColor) {
-    final cardBg = isDark ? JT.surface : const Color(0xFFF5F8FF);
+  Widget _serviceGrid(List<Map<String, dynamic>> items) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -2183,12 +2195,12 @@ class _AllServicesSheet extends StatelessWidget {
           onTap: () => onServiceTap(s),
           child: Container(
             decoration: BoxDecoration(
-              color: cardBg,
+              color: const Color(0xFFF5F8FF),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDCE9FF)),
+              border: Border.all(color: const Color(0xFFDCE9FF)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 8, offset: const Offset(0, 2),
                 ),
               ],
@@ -2198,7 +2210,7 @@ class _AllServicesSheet extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 s['name'] as String,
-                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: JT.textPrimary),
                 textAlign: TextAlign.center, maxLines: 2,
               ),
             ]),
