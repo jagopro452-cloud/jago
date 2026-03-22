@@ -565,6 +565,54 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
     console.error(`[DISPATCH] Failed to cancel trip ${session.tripId}:`, err.message);
   }
 
+  // ── Auto-refund: if customer paid online and no driver found, refund to wallet ──
+  try {
+    const tripData = await rawDb.execute(rawSql`
+      SELECT payment_status, customer_id FROM trip_requests
+      WHERE id=${session.tripId}::uuid LIMIT 1
+    `);
+    const t = tripData.rows[0] as any;
+    if (t?.payment_status === 'paid_online' && t?.customer_id) {
+      const atomicRefund = await rawDb.execute(rawSql`
+        UPDATE customer_payments
+        SET status='refunded', refunded_at=NOW()
+        WHERE trip_id=${session.tripId}::uuid
+          AND customer_id=${t.customer_id}::uuid
+          AND payment_type='ride_payment'
+          AND status='completed'
+        RETURNING id, amount
+      `);
+      if (atomicRefund.rows.length) {
+        const refundAmt = parseFloat((atomicRefund.rows[0] as any).amount);
+        await rawDb.execute(rawSql`
+          UPDATE users SET wallet_balance = wallet_balance + ${refundAmt}
+          WHERE id=${t.customer_id}::uuid
+        `);
+        await rawDb.execute(rawSql`
+          UPDATE trip_requests SET payment_status='refunded_to_wallet'
+          WHERE id=${session.tripId}::uuid
+        `).catch(() => {});
+        await rawDb.execute(rawSql`
+          INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+          SELECT ${t.customer_id}::uuid, 'Refund — no driver available', ${refundAmt}, 0,
+                 wallet_balance, 'ride_refund', ${session.tripId}
+          FROM users WHERE id=${t.customer_id}::uuid
+          ON CONFLICT DO NOTHING
+        `).catch(() => {});
+        if (io) {
+          io.to(`user:${session.customerId}`).emit("trip:refunded", {
+            tripId: session.tripId,
+            amount: refundAmt,
+            reason: "No drivers available — full refund to wallet",
+          });
+        }
+        console.log(`[DISPATCH-REFUND] ₹${refundAmt} auto-refunded to wallet — customer ${t.customer_id}, trip ${session.tripId}`);
+      }
+    }
+  } catch (err: any) {
+    console.error(`[DISPATCH-REFUND] Failed auto-refund for trip ${session.tripId}:`, err.message);
+  }
+
   activeDispatches.delete(session.tripId);
   console.log(`[DISPATCH] Trip ${session.tripId} expired — ${message}`);
 }

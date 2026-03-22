@@ -178,6 +178,43 @@ export async function getRazorpayKeys(): Promise<{ keyId: string | undefined; ke
   return { keyId, keySecret };
 }
 
+/**
+ * Attempt Razorpay bank refund for a payment.
+ * Returns refund ID on success, null on failure (caller should fall back to wallet credit).
+ * Idempotent: Razorpay ignores duplicate refund requests for same payment.
+ */
+async function tryRazorpayRefund(
+  razorpayPaymentId: string,
+  amountRupees: number,
+  tripId: string,
+  customerId: string,
+  reason: string,
+): Promise<string | null> {
+  try {
+    const { keyId, keySecret } = await getRazorpayKeys();
+    if (!keyId || !keySecret) return null;
+    const Razorpay = _require("razorpay");
+    const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
+    const result = await rzp.payments.refund(razorpayPaymentId, {
+      amount: Math.round(amountRupees * 100),
+      speed: "optimum",   // instant if possible, normal otherwise
+      notes: { reason, trip_id: tripId, customer_id: customerId },
+    });
+    // Log the refund
+    await rawDb.execute(rawSql`
+      INSERT INTO refund_requests (customer_id, trip_id, amount, reason, payment_method, status, admin_note, approved_by, approved_at)
+      VALUES (${customerId}::uuid, ${tripId}::uuid, ${amountRupees}, ${reason}, 'razorpay', 'approved',
+              ${'Razorpay refund ID: ' + result.id}, 'system', NOW())
+      ON CONFLICT DO NOTHING
+    `).catch(() => {});
+    console.log(`[RAZORPAY-REFUND] ₹${amountRupees} refund ${result.id} for trip ${tripId}`);
+    return result.id as string;
+  } catch (e: any) {
+    console.error(`[RAZORPAY-REFUND] Failed for trip ${tripId}:`, e.message);
+    return null;
+  }
+}
+
 // Convert snake_case keys to camelCase for frontend consumption
 function camelize(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -1655,6 +1692,11 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS icon_url TEXT;
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS banner_url TEXT;
+    `).catch(() => {});
+
+    // ── Refund tracking columns ───────────────────────────────────────────────
+    await rawDb.execute(rawSql`
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_refund_id VARCHAR(120);
     `).catch(() => {});
 
     // ── App Languages table ───────────────────────────────────────────────────
@@ -8240,6 +8282,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Check no pending withdrawal exists
       const pending = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM withdraw_requests WHERE user_id=${driver.id}::uuid AND status='pending'`).catch(() => ({ rows: [{ cnt: 0 }] }));
       if (parseInt((pending.rows[0] as any)?.cnt || 0) > 0) return res.status(400).json({ message: "You already have a pending withdrawal request" });
+      // Validate bank/UPI details
+      if (method === "bank") {
+        const accClean = (accountNumber || "").replace(/\s/g, "");
+        if (!accClean || !/^\d{9,18}$/.test(accClean))
+          return res.status(400).json({ message: "Invalid account number (9–18 digits required)" });
+        if (!ifscCode || !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(ifscCode.trim()))
+          return res.status(400).json({ message: "Invalid IFSC code (format: ABCD0123456)" });
+        if (!accountHolderName || accountHolderName.trim().length < 3)
+          return res.status(400).json({ message: "Account holder name required (min 3 characters)" });
+        if (!bankName || bankName.trim().length < 2)
+          return res.status(400).json({ message: "Bank name is required" });
+      } else if (method === "upi") {
+        if (!upiId || !/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(upiId.trim()))
+          return res.status(400).json({ message: "Invalid UPI ID format (e.g. name@upi)" });
+      }
       // Insert withdraw request
       const notes = method === "upi"
         ? `UPI: ${upiId || ''}`
@@ -9030,9 +9087,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Real-time socket: ensures driver TripScreen closes immediately even if FCM is delayed
         io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
       }
-      // ── Auto-refund to wallet if customer paid online ────────────────────────
-      // SECURITY: Atomic UPDATE (not SELECT→UPDATE) prevents double-refund race condition.
-      // PostgreSQL row-level lock: only ONE concurrent request can flip status='completed'→'refunded'.
+      // ── Auto-refund if customer paid online ──────────────────────────────────
+      // SECURITY: Atomic UPDATE prevents double-refund race condition.
+      // Strategy: try Razorpay bank refund first (original payment method),
+      //           fall back to wallet credit if Razorpay fails/unavailable.
       let walletRefund: number | null = null;
       if (trip.payment_status === 'paid_online') {
         const atomicRefund = await rawDb.execute(rawSql`
@@ -9046,19 +9104,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
         if (atomicRefund.rows.length) {
           const refundAmt = Math.round(parseFloat((atomicRefund.rows[0] as any).amount) * 100) / 100;
-          await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
+          const rzpPaymentId = trip.razorpay_payment_id || null;
+          let refundedToBank = false;
+
+          // Try Razorpay bank refund first (goes back to customer's UPI/card/bank)
+          if (rzpPaymentId) {
+            const rzpRefundId = await tryRazorpayRefund(
+              rzpPaymentId, refundAmt, effectiveTripId, customer.id, 'Trip cancelled by customer'
+            );
+            if (rzpRefundId) {
+              refundedToBank = true;
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET payment_status='refunded_to_bank', razorpay_refund_id=${rzpRefundId}
+                WHERE id=${effectiveTripId}::uuid
+              `).catch(() => {});
+              console.log(`[CANCEL-REFUND] ₹${refundAmt} bank-refunded via Razorpay ${rzpRefundId}, trip ${effectiveTripId}`);
+            }
+          }
+
+          // Fallback: credit wallet (if no Razorpay payment ID or Razorpay refund failed)
+          if (!refundedToBank) {
+            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
+            `).catch(() => {});
+            walletRefund = refundAmt;
+            console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
+          }
+
           const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
           const newBal = Math.round(parseFloat((newBalRes.rows[0] as any).wallet_balance || '0') * 100) / 100;
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-            VALUES (${customer.id}::uuid, ${'Refund for cancelled ride'}, ${refundAmt}, 0, ${newBal}, ${'ride_refund'}, ${trip.razorpay_payment_id || null})
+            VALUES (${customer.id}::uuid,
+              ${refundedToBank ? 'Refund to bank — cancelled ride' : 'Refund to wallet — cancelled ride'},
+              ${refundedToBank ? 0 : refundAmt}, 0, ${newBal},
+              ${'ride_refund'}, ${rzpPaymentId || null})
             ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
           `).catch((e: any) => console.error('[REFUND-TX]', e.message));
-          await rawDb.execute(rawSql`
-            UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
-          `).catch((e: any) => console.error('[REFUND-TRIP]', e.message));
-          walletRefund = refundAmt;
-          console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
         }
       }
       // ── Customer cancel penalty: fee if driver was already assigned ─────────
