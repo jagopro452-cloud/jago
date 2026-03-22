@@ -75,6 +75,44 @@ function getModelKey(serviceCategory: ServiceCategory): string {
   }
 }
 
+/** Map service category → service_revenue_config module_name */
+function getModuleName(serviceCategory: ServiceCategory): string {
+  switch (serviceCategory) {
+    case "rides":           return "ride";
+    case "parcel":          return "parcel";
+    case "b2b_parcel":      return "b2b";
+    case "cargo":           return "parcel";
+    case "intercity":       return "outstation";
+    case "city_pool":       return "carpool";
+    case "outstation_pool": return "outstation";
+    default:                return "ride";
+  }
+}
+
+/** Load per-module config from service_revenue_config (null if not found) */
+async function loadModuleConfig(serviceCategory: ServiceCategory): Promise<{
+  revenueModel: string;
+  commissionPct: number;
+  commissionGstPct: number;   // GST on commission amount (e.g. 18%)
+  isActive: boolean;
+} | null> {
+  const moduleName = getModuleName(serviceCategory);
+  const r = await rawDb.execute(rawSql`
+    SELECT revenue_model, commission_percentage, commission_gst_percentage, is_active
+    FROM service_revenue_config
+    WHERE module_name = ${moduleName}
+    LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  const row = r.rows[0] as any;
+  if (!row) return null;
+  return {
+    revenueModel: row.revenue_model || "commission",
+    commissionPct: parseFloat(row.commission_percentage) || 0,
+    commissionGstPct: parseFloat(row.commission_gst_percentage) || 18,
+    isActive: row.is_active !== false,
+  };
+}
+
 /** Map service category → GST rate key */
 function getGstKey(serviceCategory: ServiceCategory): string {
   switch (serviceCategory) {
@@ -115,11 +153,14 @@ export async function calculateRevenueBreakdown(
   serviceCategory: ServiceCategory,
   driverId?: string,
 ): Promise<RevenueBreakdown> {
-  const s = await loadRevenueSettings();
+  const [s, modCfg] = await Promise.all([
+    loadRevenueSettings(),
+    loadModuleConfig(serviceCategory),
+  ]);
 
-  // Determine active model for this service
+  // Determine active model: per-module config takes priority over global settings
   const modelKey = getModelKey(serviceCategory);
-  const activeModel = s[modelKey] || s.active_model || "commission";
+  const activeModel = modCfg?.revenueModel || s[modelKey] || s.active_model || "commission";
 
   // Check launch free period
   let launchFreeApplied = false;
@@ -140,100 +181,103 @@ export async function calculateRevenueBreakdown(
     }
   }
 
-  // GST rate for this service
-  const gstKey = getGstKey(serviceCategory);
-  const gstRatePct = parseFloat(s[gstKey] || "5"); // 5% default for rides, 18% for parcel
-
   // INTEGER PAISE MATH to prevent floating-point drift
   const farePaise = Math.round(fare * 100);
-  const gstPaise = Math.round(farePaise * Math.round(gstRatePct * 100) / 10000);
-  const gstAmount = gstPaise / 100;
 
+  const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
   let deductPaise = 0;
   let breakdown: RevenueBreakdown;
 
   if (launchFreeApplied) {
-    // Launch free: only GST charged
-    deductPaise = gstPaise;
+    // Launch free: only insurance charged (no commission/GST during free period)
+    deductPaise = insPaise;
     breakdown = {
       model: "launch_free", commission: 0, platformFee: 0,
-      gst: gstAmount, insurance: 0, total: deductPaise / 100,
-      commissionPct: 0, gstPct: gstRatePct,
+      gst: 0, insurance: insPaise / 100, total: deductPaise / 100,
+      commissionPct: 0, gstPct: 0,
       fareBeforeDeduction: fare, driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else if (activeModel === "commission") {
-    // COMMISSION MODEL: percentage + GST + insurance → ALL go to admin
-    const commPctX100 = Math.round(parseFloat(s.commission_pct || "15") * 100);
-    const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
+    // COMMISSION MODEL: commission% + GST-on-commission + insurance → ALL go to admin
+    // Rates: per-module config takes priority over global settings
+    const commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
+    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
+    const gstPaise  = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000); // GST on commission
     deductPaise = commPaise + gstPaise + insPaise; // ALL THREE → admin
 
     breakdown = {
       model: "commission",
       commission: commPaise / 100,
       platformFee: 0,
-      gst: gstAmount,
+      gst: gstPaise / 100,
       insurance: insPaise / 100,
       total: deductPaise / 100,
-      commissionPct: commPctX100 / 100,
-      gstPct: gstRatePct,
+      commissionPct: commPct,
+      gstPct: gstOnCommPct,
       fareBeforeDeduction: fare,
       driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else if (activeModel === "subscription") {
-    // SUBSCRIPTION MODEL: flat fee + GST + insurance → admin
+    // SUBSCRIPTION MODEL: flat fee + GST-on-fee + insurance → admin
     const platPaise = Math.round(parseFloat(s.sub_platform_fee_per_ride || "5") * 100);
-    const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
+    const gstOnFeePct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const gstPaise = Math.round(platPaise * Math.round(gstOnFeePct * 100) / 10000);
     deductPaise = platPaise + gstPaise + insPaise;
 
     breakdown = {
       model: "subscription",
       commission: 0,
       platformFee: platPaise / 100,
-      gst: gstAmount,
+      gst: gstPaise / 100,
       insurance: insPaise / 100,
       total: deductPaise / 100,
       commissionPct: 0,
-      gstPct: gstRatePct,
+      gstPct: gstOnFeePct,
       fareBeforeDeduction: fare,
       driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else if (activeModel === "hybrid") {
     // HYBRID: commission% + platform_fee + GST + insurance → admin
-    const commPctX100 = Math.round(parseFloat(s.hybrid_commission_pct || s.commission_pct || "10") * 100);
+    const commPct = modCfg?.commissionPct ?? parseFloat(s.hybrid_commission_pct || s.commission_pct || "10");
     const platPaise = Math.round(parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5") * 100);
-    const insPaise = Math.round(parseFloat(s.hybrid_insurance_per_ride || s.commission_insurance_per_ride || "2") * 100);
+    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
+    const gstPaise  = Math.round((commPaise + platPaise) * Math.round(gstOnCommPct * 100) / 10000);
     deductPaise = commPaise + platPaise + gstPaise + insPaise;
 
     breakdown = {
       model: "hybrid",
       commission: commPaise / 100,
       platformFee: platPaise / 100,
-      gst: gstAmount,
+      gst: gstPaise / 100,
       insurance: insPaise / 100,
       total: deductPaise / 100,
-      commissionPct: commPctX100 / 100,
-      gstPct: gstRatePct,
+      commissionPct: commPct,
+      gstPct: gstOnCommPct,
       fareBeforeDeduction: fare,
       driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else {
     // fallback — treat as commission
-    const commPctX100 = Math.round(parseFloat(s.commission_pct || "15") * 100);
-    const insPaise = Math.round(parseFloat(s.commission_insurance_per_ride || "2") * 100);
+    const commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
+    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
+    const gstPaise  = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000);
     deductPaise = commPaise + gstPaise + insPaise;
 
     breakdown = {
       model: "commission",
       commission: commPaise / 100,
       platformFee: 0,
-      gst: gstAmount,
+      gst: gstPaise / 100,
       insurance: insPaise / 100,
       total: deductPaise / 100,
-      commissionPct: commPctX100 / 100,
-      gstPct: gstRatePct,
+      commissionPct: commPct,
+      gstPct: gstOnCommPct,
       fareBeforeDeduction: fare,
       driverEarnings: (farePaise - deductPaise) / 100,
     };
