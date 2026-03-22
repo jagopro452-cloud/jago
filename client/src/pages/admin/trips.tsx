@@ -10,11 +10,15 @@ const avatarBg = (name: string) => {
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
 
 const STATUS_CONFIG: Record<string, { cls: string; dot: string }> = {
-  completed: { cls: "bg-success", dot: "#16a34a" },
-  ongoing:   { cls: "bg-info", dot: "#0891b2" },
-  pending:   { cls: "bg-warning text-dark", dot: "#d97706" },
-  cancelled: { cls: "bg-danger", dot: "#dc2626" },
-  accepted:  { cls: "bg-primary", dot: "#1a73e8" },
+  completed:       { cls: "bg-success",           dot: "#16a34a" },
+  ongoing:         { cls: "bg-info",               dot: "#0891b2" },
+  pending:         { cls: "bg-warning text-dark",  dot: "#d97706" },
+  cancelled:       { cls: "bg-danger",             dot: "#dc2626" },
+  accepted:        { cls: "bg-primary",            dot: "#1a73e8" },
+  searching:       { cls: "bg-warning text-dark",  dot: "#d97706" },
+  driver_assigned: { cls: "bg-primary",            dot: "#1a73e8" },
+  arrived:         { cls: "bg-info",               dot: "#0891b2" },
+  on_the_way:      { cls: "bg-info",               dot: "#0891b2" },
 };
 
 const TYPE_CONFIG: Record<string, { label: string; icon: string; bg: string; color: string }> = {

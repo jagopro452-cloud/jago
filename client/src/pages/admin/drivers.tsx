@@ -54,7 +54,7 @@ function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; on
 
   if (!open || !driver) return null;
   const name = driver.fullName || driver.firstName || "Driver";
-  const vs = VSTATUS[driver.verificationStatus || "pending"];
+  const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
@@ -414,7 +414,7 @@ export default function Drivers() {
                   </td></tr>
                 ) : filtered.map((driver: any, idx: number) => {
                   const name = driver.fullName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Driver";
-                  const vs = VSTATUS[driver.verificationStatus || "pending"];
+                  const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
                   const docsCount = [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length;
                   return (
                     <tr key={driver.id} data-testid={`row-driver-${driver.id}`}>
