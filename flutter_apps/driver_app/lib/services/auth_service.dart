@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import '../main.dart' show navigatorKey;
 import '../models/user_model.dart';
+import '../screens/splash_screen.dart';
 import 'fcm_service.dart';
 
 class AuthService {
@@ -26,8 +29,11 @@ class AuthService {
     // Save commonly accessed fields separately for quick reads
     final name = userData['fullName'] ?? userData['full_name'] ?? userData['name'] ?? '';
     final phone = userData['phone'] ?? '';
+    // CRITICAL: save user_id — socket_service.dart needs this to connect
+    final id = userData['id']?.toString() ?? userData['userId']?.toString() ?? userData['user_id']?.toString() ?? '';
     if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
     if (phone.toString().isNotEmpty) await prefs.setString('user_phone', phone.toString());
+    if (id.isNotEmpty) await prefs.setString('user_id', id);
   }
 
   static Future<Map<String, dynamic>?> getSavedUser() async {
@@ -105,6 +111,17 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
+  }
+
+  /// Call when server returns 401 — clears session and redirects to login.
+  static Future<void> handle401() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userKey);
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (route) => false,
+    );
   }
 
   static Future<UserModel?> getProfile() async {

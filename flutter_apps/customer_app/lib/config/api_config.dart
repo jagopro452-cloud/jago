@@ -21,7 +21,7 @@ class ApiConfig {
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static const String googleMapsApiKey = 'AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0';
+  static const String googleMapsApiKey = 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI';
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
@@ -119,4 +119,5 @@ class ApiConfig {
   static String get appBanners => '$baseUrl/api/app/banners';
   static String get featureFlags => '$baseUrl/api/app/feature-flags';
   static String get platformServices => '$baseUrl/api/app/platform-services';
+  static String get popularLocations => '$baseUrl/api/app/popular-locations';
 }

@@ -12,6 +12,9 @@ import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
 import 'screens/booking/voice_booking_screen.dart';
 
+// Global navigator key — used for 401 auto-logout and deep-link navigation
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
 Future<void> loadThemePreference() async {
@@ -82,7 +85,7 @@ class JagoCustomerApp extends StatefulWidget {
 }
 
 class _JagoCustomerAppState extends State<JagoCustomerApp> {
-  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _navKey = navigatorKey;
   StreamSubscription<Uri>? _linkSub;
   bool _voiceRouteOpen = false;
 

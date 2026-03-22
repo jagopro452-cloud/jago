@@ -58,7 +58,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverPhoneCtrl = TextEditingController();
   bool _popularForPickup = false;
 
-  final List<Map<String, dynamic>> _popularLocations = const [
+  // Populated dynamically from /api/app/popular-locations; static data used as fallback
+  List<Map<String, dynamic>> _popularLocations = const [
     {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
     {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
     {'name': 'Vijayawada Bus Stand', 'lat': 16.5179, 'lng': 80.6238},
@@ -380,6 +381,27 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
     _estimateFare();
     _fetchWallet();
+    _fetchPopularLocations();
+  }
+
+  Future<void> _fetchPopularLocations() async {
+    try {
+      final uri = Uri.parse(ApiConfig.popularLocations).replace(
+        queryParameters: {'lat': widget.pickupLat.toString(), 'lng': widget.pickupLng.toString()},
+      );
+      final r = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final list = (data['locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        if (mounted && list.isNotEmpty) {
+          setState(() => _popularLocations = list.map((l) => {
+            'name': l['name']?.toString() ?? '',
+            'lat': (l['lat'] as num?)?.toDouble() ?? 0.0,
+            'lng': (l['lng'] as num?)?.toDouble() ?? 0.0,
+          }).toList());
+        }
+      }
+    } catch (_) { /* keep static fallback */ }
   }
 
   @override

@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import '../main.dart' show navigatorKey;
+import '../screens/splash_screen.dart';
 import 'fcm_service.dart';
 
 class AuthService {
@@ -65,8 +68,11 @@ class AuthService {
         // Cache commonly accessed fields for quick reads
         final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
         final userPhone = user['phone'] ?? phone;
+        // CRITICAL: save user_id — socket_service.dart needs this to connect
+        final userId = user['id']?.toString() ?? user['userId']?.toString() ?? user['user_id']?.toString() ?? '';
         if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
         if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
+        if (userId.isNotEmpty) await prefs.setString('user_id', userId);
         // Save FCM token to server after login
         FcmService().onLoginSuccess().catchError((_) {});
       }
@@ -87,6 +93,17 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
+  }
+
+  /// Call when server returns 401 — clears session and redirects to login.
+  static Future<void> handle401() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userKey);
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (route) => false,
+    );
   }
 
   static Future<Map<String, dynamic>?> getProfile() async {
@@ -140,8 +157,10 @@ class AuthService {
         await prefs.setString(_userKey, jsonEncode(user));
         final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
         final userPhone = user['phone'] ?? phone;
+        final userId = user['id']?.toString() ?? user['userId']?.toString() ?? user['user_id']?.toString() ?? '';
         if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
         if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
+        if (userId.isNotEmpty) await prefs.setString('user_id', userId);
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
@@ -171,8 +190,10 @@ class AuthService {
         await prefs.setString(_userKey, jsonEncode(user));
         final name = user['fullName'] ?? user['full_name'] ?? user['name'] ?? '';
         final userPhone = user['phone'] ?? phone;
+        final userId = user['id']?.toString() ?? user['userId']?.toString() ?? user['user_id']?.toString() ?? '';
         if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
         if (userPhone.toString().isNotEmpty) await prefs.setString('user_phone', userPhone.toString());
+        if (userId.isNotEmpty) await prefs.setString('user_id', userId);
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
@@ -201,8 +222,10 @@ class AuthService {
         final user = data['user'] ?? data;
         await prefs.setString(_userKey, jsonEncode(user));
         final name = user['fullName'] ?? user['full_name'] ?? fullName;
+        final userId = user['id']?.toString() ?? user['userId']?.toString() ?? user['user_id']?.toString() ?? '';
         if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
         await prefs.setString('user_phone', phone);
+        if (userId.isNotEmpty) await prefs.setString('user_id', userId);
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
