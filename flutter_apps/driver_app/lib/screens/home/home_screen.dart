@@ -357,6 +357,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
         return;
       }
+      // Fast path: last known position is instant, no cold-start GPS delay
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null && mounted) {
+          setState(() => _center = LatLng(last.latitude, last.longitude));
+          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
+        }
+      } catch (_) {}
+      // Accurate position (may take a few seconds on cold start)
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));

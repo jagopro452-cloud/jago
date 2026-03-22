@@ -342,6 +342,13 @@ class _LocationScreenState extends State<LocationScreen>
   }
 
   void _proceedToVehicles() {
+    if (_dropLat == 0 && _dropLng == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Please select a valid destination from suggestions'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     HapticFeedback.mediumImpact();
     Navigator.pushReplacement(
       context,
@@ -351,8 +358,8 @@ class _LocationScreenState extends State<LocationScreen>
           destination: _drop,
           pickupLat: _pickupLat,
           pickupLng: _pickupLng,
-          destLat: _dropLat != 0 ? _dropLat : _pickupLat + 0.02,
-          destLng: _dropLng != 0 ? _dropLng : _pickupLng + 0.02,
+          destLat: _dropLat,
+          destLng: _dropLng,
           category: widget.serviceType,
         ),
         transitionDuration: const Duration(milliseconds: 350),

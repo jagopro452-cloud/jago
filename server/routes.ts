@@ -7378,20 +7378,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // Check driver doesn't already have an active trip (include driver_assigned = pre-dispatched)
-      const driverBusy = await rawDb.execute(rawSql`SELECT id FROM trip_requests WHERE driver_id=${driver.id}::uuid AND current_status IN ('driver_assigned','accepted','arrived','on_the_way')`);
-      if (driverBusy.rows.length) return res.status(400).json({ message: "You already have an active trip" });
-
       // Generate pickup OTP
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Atomically claim the trip — only succeeds if trip is still searching/driver_assigned and unaccepted
+      // Atomically claim trip — busy check embedded in WHERE to prevent TOCTOU race:
+      // if driver already has an active trip this UPDATE returns 0 rows.
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='accepted', driver_accepted_at=NOW(), driver_arriving_at=NOW(), pickup_otp=${otp}, driver_id=${driver.id}::uuid
         WHERE id=${tripId}::uuid
           AND current_status IN ('searching','driver_assigned')
           AND (driver_id IS NULL OR driver_id=${driver.id}::uuid)
+          AND NOT EXISTS (
+            SELECT 1 FROM trip_requests
+            WHERE driver_id=${driver.id}::uuid
+              AND current_status IN ('driver_assigned','accepted','arrived','on_the_way')
+              AND id != ${tripId}::uuid
+          )
         RETURNING *
       `);
       if (!r.rows.length) {
@@ -7399,6 +7402,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const info = exists.rows[0] as any;
         if (!info) return res.status(404).json({ message: "Trip not found" });
         if (info.current_status === 'accepted') return res.status(409).json({ message: "Trip already accepted by another driver" });
+        // Check if driver is already on another trip (busy — blocked by NOT EXISTS)
+        const busy = await rawDb.execute(rawSql`SELECT id FROM trip_requests WHERE driver_id=${driver.id}::uuid AND current_status IN ('driver_assigned','accepted','arrived','on_the_way') LIMIT 1`);
+        if (busy.rows.length) return res.status(400).json({ message: "You already have an active trip" });
         return res.status(400).json({ message: `Cannot accept trip in status: ${info.current_status}` });
       }
 
@@ -7820,21 +7826,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             `).catch(() => {});
             console.log(`[WALLET] ✅ Full deduction ₹${userPayable} from customer ${tripCustomerId}`);
           } else if (custBal > 0) {
-            // Partial wallet deduction — deduct what's available, remainder customer must pay by cash/UPI
-            const deducted = parseFloat(custBal.toFixed(2));
-            const remaining = parseFloat((userPayable - deducted).toFixed(2));
-            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = 0 WHERE id=${tripCustomerId}::uuid AND wallet_balance > 0`);
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET payment_status='partial_payment',
-                pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
-            `).catch(() => {});
-            await rawDb.execute(rawSql`
-              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-              VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
-            `).catch(() => {});
-            walletPaidAmount = deducted;
-            walletPendingAmount = remaining;
-            console.log(`[WALLET] ⚠️  Partial: ₹${deducted} from wallet, ₹${remaining} pending (cash/UPI) — customer ${tripCustomerId}`);
+            // Partial wallet deduction — ATOMIC: CTE captures old balance, zeroes it in one statement
+            const partialR = await rawDb.execute(rawSql`
+              WITH prev AS (SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid FOR UPDATE)
+              UPDATE users SET wallet_balance = 0
+              FROM prev
+              WHERE users.id = ${tripCustomerId}::uuid AND prev.wallet_balance > 0
+              RETURNING prev.wallet_balance AS prev_balance
+            `);
+            if (!partialR.rows.length) {
+              // Balance already zeroed by a concurrent transaction — treat as no wallet
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET payment_status='pending_payment',
+                  pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
+              `).catch(() => {});
+              walletPendingAmount = userPayable;
+              console.log(`[WALLET] ⚠️  Partial skipped (balance=0 by concurrent tx) — customer ${tripCustomerId}`);
+            } else {
+              const deducted = parseFloat(parseFloat((partialR.rows[0] as any).prev_balance || '0').toFixed(2));
+              const remaining = parseFloat((userPayable - deducted).toFixed(2));
+              await rawDb.execute(rawSql`
+                UPDATE trip_requests SET payment_status='partial_payment',
+                  pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
+              `).catch(() => {});
+              await rawDb.execute(rawSql`
+                INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+                VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
+              `).catch(() => {});
+              walletPaidAmount = deducted;
+              walletPendingAmount = remaining;
+              console.log(`[WALLET] ⚠️  Partial: ₹${deducted} from wallet, ₹${remaining} pending (cash/UPI) — customer ${tripCustomerId}`);
+            }
           } else {
             // No wallet balance — full amount must be paid by cash/UPI
             await rawDb.execute(rawSql`
@@ -10180,30 +10202,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           // ── A) Driver payment (wallet topup, subscription, commission) ────
           {
-            const dpRows = await rawDb.execute(rawSql`
-              SELECT * FROM driver_payments
+            // Atomic idempotency: UPDATE only if still 'pending', RETURNING gives us the record.
+            // If two webhooks arrive simultaneously, only one UPDATE changes a row — prevents double-credit.
+            const dpUpdate = await rawDb.execute(rawSql`
+              UPDATE driver_payments
+              SET status = 'completed',
+                  razorpay_payment_id = ${paymentId},
+                  verified_at  = NOW(),
+                  updated_at   = NOW()
               WHERE razorpay_order_id = ${orderId} AND status = 'pending'
-              LIMIT 1
+              RETURNING *
             `);
-            if (dpRows.rows.length) {
-              const rec = camelize(dpRows.rows[0]) as any;
-
-              // Idempotency: abort if already completed
-              const done = await rawDb.execute(rawSql`
-                SELECT id FROM driver_payments
-                WHERE razorpay_order_id = ${orderId} AND status = 'completed'
-                LIMIT 1
-              `);
-              if (!done.rows.length) {
-                // Mark payment completed
-                await rawDb.execute(rawSql`
-                  UPDATE driver_payments
-                  SET status = 'completed',
-                      razorpay_payment_id = ${paymentId},
-                      verified_at  = NOW(),
-                      updated_at   = NOW()
-                  WHERE razorpay_order_id = ${orderId} AND status = 'pending'
-                `);
+            if (dpUpdate.rows.length) {
+              const rec = camelize(dpUpdate.rows[0]) as any;
+              {
+                // Mark payment completed (already done by UPDATE above)
                 console.info(`${tag} driver_payments completed orderId=${orderId}`);
 
                 // Activate subscription if this payment was for a plan
