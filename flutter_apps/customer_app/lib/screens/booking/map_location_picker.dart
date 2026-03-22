@@ -58,8 +58,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   LatLng? _pendingCamera; // camera move queued before map ready
 
   // Current center of the map (source of truth)
-  double _lat = 17.3850;
-  double _lng = 78.4867;
+  // null until GPS is confirmed — avoids biasing search toward a hardcoded city
+  double? _gpsLat;
+  double? _gpsLng;
+  double _lat = 20.5937; // India center — neutral fallback (not a specific city)
+  double _lng = 78.9629;
   String _address = 'Move the map to select location';
   bool _geocoding = false;
   bool _locationLoading = true;
@@ -116,19 +119,42 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         setState(() => _locationLoading = false);
         return;
       }
+
+      // Try last known position first — instant, no waiting
+      final lastPos = await Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted) {
+        setState(() {
+          _lat = lastPos.latitude;
+          _lng = lastPos.longitude;
+          _gpsLat = lastPos.latitude;
+          _gpsLng = lastPos.longitude;
+        });
+        final target = LatLng(_lat, _lng);
+        if (_mapController != null) {
+          _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
+        } else {
+          _pendingCamera = target;
+        }
+        _reverseGeocode(_lat, _lng);
+      }
+
+      // Then get fresh accurate position
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
+      if (!mounted) return;
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
+        _gpsLat = pos.latitude;
+        _gpsLng = pos.longitude;
         _locationLoading = false;
       });
       final target = LatLng(_lat, _lng);
       if (_mapController != null) {
         _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
       } else {
-        _pendingCamera = target; // map not ready yet — will animate in onMapCreated
+        _pendingCamera = target;
       }
       _reverseGeocode(_lat, _lng);
     } catch (_) {
@@ -168,13 +194,15 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     }
     setState(() => _searching = true);
     try {
+      // Only bias toward a location if GPS is confirmed — avoid biasing to India-center
+      final hasGps = _gpsLat != null && _gpsLng != null;
+      final biasParam = hasGps ? '&location=$_gpsLat,$_gpsLng&radius=50000' : '';
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/place/autocomplete/json'
         '?input=${Uri.encodeComponent(query)}'
         '&key=$_apiKey'
         '&sessiontoken=$_sessionToken'
-        '&location=$_lat,$_lng'
-        '&radius=50000'
+        '$biasParam'
         '&components=country:in',
       );
       final res = await http.get(url);

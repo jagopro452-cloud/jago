@@ -216,10 +216,25 @@ function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
     return JSON.stringify({ type: "Polygon", coordinates: [ring] });
   };
 
+  // Compute centroid of polygon points
+  const computeCentroid = (pts: [number, number][]): { lat: number; lng: number } | null => {
+    if (pts.length < 3) return null;
+    const sumLat = pts.reduce((s, p) => s + p[0], 0);
+    const sumLng = pts.reduce((s, p) => s + p[1], 0);
+    return { lat: parseFloat((sumLat / pts.length).toFixed(6)), lng: parseFloat((sumLng / pts.length).toFixed(6)) };
+  };
+
   const handleSave = () => {
     if (!form.name) return;
-    const coords = closed && points.length >= 3 ? buildGeoJson() : form.coordinates;
-    onSave({ ...form, coordinates: coords });
+    const hasPolygon = closed && points.length >= 3;
+    const coords = hasPolygon ? buildGeoJson() : form.coordinates;
+    let lat = form.latitude, lng = form.longitude;
+    // Auto-populate centroid from polygon if admin hasn't set lat/lng manually
+    if (hasPolygon && (!lat || !lng)) {
+      const c = computeCentroid(points);
+      if (c) { lat = c.lat; lng = c.lng; }
+    }
+    onSave({ ...form, coordinates: coords, latitude: lat, longitude: lng });
   };
 
   if (!open) return null;
@@ -376,9 +391,47 @@ function ZoneMapModal({ open, onClose, editing, initialForm, onSave, saving }: {
             {!closed && points.length === 0 && (
               <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", fontSize: 11.5, color: "#64748b" }}>
                 <i className="bi bi-info-circle me-1"></i>
-                No boundary drawn — zone will cover all areas. Draw a polygon to restrict the service area.
+                No polygon drawn — zone detection will use center point + radius below.
               </div>
             )}
+
+            {/* Center point + radius (fallback detection) */}
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 10 }}>
+                <i className="bi bi-crosshair2 me-1" style={{ color: "#1a73e8" }}></i>
+                Center Point &amp; Radius
+                <span style={{ fontSize: 10, fontWeight: 400, color: "#94a3b8", marginLeft: 6 }}>(used if no polygon)</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10.5, color: "#64748b", display: "block", marginBottom: 3 }}>Latitude</label>
+                  <input type="number" step="0.000001" className="admin-form-control" style={{ width: "100%", fontSize: 12 }}
+                    value={form.latitude ?? ""}
+                    onChange={e => setForm((f: any) => ({ ...f, latitude: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 17.3850" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10.5, color: "#64748b", display: "block", marginBottom: 3 }}>Longitude</label>
+                  <input type="number" step="0.000001" className="admin-form-control" style={{ width: "100%", fontSize: 12 }}
+                    value={form.longitude ?? ""}
+                    onChange={e => setForm((f: any) => ({ ...f, longitude: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 78.4867" />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 10.5, color: "#64748b", display: "block", marginBottom: 3 }}>Radius (km)</label>
+                <input type="number" step="0.5" min="0.5" max="100" className="admin-form-control" style={{ width: "100%", fontSize: 12 }}
+                  value={form.radiusKm ?? 5}
+                  onChange={e => setForm((f: any) => ({ ...f, radiusKm: parseFloat(e.target.value) || 5 }))}
+                  placeholder="5" />
+              </div>
+              {closed && points.length >= 3 && (
+                <button type="button" style={{ marginTop: 8, fontSize: 11, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "4px 10px", cursor: "pointer", color: "#1d4ed8" }}
+                  onClick={() => { const c = computeCentroid(points); if (c) setForm((f: any) => ({ ...f, latitude: c.lat, longitude: c.lng })); }}>
+                  <i className="bi bi-bullseye me-1"></i>Auto-fill from polygon centroid
+                </button>
+              )}
+            </div>
 
             {/* Save button */}
             <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -466,7 +519,7 @@ export default function Zones() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
 
-  const defaultForm = { name: "", coordinates: "", serviceType: "both", surgeFactor: 1.0, isActive: true };
+  const defaultForm = { name: "", coordinates: "", serviceType: "both", surgeFactor: 1.0, isActive: true, latitude: null, longitude: null, radiusKm: 5 };
   const [formForModal, setFormForModal] = useState(defaultForm);
 
   const { data = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/zones"] });
@@ -497,7 +550,7 @@ export default function Zones() {
 
   const openEdit = (zone: any) => {
     setEditing(zone);
-    setFormForModal({ name: zone.name, coordinates: zone.coordinates || "", serviceType: zone.serviceType || "both", surgeFactor: Number(zone.surgeFactor) || 1.0, isActive: zone.isActive });
+    setFormForModal({ name: zone.name, coordinates: zone.coordinates || "", serviceType: zone.serviceType || "both", surgeFactor: Number(zone.surgeFactor) || 1.0, isActive: zone.isActive, latitude: zone.latitude ?? null, longitude: zone.longitude ?? null, radiusKm: Number(zone.radiusKm) || 5 });
     setOpen(true);
   };
 

@@ -290,14 +290,19 @@ function pointInPolygon(lat: number, lng: number, ring: number[][]): boolean {
   return inside;
 }
 
-/** Auto-detect which DB zone a lat/lng falls inside. Returns zone UUID or null. */
+/** Auto-detect which DB zone a lat/lng falls inside. Returns zone UUID or null.
+ *  Pass 1: polygon (GeoJSON) — exact boundary check.
+ *  Pass 2: radius fallback — if zone has center lat/lng set, check haversine distance ≤ radius_km.
+ */
 async function detectZoneId(lat: number, lng: number): Promise<string | null> {
   if (!lat || !lng) return null;
   try {
     const zones = await rawDb.execute(rawSql`
-      SELECT id, coordinates FROM zones WHERE is_active=true AND coordinates IS NOT NULL
+      SELECT id, coordinates, latitude, longitude, radius_km FROM zones WHERE is_active=true
     `);
+    // Pass 1: polygon-based detection (most accurate)
     for (const z of zones.rows as any[]) {
+      if (!z.coordinates) continue;
       try {
         const geo = JSON.parse(z.coordinates);
         if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
@@ -308,6 +313,16 @@ async function detectZoneId(lat: number, lng: number): Promise<string | null> {
           }
         }
       } catch {}
+    }
+    // Pass 2: radius-based fallback for zones without polygon
+    for (const z of zones.rows as any[]) {
+      if (z.coordinates) continue; // already checked in pass 1
+      const cLat = Number(z.latitude);
+      const cLng = Number(z.longitude);
+      if (!cLat || !cLng) continue;
+      const d = haversineKm(lat, lng, cLat, cLng);
+      const r = Number(z.radius_km || 5);
+      if (d <= r) return z.id as string;
     }
   } catch {}
   return null;
@@ -1697,6 +1712,13 @@ async function ensureOperationalSchema() {
     // ── Refund tracking columns ───────────────────────────────────────────────
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_refund_id VARCHAR(120);
+    `).catch(() => {});
+
+    // ── Zone center point + radius (for radius-based zone detection fallback) ──
+    await rawDb.execute(rawSql`
+      ALTER TABLE zones ADD COLUMN IF NOT EXISTS latitude  DOUBLE PRECISION;
+      ALTER TABLE zones ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE zones ADD COLUMN IF NOT EXISTS radius_km DOUBLE PRECISION DEFAULT 5;
     `).catch(() => {});
 
     // ── App Languages table ───────────────────────────────────────────────────
