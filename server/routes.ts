@@ -1638,12 +1638,12 @@ async function ensureOperationalSchema() {
         ('wallet',        true,  'Customer wallet top-up and payment'),
         ('rewards',       true,  'Coins and spin wheel rewards'),
         ('subscriptions', true,  'Driver subscription plans'),
-        ('intercity',     false, 'Intercity travel service'),
-        ('carpool',       false, 'Car pool / ride sharing'),
+        ('intercity',     true,  'Intercity travel service'),
+        ('carpool',       true,  'Car pool / ride sharing'),
         ('parcel',        true,  'Parcel delivery service'),
         ('voice_booking', true,  'AI voice booking'),
         ('offers',        true,  'Promo offers and coupons')
-      ON CONFLICT (key) DO NOTHING;
+      ON CONFLICT (key) DO UPDATE SET enabled = EXCLUDED.enabled;
     `).catch(() => {});
 
     // ── Banners table: add display_order if missing ──────────────────────────
@@ -1655,6 +1655,25 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS icon_url TEXT;
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS banner_url TEXT;
+    `).catch(() => {});
+
+    // ── App Languages table ───────────────────────────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS app_languages (
+        id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        code        VARCHAR(10)  UNIQUE NOT NULL,
+        name        VARCHAR(100) NOT NULL,
+        native_name VARCHAR(100),
+        flag        VARCHAR(10),
+        is_active   BOOLEAN      NOT NULL DEFAULT true,
+        sort_order  INT          NOT NULL DEFAULT 0,
+        created_at  TIMESTAMP    DEFAULT NOW()
+      );
+      INSERT INTO app_languages (code, name, native_name, flag, sort_order) VALUES
+        ('en', 'English',  'English',   '🇬🇧', 0),
+        ('te', 'Telugu',   'తెలుగు',    '🇮🇳', 1),
+        ('hi', 'Hindi',    'हिन्दी',    '🇮🇳', 2)
+      ON CONFLICT (code) DO NOTHING;
     `).catch(() => {});
 
   } catch (e: any) {
