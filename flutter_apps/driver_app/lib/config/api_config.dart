@@ -115,4 +115,7 @@ class ApiConfig {
 
   // ── Eligible Services (vehicle-type based) ────────────────────────────
   static String get eligibleServices => '$baseUrl/api/app/driver/eligible-services';
+
+  // ── Module Revenue Config ─────────────────────────────────────────────
+  static String get revenueConfig => '$baseUrl/api/app/revenue-config';
 }

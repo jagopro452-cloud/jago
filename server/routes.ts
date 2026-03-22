@@ -989,6 +989,26 @@ async function ensureOperationalSchema() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Module-based revenue config: each service has independent revenue model
+      CREATE TABLE IF NOT EXISTS service_revenue_config (
+        module_name VARCHAR(30) PRIMARY KEY,
+        revenue_model VARCHAR(20) NOT NULL DEFAULT 'commission',
+        commission_percentage NUMERIC(5,2) NOT NULL DEFAULT 15.00,
+        commission_gst_percentage NUMERIC(5,2) NOT NULL DEFAULT 18.00,
+        subscription_required BOOLEAN NOT NULL DEFAULT false,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        notes TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO service_revenue_config (module_name, revenue_model, commission_percentage, commission_gst_percentage, subscription_required)
+      VALUES
+        ('ride',       'commission', 15.00, 18.00, false),
+        ('parcel',     'commission', 12.00, 18.00, false),
+        ('carpool',    'commission', 10.00, 18.00, false),
+        ('outstation', 'commission', 12.00, 18.00, false),
+        ('b2b',        'subscription', 0.00, 0.00, true)
+      ON CONFLICT (module_name) DO NOTHING;
+
       CREATE TABLE IF NOT EXISTS business_settings (
         key_name VARCHAR(191) PRIMARY KEY,
         value TEXT NOT NULL DEFAULT '',
@@ -4845,6 +4865,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Module-Based Revenue Config ─────────────────────────────────────────────
+  // GET /api/app/revenue-config — used by both apps to determine commission/subscription
+  app.get("/api/app/revenue-config", authApp, async (_req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`SELECT * FROM service_revenue_config ORDER BY module_name`);
+      const config: Record<string, any> = {};
+      for (const row of rows.rows) {
+        const r = row as any;
+        config[r.module_name] = {
+          revenueModel: r.revenue_model,
+          commissionPercentage: parseFloat(r.commission_percentage),
+          commissionGstPercentage: parseFloat(r.commission_gst_percentage),
+          subscriptionRequired: r.subscription_required,
+          isActive: r.is_active,
+        };
+      }
+      res.json({ config });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/module-revenue — admin read all module configs
+  app.get("/api/admin/module-revenue", requireAdminAuth, async (_req, res) => {
+    try {
+      const rows = await rawDb.execute(rawSql`SELECT * FROM service_revenue_config ORDER BY module_name`);
+      res.json({ modules: rows.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // PUT /api/admin/module-revenue/:module — admin update one module
+  app.put("/api/admin/module-revenue/:module", requireAdminAuth, async (req, res) => {
+    try {
+      const module = req.params.module as string;
+      const ALLOWED = ['ride', 'parcel', 'carpool', 'outstation', 'b2b'];
+      if (!ALLOWED.includes(module)) return res.status(400).json({ message: "Invalid module name" });
+      const { revenueModel, commissionPercentage, commissionGstPercentage, subscriptionRequired, isActive, notes } = req.body;
+      await rawDb.execute(rawSql`
+        INSERT INTO service_revenue_config
+          (module_name, revenue_model, commission_percentage, commission_gst_percentage, subscription_required, is_active, notes, updated_at)
+        VALUES
+          (${module}, ${revenueModel || 'commission'}, ${commissionPercentage ?? 15}::numeric, ${commissionGstPercentage ?? 18}::numeric,
+           ${subscriptionRequired ?? false}::boolean, ${isActive ?? true}::boolean, ${notes || null}, NOW())
+        ON CONFLICT (module_name) DO UPDATE SET
+          revenue_model             = EXCLUDED.revenue_model,
+          commission_percentage     = EXCLUDED.commission_percentage,
+          commission_gst_percentage = EXCLUDED.commission_gst_percentage,
+          subscription_required     = EXCLUDED.subscription_required,
+          is_active                 = EXCLUDED.is_active,
+          notes                     = EXCLUDED.notes,
+          updated_at                = NOW()
+      `);
+      const updated = await rawDb.execute(rawSql`SELECT * FROM service_revenue_config WHERE module_name = ${module} LIMIT 1`);
+      res.json(camelize(updated.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

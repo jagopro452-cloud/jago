@@ -82,6 +82,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ── Eligible Services ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _eligibleServices = [];
 
+  // ── Revenue Config ─────────────────────────────────────────────────────
+  Map<String, Map<String, dynamic>> _revenueConfig = {};
+
   String _getTimeGreeting() {
     final h = DateTime.now().hour;
     if (h < 12) return 'Good Morning';
@@ -111,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _fetchDashboard();
     _fetchLaunchBenefit();
     _fetchEligibleServices();
+    _fetchRevenueConfig();
     _connectSocket();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _recoverActiveTrip();   // Fix 7: state recovery — must run before FCM check
@@ -439,6 +443,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final data = jsonDecode(res.body);
         final list = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
         setState(() => _eligibleServices = list);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchRevenueConfig() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.revenueConfig), headers: headers);
+      if (res.statusCode == 200 && mounted) {
+        final data = jsonDecode(res.body);
+        final modules = (data['modules'] as List<dynamic>?) ?? [];
+        final map = <String, Map<String, dynamic>>{};
+        for (final m in modules) {
+          final name = m['moduleName']?.toString() ?? '';
+          if (name.isNotEmpty) map[name] = Map<String, dynamic>.from(m as Map);
+        }
+        setState(() => _revenueConfig = map);
       }
     } catch (_) {}
   }
@@ -1576,9 +1597,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, runSpacing: 6, children: _eligibleServices.map((svc) {
                     final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
+                    final moduleKey = name.toLowerCase().replaceAll(' ', '_');
+                    final cfg = _revenueConfig[moduleKey];
+                    final model = cfg?['revenueModel']?.toString() ?? '';
+                    final comm = cfg != null ? (cfg['commissionPercentage'] as num?)?.toStringAsFixed(0) : null;
+                    final label = comm != null
+                        ? '$name • $comm%'
+                        : model == 'subscription' ? '$name • Sub' : name;
                     return Chip(
                       avatar: const Icon(Icons.directions_car_filled_rounded, size: 14, color: JT.primary),
-                      label: Text(name, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
+                      label: Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
                       backgroundColor: JT.primary.withValues(alpha: 0.08),
                       side: BorderSide(color: JT.primary.withValues(alpha: 0.2)),
                       padding: const EdgeInsets.symmetric(horizontal: 4),

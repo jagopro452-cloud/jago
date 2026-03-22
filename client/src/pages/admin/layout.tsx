@@ -80,12 +80,12 @@ interface NavSection {
 // Sections accessible per employee role. Super admin / admin see everything.
 // Undefined roles = visible to all authenticated admins.
 const ROLE_SECTION_ACCESS: Record<string, string[]> = {
-  operations_head: ["Dashboard","Zone Management","Trip Management","Promotion Management","User Management","Parcel Management","B2B / Porter","Vehicle Management","Fare Management","Transactions & Reports","Help & Support","Blog Management","Reviews","Business Management"],
+  operations_head: ["Dashboard","Zone Management","Trip Management","Promotion Management","User Management","Parcel Management","B2B / Porter","Vehicle Management","Fare Management","Transactions & Reports","Help & Support","Reviews","Business Management"],
   zone_head: ["Dashboard","Zone Management","Trip Management","User Management","Fare Management","Transactions & Reports","Help & Support","Reviews"],
   zone_manager: ["Dashboard","Zone Management","Trip Management","User Management","Fare Management"],
   driver_onboarding_exec: ["Dashboard","User Management","Vehicle Management"],
   support_agent: ["Dashboard","Trip Management","Help & Support","User Management"],
-  marketing_exec: ["Dashboard","Promotion Management","User Management","Blog Management","Reviews"],
+  marketing_exec: ["Dashboard","Promotion Management","User Management","Reviews"],
 };
 
 const navSections: NavSection[] = [
@@ -142,7 +142,6 @@ const navSections: NavSection[] = [
       { label: "Customer Wallet", icon: "bi-wallet-fill", href: "/admin/customer-wallet" },
       { label: "Wallet Bonus", icon: "bi-wallet2", href: "/admin/wallet-bonus" },
       { label: "Employee Setup", icon: "bi-person-square", href: "/admin/employees" },
-      { label: "Newsletter", icon: "bi-envelope-fill", href: "/admin/newsletter" },
       { label: "Subscription Plans", icon: "bi-card-checklist", href: "/admin/subscriptions" },
       { label: "Revenue Model", icon: "bi-diagram-3-fill", href: "/admin/revenue-model" },
     ],
@@ -195,17 +194,10 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    category: "Blog Management",
-    items: [
-      { label: "Blog Setup", icon: "bi-layout-text-window", href: "/admin/blogs" },
-    ],
-  },
-  {
     category: "Developer",
     items: [
       { label: "API Reference", icon: "bi-code-square", href: "/admin/api-docs" },
       { label: "App UI Design", icon: "bi-phone-fill", href: "/admin/app-design" },
-      { label: "Voice Commands", icon: "bi-mic-fill", href: "/admin/voice-commands" },
     ],
   },
   {
