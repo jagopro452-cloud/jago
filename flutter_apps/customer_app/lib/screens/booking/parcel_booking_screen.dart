@@ -324,6 +324,8 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           'vehicleCategory': _vehicle.key,
           'totalDistanceKm': dist,
           'weightKg': _weightKg,
+          'pickupLat': widget.pickupLat,
+          'pickupLng': widget.pickupLng,
           'dropLocations': [{'address': _dropAddressCtrl.text}],
         }),
       ).timeout(const Duration(seconds: 8));
@@ -1218,11 +1220,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   Widget _buildFareCard() {
     final e = _estimate!;
-    final total = (e['totalFare'] ?? 0) as num;
-    final base  = (e['baseFare'] ?? 0) as num;
-    final dist  = (e['distanceFare'] ?? 0) as num;
-    final wt    = (e['weightFare'] ?? 0) as num;
-    final load  = (e['loadCharge'] ?? 0) as num;
+    // Use grandTotal (includes GST) if present; fall back to totalFare for backward compat
+    final total  = (e['grandTotal'] ?? e['totalFare'] ?? 0) as num;
+    final base   = (e['baseFare'] ?? 0) as num;
+    final dist   = (e['distanceFare'] ?? 0) as num;
+    final wt     = (e['weightFare'] ?? 0) as num;
+    final load   = (e['loadingCharge'] ?? e['loadCharge'] ?? 0) as num;
+    final gst    = (e['gstAmount'] ?? 0) as num;
+    final minFare = (e['minimumFare'] ?? 0) as num;
 
     return Container(
       decoration: BoxDecoration(
@@ -1246,12 +1251,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         _fareRow('Base Fare', '₹$base'),
         _fareRow('Distance Charge', '₹$dist'),
         _fareRow('Weight Charge', '₹$wt'),
-        if (load > 0) _fareRow('Load Charge', '₹$load'),
+        if (load > 0) _fareRow('Loading Charge', '₹$load'),
+        if (minFare > 0 && total < minFare) _fareRow('Minimum Fare Applied', '₹$minFare', highlight: true),
+        if (gst > 0) _fareRow('GST (5%)', '₹$gst'),
         Divider(color: _vehicle.accentColor.withValues(alpha: 0.2), height: 1),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
-            Text('TOTAL', style: GoogleFonts.poppins(
+            Text('TOTAL (incl. GST)', style: GoogleFonts.poppins(
                 fontSize: 14, fontWeight: FontWeight.w900, color: JT.textPrimary)),
             const Spacer(),
             Text('₹$total', style: GoogleFonts.poppins(
@@ -1263,14 +1270,18 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     );
   }
 
-  Widget _fareRow(String label, String val) {
+  Widget _fareRow(String label, String val, {bool highlight = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(children: [
-        Text(label, style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
+        Text(label, style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: highlight ? Colors.orange.shade700 : JT.textSecondary,
+            fontWeight: highlight ? FontWeight.w600 : FontWeight.normal)),
         const Spacer(),
         Text(val, style: GoogleFonts.poppins(
-            fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+            fontSize: 13, fontWeight: FontWeight.w700,
+            color: highlight ? Colors.orange.shade700 : JT.textPrimary)),
       ]),
     );
   }

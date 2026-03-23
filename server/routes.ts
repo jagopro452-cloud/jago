@@ -12825,52 +12825,142 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
 
-  // Fare vehicle categories for parcel — 3 tiers matching Porter model
+  // Parcel migration: add gst_amt column if missing
+  await rawDb.execute(rawSql`ALTER TABLE parcel_orders ADD COLUMN IF NOT EXISTS gst_amt NUMERIC(10,2) DEFAULT 0`).catch(() => {});
+
+  // Hardcoded defaults — fallback only when parcel_vehicle_types DB row not found
   const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string; maxWeightKg: number; loadCharge: number }> = {
-    bike_parcel:   { baseFare: 40,  perKm: 12, perKg: 4,  name: 'Bike Parcel',     maxWeightKg: 10,   loadCharge: 0   },
-    tata_ace:      { baseFare: 150, perKm: 18, perKg: 2,  name: 'Mini Truck',       maxWeightKg: 500,  loadCharge: 50  },
-    pickup_truck:  { baseFare: 200, perKm: 22, perKg: 1,  name: 'Pickup Truck',     maxWeightKg: 2000, loadCharge: 100 },
-    // Legacy aliases — kept for backward compat
-    auto_parcel:   { baseFare: 50,  perKm: 13, perKg: 7,  name: 'Auto Parcel',      maxWeightKg: 50,   loadCharge: 0   },
-    cargo_car:     { baseFare: 120, perKm: 16, perKg: 4,  name: 'Cargo Car',        maxWeightKg: 200,  loadCharge: 30  },
-    bolero_cargo:  { baseFare: 200, perKm: 22, perKg: 3,  name: 'Bolero Cargo',     maxWeightKg: 1500, loadCharge: 80  },
+    bike_parcel:   { baseFare: 40,  perKm: 12, perKg: 4,  name: 'Bike Parcel',  maxWeightKg: 10,   loadCharge: 0   },
+    tata_ace:      { baseFare: 150, perKm: 18, perKg: 2,  name: 'Mini Truck',   maxWeightKg: 500,  loadCharge: 50  },
+    pickup_truck:  { baseFare: 200, perKm: 22, perKg: 1,  name: 'Pickup Truck', maxWeightKg: 2000, loadCharge: 100 },
+    auto_parcel:   { baseFare: 50,  perKm: 13, perKg: 7,  name: 'Auto Parcel',  maxWeightKg: 50,   loadCharge: 0   },
+    cargo_car:     { baseFare: 120, perKm: 16, perKg: 4,  name: 'Cargo Car',    maxWeightKg: 200,  loadCharge: 30  },
+    bolero_cargo:  { baseFare: 200, perKm: 22, perKg: 3,  name: 'Bolero Cargo', maxWeightKg: 1500, loadCharge: 80  },
   };
 
-  // Customer: get fare quote for parcel — supports all 3 tiers
+  // Shared helper: resolves zone-aware parcel fare rates for a given vehicle + pickup location.
+  // Priority: parcel_fares (zone match) → parcel_fares (global latest) → parcel_vehicle_types DB → PARCEL_VEHICLES hardcoded
+  async function resolveParcelFare(
+    vehicleCategory: string,
+    distKm: number,
+    wt: number,
+    pickupLat?: number | null,
+    pickupLng?: number | null,
+  ) {
+    // 1. Vehicle row from DB
+    const pvRes = await rawDb.execute(rawSql`
+      SELECT vehicle_key, name, max_weight_kg, base_fare, per_km, per_kg, load_charge
+      FROM parcel_vehicle_types WHERE vehicle_key = ${vehicleCategory} AND is_active = true LIMIT 1
+    `).catch(() => ({ rows: [] as any[] }));
+    const pv = pvRes.rows[0] as any;
+    const hc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
+    const vehicleName  = pv?.name           || hc.name;
+    const maxWeightKg  = parseFloat(pv?.max_weight_kg || hc.maxWeightKg);
+    const vcBaseFare   = parseFloat(pv?.base_fare     || hc.baseFare);
+    const vcPerKm      = parseFloat(pv?.per_km        || hc.perKm);
+    const vcPerKg      = parseFloat(pv?.per_kg        || hc.perKg);
+    const vcLoadCharge = parseFloat(pv?.load_charge   || hc.loadCharge);
+
+    // 2. Zone-based parcel_fares override
+    let pfRow: any = {};
+    if (pickupLat && pickupLng) {
+      const zoneId = await detectZoneId(pickupLat, pickupLng).catch(() => null);
+      let pfRes = { rows: [] as any[] };
+      if (zoneId) {
+        pfRes = await rawDb.execute(rawSql`
+          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+          FROM parcel_fares WHERE zone_id = ${zoneId}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+      }
+      if (!pfRes.rows.length) {
+        pfRes = await rawDb.execute(rawSql`
+          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+          FROM parcel_fares ORDER BY created_at DESC LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+      }
+      if (pfRes.rows.length) pfRow = pfRes.rows[0];
+    }
+
+    const baseFare    = pfRow.base_fare    ? parseFloat(pfRow.base_fare)    : vcBaseFare;
+    const perKm       = pfRow.fare_per_km  ? parseFloat(pfRow.fare_per_km)  : vcPerKm;
+    const perKg       = pfRow.fare_per_kg  ? parseFloat(pfRow.fare_per_kg)  : vcPerKg;
+    const loadCharge  = pfRow.loading_charge ? parseFloat(pfRow.loading_charge) : vcLoadCharge;
+    const minFare     = pfRow.minimum_fare ? parseFloat(pfRow.minimum_fare) : 0;
+    const helperRate  = parseFloat(pfRow.helper_charge_per_hour || '0');
+    const maxHelpers  = parseInt(pfRow.max_helpers || '0') || 0;
+
+    // 3. Configurable commission from platform_services
+    const platRes = await rawDb.execute(rawSql`
+      SELECT commission_pct FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
+    `).catch(() => ({ rows: [] as any[] }));
+    const commPctNum = parseFloat((platRes.rows[0] as any)?.commission_pct || '15');
+    const commRate   = commPctNum / 100;
+    const gstRate    = 0.05;
+
+    // 4. Fare calculation
+    const rawFare      = baseFare + (distKm * perKm) + (wt * perKg) + loadCharge;
+    const customerFare = Math.ceil(Math.max(rawFare, minFare));
+    const gstAmt       = Math.ceil(customerFare * gstRate);
+    const grandTotal   = customerFare + gstAmt;
+    const commAmt      = Math.ceil(customerFare * commRate);
+    const driverEarnings = Math.max(0, customerFare - commAmt);
+
+    return {
+      vehicleName, maxWeightKg,
+      baseFare, perKm, perKg, loadCharge, minFare, helperRate, maxHelpers,
+      distFare: Math.ceil(distKm * perKm),
+      weightFare: Math.ceil(wt * perKg),
+      customerFare, gstAmt, grandTotal,
+      commPct: commPctNum, commAmt, driverEarnings,
+    };
+  }
+
+  // Customer: get fare quote for parcel — zone-aware, reads admin-configured rates
   app.post("/api/app/parcel/quote", authApp, async (req, res) => {
     try {
-      const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1 } = req.body;
-      const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
-      const wt = parseFloat(weightKg) || 1;
-      // Weight limit check
-      if (wt > vc.maxWeightKg) {
+      const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1,
+              totalDistanceKm, pickupLat, pickupLng } = req.body;
+      const wt   = Math.max(0.1, parseFloat(weightKg) || 1);
+      const dist = Math.max(0.5, parseFloat(totalDistanceKm) || 5);
+
+      const f = await resolveParcelFare(
+        vehicleCategory, dist, wt,
+        pickupLat ? parseFloat(pickupLat) : null,
+        pickupLng ? parseFloat(pickupLng) : null,
+      );
+
+      // Weight limit check (after resolving vehicle)
+      if (wt > f.maxWeightKg) {
         return res.status(400).json({
-          message: `${vc.name} supports max ${vc.maxWeightKg} kg. Your package is ${wt} kg.`,
-          code: 'WEIGHT_EXCEEDED', maxWeightKg: vc.maxWeightKg
+          message: `${f.vehicleName} supports max ${f.maxWeightKg} kg. Your package is ${wt} kg.`,
+          code: 'WEIGHT_EXCEEDED', maxWeightKg: f.maxWeightKg,
         });
       }
-      const totalDistance: number = parseFloat(req.body.totalDistanceKm ?? '5') || 5;
-      const baseFare    = vc.baseFare;
-      const distFare    = Math.round(totalDistance * vc.perKm);
-      const weightFare  = Math.round(wt * vc.perKg);
-      const loadCharge  = vc.loadCharge;
-      const totalFare   = baseFare + distFare + weightFare + loadCharge;
-      const commPct     = 15;
-      const commAmt     = Math.round(totalFare * commPct / 100);
+
       res.json({
         vehicleCategory,
-        vehicleName: vc.name,
-        baseFare,
-        distanceFare: distFare,
-        weightFare,
-        loadCharge,
-        totalFare,
-        commissionPct: commPct,
-        commissionAmt: commAmt,
-        driverEarnings: totalFare - commAmt,
-        maxWeightKg: vc.maxWeightKg,
+        vehicleName: f.vehicleName,
+        maxWeightKg: f.maxWeightKg,
+        baseFare: f.baseFare,
+        distanceFare: f.distFare,
+        weightFare: f.weightFare,
+        loadingCharge: f.loadCharge,
+        minimumFare: f.minFare,
+        helperRatePerHour: f.helperRate,
+        maxHelpers: f.maxHelpers,
+        customerFare: f.customerFare,
+        gstAmount: f.gstAmt,
+        grandTotal: f.grandTotal,
+        totalFare: f.grandTotal,          // backward compat alias
+        commissionPct: f.commPct,
+        commissionAmt: f.commAmt,
+        driverEarnings: f.driverEarnings,
         dropCount: (dropLocations as any[]).length,
-        breakdown: { baseFare, distanceFare: distFare, weightFare, loadCharge, total: totalFare },
+        breakdown: {
+          baseFare: f.baseFare, distanceFare: f.distFare,
+          weightFare: f.weightFare, loadingCharge: f.loadCharge,
+          gstAmount: f.gstAmt, total: f.grandTotal,
+        },
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12918,17 +13008,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }
       }
 
-      const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
-      const dist    = parseFloat(totalDistanceKm) || 5;
+      const dist = parseFloat(totalDistanceKm) || 5;
 
       // Calculate billable weight (actual vs volumetric)
       const dims = { lengthCm: parseFloat(lengthCm) || 0, widthCm: parseFloat(widthCm) || 0, heightCm: parseFloat(heightCm) || 0, weightKg: parseFloat(weightKg) || 1 };
       const weightInfo = calculateBillableWeight(dims);
       const wt = weightInfo.billableWeightKg;
 
+      // Zone-aware fare resolution
+      const f = await resolveParcelFare(
+        vehicleCategory, dist, wt,
+        pickupLat ? parseFloat(pickupLat) : null,
+        pickupLng ? parseFloat(pickupLng) : null,
+      );
+
       // Enforce vehicle weight limit
-      if (wt > vc.maxWeightKg) {
-        return res.status(400).json({ message: `${vc.name} supports max ${vc.maxWeightKg} kg. Your billable weight: ${wt} kg.`, code: 'WEIGHT_EXCEEDED' });
+      if (wt > f.maxWeightKg) {
+        return res.status(400).json({ message: `${f.vehicleName} supports max ${f.maxWeightKg} kg. Your billable weight: ${wt} kg.`, code: 'WEIGHT_EXCEEDED' });
       }
 
       // Calculate insurance if requested
@@ -12938,13 +13034,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         insurancePremium = ins.premiumAmount;
       }
 
-      const baseFare   = vc.baseFare;
-      const distFare   = Math.round(dist * vc.perKm);
-      const wFare      = Math.round(wt * vc.perKg);
-      const loadCharge = vc.loadCharge;
-      const totalFare  = baseFare + distFare + wFare + loadCharge + insurancePremium;
-      const commPct    = 15;
-      const commAmt    = Math.round(totalFare * commPct / 100);
+      const baseFare   = f.baseFare;
+      const distFare   = f.distFare;
+      const wFare      = f.weightFare;
+      const loadCharge = f.loadCharge;
+      const gstAmt     = f.gstAmt;
+      const totalFare  = f.grandTotal + insurancePremium;
+      const commPct    = f.commPct;
+      const commAmt    = f.commAmt;
       const pickupOtp  = Math.floor(100000 + Math.random() * 900000).toString();
       const expectedMinutes = calculateExpectedDeliveryMinutes(vehicleCategory, dist);
 
@@ -12972,7 +13069,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           (customer_id, vehicle_category, pickup_address, pickup_lat, pickup_lng,
            pickup_contact_name, pickup_contact_phone, drop_locations,
            total_distance_km, weight_kg, base_fare, distance_fare, weight_fare,
-           total_fare, commission_amt, commission_pct, current_status,
+           total_fare, commission_amt, commission_pct, gst_amt, current_status,
            pickup_otp, is_b2b, b2b_company_id, payment_method, notes,
            length_cm, width_cm, height_cm, volumetric_weight_kg, billable_weight_kg,
            declared_value, is_fragile, insurance_enabled, insurance_premium,
@@ -12983,7 +13080,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
            ${pickupContactName ?? ''}, ${pickupContactPhone ?? ''},
            ${JSON.stringify(dropsWithOtp)},
            ${dist}, ${wt}, ${baseFare}, ${distFare}, ${wFare},
-           ${totalFare}, ${commAmt}, ${commPct}, 'searching',
+           ${totalFare}, ${commAmt}, ${commPct}, ${gstAmt}, 'searching',
            ${pickupOtp}, ${isB2b ?? false}, ${b2bCompanyId ?? null},
            ${paymentMethod}, ${notes},
            ${dims.lengthCm || null}, ${dims.widthCm || null}, ${dims.heightCm || null},
@@ -13048,6 +13145,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         orderId: order.id,
         pickupOtp,
         totalFare,
+        baseFare, distanceFare: distFare, weightFare: wFare,
+        loadingCharge: loadCharge, gstAmount: gstAmt,
+        commissionPct: commPct, commissionAmt: commAmt,
+        driverEarnings: f.driverEarnings,
         drops: dropsWithOtp.length,
         weightInfo,
         insurancePremium: insurancePremium || 0,
