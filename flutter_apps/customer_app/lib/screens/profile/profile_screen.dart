@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/localization_service.dart';
 import '../../config/api_config.dart';
-import '../../main.dart' show saveThemePreference;
+import '../../main.dart' show saveThemePreference, themeNotifier;
 import '../auth/login_screen.dart';
 import '../saved_places/saved_places_screen.dart';
 import '../preferences/ride_preferences_screen.dart';
@@ -113,6 +113,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.red));
       }
     }
+  }
+
+  void _showSettingsSheet(Color cardBg, Color textColor, Color subColor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(
+              color: JT.border, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Text('Settings', style: JT.h3),
+            const SizedBox(height: 20),
+            Text('Appearance', style: JT.caption),
+            const SizedBox(height: 8),
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeNotifier,
+              builder: (_, mode, __) => Row(children: [
+                _themeChip(ctx, 'Light', Icons.light_mode_rounded,
+                    mode == ThemeMode.light, () => saveThemePreference('light')),
+                const SizedBox(width: 8),
+                _themeChip(ctx, 'Dark', Icons.dark_mode_rounded,
+                    mode == ThemeMode.dark, () => saveThemePreference('dark')),
+                const SizedBox(width: 8),
+                _themeChip(ctx, 'System', Icons.brightness_auto_rounded,
+                    mode == ThemeMode.system, () => saveThemePreference('system')),
+              ]),
+            ),
+            const SizedBox(height: 24),
+            Text('App Version', style: JT.caption),
+            const SizedBox(height: 6),
+            Text('v2.01 • MindWhile IT Solutions', style: JT.body),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _themeChip(BuildContext ctx, String label, IconData icon, bool selected, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? JT.primary : JT.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: selected ? JT.primary : JT.border),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 20, color: selected ? Colors.white : JT.textSecondary),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : JT.textSecondary,
+            )),
+          ]),
+        ),
+      ),
+    );
   }
 
   void _showDeleteAccountDialog(Color cardBg, Color textColor, Color subColor) {
@@ -410,10 +477,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: JT.surfaceAlt,
                           borderRadius: BorderRadius.circular(8)),
                       child: const Icon(Icons.settings_outlined,
-                          color: Colors.indigo, size: 20),
+                          color: JT.primary, size: 20),
                     ),
                     title: Text('Settings',
                         style: TextStyle(
@@ -422,9 +489,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: textColor)),
                     trailing: Icon(Icons.chevron_right,
                         color: subColor, size: 20),
-                    onTap: () async {
-                      await saveThemePreference('light');
-                    },
+                    onTap: () => _showSettingsSheet(cardBg, textColor, subColor),
                   ),
                 ], cardBg),
                 const SizedBox(height: 12),

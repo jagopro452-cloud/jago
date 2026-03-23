@@ -350,7 +350,7 @@ class _LocationScreenState extends State<LocationScreen>
       return;
     }
     HapticFeedback.mediumImpact();
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => BookingScreen(

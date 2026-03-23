@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:shimmer/shimmer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
@@ -885,6 +886,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
           ),
 
+          // ── 1b. Map loading overlay (while map tiles load) ───────────────
+          if (!_mapReady)
+            Positioned.fill(
+              child: Container(
+                color: JT.bgSoft,
+                child: Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const SizedBox(
+                      width: 32, height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: JT.primary),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Loading map...', style: JT.caption),
+                  ]),
+                ),
+              ),
+            ),
+
           // ── 2. Top gradient fade (white → transparent) ──────────────────
           Positioned(
             top: 0, left: 0, right: 0,
@@ -1005,37 +1024,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildSkeletonLoader(bool isDark, Color cardBg) {
-    final shimmer = isDark ? const Color(0xFF2A3A50) : JT.border;
+    final baseColor = isDark ? const Color(0xFF2A3A50) : const Color(0xFFE5E7EB);
+    final highlightColor = isDark ? const Color(0xFF3A4E66) : const Color(0xFFF3F4F6);
     Widget box(double w, double h, {double r = 10}) => Container(
       width: w, height: h,
-      decoration: BoxDecoration(color: shimmer, borderRadius: BorderRadius.circular(r)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(r)),
     );
-    return SingleChildScrollView(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Search bar skeleton
-        box(double.infinity, 52, r: 14),
-        const SizedBox(height: 20),
-        // Service icons skeleton
-        box(120, 18, r: 8),
-        const SizedBox(height: 12),
-        Row(children: List.generate(4, (_) => Expanded(child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(children: [
-            box(double.infinity, 56, r: 14),
-            const SizedBox(height: 6),
-            box(50, 12, r: 6),
-          ]),
-        )))),
-        const SizedBox(height: 20),
-        // Banner skeleton
-        box(double.infinity, 130, r: 16),
-        const SizedBox(height: 20),
-        box(double.infinity, 80, r: 12),
-        const SizedBox(height: 12),
-        box(double.infinity, 80, r: 12),
-      ]),
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Search bar skeleton
+          box(double.infinity, 52, r: 14),
+          const SizedBox(height: 20),
+          // Service icons skeleton label
+          box(120, 18, r: 8),
+          const SizedBox(height: 12),
+          Row(children: List.generate(4, (_) => Expanded(child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Column(children: [
+              box(double.infinity, 56, r: 14),
+              const SizedBox(height: 6),
+              box(50, 12, r: 6),
+            ]),
+          )))),
+          const SizedBox(height: 20),
+          // Banner skeleton
+          box(double.infinity, 130, r: 16),
+          const SizedBox(height: 20),
+          box(double.infinity, 80, r: 12),
+          const SizedBox(height: 12),
+          box(double.infinity, 80, r: 12),
+        ]),
+      ),
     );
   }
 

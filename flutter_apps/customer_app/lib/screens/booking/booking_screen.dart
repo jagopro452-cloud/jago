@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
@@ -1563,13 +1564,29 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final textSub = Colors.grey.shade600;
     const borderCol = Color(0xFFE8EFFF);
     if (_estimating) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(strokeWidth: 2.5, color: _jagoPrimary),
-          SizedBox(height: 12),
-          Text('Getting best fares...', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13, fontWeight: FontWeight.w500)),
-        ])));
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Shimmer.fromColors(
+          baseColor: const Color(0xFFE5E7EB),
+          highlightColor: const Color(0xFFF3F4F6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Getting best fares...', style: const TextStyle(
+              color: Color(0xFF6B7280), fontSize: 13, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 12),
+            // 3 skeleton vehicle cards
+            ...List.generate(3, (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                height: 88,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            )),
+          ]),
+        ),
+      );
     }
     if (_allFares.isEmpty) {
       return Container(
@@ -1579,16 +1596,49 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFFED7AA)),
         ),
-        child: Row(children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFFEA580C), size: 24),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Service Unavailable',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: textMain)),
-            const SizedBox(height: 2),
-            Text('This service is not available right now. Please try again later.',
-              style: TextStyle(fontSize: 12, color: textSub)),
-          ])),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFEA580C), size: 24),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('No vehicles available',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: textMain)),
+              const SizedBox(height: 2),
+              Text('No vehicles are available for this route right now. Try a different pickup point or check back soon.',
+                style: TextStyle(fontSize: 12, color: textSub)),
+            ])),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                label: const Text('Change route'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEA580C),
+                  side: const BorderSide(color: Color(0xFFFED7AA)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _estimateFare(),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEA580C),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ]),
         ]),
       );
     }
