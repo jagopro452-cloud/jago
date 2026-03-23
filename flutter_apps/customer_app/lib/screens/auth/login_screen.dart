@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
-    // Server rate-limit check first
+    // Server sends OTP via SMS first (always works, independent of Firebase)
     final res = await AuthService.sendOtp(phone, 'customer');
     if (!mounted) return;
     if (res['success'] != true) {
@@ -134,31 +134,22 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       _snack(res['message'] ?? 'Failed to send OTP', error: true);
       return;
     }
-    // Now actually send OTP via Firebase Phone Auth
-    try {
-      await FirebaseOtpService.sendOtp(
-        phoneNumber: '+91$phone',
-        onCodeSent: (verificationId) {
-          if (!mounted) return;
-          _firebaseVerificationId = verificationId;
-          setState(() { _otpSent = true; _loading = false; });
-          _startTimer();
-          _snack('OTP sent to +91$phone');
-          listenForCode(); // Start SMS auto-read via CodeAutoFill mixin
-        },
-        onError: (error) {
-          if (!mounted) return;
-          setState(() => _loading = false);
-          _snack(error, error: true);
-        },
-        // onAutoVerify intentionally omitted — auto-sign-in consumes Firebase
-        // session and causes "session expired" when user enters OTP manually.
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _snack('Failed to send OTP. Please try again.', error: true);
-    }
+    // OTP is already sent by server — show input immediately
+    setState(() { _otpSent = true; _loading = false; });
+    _startTimer();
+    _snack('OTP sent to +91$phone');
+    listenForCode(); // Start SMS auto-read via CodeAutoFill mixin
+    // Also try Firebase Phone Auth in parallel (for auto-verification on supported devices)
+    // If Firebase is blocked/unavailable, server OTP fallback will handle verification
+    FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (verificationId) {
+        if (mounted) _firebaseVerificationId = verificationId;
+      },
+      onError: (_) {
+        // Firebase blocked or unavailable — server OTP is already sent, ignore this error
+      },
+    ).catchError((_) {});
   }
 
   Future<void> _verifyOtp() async {
@@ -167,36 +158,43 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (otp.length != 6) { _snack('Enter the 6-digit OTP', error: true); return; }
     if (_loading) return; // prevent double-tap
     setState(() => _loading = true);
+
+    // Try Firebase verification first (if verificationId is available)
+    if (_firebaseVerificationId != null) {
+      try {
+        final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: otp,
+          verificationId: _firebaseVerificationId,
+        );
+        if (!mounted) return;
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+        if (!mounted) return;
+        if (res['success'] == true || res['token'] != null) {
+          setState(() => _loading = false);
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+          return;
+        }
+      } catch (_) {
+        // Firebase verify failed — fall through to server OTP verification
+      }
+    }
+
+    // Fallback: verify with server OTP (always works, independent of Firebase)
     try {
-      // Verify OTP with Firebase and get ID token
-      // Use stored _firebaseVerificationId, fallback to static in FirebaseOtpService
-      final idToken = await FirebaseOtpService.verifyOtp(
-        smsCode: otp,
-        verificationId: _firebaseVerificationId,
-      );
-      if (!mounted) return;
-      // Send Firebase token to our server for auth
-      final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+      final res = await AuthService.verifyOtp(phone, otp, 'customer');
       if (!mounted) return;
       setState(() => _loading = false);
-      // Navigate if token present — server may return token without explicit success flag
       if (res['success'] == true || res['token'] != null) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
         _otpCtrl.clear();
-        _showErrorDialog('Login Failed', res['message'] ?? 'Verification failed. Please try again.');
+        _showErrorDialog('Login Failed', res['message'] ?? 'Wrong OTP. Please try again.');
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      String msg = e.toString().replaceAll('Exception: ', '');
-      if (msg.contains('missing') || msg.contains('null') || msg.contains('session-expired')) {
-        msg = 'Session expired. Tap Resend OTP to try again.';
-      } else if (msg.contains('invalid-verification-code') || msg.contains('invalid-verification-id')) {
-        msg = 'Wrong OTP code. Please check and try again.';
-      }
       _otpCtrl.clear();
-      _showErrorDialog('Verification Failed', msg);
+      _showErrorDialog('Verification Failed', 'Network error. Please try again.');
     }
   }
 

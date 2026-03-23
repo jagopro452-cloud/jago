@@ -59,7 +59,7 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
     CallService().init();
     _listenForIncomingCalls();
     // HTTP polling as fallback (every 3s — socket handles real-time)
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollStatus());
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
   }
 
   void _connectSocket() {
@@ -83,7 +83,9 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
       // Real-time trip status changes
       _subs.add(_socket.onTripStatus.listen((data) {
         if (!mounted) return;
-        final newStatus = data['status']?.toString() ?? _status;
+        final rawStatus = data['status']?.toString() ?? _status;
+        // payment_pending = driver completed but payment not yet confirmed — treat as completed for customer
+        final newStatus = rawStatus == 'payment_pending' ? 'completed' : rawStatus;
         final otp = data['otp']?.toString();
         setState(() {
           _status = newStatus;
@@ -350,9 +352,12 @@ class _TrackingScreenState extends State<TrackingScreen> with TickerProviderStat
         if (trip != null && mounted) {
           final dLat = double.tryParse(trip['driverLat']?.toString() ?? '');
           final dLng = double.tryParse(trip['driverLng']?.toString() ?? '');
+          final rawStatus = trip['currentStatus'] ?? _status;
+          // payment_pending = driver completed but payment not yet confirmed — show as completed on user side
+          final resolvedStatus = rawStatus == 'payment_pending' ? 'completed' : rawStatus;
           setState(() {
             _trip = trip;
-            _status = trip['currentStatus'] ?? _status;
+            _status = resolvedStatus;
             if (dLat != null && dLng != null && dLat != 0) {
               _driverLatLng = LatLng(dLat, dLng);
               _updateDriverMarker(_driverLatLng!);

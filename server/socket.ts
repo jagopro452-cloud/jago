@@ -431,11 +431,15 @@ export function setupSocket(httpServer: HttpServer) {
           } else if (status === "completed") {
             // PAYMENT GATE: trip only moves to completed if payment is verified
             const paymentCheckR = await rawDb.execute(rawSql`
-              SELECT payment_status FROM trip_requests WHERE id=${tripId}::uuid
+              SELECT payment_status, payment_method FROM trip_requests WHERE id=${tripId}::uuid
             `);
             const paymentStatus = (paymentCheckR.rows[0] as any)?.payment_status;
-            if (paymentStatus === 'paid' || paymentStatus === 'cash') {
-              // Payment verified — mark as completed normally
+            const paymentMethod = (paymentCheckR.rows[0] as any)?.payment_method;
+            // Cash trips: always allow completion (driver collects cash in person)
+            // Paid/wallet/online trips: verify payment_status before completing
+            const paymentClear = paymentMethod === 'cash' || paymentStatus === 'paid' || paymentStatus === 'cash' || paymentStatus === 'paid_online' || paymentStatus === 'wallet_paid';
+            if (paymentClear) {
+              // Payment verified (or cash — no pre-verification needed)
               await rawDb.execute(rawSql`
                 UPDATE trip_requests SET current_status=${status}, completed_at=NOW(), updated_at=NOW()
                 WHERE id=${tripId}::uuid

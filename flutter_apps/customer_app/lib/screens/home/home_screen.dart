@@ -590,13 +590,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _getLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) { setState(() => _pickup = 'Current Location'); return; }
+      if (!serviceEnabled) {
+        if (mounted) setState(() => _pickup = 'Enable location & tap to retry');
+        return;
+      }
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
         if (!mounted) return;
+        setState(() => _pickup = 'Location permission needed — tap to retry');
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -614,22 +618,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      setState(() {
-        _pickupLat = pos.latitude;
-        _pickupLng = pos.longitude;
-        _locationReady = true;
-      });
+
+      Position? pos;
+      // Try high accuracy with 10s timeout
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+      } catch (_) {
+        // GPS timed out — try last known position as fallback
+        pos = await Geolocator.getLastKnownPosition();
+      }
+
+      if (pos == null) {
+        if (mounted) setState(() => _pickup = 'Could not detect location — tap to retry');
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _pickupLat = pos!.latitude;
+          _pickupLng = pos.longitude;
+          _locationReady = true;
+        });
+      }
       _reverseGeocode(pos.latitude, pos.longitude);
-      // Move map camera to user's real location
       _mapController?.animateCamera(
-        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+        CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 16),
       );
-      // Refresh nearby drivers now that we have real coords
       _fetchNearbyDrivers();
-    } catch (_) { setState(() => _pickup = 'Current Location'); }
+    } catch (_) {
+      if (mounted) setState(() => _pickup = 'Location error — tap to retry');
+    }
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -1188,13 +1211,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const SizedBox(height: 16),
         // "Where to?" search pill
         GestureDetector(
-          onTap: _openSearch,
+          onTap: _pickup.contains('retry') ? _getLocation : _openSearch,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JT.border, width: 1.5),
+              border: Border.all(color: _pickup.contains('retry') ? Colors.orange.shade300 : JT.border, width: 1.5),
               boxShadow: [
                 BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 4)),
               ],
@@ -1203,7 +1226,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Container(
                 width: 36, height: 36,
                 decoration: const BoxDecoration(gradient: JT.grad, shape: BoxShape.circle),
-                child: const Icon(Icons.search_rounded, color: Colors.white, size: 18),
+                child: _pickup == 'Getting location...'
+                  ? const Padding(padding: EdgeInsets.all(9), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Icon(_pickup.contains('retry') ? Icons.refresh_rounded : Icons.search_rounded, color: Colors.white, size: 18),
               ),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -1211,7 +1236,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'Where to?',
                   style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: JT.textPrimary),
                 ),
-                if (_pickup.isNotEmpty && _pickup != 'Getting location...')
+                if (_pickup == 'Getting location...')
+                  Text('Detecting your location...', style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary))
+                else if (_pickup.contains('retry'))
+                  Text(_pickup, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(fontSize: 11, color: Colors.orange.shade700, fontWeight: FontWeight.w600))
+                else if (_pickup.isNotEmpty)
                   Text(
                     'From: ${_pickup.split(',').first}',
                     maxLines: 1, overflow: TextOverflow.ellipsis,
