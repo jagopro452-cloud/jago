@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
@@ -67,6 +70,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _bannerTimer;
   final PageController _bannerPageCtrl = PageController();
 
+  // ── Live Map state ────────────────────────────────────────────────────────
+  GoogleMapController? _mapController;
+  Set<Marker> _mapMarkers = {};
+  Timer? _nearbyDriversTimer;
+  final Map<String, BitmapDescriptor> _markerIconCache = {};
+  bool _mapReady = false;
+
   // Brand colors — mapped to JT design system
   static const Color _primary = JT.primary;
   static const Color _secondary = JT.secondary;
@@ -104,6 +114,9 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+    // Start nearby drivers polling (every 4s for smooth movement)
+    _nearbyDriversTimer = Timer.periodic(const Duration(seconds: 4), (_) => _fetchNearbyDrivers());
+    _fetchNearbyDrivers(); // fetch immediately
   }
 
   Future<void> _fetchUnreadCount() async {
@@ -173,6 +186,112 @@ class _HomeScreenState extends State<HomeScreen> {
         final flags = (data['flags'] as Map<String, dynamic>?) ?? {};
         setState(() => _featureFlags = flags.map((k, v) => MapEntry(k, v == true)));
       }
+    } catch (_) {}
+  }
+
+  // ── LIVE MAP: Nearby Drivers ─────────────────────────────────────────────
+
+  Future<BitmapDescriptor> _getVehicleMarkerIcon(String vehicleType) async {
+    if (_markerIconCache.containsKey(vehicleType)) return _markerIconCache[vehicleType]!;
+    final descriptor = await _drawVehicleMarker(vehicleType);
+    _markerIconCache[vehicleType] = descriptor;
+    return descriptor;
+  }
+
+  Future<BitmapDescriptor> _drawVehicleMarker(String vehicleType) async {
+    const size = 72.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    // Pick color + emoji by vehicle type
+    Color bg;
+    String emoji;
+    if (vehicleType.contains('bike') || vehicleType.contains('moto')) {
+      bg = const Color(0xFF2F7BFF); emoji = '🏍️';
+    } else if (vehicleType.contains('auto')) {
+      bg = const Color(0xFFF59E0B); emoji = '🛺';
+    } else if (vehicleType.contains('parcel') || vehicleType.contains('cargo')) {
+      bg = const Color(0xFFF97316); emoji = '📦';
+    } else {
+      bg = const Color(0xFF10B981); emoji = '🚗';
+    }
+
+    // Shadow
+    final shadowPaint = Paint()
+      ..color = bg.withValues(alpha: 0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 2), size / 2 - 6, shadowPaint);
+
+    // Circle background
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 8,
+        Paint()..color = bg);
+
+    // White border
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2), size / 2 - 8,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    // Emoji
+    final tp = TextPainter(
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 26)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2 - 1));
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+  }
+
+  Future<void> _fetchNearbyDrivers() async {
+    if (!mounted) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final uri = Uri.parse(ApiConfig.nearbyDrivers).replace(queryParameters: {
+        'lat': _pickupLat.toString(),
+        'lng': _pickupLng.toString(),
+        'radius': '5',
+      });
+      final r = await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
+      if (!mounted || r.statusCode != 200) return;
+
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final drivers = (data['drivers'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+
+      final Set<Marker> newMarkers = {};
+      for (final d in drivers) {
+        final lat = double.tryParse(d['lat']?.toString() ?? '');
+        final lng = double.tryParse(d['lng']?.toString() ?? '');
+        if (lat == null || lng == null) continue;
+
+        final id = d['id']?.toString() ?? '';
+        final vehicleType = (d['vehicleCategoryName'] ?? d['vehicleName'] ?? 'car')
+            .toString().toLowerCase();
+        final heading = double.tryParse(d['heading']?.toString() ?? '0') ?? 0;
+        final rating = double.tryParse(d['rating']?.toString() ?? '0') ?? 0;
+
+        final icon = await _getVehicleMarkerIcon(vehicleType);
+
+        newMarkers.add(Marker(
+          markerId: MarkerId('driver_$id'),
+          position: LatLng(lat, lng),
+          icon: icon,
+          rotation: heading,
+          anchor: const Offset(0.5, 0.5),
+          flat: true, // rotates with map
+          infoWindow: InfoWindow(
+            title: d['fullName']?.toString() ?? 'Driver',
+            snippet: rating > 0 ? '⭐ ${rating.toStringAsFixed(1)}' : null,
+          ),
+        ));
+      }
+
+      if (mounted) setState(() => _mapMarkers = newMarkers);
     } catch (_) {}
   }
 
@@ -435,6 +554,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _driverAssignedSub?.cancel();
     _tripCancelledSub?.cancel();
     _tripStatusSub?.cancel();
+    _nearbyDriversTimer?.cancel();
+    _mapController?.dispose();
     // Don't disconnect socket — it's a shared singleton used by other screens
     super.dispose();
   }
@@ -483,6 +604,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _pickupLng = pos.longitude;
       });
       _reverseGeocode(pos.latitude, pos.longitude);
+      // Move map camera to user's real location
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+      );
+      // Refresh nearby drivers now that we have real coords
+      _fetchNearbyDrivers();
     } catch (_) { setState(() => _pickup = 'Current Location'); }
   }
 
@@ -680,46 +807,154 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const isDark = false; // light-only theme
-    final scaffoldBg = JT.bg;
-
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+    const isDark = false;
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
     ));
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: scaffoldBg,
+      backgroundColor: JT.bg,
       drawer: _buildDrawer(isDark),
-      body: SafeArea(
-        child: Column(children: [
-          _buildTopBar(isDark, JT.bgSoft, JT.textPrimary),
-          Expanded(
-            child: _homeLoading
-              ? _buildSkeletonLoader(isDark, JT.bgSoft)
-              : RefreshIndicator(
-                  color: JT.primary,
-                  onRefresh: () async {
-                    await Future.wait([_fetchHome(), _fetchActiveServices(), _fetchBanners(), _fetchWalletBalance()]);
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      if (_activeTrip != null) _buildActiveTripBanner(isDark),
-                      _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
-                      _buildFeaturedGrid(isDark),
-                      _buildExploreSection(isDark),
-                      _buildBannerCarousel(isDark),
-                      _buildSavedPlaces(isDark),
-                      _buildRecentTrips(isDark),
-                      const SizedBox(height: 24),
-                    ]),
+      body: Stack(
+        children: [
+          // ── 1. Full-screen live map ──────────────────────────────────────
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: LatLng(_pickupLat, _pickupLng),
+              zoom: 15,
+            ),
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: false,
+            markers: _mapMarkers,
+            onMapCreated: (controller) {
+              _mapController = controller;
+              setState(() => _mapReady = true);
+              // Move to real GPS once map is ready
+              _mapController!.animateCamera(
+                CameraUpdate.newLatLng(LatLng(_pickupLat, _pickupLng)),
+              );
+            },
+          ),
+
+          // ── 2. Top gradient fade (white → transparent) ──────────────────
+          Positioned(
+            top: 0, left: 0, right: 0,
+            height: 130,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.95),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
                   ),
                 ),
+              ),
+            ),
           ),
+
+          // ── 3. Top bar overlay ───────────────────────────────────────────
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              child: _buildTopBar(isDark, Colors.transparent, JT.textPrimary),
+            ),
+          ),
+
+          // ── 4. Active trip banner (above bottom card) ────────────────────
+          if (_activeTrip != null)
+            Positioned(
+              bottom: _bottomCardHeight + 12,
+              left: 16, right: 16,
+              child: _buildActiveTripBanner(isDark),
+            ),
+
+          // ── 5. "My location" recenter button ────────────────────────────
+          Positioned(
+            right: 16,
+            bottom: _bottomCardHeight + (_activeTrip != null ? 90 : 12),
+            child: _buildRecenterButton(),
+          ),
+
+          // ── 6. Bottom card with search + services ────────────────────────
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: _buildBottomCard(isDark),
+          ),
+
+        ],
+      ),
+    );
+  }
+
+  // Approximate height of the visible bottom card area
+  double get _bottomCardHeight => 340;
+
+  Widget _buildRecenterButton() {
+    return GestureDetector(
+      onTap: () {
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(CameraPosition(
+            target: LatLng(_pickupLat, _pickupLng),
+            zoom: 15,
+          )),
+        );
+        _fetchNearbyDrivers();
+      },
+      child: Container(
+        width: 44, height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: const Icon(Icons.my_location_rounded, color: JT.primary, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildBottomCard(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 20, offset: const Offset(0, -4)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 4),
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+              color: JT.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Content
+          if (_homeLoading)
+            _buildSkeletonLoader(isDark, JT.bgSoft)
+          else ...[
+            _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
+            _buildFeaturedGrid(isDark),
+            _buildExploreSection(isDark),
+          ],
+          // Bottom nav
           _buildBottomNav(isDark, JT.bg, JT.textPrimary),
-        ]),
+        ],
       ),
     );
   }
@@ -762,7 +997,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── TOP BAR ──────────────────────────────────────────────────────────────
   Widget _buildTopBar(bool isDark, Color cardBg, Color textColor) {
     return Container(
-      color: isDark ? _darkBg : JT.bg,
+      color: cardBg == Colors.transparent ? Colors.transparent : (isDark ? _darkBg : JT.bg),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(children: [
         // Logo
