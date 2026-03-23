@@ -429,10 +429,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   void _onCouponChanged(String value) {
+    // Clear stale error/discount on code change
+    if (_promoError != null) setState(() => _promoError = null);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (value.trim().isNotEmpty) _applyPromo();
-    });
+    // Only auto-apply when user has typed a plausible code (≥4 chars)
+    if (value.trim().length >= 4) {
+      _debounce = Timer(const Duration(milliseconds: 600), () {
+        if (_promoCtrl.text.trim().isNotEmpty) _applyPromo();
+      });
+    }
   }
 
   Future<void> _applyPromo() async {
@@ -1662,6 +1667,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           onTap: () {
             HapticFeedback.selectionClick();
             setState(() => _selectedFareIndex = i);
+            // Re-apply coupon so percentage discount is correct for the new fare
+            if (_appliedPromo != null) _applyPromo();
           },
           child: AnimatedScale(
             scale: isSelected ? 1.02 : 1.0,

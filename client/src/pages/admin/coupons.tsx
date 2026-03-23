@@ -3,47 +3,75 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+const EMPTY_FORM = {
+  name: "", code: "", discountType: "amount", discountAmount: "50",
+  minTripAmount: "0", maxDiscountAmount: "", limitPerUser: "1",
+  totalUsageLimit: "", endDate: "",
+};
+
 function CouponModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
+  const f = (key: string, val: string) => setForm((p: any) => ({ ...p, [key]: val }));
   return (
     <div className="modal-backdrop-jago">
-      <div className="modal-jago" style={{ maxWidth: "560px" }}>
+      <div className="modal-jago" style={{ maxWidth: "600px" }}>
         <div className="modal-jago-header">
           <h5 className="modal-jago-title">{editing ? "Edit Coupon" : "Add Coupon"}</h5>
           <button className="modal-jago-close" onClick={onClose}><i className="bi bi-x-lg"></i></button>
         </div>
         <div className="d-flex flex-column gap-3">
+          {/* Row 1: name + code */}
           <div className="row g-3">
             <div className="col-6">
               <label className="form-label-jago">Coupon Name <span className="text-danger">*</span></label>
-              <input className="form-control" value={form.name} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
+              <input className="form-control" value={form.name} onChange={e => f("name", e.target.value)} placeholder="e.g. Welcome Offer" data-testid="input-coupon-name" />
             </div>
             <div className="col-6">
               <label className="form-label-jago">Coupon Code <span className="text-danger">*</span></label>
-              <input className="form-control" value={form.code} onChange={e => setForm((f: any) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
+              <input className="form-control" value={form.code} onChange={e => f("code", e.target.value.toUpperCase())} placeholder="e.g. WELCOME50" data-testid="input-coupon-code" />
             </div>
           </div>
+          {/* Row 2: discount type + value */}
           <div className="row g-3">
             <div className="col-6">
               <label className="form-label-jago">Discount Type</label>
-              <select className="form-select" value={form.discountType} onChange={e => setForm((f: any) => ({ ...f, discountType: e.target.value }))}>
+              <select className="form-select" value={form.discountType} onChange={e => f("discountType", e.target.value)}>
                 <option value="amount">Fixed Amount (₹)</option>
                 <option value="percentage">Percentage (%)</option>
               </select>
             </div>
             <div className="col-6">
-              <label className="form-label-jago">Discount {form.discountType === "percentage" ? "%" : "₹"}</label>
-              <input type="number" className="form-control" value={form.discountAmount} onChange={e => setForm((f: any) => ({ ...f, discountAmount: e.target.value }))} data-testid="input-discount-amount" />
+              <label className="form-label-jago">Discount {form.discountType === "percentage" ? "%" : "₹"} <span className="text-danger">*</span></label>
+              <input type="number" min="0" className="form-control" value={form.discountAmount} onChange={e => f("discountAmount", e.target.value)} data-testid="input-discount-amount" />
             </div>
           </div>
+          {/* Row 3: max discount cap + min trip */}
           <div className="row g-3">
             <div className="col-6">
-              <label className="form-label-jago">Min Trip Amount (₹)</label>
-              <input type="number" className="form-control" value={form.minTripAmount} onChange={e => setForm((f: any) => ({ ...f, minTripAmount: e.target.value }))} />
+              <label className="form-label-jago">
+                Max Discount (₹)
+                <small className="text-muted ms-1">{form.discountType === "percentage" ? "— caps % discount" : "— optional"}</small>
+              </label>
+              <input type="number" min="0" className="form-control" value={form.maxDiscountAmount} onChange={e => f("maxDiscountAmount", e.target.value)} placeholder="No cap" />
             </div>
             <div className="col-6">
+              <label className="form-label-jago">Min Trip Amount (₹)</label>
+              <input type="number" min="0" className="form-control" value={form.minTripAmount} onChange={e => f("minTripAmount", e.target.value)} />
+            </div>
+          </div>
+          {/* Row 4: per-user limit + total usage + expiry */}
+          <div className="row g-3">
+            <div className="col-4">
               <label className="form-label-jago">Limit Per User</label>
-              <input type="number" className="form-control" value={form.limitPerUser} onChange={e => setForm((f: any) => ({ ...f, limitPerUser: e.target.value }))} />
+              <input type="number" min="1" className="form-control" value={form.limitPerUser} onChange={e => f("limitPerUser", e.target.value)} />
+            </div>
+            <div className="col-4">
+              <label className="form-label-jago">Total Usage Limit</label>
+              <input type="number" min="0" className="form-control" value={form.totalUsageLimit} onChange={e => f("totalUsageLimit", e.target.value)} placeholder="Unlimited" />
+            </div>
+            <div className="col-4">
+              <label className="form-label-jago">Expiry Date</label>
+              <input type="date" className="form-control" value={form.endDate} onChange={e => f("endDate", e.target.value)} />
             </div>
           </div>
           <div className="d-flex gap-2 justify-content-end mt-2">
@@ -64,12 +92,16 @@ export default function Coupons() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" });
+  const [form, setForm] = useState({ ...EMPTY_FORM });
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/coupons", { page }],
-    queryFn: () => fetch(`/api/coupons?page=${page}&limit=15`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
+    queryFn: () => fetch(`/api/coupons?page=${page}&limit=15`)
+      .then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error"); }))
+      .then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
+
+  const resetForm = () => setForm({ ...EMPTY_FORM });
 
   const save = useMutation({
     mutationFn: (d: any) => editing
@@ -78,8 +110,7 @@ export default function Coupons() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/coupons"] });
       toast({ title: editing ? "Coupon updated" : "Coupon created" });
-      setOpen(false); setEditing(null);
-      setForm({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" });
+      setOpen(false); setEditing(null); resetForm();
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -95,15 +126,42 @@ export default function Coupons() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/coupons"] }),
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", code: "", discountType: "amount", discountAmount: "50", minTripAmount: "0", limitPerUser: "1" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); resetForm(); setOpen(true); };
   const openEdit = (c: any) => {
     setEditing(c);
-    setForm({ name: c.name, code: c.code, discountType: c.discountType || "amount", discountAmount: String(c.discountAmount || 50), minTripAmount: String(c.minTripAmount || 0), limitPerUser: String(c.limitPerUser || 1) });
+    // Normalize date for input[type=date] (ISO → YYYY-MM-DD)
+    const endDate = c.endDate ? c.endDate.substring(0, 10) : "";
+    setForm({
+      name: c.name || "",
+      code: c.code || "",
+      discountType: c.discountType || "amount",
+      discountAmount: String(c.discountAmount || 50),
+      minTripAmount: String(c.minTripAmount || 0),
+      maxDiscountAmount: c.maxDiscountAmount ? String(c.maxDiscountAmount) : "",
+      limitPerUser: String(c.limitPerUser || 1),
+      totalUsageLimit: c.totalUsageLimit ? String(c.totalUsageLimit) : "",
+      endDate,
+    });
     setOpen(true);
   };
 
+  const formatDiscount = (c: any) => {
+    const isPercent = c.discountType === "percentage" || c.discountType === "percent";
+    const label = isPercent ? `${c.discountAmount}%` : `₹${c.discountAmount}`;
+    const cap = c.maxDiscountAmount ? ` (max ₹${c.maxDiscountAmount})` : "";
+    return label + cap;
+  };
+
+  const formatExpiry = (c: any) => {
+    if (!c.endDate) return "—";
+    try {
+      const dt = new Date(c.endDate);
+      return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    } catch { return c.endDate; }
+  };
+
   const totalPages = Math.ceil((data?.total || 0) / 15);
-  const coupons = data?.data || data || [];
+  const coupons: any[] = data?.data || (Array.isArray(data) ? data : []);
 
   return (
     <div className="container-fluid">
@@ -126,6 +184,8 @@ export default function Coupons() {
                   <th>Discount</th>
                   <th>Min Amount</th>
                   <th>Limit/User</th>
+                  <th>Total Uses</th>
+                  <th>Expiry</th>
                   <th>Status</th>
                   <th className="text-center">Action</th>
                 </tr>
@@ -133,24 +193,22 @@ export default function Coupons() {
               <tbody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, i) => (
-                    <tr key={i}>{Array(8).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
+                    <tr key={i}>{Array(10).fill(0).map((_, j) => <td key={j}><div style={{ height: "14px", background: "#f1f5f9", borderRadius: "4px" }} /></td>)}</tr>
                   ))
                 ) : coupons.length ? (
                   coupons.map((c: any, idx: number) => (
                     <tr key={c.id} data-testid={`coupon-row-${c.id}`}>
                       <td>{(page - 1) * 15 + idx + 1}</td>
                       <td className="fw-medium title-color">{c.name}</td>
-                      <td><span className="badge bg-primary">{c.code}</span></td>
-                      <td>
-                        {c.discountType === "percentage"
-                          ? `${c.discountAmount}%`
-                          : `₹${c.discountAmount}`}
-                      </td>
-                      <td>₹{c.minTripAmount || 0}</td>
+                      <td><span className="badge bg-primary" style={{ letterSpacing: "1px" }}>{c.code}</span></td>
+                      <td><span className="badge bg-success-subtle text-success">{formatDiscount(c)}</span></td>
+                      <td>{c.minTripAmount > 0 ? `₹${c.minTripAmount}` : "—"}</td>
                       <td>{c.limitPerUser || 1}x</td>
+                      <td>{c.totalUsageLimit || <span className="text-muted">∞</span>}</td>
+                      <td className={c.endDate && new Date(c.endDate) < new Date() ? "text-danger" : ""}>{formatExpiry(c)}</td>
                       <td>
                         <label className="switcher">
-                          <input type="checkbox" className="switcher_input" checked={c.isActive} onChange={() => toggleStatus.mutate({ id: c.id, isActive: !c.isActive })} data-testid={`toggle-coupon-${c.id}`} />
+                          <input type="checkbox" className="switcher_input" checked={!!c.isActive} onChange={() => toggleStatus.mutate({ id: c.id, isActive: !c.isActive })} data-testid={`toggle-coupon-${c.id}`} />
                           <span className="switcher_control"></span>
                         </label>
                       </td>
@@ -163,7 +221,7 @@ export default function Coupons() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={8}>
+                  <tr><td colSpan={10}>
                     <div className="d-flex flex-column justify-content-center align-items-center gap-2 py-4">
                       <i className="bi bi-ticket" style={{ fontSize: "2rem", color: "#94a3b8" }}></i>
                       <p className="text-muted mb-0">No coupons found</p>

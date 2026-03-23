@@ -39,7 +39,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final SocketService _socket = SocketService();
 
@@ -89,6 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadUser();
     _getLocation();
     _fetchHome();
@@ -114,8 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingFcmNotification());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
-    // Start nearby drivers polling (every 4s for smooth movement)
-    _nearbyDriversTimer = Timer.periodic(const Duration(seconds: 4), (_) => _fetchNearbyDrivers());
+    // Start nearby drivers polling (10s — battery-optimised, still smooth enough)
+    _nearbyDriversTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchNearbyDrivers());
     _fetchNearbyDrivers(); // fetch immediately
   }
 
@@ -546,6 +547,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _loadingTimeout?.cancel();
     _bannerTimer?.cancel();
     _searchingTimer?.cancel();
@@ -558,6 +560,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _mapController?.dispose();
     // Don't disconnect socket — it's a shared singleton used by other screens
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // App went to background — pause the nearby-drivers poll to save battery
+      _nearbyDriversTimer?.cancel();
+      _nearbyDriversTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      // App came back to foreground — restart polling
+      if (_nearbyDriversTimer == null) {
+        _nearbyDriversTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchNearbyDrivers());
+        _fetchNearbyDrivers(); // refresh immediately on resume
+      }
+    }
   }
 
   Future<void> _loadUser() async {

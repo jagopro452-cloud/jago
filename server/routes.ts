@@ -3674,9 +3674,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Sanitize coupon form data: coerce empty strings to null for typed columns
+  const sanitizeCoupon = (body: any) => ({
+    ...body,
+    discountAmount: body.discountAmount != null ? String(body.discountAmount) : '0',
+    minTripAmount: body.minTripAmount != null ? String(body.minTripAmount) : '0',
+    maxDiscountAmount: body.maxDiscountAmount && String(body.maxDiscountAmount).trim() !== ''
+      ? String(body.maxDiscountAmount) : null,
+    totalUsageLimit: body.totalUsageLimit && String(body.totalUsageLimit).trim() !== ''
+      ? parseInt(String(body.totalUsageLimit), 10) : null,
+    limitPerUser: body.limitPerUser && String(body.limitPerUser).trim() !== ''
+      ? parseInt(String(body.limitPerUser), 10) : 1,
+    endDate: body.endDate && String(body.endDate).trim() !== ''
+      ? new Date(body.endDate) : null,
+  });
+
   app.post("/api/coupons", requireAdminAuth, async (req, res) => {
     try {
-      const coupon = await storage.createCoupon(req.body);
+      const coupon = await storage.createCoupon(sanitizeCoupon(req.body));
       res.status(201).json(coupon);
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -3685,7 +3700,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/coupons/:id", requireAdminAuth, async (req, res) => {
     try {
-      const coupon = await storage.updateCoupon(String(req.params.id), req.body);
+      const coupon = await storage.updateCoupon(String(req.params.id), sanitizeCoupon(req.body));
       res.json(coupon);
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
@@ -11049,6 +11064,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const customer = (req as any).currentUser;
       const { code, fareAmount } = req.body;
       if (!code) return res.status(400).json({ message: "Coupon code required" });
+      const fare = parseFloat(fareAmount) || 0;
       const r = await rawDb.execute(rawSql`
         SELECT * FROM coupon_setups WHERE code=${code.toUpperCase()} AND is_active=true
           AND (end_date IS NULL OR end_date >= now())
@@ -11056,7 +11072,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(400).json({ message: "Invalid or expired coupon" });
       const coupon = camelize(r.rows[0]) as any;
-      // Check usage limits
+
+      // ── Min trip amount check ──────────────────────────────────────────────
+      const minAmt = parseFloat(coupon.minTripAmount || '0');
+      if (fare > 0 && minAmt > 0 && fare < minAmt) {
+        return res.status(400).json({
+          message: `Minimum fare ₹${minAmt.toFixed(0)} required for this coupon`,
+        });
+      }
+
+      // ── Usage limits ──────────────────────────────────────────────────────
       if (coupon.totalUsageLimit) {
         const usageR = await rawDb.execute(rawSql`
           SELECT COUNT(*) AS cnt FROM trip_requests
@@ -11076,14 +11101,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (userUsed >= parseInt(coupon.limitPerUser, 10))
           return res.status(400).json({ message: "You have already used this coupon" });
       }
+
+      // ── Discount calculation ───────────────────────────────────────────────
+      // Bug fix: admin panel saves "percentage"; handle both "percent" and "percentage"
       let discount = 0;
-      if (coupon.discountType === "percent") {
-        discount = (fareAmount * coupon.discountAmount) / 100;
-        if (coupon.maxDiscountAmount) discount = Math.min(discount, coupon.maxDiscountAmount);
+      if (coupon.discountType === "percent" || coupon.discountType === "percentage") {
+        discount = fare > 0 ? (fare * parseFloat(coupon.discountAmount)) / 100 : 0;
+        if (coupon.maxDiscountAmount) discount = Math.min(discount, parseFloat(coupon.maxDiscountAmount));
       } else {
-        discount = coupon.discountAmount || 0;
+        // flat amount
+        discount = parseFloat(coupon.discountAmount) || 0;
       }
-      discount = Math.min(discount, fareAmount);
+      if (fare > 0) discount = Math.min(discount, fare);
+      discount = Math.round(discount * 100) / 100;
+
       res.json({
         success: true,
         couponId: coupon.id,
@@ -11091,8 +11122,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         discountType: coupon.discountType,
         discountValue: coupon.discountAmount,
         discount: parseFloat(discount.toFixed(2)),
-        finalFare: parseFloat((fareAmount - discount).toFixed(2)),
-        message: `Coupon applied! You save ₹${discount.toFixed(2)}`,
+        finalFare: fare > 0 ? parseFloat((fare - discount).toFixed(2)) : null,
+        message: fare > 0
+          ? `Coupon applied! You save ₹${discount.toFixed(2)}`
+          : `Coupon "${coupon.code}" is valid`,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

@@ -17,11 +17,12 @@ class LocationService {
         permission == LocationPermission.whileInUse;
   }
 
-  static Future<Position?> getCurrentPosition() async {
+  static Future<Position?> getCurrentPosition({bool highAccuracy = false}) async {
     try {
       return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
+        locationSettings: LocationSettings(
+          // Use high accuracy only when explicitly needed (first-fix, active trip start)
+          accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.balanced,
         ),
       );
     } catch (_) {
@@ -29,11 +30,12 @@ class LocationService {
     }
   }
 
-  static Stream<Position> getLocationStream() {
+  static Stream<Position> getLocationStream({bool highAccuracy = false}) {
     return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+      locationSettings: LocationSettings(
+        // Use balanced (cell+WiFi) when idle; high only during active trip
+        accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.balanced,
+        distanceFilter: highAccuracy ? 5 : 20, // 5 m on trip, 20 m when idle
       ),
     );
   }

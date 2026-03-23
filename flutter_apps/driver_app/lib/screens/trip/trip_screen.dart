@@ -75,6 +75,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   bool _nearPickup = false;
   final _otpCtrl = TextEditingController();
   Timer? _locationTimer;
+  StreamSubscription<Position>? _posStream;
+  Position? _lastTripPosition;
   Timer? _tripTimer;
   Timer? _statePollTimer; // 5s poll — server is source of truth
   List<String> _cancelReasons = [];
@@ -303,6 +305,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   void dispose() {
     _otpCtrl.dispose();
     _locationTimer?.cancel();
+    _posStream?.cancel();
     _stopTripTimer();
     _stopStatePoll();
     _cancelSub?.cancel();
@@ -425,54 +428,57 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   // ── Location updates ──────────────────────────────────────────────────────
 
   void _startLocationUpdates() {
-    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) => _updateLocation());
-  }
+    _locationTimer?.cancel();
+    _posStream?.cancel();
 
-  Future<void> _updateLocation() async {
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      final lat = pos.latitude;
-      final lng = pos.longitude;
+    // GPS stream: high-accuracy (active trip), but emits only on movement ≥ 5 m
+    _posStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5, // update every 5 m — fine-grained for routing
+      ),
+    ).listen((pos) {
+      _lastTripPosition = pos;
+      if (!mounted) return;
+      setState(() => _center = LatLng(pos.latitude, pos.longitude));
+      _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+      _updateSelfMarker(pos.latitude, pos.longitude);
+      _computeDistanceAndEta(pos.latitude, pos.longitude);
+    }, onError: (_) {});
 
-      if (mounted) {
-        setState(() => _center = LatLng(lat, lng));
-        _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
-        _updateSelfMarker(lat, lng);
-      }
-
-      _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+    // Server-update timer: every 3 s — uses cached position from stream
+    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      final pos = _lastTripPosition;
+      if (pos == null || !mounted) return;
+      _socket.sendLocation(lat: pos.latitude, lng: pos.longitude, speed: pos.speed);
       final locHeaders = await AuthService.getHeaders();
       http.post(Uri.parse(ApiConfig.driverLocation),
         headers: {...locHeaders, 'Content-Type': 'application/json'},
-        body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true})).catchError((_) => http.Response('', 500));
+        body: jsonEncode({'lat': pos.latitude, 'lng': pos.longitude, 'isOnline': true}))
+          .catchError((_) => http.Response('', 500));
+    });
+  }
 
-      // Live distance to target
-      if (_trip != null) {
-        final toPickup = _status == 'accepted' || _status == 'driver_assigned';
-        final tLat = toPickup
-          ? double.tryParse(_trip!['pickupLat']?.toString() ?? '') ?? 0.0
-          : double.tryParse(_trip!['destinationLat']?.toString() ?? '') ?? 0.0;
-        final tLng = toPickup
-          ? double.tryParse(_trip!['pickupLng']?.toString() ?? '') ?? 0.0
-          : double.tryParse(_trip!['destinationLng']?.toString() ?? '') ?? 0.0;
-        if (tLat != 0 && tLng != 0) {
-          final dm = Geolocator.distanceBetween(lat, lng, tLat, tLng);
-          final etaS = dm > 0 ? (dm / 8.33).round() : 0; // ~30 km/h avg
-          if (mounted) setState(() { _distanceToTargetM = dm; _etaSec = etaS; });
-
-          // 100m arrival detection
-          if (toPickup) {
-            final near = dm <= 100;
-            if (mounted && near != _nearPickup) {
-              setState(() => _nearPickup = near);
-              if (near) _showSnack('You are near the pickup location!');
-            }
-          }
-        }
+  void _computeDistanceAndEta(double lat, double lng) {
+    if (_trip == null) return;
+    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
+    final tLat = toPickup
+      ? double.tryParse(_trip!['pickupLat']?.toString() ?? '') ?? 0.0
+      : double.tryParse(_trip!['destinationLat']?.toString() ?? '') ?? 0.0;
+    final tLng = toPickup
+      ? double.tryParse(_trip!['pickupLng']?.toString() ?? '') ?? 0.0
+      : double.tryParse(_trip!['destinationLng']?.toString() ?? '') ?? 0.0;
+    if (tLat == 0 && tLng == 0) return;
+    final dm = Geolocator.distanceBetween(lat, lng, tLat, tLng);
+    final etaS = dm > 0 ? (dm / 8.33).round() : 0;
+    if (mounted) setState(() { _distanceToTargetM = dm; _etaSec = etaS; });
+    if (toPickup) {
+      final near = dm <= 100;
+      if (mounted && near != _nearPickup) {
+        setState(() => _nearPickup = near);
+        if (near) _showSnack('You are near the pickup location!');
       }
-    } catch (_) {}
+    }
   }
 
   // ── Cancel reasons ────────────────────────────────────────────────────────
@@ -545,7 +551,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         final commission = pricing['platformDeduction'] ?? 0;
         _socket.updateTripStatus(tripId, 'completed');
         _socket.setActiveTrip(null); // clear trip room tracking
-        _locationTimer?.cancel();
+        _locationTimer?.cancel(); _posStream?.cancel();
         _stopTripTimer();
         print('[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
         if (!mounted) return;

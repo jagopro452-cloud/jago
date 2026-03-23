@@ -41,7 +41,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
@@ -63,6 +63,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String _vehicleModel = '';
   String _zone = '';
   Timer? _locationTimer;
+  StreamSubscription<Position>? _posStream; // live GPS stream — battery-efficient
+  Position? _lastPosition; // cached position for server updates
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
   int _navIndex = 0;
@@ -106,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
       ..repeat(reverse: true);
     _checkVerificationStatus();
@@ -314,13 +317,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) s.cancel();
     _locationTimer?.cancel();
+    _posStream?.cancel();
     _idleTimer?.cancel();
     _heatmap.stopRefresh();
     _pulseCtrl.dispose();
     _socket.disconnect();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // App backgrounded — suspend GPS stream + server poll to save battery
+      // Socket stays connected so the driver still receives trip requests via FCM
+      _locationTimer?.cancel();
+      _locationTimer = null;
+      _posStream?.cancel();
+      _posStream = null;
+    } else if (state == AppLifecycleState.resumed && _isOnline) {
+      // Came back to foreground — restart location streaming
+      _startLocationStreaming();
+    }
   }
 
   Future<void> _loadUser() async {
@@ -486,51 +506,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _startLocationStreaming() {
     _locationTimer?.cancel();
-    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      try {
-        final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        );
-        final lat = pos.latitude;
-        final lng = pos.longitude;
-        if (!mounted) return;
-        setState(() => _center = LatLng(lat, lng));
+    _posStream?.cancel();
 
-        final reqHeaders = await AuthService.getHeaders();
-        _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
-        // Send isOnline=true so the server doesn't reset is_online to false on each update
-        http.post(
-          Uri.parse(ApiConfig.driverLocation),
-          headers: reqHeaders,
-          body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true}),
-        ).catchError((_) => http.Response('', 500));
+    // ── GPS stream: hardware-managed, emits only when device moves ≥ 15 m ──
+    // Far more battery-efficient than calling getCurrentPosition every 3 s.
+    _posStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.balanced, // cell+WiFi assisted — less power than 'high'
+        distanceFilter: 15,                  // no update until driver moves 15 m
+      ),
+    ).listen((pos) {
+      _lastPosition = pos;
+      if (mounted) setState(() => _center = LatLng(pos.latitude, pos.longitude));
+    }, onError: (_) {});
 
-        if (_isOnline && _incomingTrip == null) {
-          try {
-            final resp = await http.get(
-              Uri.parse(ApiConfig.driverIncomingTrip),
-              headers: reqHeaders,
-            ).timeout(const Duration(seconds: 4));
-            if (resp.statusCode == 200 && mounted) {
-              final data = jsonDecode(resp.body) as Map<String, dynamic>;
-              final trip = data['trip'];
-              final stage = (data['stage'] ?? '').toString();
-              if (trip != null && stage == 'new_request' && _incomingTrip == null) {
-                final tripMap = Map<String, dynamic>.from(trip as Map);
-                tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
-                setState(() => _incomingTrip = tripMap);
-                _showIncomingTrip();
-              }
+    // ── Server-update timer: every 5 s (was 3 s) — sends cached position ──
+    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final pos = _lastPosition;
+      if (pos == null || !mounted) return;
+
+      final lat = pos.latitude;
+      final lng = pos.longitude;
+      final reqHeaders = await AuthService.getHeaders();
+
+      _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+      // Fire-and-forget — don't await; avoids blocking the timer tick
+      http.post(
+        Uri.parse(ApiConfig.driverLocation),
+        headers: reqHeaders,
+        body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true}),
+      ).catchError((_) => http.Response('', 500));
+
+      if (_isOnline && _incomingTrip == null) {
+        try {
+          final resp = await http.get(
+            Uri.parse(ApiConfig.driverIncomingTrip),
+            headers: reqHeaders,
+          ).timeout(const Duration(seconds: 4));
+          if (resp.statusCode == 200 && mounted) {
+            final data = jsonDecode(resp.body) as Map<String, dynamic>;
+            final trip = data['trip'];
+            final stage = (data['stage'] ?? '').toString();
+            if (trip != null && stage == 'new_request' && _incomingTrip == null) {
+              final tripMap = Map<String, dynamic>.from(trip as Map);
+              tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+              setState(() => _incomingTrip = tripMap);
+              _showIncomingTrip();
             }
-          } catch (_) {}
-        }
-      } catch (_) {}
+          }
+        } catch (_) {}
+      }
     });
   }
 
   void _stopLocationStreaming() {
     _locationTimer?.cancel();
     _locationTimer = null;
+    _posStream?.cancel();
+    _posStream = null;
+    _lastPosition = null;
   }
 
   // ── Heatmap methods ────────────────────────────────────────────────────
