@@ -412,13 +412,18 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         // ── Parcel intent → navigate to ParcelBookingScreen ──────────────
         if (intent == _intentParcel) {
           if (mounted) setState(() => _loading = false);
+          if (_currentLat == null || _currentLng == null) {
+            await _speak('I could not detect your location. Please enable GPS and try again.');
+            if (mounted) _showSnack('Location unavailable. Please enable GPS.');
+            return;
+          }
           await _speak('Sure! Opening parcel booking for you.');
           if (mounted) {
             Navigator.pushReplacement(context, MaterialPageRoute(
               builder: (_) => ParcelBookingScreen(
                 pickupAddress: _currentAddress,
-                pickupLat: _currentLat ?? 17.3850,
-                pickupLng: _currentLng ?? 78.4867,
+                pickupLat: _currentLat!,
+                pickupLng: _currentLng!,
               ),
             ));
           }

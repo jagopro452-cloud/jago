@@ -27,7 +27,8 @@ import '../booking/voice_booking_screen.dart';
 import '../booking/location_screen.dart';
 import '../../services/trip_service.dart';
 import '../auth/login_screen.dart';
-import '../b2b/b2b_dashboard_screen.dart';
+import '../b2b/b2b_login_screen.dart';
+import '../outstation_pool/outstation_pool_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1721,7 +1722,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _drawerItem(Icons.local_offer_rounded, 'Offers', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const OffersScreen())); }),
           _drawerItem(Icons.bookmark_rounded, 'Saved Places', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedPlacesScreen())); }),
           _drawerItem(Icons.people_alt_rounded, 'Refer & Earn', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen())); }),
-          _drawerItem(Icons.business_center_rounded, 'B2B Business', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const B2BDashboardScreen())); }),
+          _drawerItem(Icons.directions_car_outlined, 'Intercity Pool', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const OutstationPoolScreen())); }),
+          _drawerItem(Icons.business_center_rounded, 'B2B Business', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const B2BLoginScreen())); }),
           _drawerItem(Icons.support_agent_rounded, 'Support', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportChatScreen())); }),
           const Spacer(),
           _drawerItem(Icons.person_rounded, 'Profile', textColor, () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())); }),

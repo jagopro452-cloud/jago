@@ -96,6 +96,8 @@ class ApiConfig {
 
   // ── Parcel ───────────────────────────────────────────────────────────
   static String get parcelBook => '$baseUrl/api/app/parcel/book';
+  static String get parcelQuote => '$baseUrl/api/app/parcel/quote';
+  static String get estimateParcelFare => '$baseUrl/api/app/customer/estimate-parcel-fare';
   static String get parcelOrders => '$baseUrl/api/app/parcel/orders';
   static String get parcelOptimizeRoute => '$baseUrl/api/app/parcel/optimize-route';
   static String parcelTrack(String id) => '$baseUrl/api/app/parcel/$id/track';
@@ -105,6 +107,14 @@ class ApiConfig {
   // ── B2B ──────────────────────────────────────────────────────────────
   static String get b2bRegister => '$baseUrl/api/app/b2b/register';
   static String get b2bDashboard => '$baseUrl/api/app/b2b/dashboard';
+  static String get b2bLogin => '$baseUrl/api/app/b2b/login';
+  static String get b2bSetPassword => '$baseUrl/api/app/b2b/set-password';
+  static String get b2bDashboardById => '$baseUrl/api/app/b2b/dashboard-by-id';
+
+  // ── Carpool / Outstation Pool ─────────────────────────────────────────
+  static String get outstationPoolSearch => '$baseUrl/api/app/customer/outstation-pool/search';
+  static String get outstationPoolBook => '$baseUrl/api/app/customer/outstation-pool/book';
+  static String get outstationPoolBookings => '$baseUrl/api/app/customer/outstation-pool/bookings';
 
   // ── Voice Booking ────────────────────────────────────────────────────
   static String get voiceBookingParse => '$baseUrl/api/app/voice-booking/parse';

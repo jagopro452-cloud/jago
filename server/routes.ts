@@ -13421,11 +13421,93 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── B2B: Schema migration — add login columns ─────────────────────────────
+  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_email VARCHAR(255)`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_password_hash VARCHAR(255)`).catch(() => {});
+  await rawDb.execute(rawSql`CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_email ON b2b_companies(b2b_email) WHERE b2b_email IS NOT NULL`).catch(() => {});
+
+  // ── B2B: Login with company credentials (no app user session needed) ──────
+  app.post("/api/app/b2b/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "email and password required" });
+      const r = await rawDb.execute(rawSql`
+        SELECT id, company_name, b2b_email, b2b_password_hash, status, is_active,
+               wallet_balance, credit_limit, delivery_plan, commission_pct
+        FROM b2b_companies WHERE b2b_email = ${email.trim().toLowerCase()} LIMIT 1
+      `);
+      if (!r.rows.length) return res.status(401).json({ message: "Invalid email or password" });
+      const co = r.rows[0] as any;
+      if (!co.b2b_password_hash) return res.status(401).json({ message: "Password not set. Please contact admin." });
+      const valid = await bcrypt.compare(String(password), co.b2b_password_hash);
+      if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+      if (!co.is_active) return res.status(403).json({ message: "B2B account is inactive. Contact admin." });
+      // Return company info as session data (client stores it)
+      res.json({ success: true, company: camelize(co) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── B2B: Set/change password (authenticated user who owns the company) ─────
+  app.post("/api/app/b2b/set-password", authApp, async (req, res) => {
+    try {
+      const userId = (req as any).currentUser?.id;
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "email and password required" });
+      if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const r = await rawDb.execute(rawSql`SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1`);
+      if (!r.rows.length) return res.status(404).json({ message: "No B2B company found for your account" });
+      const hash = await bcrypt.hash(String(password), 10);
+      await rawDb.execute(rawSql`
+        UPDATE b2b_companies SET b2b_email=${email.trim().toLowerCase()}, b2b_password_hash=${hash}, updated_at=NOW()
+        WHERE owner_id=${userId}::uuid
+      `);
+      res.json({ success: true, message: "B2B login credentials set successfully" });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── B2B: Dashboard via B2B login (company ID from body) ──────────────────
+  app.post("/api/app/b2b/dashboard-by-id", async (req, res) => {
+    try {
+      const { companyId } = req.body;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const compR = await rawDb.execute(rawSql`SELECT * FROM b2b_companies WHERE id=${companyId}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+      if (!compR.rows.length) return res.status(404).json({ message: "No B2B account found" });
+      const company = camelize(compR.rows[0]) as any;
+      const statsR = await rawDb.execute(rawSql`
+        SELECT COUNT(*)::int as total_orders,
+          COUNT(*) FILTER (WHERE current_status='completed')::int as completed,
+          COUNT(*) FILTER (WHERE current_status='cancelled')::int as cancelled,
+          COUNT(*) FILTER (WHERE current_status IN ('searching','driver_assigned','in_transit'))::int as active,
+          COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_spent
+        FROM parcel_orders WHERE is_b2b=true AND b2b_company_id=${company.id}::uuid
+      `).catch(() => ({ rows: [{}] as any[] }));
+      const stats = camelize(statsR.rows[0]) as any;
+      const recentR = await rawDb.execute(rawSql`
+        SELECT po.id, po.pickup_address, po.current_status, po.total_fare, po.created_at,
+          dr.full_name as driver_name
+        FROM parcel_orders po LEFT JOIN users dr ON dr.id = po.driver_id
+        WHERE po.is_b2b=true AND po.b2b_company_id=${company.id}::uuid
+        ORDER BY po.created_at DESC LIMIT 10
+      `).catch(() => ({ rows: [] as any[] }));
+      res.json({
+        company,
+        stats: {
+          totalOrders: parseInt(stats.totalOrders || 0),
+          completedOrders: parseInt(stats.completed || 0),
+          cancelledOrders: parseInt(stats.cancelled || 0),
+          activeOrders: parseInt(stats.active || 0),
+          totalSpent: parseFloat(stats.totalSpent || 0),
+        },
+        recentOrders: camelize(recentR.rows),
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   // ── B2B: Company registration (app users) ────────────────────────────────
   app.post("/api/app/b2b/register", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
-      const { companyName, gstNumber, address, contactName, contactPhone, deliveryPlan = 'pay_per_delivery' } = req.body;
+      const { companyName, gstNumber, address, contactName, contactPhone, deliveryPlan = 'pay_per_delivery', email, password } = req.body;
       if (!companyName) return res.status(400).json({ message: "companyName required" });
 
       // Check if this user already has a B2B company
@@ -13433,12 +13515,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
 
+      const pwHash = password ? await bcrypt.hash(String(password), 10) : null;
+
       if (existing.rows.length) {
         await rawDb.execute(rawSql`
           UPDATE b2b_companies
           SET company_name=${companyName}, gst_number=${gstNumber || null},
               address=${address || null}, contact_name=${contactName || null},
               contact_phone=${contactPhone || null}, delivery_plan=${deliveryPlan},
+              ${email ? rawSql`b2b_email=${email.trim().toLowerCase()},` : rawSql``}
+              ${pwHash ? rawSql`b2b_password_hash=${pwHash},` : rawSql``}
               updated_at=NOW()
           WHERE owner_id=${userId}::uuid
         `);
@@ -13447,10 +13533,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
       const ins = await rawDb.execute(rawSql`
         INSERT INTO b2b_companies
-          (owner_id, company_name, gst_number, address, contact_name, contact_phone, delivery_plan, status, is_active)
+          (owner_id, company_name, gst_number, address, contact_name, contact_phone, delivery_plan, status, is_active,
+           b2b_email, b2b_password_hash)
         VALUES
           (${userId}::uuid, ${companyName}, ${gstNumber || null}, ${address || null},
-           ${contactName || null}, ${contactPhone || null}, ${deliveryPlan}, 'pending', true)
+           ${contactName || null}, ${contactPhone || null}, ${deliveryPlan}, 'pending', true,
+           ${email ? email.trim().toLowerCase() : null}, ${pwHash})
         RETURNING id
       `);
       res.json({ success: true, message: "B2B company registered — pending admin approval", companyId: (ins.rows[0] as any).id });

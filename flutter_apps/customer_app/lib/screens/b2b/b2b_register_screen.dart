@@ -19,9 +19,14 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
   final _addressCtrl = TextEditingController();
   final _contactNameCtrl = TextEditingController();
   final _contactPhoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
 
   String _deliveryPlan = 'pay_per_delivery';
   bool _loading = false;
+  bool _obscurePass = true;
+  bool _obscureConfirm = true;
 
   static const _plans = [
     {'value': 'pay_per_delivery', 'label': 'Pay Per Delivery', 'desc': 'Pay only for each delivery'},
@@ -36,6 +41,9 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
     _addressCtrl.dispose();
     _contactNameCtrl.dispose();
     _contactPhoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPassCtrl.dispose();
     super.dispose();
   }
 
@@ -44,17 +52,21 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
+      final body = <String, dynamic>{
+        'companyName': _companyNameCtrl.text.trim(),
+        'gstNumber': _gstCtrl.text.trim(),
+        'address': _addressCtrl.text.trim(),
+        'contactName': _contactNameCtrl.text.trim(),
+        'contactPhone': _contactPhoneCtrl.text.trim(),
+        'deliveryPlan': _deliveryPlan,
+      };
+      if (_emailCtrl.text.trim().isNotEmpty) body['email'] = _emailCtrl.text.trim().toLowerCase();
+      if (_passwordCtrl.text.isNotEmpty) body['password'] = _passwordCtrl.text;
+
       final res = await http.post(
         Uri.parse(ApiConfig.b2bRegister),
         headers: headers,
-        body: jsonEncode({
-          'companyName': _companyNameCtrl.text.trim(),
-          'gstNumber': _gstCtrl.text.trim(),
-          'address': _addressCtrl.text.trim(),
-          'contactName': _contactNameCtrl.text.trim(),
-          'contactPhone': _contactPhoneCtrl.text.trim(),
-          'deliveryPlan': _deliveryPlan,
-        }),
+        body: jsonEncode(body),
       ).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
@@ -198,6 +210,80 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Phone number is required';
                         if (v.trim().length < 10) return 'Enter valid phone number';
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // B2B Login credentials
+              _sectionLabel('B2B Login Credentials'),
+              const SizedBox(height: 6),
+              Text(
+                'Set a separate email & password to access the B2B portal',
+                style: TextStyle(fontSize: 11, color: JT.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              _card(
+                child: Column(
+                  children: [
+                    _field(
+                      controller: _emailCtrl,
+                      label: 'Business Email (for B2B login)',
+                      hint: 'company@example.com',
+                      icon: Icons.email_rounded,
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordCtrl,
+                      obscureText: _obscurePass,
+                      decoration: InputDecoration(
+                        labelText: 'B2B Password',
+                        hintText: 'Min 6 characters',
+                        prefixIcon: Icon(Icons.lock_rounded, color: JT.primary, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePass ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              color: JT.textSecondary, size: 20),
+                          onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.border)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.border)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.primary, width: 1.5)),
+                        filled: true, fillColor: JT.bgSoft,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        labelStyle: TextStyle(color: JT.textSecondary, fontSize: 13),
+                        hintStyle: TextStyle(color: JT.textSecondary.withValues(alpha: 0.6), fontSize: 13),
+                      ),
+                      validator: (v) {
+                        if (v != null && v.isNotEmpty && v.length < 6) return 'Password must be at least 6 characters';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirmPassCtrl,
+                      obscureText: _obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm B2B Password',
+                        hintText: 'Re-enter password',
+                        prefixIcon: Icon(Icons.lock_outline_rounded, color: JT.primary, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscureConfirm ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              color: JT.textSecondary, size: 20),
+                          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.border)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.border)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JT.primary, width: 1.5)),
+                        filled: true, fillColor: JT.bgSoft,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        labelStyle: TextStyle(color: JT.textSecondary, fontSize: 13),
+                      ),
+                      validator: (v) {
+                        if (_passwordCtrl.text.isNotEmpty && v != _passwordCtrl.text) return 'Passwords do not match';
                         return null;
                       },
                     ),

@@ -318,7 +318,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         widget.pickupLat, widget.pickupLng, _destLat, _destLng);
       final headers = await AuthService.getHeaders();
       final r = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/parcel/quote'),
+        Uri.parse(ApiConfig.parcelQuote),
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'vehicleCategory': _vehicle.key,
@@ -360,7 +360,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       final dist = _haversine(widget.pickupLat, widget.pickupLng, _destLat, _destLng);
       final headers = await AuthService.getHeaders();
       final r = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/parcel/book'),
+        Uri.parse(ApiConfig.parcelBook),
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'vehicleCategory': _vehicle.key,

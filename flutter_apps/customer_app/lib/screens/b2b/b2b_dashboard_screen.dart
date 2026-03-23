@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import 'b2b_login_screen.dart';
 import 'b2b_register_screen.dart';
 
 class B2BDashboardScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class B2BDashboardScreen extends StatefulWidget {
 class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
   bool _loading = true;
   bool _notFound = false;
+  bool _isB2BSession = false; // true = logged in via B2B email/password
   Map<String, dynamic>? _company;
   Map<String, dynamic>? _stats;
   List<dynamic> _recentOrders = [];
@@ -28,11 +31,26 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
   Future<void> _fetchDashboard() async {
     setState(() { _loading = true; _notFound = false; });
     try {
-      final headers = await AuthService.getHeaders();
-      final res = await http.get(
-        Uri.parse(ApiConfig.b2bDashboard),
-        headers: headers,
-      ).timeout(const Duration(seconds: 15));
+      // Check if user is in a B2B login session (via email/password)
+      final prefs = await SharedPreferences.getInstance();
+      final b2bCompanyId = prefs.getString('b2b_company_id');
+
+      http.Response res;
+      if (b2bCompanyId != null && b2bCompanyId.isNotEmpty) {
+        _isB2BSession = true;
+        res = await http.post(
+          Uri.parse(ApiConfig.b2bDashboardById),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'companyId': b2bCompanyId}),
+        ).timeout(const Duration(seconds: 15));
+      } else {
+        _isB2BSession = false;
+        final headers = await AuthService.getHeaders();
+        res = await http.get(
+          Uri.parse(ApiConfig.b2bDashboard),
+          headers: headers,
+        ).timeout(const Duration(seconds: 15));
+      }
 
       if (!mounted) return;
       if (res.statusCode == 404) {
@@ -53,6 +71,16 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('b2b_company_id');
+    await prefs.remove('b2b_company_name');
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const B2BLoginScreen()),
+    );
   }
 
   Color _statusColor(String? s) {
@@ -154,13 +182,20 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
             onPressed: _fetchDashboard,
             tooltip: 'Refresh',
           ),
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const B2BRegisterScreen()),
-            ).then((_) => _fetchDashboard()),
-            tooltip: 'Edit Profile',
-          ),
+          if (!_isB2BSession)
+            IconButton(
+              icon: const Icon(Icons.edit_rounded),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const B2BRegisterScreen()),
+              ).then((_) => _fetchDashboard()),
+              tooltip: 'Edit Profile',
+            ),
+          if (_isB2BSession)
+            IconButton(
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: _logout,
+              tooltip: 'Logout',
+            ),
         ],
       ),
       body: RefreshIndicator(
