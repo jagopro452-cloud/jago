@@ -11,6 +11,12 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
+}
+
 android {
     namespace "com.mindwhile.jago_customer"
     compileSdk 36
@@ -48,9 +54,10 @@ android {
         applicationId "com.mindwhile.jago_customer"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 32
-        versionName "1.0.32"
+        versionCode 33
+        versionName "1.0.33"
         multiDexEnabled true
+        manifestPlaceholders = [googleMapsApiKey: localProperties.getProperty('GOOGLE_MAPS_KEY', '')]
     }
 
     buildTypes {

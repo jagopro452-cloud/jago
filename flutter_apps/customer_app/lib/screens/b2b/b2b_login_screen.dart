@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../services/auth_service.dart';
 import 'b2b_dashboard_screen.dart';
 import 'b2b_register_screen.dart';
 
@@ -200,9 +201,21 @@ class _B2BLoginScreenState extends State<B2BLoginScreen> {
                 child: TextButton.icon(
                   icon: Icon(Icons.manage_accounts_rounded, size: 18, color: JT.textSecondary),
                   label: Text('Access as account owner', style: TextStyle(color: JT.textSecondary, fontSize: 13)),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const B2BDashboardScreen()),
-                  ),
+                  onPressed: () async {
+                    final loggedIn = await AuthService.isLoggedIn();
+                    if (!mounted) return;
+                    if (loggedIn) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const B2BDashboardScreen()),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Text('Please login with your phone number first'),
+                        backgroundColor: JT.error,
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 32),

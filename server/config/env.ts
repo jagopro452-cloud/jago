@@ -8,6 +8,7 @@ const EnvSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_NAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
+  ADMIN_PHONE: z.string().optional(),
   ADMIN_SESSION_TTL_HOURS: z.string().optional(),
   ADMIN_2FA_REQUIRED: z.string().optional(),
   ENABLE_DEV_OTP_RESPONSES: z.string().optional(),
@@ -47,6 +48,11 @@ export function isTrue(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+export function isFalse(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["0", "false", "no", "off"].includes(value.toLowerCase());
+}
+
 export function validateProductionReadiness(env: AppEnv): void {
   if (env.NODE_ENV !== "production") return;
 
@@ -55,6 +61,15 @@ export function validateProductionReadiness(env: AppEnv): void {
 
   // These must be set in production — app cannot function securely without them
   if (!env.ADMIN_PASSWORD) critical.push("ADMIN_PASSWORD");
+
+  // 2FA delivery check: warn if no phone is set to receive OTP
+  const twoFaOn = !isFalse(env.ADMIN_2FA_REQUIRED);
+  if (twoFaOn && !env.ADMIN_PHONE) {
+    warnings.push("ADMIN_PHONE not set — admin 2FA is enabled but OTP has no delivery target; set ADMIN_PHONE=+91xxxxxxxxxx");
+  }
+  if (!twoFaOn) {
+    warnings.push("ADMIN_2FA_REQUIRED=false — admin logins have NO second factor; set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE for security");
+  }
 
   // These are important but app can degrade gracefully
   if (!env.GOOGLE_MAPS_API_KEY) warnings.push("GOOGLE_MAPS_API_KEY");

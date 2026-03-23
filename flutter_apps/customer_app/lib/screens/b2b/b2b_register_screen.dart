@@ -49,6 +49,23 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final loggedIn = await AuthService.isLoggedIn();
+    if (!loggedIn) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Login Required'),
+            content: const Text(
+              'To register a B2B business account, you must first log in with your phone number from the main app.\n\nGo back → login with OTP → then open B2B Business from the menu.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+            ],
+          ),
+        );
+      }
+      return;
+    }
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
@@ -70,7 +87,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
       ).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final responseBody = jsonDecode(res.body) as Map<String, dynamic>;
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -84,7 +101,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
           MaterialPageRoute(builder: (_) => const B2BDashboardScreen()),
         );
       } else {
-        _showError(body['message'] ?? 'Registration failed');
+        _showError(responseBody['message'] ?? 'Registration failed');
       }
     } catch (e) {
       if (mounted) _showError('Network error. Please try again.');

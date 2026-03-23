@@ -46,7 +46,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _userName = 'there';
   String _userPhone = '';
   String _pickup = 'Getting location...';
-  double _pickupLat = 17.3850, _pickupLng = 78.4867;
+  double _pickupLat = 0.0, _pickupLng = 0.0;
+  bool _locationReady = false;
   int _unreadNotifCount = 0;
   double _walletBalance = 0;
   List<Map<String, dynamic>> _vehicleCategories = [];
@@ -250,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _fetchNearbyDrivers() async {
-    if (!mounted) return;
+    if (!mounted || !_locationReady) return;
     try {
       final headers = await AuthService.getHeaders();
       final uri = Uri.parse(ApiConfig.nearbyDrivers).replace(queryParameters: {
@@ -619,6 +620,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _pickupLat = pos.latitude;
         _pickupLng = pos.longitude;
+        _locationReady = true;
       });
       _reverseGeocode(pos.latitude, pos.longitude);
       // Move map camera to user's real location
@@ -676,8 +678,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final headers = await AuthService.getHeaders();
       // Use location-based endpoint for city-filtered services
       final uri = Uri.parse(ApiConfig.servicesForLocation).replace(queryParameters: {
-        if (_pickupLat != 0) 'lat': _pickupLat.toString(),
-        if (_pickupLng != 0) 'lng': _pickupLng.toString(),
+        if (_locationReady) 'lat': _pickupLat.toString(),
+        if (_locationReady) 'lng': _pickupLng.toString(),
       });
       final r = await http.get(uri, headers: headers);
       if (r.statusCode == 200 && mounted) {
@@ -839,8 +841,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // ── 1. Full-screen live map ──────────────────────────────────────
           GoogleMap(
             initialCameraPosition: CameraPosition(
-              target: LatLng(_pickupLat, _pickupLng),
-              zoom: 15,
+              target: _locationReady ? LatLng(_pickupLat, _pickupLng) : const LatLng(20.5937, 78.9629),
+              zoom: _locationReady ? 15 : 5,
             ),
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
@@ -851,10 +853,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onMapCreated: (controller) {
               _mapController = controller;
               setState(() => _mapReady = true);
-              // Move to real GPS once map is ready
-              _mapController!.animateCamera(
-                CameraUpdate.newLatLng(LatLng(_pickupLat, _pickupLng)),
-              );
+              // Move to real GPS once map is ready (only if location is known)
+              if (_locationReady) {
+                _mapController!.animateCamera(
+                  CameraUpdate.newLatLng(LatLng(_pickupLat, _pickupLng)),
+                );
+              }
             },
           ),
 
@@ -918,6 +922,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildRecenterButton() {
     return GestureDetector(
       onTap: () {
+        if (!_locationReady) return;
         _mapController?.animateCamera(
           CameraUpdate.newCameraPosition(CameraPosition(
             target: LatLng(_pickupLat, _pickupLng),
@@ -1040,6 +1045,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   _pickupLat = result.lat;
                   _pickupLng = result.lng;
                   _pickup = result.address;
+                  _locationReady = true;
                 });
               }
             },

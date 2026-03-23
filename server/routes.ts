@@ -36,7 +36,7 @@ import {
   getTripWaypoints,
   clearTripWaypoints,
 } from "./ai";
-import { isTrue, parseEnv } from "./config/env";
+import { isTrue, isFalse, parseEnv } from "./config/env";
 import {
   startDispatch,
   onDriverAccepted,
@@ -206,7 +206,7 @@ async function tryRazorpayRefund(
       VALUES (${customerId}::uuid, ${tripId}::uuid, ${amountRupees}, ${reason}, 'razorpay', 'approved',
               ${'Razorpay refund ID: ' + result.id}, 'system', NOW())
       ON CONFLICT DO NOTHING
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     console.log(`[RAZORPAY-REFUND] ₹${amountRupees} refund ${result.id} for trip ${tripId}`);
     return result.id as string;
   } catch (e: any) {
@@ -243,6 +243,15 @@ function formatDbError(err: any): string {
   } catch {
     return String(err);
   }
+}
+
+/** dbCatch — logs DB errors instead of silently swallowing them. Use in place of .catch(dbCatch("db")). */
+function dbCatch(label: string) {
+  return (err: any) => { console.error(`[db:${label}]`, formatDbError(err)); };
+}
+/** dbCatchRows — logs DB read errors and returns empty rows fallback. */
+function dbCatchRows(label: string): (err: any) => { rows: any[] } {
+  return (err: any) => { console.error(`[db:${label}]`, formatDbError(err)); return { rows: [] as any[] }; };
 }
 
 const TRIP_UI_STATE_MAP: Record<string, string> = {
@@ -333,6 +342,12 @@ function computeEtaMinutes(distanceKm: number, avgSpeedKmph = 25): number {
   return Math.max(1, Math.round((distanceKm / avgSpeedKmph) * 60));
 }
 
+/** safeFloat — parses to float with a mandatory fallback, preventing NaN in fare calculations. */
+function safeFloat(value: any, fallback: number): number {
+  const n = parseFloat(value);
+  return isFinite(n) ? n : fallback;
+}
+
 /** Returns a safe error message: generic in production, detailed in development. */
 function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
   if (process.env.NODE_ENV === "production") return fallback;
@@ -387,7 +402,7 @@ async function appendTripStatus(tripId: string, status: string, source = "system
   await rawDb.execute(rawSql`
     INSERT INTO trip_status (trip_id, status, source, note)
     VALUES (${tripId}::uuid, ${status}, ${source}, ${note || null})
-  `).catch(() => {});
+  `).catch(dbCatch("db"));
 }
 
 async function logRideLifecycleEvent(tripId: string, eventType: string, actorId?: string, actorType = "system", meta: any = {}) {
@@ -395,14 +410,14 @@ async function logRideLifecycleEvent(tripId: string, eventType: string, actorId?
   await rawDb.execute(rawSql`
     INSERT INTO ride_events (trip_id, event_type, actor_id, actor_type, meta)
     VALUES (${tripId}::uuid, ${eventType}, ${actorId || null}::uuid, ${actorType}, ${JSON.stringify(meta)}::jsonb)
-  `).catch(() => {});
+  `).catch(dbCatch("db"));
 }
 
 async function logAdminAction(action: string, entityType: string, entityId?: string, details: any = {}, adminEmail?: string) {
   await rawDb.execute(rawSql`
     INSERT INTO admin_logs (admin_email, action, entity_type, entity_id, details)
     VALUES (${adminEmail || null}, ${action}, ${entityType}, ${entityId || null}::uuid, ${JSON.stringify(details)}::jsonb)
-  `).catch(() => {});
+  `).catch(dbCatch("db"));
 }
 
 
@@ -469,6 +484,9 @@ const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL
 const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" && process.env.NODE_ENV !== "production";
 
 const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http://localhost:7104").replace(/\/$/, "");
+if (AI_ASSISTANT_SERVICE_URL.includes('localhost') && process.env.NODE_ENV === 'production') {
+  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL points to localhost in production. Voice-intent AI microservice will be SKIPPED — set AI_ASSISTANT_SERVICE_URL env var to enable it.");
+}
 
 // ── Claude AI voice intent parser ────────────────────────────────────────────
 async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
@@ -605,7 +623,10 @@ async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any
   return { parserSource: "monolith-fallback", parsed: parseVoiceIntent(text) };
 }
 const runtimeEnv = parseEnv();
-const requireAdminTwoFactor = isTrue(runtimeEnv.ADMIN_2FA_REQUIRED);
+// In production 2FA is ON by default — disable only with ADMIN_2FA_REQUIRED=false
+const requireAdminTwoFactor = runtimeEnv.NODE_ENV === "production"
+  ? !isFalse(runtimeEnv.ADMIN_2FA_REQUIRED)
+  : isTrue(runtimeEnv.ADMIN_2FA_REQUIRED);
 
 function extractBearerToken(req: Request): string | null {
   const auth = req.headers.authorization || "";
@@ -691,11 +712,11 @@ async function ensureAdminExists() {
   } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); }
 
   // ── Self-heal: add missing columns that may not exist on older deployments ──
-  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`).catch(() => {});
-  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`).catch(() => {});
-  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`).catch(() => {});
-  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin'`).catch(() => {});
-  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin'`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`).catch(dbCatch("db"));
 
   try {
     await rawDb.execute(rawSql`
@@ -733,7 +754,7 @@ async function ensureAdminExists() {
         `);
         for (let i = 1; i < anyR.rows.length; i++) {
           const a: any = anyR.rows[i];
-          await rawDb.execute(rawSql`DELETE FROM admins WHERE id=${a.id}::uuid`).catch(() => {});
+          await rawDb.execute(rawSql`DELETE FROM admins WHERE id=${a.id}::uuid`).catch(dbCatch("db"));
         }
         console.log(`[admin] Migrated admin → ${adminEmail}, password synced`);
       } else {
@@ -1188,7 +1209,7 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       CREATE INDEX IF NOT EXISTS idx_popular_locations_city_active
       ON popular_locations(city_name, is_active);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     await rawDb.execute(rawSql`
       INSERT INTO popular_locations (name, latitude, longitude, city_name, full_address, is_active)
@@ -1202,7 +1223,7 @@ async function ensureOperationalSchema() {
         ('Governorpet', 16.5135, 80.6346, 'Vijayawada', 'Governorpet, Vijayawada, Andhra Pradesh, India', true),
         ('Patamata', 16.4883, 80.6681, 'Vijayawada', 'Patamata, Vijayawada, Andhra Pradesh, India', true)
       ON CONFLICT DO NOTHING
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     await rawDb.execute(rawSql`
       INSERT INTO revenue_model_settings (key_name, value)
@@ -1236,7 +1257,7 @@ async function ensureOperationalSchema() {
       );
       INSERT INTO company_gst_wallet (id, balance, total_collected, total_trips)
       VALUES (1, 0, 0, 0) ON CONFLICT (id) DO NOTHING;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // Fix: completely missing tables (no CREATE TABLE existed anywhere)
     await rawDb.execute(rawSql`
@@ -1268,7 +1289,7 @@ async function ensureOperationalSchema() {
         breakdown JSONB DEFAULT '{}',
         created_at TIMESTAMP DEFAULT NOW()
       );
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Seed all vehicle categories (Bike, Auto, Mini Car, Sedan, SUV, Car Pool) ───
     // Inserts each vehicle type if no category with that name exists yet (case-insensitive).
@@ -1373,12 +1394,12 @@ async function ensureOperationalSchema() {
         END
       )
       WHERE vc.type = 'ride'
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     await rawDb.execute(rawSql`
       UPDATE vehicle_categories vc
       SET is_active = COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='parcel_delivery' LIMIT 1), vc.is_active)
       WHERE vc.type = 'parcel'
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
     // ── Auto-promote pending drivers to verified so they can go online ──────
@@ -1388,14 +1409,14 @@ async function ensureOperationalSchema() {
     await rawDb.execute(rawSql`
       UPDATE users SET verification_status='verified'
       WHERE user_type='driver' AND verification_status='pending' AND is_active=true
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // Backfill model_selected_at so drivers aren't blocked by the model selection gate
     await rawDb.execute(rawSql`
       UPDATE users SET
         revenue_model = COALESCE(NULLIF(revenue_model,''), 'commission'),
         model_selected_at = COALESCE(model_selected_at, NOW())
       WHERE user_type='driver' AND is_active=true
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     console.log('[seed] pending drivers promoted to verified, model_selected_at backfilled');
 
     // ── Seed trip_fares using vehicle_categories pricing as source of truth ──
@@ -1486,7 +1507,7 @@ async function ensureOperationalSchema() {
         ('outstation_pool', 'Outstation Pool',     'carpool', 'inactive', 'commission',   15.0,  8, '🗺️', '#EC4899', 'Long distance pool travel'),
         ('parcel_delivery', 'Parcel Delivery',     'parcel',  'active',   'commission',   15.0,  9, '📦',  '#FF6B35', 'Porter-style parcel and goods delivery')
       ON CONFLICT (service_key) DO NOTHING;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── parcel_orders: multi-drop Porter-style delivery ───────────────────────
     await rawDb.execute(rawSql`
@@ -1524,7 +1545,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_customer ON parcel_orders(customer_id);
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_driver  ON parcel_orders(driver_id);
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_status  ON parcel_orders(current_status);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── FCM device registry: stores one push token per user ──────────────────
     await rawDb.execute(rawSql`
@@ -1538,7 +1559,7 @@ async function ensureOperationalSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_user_devices_fcm ON user_devices(fcm_token);
       CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Call logs: records in-app masked calls ────────────────────────────────
     await rawDb.execute(rawSql`
@@ -1560,7 +1581,7 @@ async function ensureOperationalSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_call_logs_trip ON call_logs(trip_id);
       CREATE INDEX IF NOT EXISTS idx_call_logs_created ON call_logs(created_at DESC);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
 
     await rawDb.execute(rawSql`
@@ -1577,7 +1598,7 @@ async function ensureOperationalSchema() {
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_notification_logs_sent_at ON notification_logs(sent_at DESC);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Driver payment ledger: records every commission debt/payment ──────────
     await rawDb.execute(rawSql`
@@ -1595,7 +1616,7 @@ async function ensureOperationalSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_driver_payments_driver ON driver_payments(driver_id);
       CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Customer payment ledger: records every wallet topup / ride payment ──────
     await rawDb.execute(rawSql`
@@ -1616,20 +1637,20 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_customer_payments_order    ON customer_payments(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_payment  ON customer_payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_status   ON customer_payments(status);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // ── Migration: add trip_id to customer_payments for refund tracking ───────
     await rawDb.execute(rawSql`
       ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS trip_id UUID;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_trip ON customer_payments(trip_id) WHERE trip_id IS NOT NULL;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // ── Migration: add razorpay_payment_id to trip_requests for online pay tracking ──
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // ── Migration: add refunded_at to customer_payments ──────────────────────
     await rawDb.execute(rawSql`
       ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // ── Migration: add GST/insurance columns to driver_subscriptions ─────────
     await rawDb.execute(rawSql`
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) DEFAULT 0;
@@ -1639,7 +1660,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(120);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_subscriptions_payment
         ON driver_subscriptions(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
     // ── SECURITY MIGRATIONS: Unique constraints for payment idempotency ───────
     // Prevents duplicate wallet credits even under concurrent requests
     await rawDb.execute(rawSql`
@@ -1657,7 +1678,7 @@ async function ensureOperationalSchema() {
         ON transactions(user_id, ref_transaction_id, transaction_type)
         WHERE transaction_type IN ('trip_earning','commission_deduction','ride_refund','admin_refund')
           AND ref_transaction_id IS NOT NULL;
-    `).catch(() => {}); // best-effort: index may already exist
+    `).catch(dbCatch("db")); // best-effort: index may already exist
 
     // ── Razorpay webhook audit log ────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -1673,7 +1694,7 @@ async function ensureOperationalSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_rzp_webhook_event_id   ON razorpay_webhook_logs(event_id);
       CREATE INDEX        IF NOT EXISTS idx_rzp_webhook_event_type  ON razorpay_webhook_logs(event_type);
       CREATE INDEX        IF NOT EXISTS idx_rzp_webhook_created     ON razorpay_webhook_logs(created_at DESC);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Performance indexes for high-traffic queries ──────────────────────────
     await rawDb.execute(rawSql`
@@ -1683,7 +1704,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_users_phone                   ON users(phone);
       CREATE INDEX IF NOT EXISTS idx_users_user_type               ON users(user_type);
       CREATE INDEX IF NOT EXISTS idx_driver_locations_lat_lng      ON driver_locations(lat, lng) WHERE is_online = true;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Feature Flags table ──────────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -1703,30 +1724,30 @@ async function ensureOperationalSchema() {
         ('voice_booking', true,  'AI voice booking'),
         ('offers',        true,  'Promo offers and coupons')
       ON CONFLICT (key) DO UPDATE SET enabled = EXCLUDED.enabled;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Banners table: add display_order if missing ──────────────────────────
     await rawDb.execute(rawSql`
       ALTER TABLE banners ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Platform services: add icon_url + banner_url for uploaded images ──────
     await rawDb.execute(rawSql`
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS icon_url TEXT;
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS banner_url TEXT;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Refund tracking columns ───────────────────────────────────────────────
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_refund_id VARCHAR(120);
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── Zone center point + radius (for radius-based zone detection fallback) ──
     await rawDb.execute(rawSql`
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS latitude  DOUBLE PRECISION;
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS radius_km DOUBLE PRECISION DEFAULT 5;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
     // ── App Languages table ───────────────────────────────────────────────────
     await rawDb.execute(rawSql`
@@ -1745,7 +1766,7 @@ async function ensureOperationalSchema() {
         ('te', 'Telugu',   'తెలుగు',    '🇮🇳', 1),
         ('hi', 'Hindi',    'हिन्दी',    '🇮🇳', 2)
       ON CONFLICT (code) DO NOTHING;
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
 
   } catch (e: any) {
     console.error("[schema] ensureOperationalSchema error:", formatDbError(e));
@@ -1924,7 +1945,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ended_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         CREATE TABLE IF NOT EXISTS driver_kyc_documents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1939,7 +1960,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         CREATE TABLE IF NOT EXISTS parcel_stops (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1957,7 +1978,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           notes TEXT,
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         CREATE TABLE IF NOT EXISTS referrals (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1968,10 +1989,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           reward_amount DECIMAL(10,2) DEFAULT 50,
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
 
       // Referrals: add paid_at column if missing
-      await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(dbCatch("db"));
 
       // B2B companies: unify schema — add columns needed by app registration flow
       await rawDb.execute(rawSql`
@@ -1982,15 +2003,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10,2) DEFAULT 0;
         ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
         ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       // Unique index: one B2B registration per app user
       await rawDb.execute(rawSql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_owner ON b2b_companies(owner_id) WHERE owner_id IS NOT NULL
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
 
       // Add extra columns if not exists
-      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => {});
-      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS description TEXT`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS service_type VARCHAR(30) DEFAULT 'ride'`).catch(dbCatch("db"));
 
       const insertedVehicles: any[] = [];
       for (const v of vehicles) {
@@ -2032,7 +2053,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await rawDb.execute(rawSql`
             INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, cancellation_fee, night_charge_multiplier)
             VALUES (${vid}::uuid, ${v.base_fare}, ${v.fare_per_km}, ${v.minimum_fare}, ${v.waiting_charge_per_min}, 30, 1.15)
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
         }
       }
 
@@ -2059,7 +2080,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})
           ON CONFLICT (name) DO UPDATE SET category=${b.category}
         `).catch(() => {
-          rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})`).catch(() => {});
+          rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})`).catch(dbCatch("db"));
         });
       }
 
@@ -2079,7 +2100,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await rawDb.execute(rawSql`
             INSERT INTO surge_pricing (reason, start_time, end_time, multiplier, is_active)
             VALUES (${s.reason}, ${s.start_time}, ${s.end_time}, ${s.multiplier}, true)
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
         }
       }
 
@@ -2118,7 +2139,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO revenue_model_settings (key_name, value)
           VALUES (${key}, ${value})
           ON CONFLICT (key_name) DO NOTHING
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
 
       // ── 6. Subscription plans (like Rapido) ──────────────────────────────────
@@ -2147,7 +2168,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             UPDATE subscription_plans SET price=${p.price}, duration_days=${p.duration_days},
               max_rides=${p.max_rides}, features=${p.features}, is_active=true
             WHERE name=${p.name}
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
           insertedPlans.push({ name: p.name, updated: true });
         }
       }
@@ -2237,12 +2258,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             INSERT INTO driver_details (user_id, vehicle_category_id, availability_status, avg_rating, total_trips)
             VALUES (${driverId}::uuid, ${d.vc.id}::uuid, 'offline', 5.0, 0)
             ON CONFLICT (user_id) DO UPDATE SET vehicle_category_id=${d.vc.id}::uuid, availability_status='offline'
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
           await rawDb.execute(rawSql`
             INSERT INTO driver_locations (user_id, lat, lng, is_online)
             VALUES (${driverId}::uuid, 17.3850, 78.4867, false)
             ON CONFLICT (user_id) DO NOTHING
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
         }
       }
 
@@ -2841,6 +2862,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const passwordValid = await bcrypt.compare(String(password), admin.password);
       if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
       if (requireAdminTwoFactor) {
+        const adminPhone = runtimeEnv.ADMIN_PHONE;
+        if (!adminPhone) {
+          // 2FA is required but no delivery target — block login with clear message
+          return res.status(503).json({ message: "Admin 2FA is enabled but ADMIN_PHONE is not configured. Contact system administrator." });
+        }
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         await rawDb.execute(rawSql`UPDATE admin_login_otp SET is_used=true WHERE admin_id=${admin.id}::uuid AND is_used=false`);
@@ -2848,11 +2874,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO admin_login_otp (admin_id, otp, expires_at)
           VALUES (${admin.id}::uuid, ${otp}, ${expiresAt.toISOString()})
         `);
-        console.log(`[ADMIN-2FA] OTP generated for ${admin.email} — sent via admin channel`);
+        // Deliver OTP via SMS to the configured admin phone
+        sendCustomSms(adminPhone, `JAGO Admin login OTP: ${otp}. Valid 5 minutes. Do not share.`).catch((e: any) => {
+          console.error(`[ADMIN-2FA] SMS delivery failed to ${adminPhone}:`, e.message);
+        });
+        console.log(`[ADMIN-2FA] OTP sent to ${adminPhone} for admin ${admin.email}`);
         const response: any = {
           requiresTwoFactor: true,
           admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
-          message: "Second-factor OTP required",
+          message: `OTP sent to admin phone. Valid for 5 minutes.`,
         };
         if (process.env.NODE_ENV !== "production" && isDevOtpResponseEnabled) {
           response.otp = otp;
@@ -2924,7 +2954,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const token = extractBearerToken(req);
     if (token) {
       rawDb.execute(rawSql`UPDATE admins SET auth_token=NULL, auth_token_expires_at=NULL WHERE auth_token=${token}`)
-        .catch(() => {});
+        .catch(dbCatch("db"));
     }
     res.json({ success: true });
   });
@@ -3644,11 +3674,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           (${driverId}::uuid, 'admin_settle', ${commReduction}, ${gstReduction}, ${payAmt},
            'credit', ${prevTotal}, ${newTotal}, ${method},
            'completed', ${description || 'Admin manual settlement'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
         VALUES (${driverId}::uuid, ${payAmt}, 'admin_settlement', 'completed', ${description || 'Admin settlement'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ success: true, newPendingBalance: newTotal, pendingCommission: newCommission, pendingGst: newGst, autoUnlocked: shouldUnlock && bal.is_locked });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -3937,7 +3967,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, debit, credit, balance, transaction_type)
               VALUES (${wd.user_id}::uuid, ${'Withdrawal processed'}, ${parseFloat(wd.amount)}, 0, 0, ${'withdrawal'})
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
           }
         }
       }
@@ -4013,49 +4043,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/banners", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM banners ORDER BY created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/banners", requireAdminAuth, async (req, res) => {
     try {
-      const { title, image_url, redirect_url, zone, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO banners (title, image_url, redirect_url, zone, is_active) VALUES (${title}, ${image_url}, ${redirect_url}, ${zone}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const b = req.body;
+      const title = b.title;
+      const image_url = b.imageUrl ?? b.image_url ?? null;
+      const redirect_url = b.redirectUrl ?? b.redirect_url ?? null;
+      const zone = b.zone ?? null;
+      const is_active = b.isActive ?? b.is_active ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO banners (title, image_url, redirect_url, zone, is_active) VALUES (${title}, ${image_url}, ${redirect_url}, ${zone}, ${is_active}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
-      const active = is_active ?? isActive;
+      const b = req.body;
+      const title = b.title ?? null;
+      const image_url = b.imageUrl ?? b.image_url ?? null;
+      const redirect_url = b.redirectUrl ?? b.redirect_url ?? null;
+      const zone = b.zone ?? null;
+      const active = b.isActive ?? b.is_active ?? null;
       const r = await rawDb.execute(rawSql`
         UPDATE banners SET
-          title=COALESCE(${title ?? null}, title),
-          image_url=COALESCE(${image_url ?? null}, image_url),
-          redirect_url=COALESCE(${redirect_url ?? null}, redirect_url),
-          zone=COALESCE(${zone ?? null}, zone),
-          is_active=COALESCE(${active ?? null}, is_active)
+          title=COALESCE(${title}, title),
+          image_url=COALESCE(${image_url}, image_url),
+          redirect_url=COALESCE(${redirect_url}, redirect_url),
+          zone=COALESCE(${zone}, zone),
+          is_active=COALESCE(${active}, is_active)
         WHERE id=${id}::uuid RETURNING *
       `);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   // PUT is same as PATCH for banners (frontend uses PUT for full update + toggle)
   app.put("/api/banners/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, image_url, redirect_url, zone, is_active, isActive } = req.body;
-      const active = is_active ?? isActive;
+      const b = req.body;
+      const title = b.title ?? null;
+      const image_url = b.imageUrl ?? b.image_url ?? null;
+      const redirect_url = b.redirectUrl ?? b.redirect_url ?? null;
+      const zone = b.zone ?? null;
+      const active = b.isActive ?? b.is_active ?? null;
       const r = await rawDb.execute(rawSql`
         UPDATE banners SET
-          title=COALESCE(${title ?? null}, title),
-          image_url=COALESCE(${image_url ?? null}, image_url),
-          redirect_url=COALESCE(${redirect_url ?? null}, redirect_url),
-          zone=COALESCE(${zone ?? null}, zone),
-          is_active=COALESCE(${active ?? null}, is_active)
+          title=COALESCE(${title}, title),
+          image_url=COALESCE(${image_url}, image_url),
+          redirect_url=COALESCE(${redirect_url}, redirect_url),
+          zone=COALESCE(${zone}, zone),
+          is_active=COALESCE(${active}, is_active)
         WHERE id=${id}::uuid RETURNING *
       `);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/banners/:id", requireAdminAuth, async (req, res) => {
@@ -4138,14 +4181,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/discounts", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM discounts ORDER BY created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/discounts", requireAdminAuth, async (req, res) => {
     try {
-      const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO discounts (name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active) VALUES (${name}, ${discount_amount}, ${discount_type}, ${min_order_amount}, ${max_discount_amount}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const b = req.body;
+      const name = b.name;
+      const discount_amount = b.discountAmount ?? b.discount_amount ?? null;
+      const discount_type = b.discountType ?? b.discount_type ?? "percentage";
+      const min_order_amount = b.minOrderAmount ?? b.min_order_amount ?? null;
+      const max_discount_amount = b.maxDiscountAmount ?? b.max_discount_amount ?? null;
+      const is_active = b.isActive ?? b.is_active ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO discounts (name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active) VALUES (${name}, ${discount_amount}, ${discount_type}, ${min_order_amount}, ${max_discount_amount}, ${is_active}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/discounts/:id", requireAdminAuth, async (req, res) => {
@@ -4159,24 +4208,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { isActive, is_active } = req.body;
       const active = isActive ?? is_active;
       const r = await rawDb.execute(rawSql`UPDATE discounts SET is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/discounts/:id", requireAdminAuth, async (req, res) => {
     try {
-      const { name, discount_amount, discount_type, min_order_amount, max_discount_amount, is_active, isActive } = req.body;
-      const active = is_active ?? isActive;
+      const b = req.body;
+      const name = b.name ?? null;
+      const discount_amount = b.discountAmount ?? b.discount_amount ?? null;
+      const discount_type = b.discountType ?? b.discount_type ?? null;
+      const min_order_amount = b.minOrderAmount ?? b.min_order_amount ?? null;
+      const max_discount_amount = b.maxDiscountAmount ?? b.max_discount_amount ?? null;
+      const active = b.isActive ?? b.is_active ?? null;
       const r = await rawDb.execute(rawSql`
         UPDATE discounts SET
-          name=COALESCE(${name ?? null}, name),
-          discount_amount=COALESCE(${discount_amount ?? null}, discount_amount),
-          discount_type=COALESCE(${discount_type ?? null}, discount_type),
-          min_order_amount=COALESCE(${min_order_amount ?? null}, min_order_amount),
-          max_discount_amount=COALESCE(${max_discount_amount ?? null}, max_discount_amount),
-          is_active=COALESCE(${active ?? null}, is_active)
+          name=COALESCE(${name}, name),
+          discount_amount=COALESCE(${discount_amount}, discount_amount),
+          discount_type=COALESCE(${discount_type}, discount_type),
+          min_order_amount=COALESCE(${min_order_amount}, min_order_amount),
+          max_discount_amount=COALESCE(${max_discount_amount}, max_discount_amount),
+          is_active=COALESCE(${active}, is_active)
         WHERE id=${req.params.id}::uuid RETURNING *
       `);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -4184,7 +4238,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/spin-wheel", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM spin_wheel_items ORDER BY created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/spin-wheel", requireAdminAuth, async (req, res) => {
@@ -4192,7 +4246,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { label, reward_amount, rewardAmount, reward_type, rewardType, probability, is_active, isActive } = req.body;
       const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType ?? 'wallet'; const active = is_active ?? isActive ?? true;
       const r = await rawDb.execute(rawSql`INSERT INTO spin_wheel_items (label, reward_amount, reward_type, probability, is_active) VALUES (${label}, ${rAmt}, ${rType}, ${probability}, ${active}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
@@ -4205,7 +4259,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/spin-wheel/:id", requireAdminAuth, async (req, res) => {
@@ -4213,7 +4267,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { label, reward_amount, rewardAmount, reward_type, rewardType, probability, is_active, isActive } = req.body;
       const lbl = label; const rAmt = reward_amount ?? rewardAmount; const rType = reward_type ?? rewardType; const prob = probability; const active = is_active ?? isActive;
       const r = await rawDb.execute(rawSql`UPDATE spin_wheel_items SET label=${lbl}, reward_amount=${rAmt}, reward_type=${rType}, probability=${prob}, is_active=${active} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -4228,14 +4282,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'driver', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/driver-levels/:id", requireAdminAuth, async (req, res) => {
@@ -4254,14 +4308,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO user_levels (name, user_type, min_points, max_points, reward, reward_type, is_active) VALUES (${name}, 'customer', ${minPoints}, ${maxPoints}, ${reward}, ${rewardType ?? 'cashback'}, ${isActive ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
     try {
       const { name, minPoints, maxPoints, reward, rewardType, isActive } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE user_levels SET name=${name}, min_points=${minPoints}, max_points=${maxPoints}, reward=${reward}, reward_type=${rewardType}, is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/customer-levels/:id", requireAdminAuth, async (req, res) => {
@@ -4342,14 +4396,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`INSERT INTO b2b_companies (company_name, contact_person, phone, email, gst_number, address, city, status, commission_pct) VALUES (${companyName}, ${contactPerson}, ${phone}, ${email}, ${gstNumber}, ${address}, ${city}, ${status ?? 'active'}, ${commissionPct ?? 10}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
       const { companyName, contactPerson, phone, email, gstNumber, address, city, status, commissionPct } = req.body;
       const r = await rawDb.execute(rawSql`UPDATE b2b_companies SET company_name=${companyName}, contact_person=${contactPerson}, phone=${phone}, email=${email}, gst_number=${gstNumber}, address=${address}, city=${city}, status=${status}, commission_pct=${commissionPct} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/b2b-companies/:id/wallet", requireAdminAuth, async (req, res) => {
@@ -4358,7 +4412,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = type === "deduct"
         ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${amount} WHERE id=${req.params.id}::uuid RETURNING *`)
         : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${amount} WHERE id=${req.params.id}::uuid RETURNING *`);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
@@ -4442,27 +4496,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/vehicle-models", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT vm.*, vb.name as brand_name FROM vehicle_models vm LEFT JOIN vehicle_brands vb ON vb.id=vm.brand_id ORDER BY vm.name ASC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/vehicle-models", requireAdminAuth, async (req, res) => {
     try {
-      const { name, brand_id, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id}::uuid, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const b = req.body;
+      const name = b.name;
+      const brand_id = b.brandId ?? b.brand_id ?? null;
+      const is_active = b.isActive ?? b.is_active ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO vehicle_models (name, brand_id, is_active) VALUES (${name}, ${brand_id ? rawSql`${brand_id}::uuid` : rawSql`NULL`}, ${is_active}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
     try {
-      const { name, brand_id, is_active, isActive } = req.body;
-      const active = is_active ?? isActive;
+      const b = req.body;
+      const name = b.name ?? null;
+      const brand_id = b.brandId ?? b.brand_id ?? null;
+      const active = b.isActive ?? b.is_active ?? null;
       let r;
       if (brand_id) {
-        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name ?? null}, name), brand_id=${brand_id}::uuid, is_active=COALESCE(${active ?? null}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
+        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name}, name), brand_id=${brand_id}::uuid, is_active=COALESCE(${active}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
       } else {
-        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name ?? null}, name), is_active=COALESCE(${active ?? null}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
+        r = await rawDb.execute(rawSql`UPDATE vehicle_models SET name=COALESCE(${name}, name), is_active=COALESCE(${active}, is_active) WHERE id=${req.params.id}::uuid RETURNING *`);
       }
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/vehicle-models/:id", requireAdminAuth, async (req, res) => {
@@ -4530,6 +4589,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
+  // PATCH: toggle is_active only — safe partial update (does not wipe other fields)
+  app.patch("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const { isActive, is_active } = req.body;
+      const active = isActive ?? is_active;
+      if (active === undefined) return res.status(400).json({ message: "isActive required" });
+      const r = await rawDb.execute(rawSql`
+        UPDATE surge_pricing SET is_active=${active} WHERE id=${req.params.id}::uuid
+        RETURNING *
+      `);
+      if (!r.rows.length) return res.status(404).json({ message: "Not found" });
+      res.json(camelize(r.rows[0]));
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   app.delete("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
       await rawDb.execute(rawSql`DELETE FROM surge_pricing WHERE id=${req.params.id}::uuid`);
@@ -4542,9 +4616,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const status = req.query.status as string | undefined;
       const r = status
-        ? await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
-        : await rawDb.execute(rawSql`SELECT vr.*, u.full_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id ORDER BY vr.created_at DESC`);
-      res.json(r.rows);
+        ? await rawDb.execute(rawSql`SELECT vr.*, u.full_name as driver_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id WHERE vr.status=${status} ORDER BY vr.created_at DESC`)
+        : await rawDb.execute(rawSql`SELECT vr.*, u.full_name as driver_name, u.phone FROM vehicle_requests vr LEFT JOIN users u ON u.id=vr.driver_id ORDER BY vr.created_at DESC`);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.patch("/api/vehicle-requests/:id/status", requireAdminAuth, async (req, res) => {
@@ -4566,30 +4640,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/wallet-bonus", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM wallet_bonuses ORDER BY created_at DESC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/wallet-bonus", requireAdminAuth, async (req, res) => {
     try {
-      const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active ?? true}) RETURNING *`);
-      res.status(201).json(r.rows[0]);
+      const b = req.body;
+      const name = b.name;
+      const bonus_amount = b.bonusAmount ?? b.bonus_amount ?? null;
+      const bonus_type = b.bonusType ?? b.bonus_type ?? "percentage";
+      const minimum_add_amount = b.minimumAddAmount ?? b.minimum_add_amount ?? null;
+      const max_bonus_amount = b.maxBonusAmount ?? b.max_bonus_amount ?? null;
+      const is_active = b.isActive ?? b.is_active ?? true;
+      const r = await rawDb.execute(rawSql`INSERT INTO wallet_bonuses (name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active) VALUES (${name}, ${bonus_amount}, ${bonus_type}, ${minimum_add_amount}, ${max_bonus_amount}, ${is_active}) RETURNING *`);
+      res.status(201).json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
     try {
-      const { name, bonus_amount, bonus_type, minimum_add_amount, max_bonus_amount, is_active } = req.body;
+      const b = req.body;
+      const name = b.name ?? null;
+      const bonus_amount = b.bonusAmount ?? b.bonus_amount ?? null;
+      const bonus_type = b.bonusType ?? b.bonus_type ?? null;
+      const minimum_add_amount = b.minimumAddAmount ?? b.minimum_add_amount ?? null;
+      const max_bonus_amount = b.maxBonusAmount ?? b.max_bonus_amount ?? null;
+      const is_active = b.isActive ?? b.is_active ?? null;
       const r = await rawDb.execute(rawSql`
         UPDATE wallet_bonuses SET
-          name=COALESCE(${name ?? null}, name),
-          bonus_amount=COALESCE(${bonus_amount ?? null}, bonus_amount),
-          bonus_type=COALESCE(${bonus_type ?? null}, bonus_type),
-          minimum_add_amount=COALESCE(${minimum_add_amount ?? null}, minimum_add_amount),
-          max_bonus_amount=COALESCE(${max_bonus_amount ?? null}, max_bonus_amount),
-          is_active=COALESCE(${is_active ?? null}, is_active)
+          name=COALESCE(${name}, name),
+          bonus_amount=COALESCE(${bonus_amount}, bonus_amount),
+          bonus_type=COALESCE(${bonus_type}, bonus_type),
+          minimum_add_amount=COALESCE(${minimum_add_amount}, minimum_add_amount),
+          max_bonus_amount=COALESCE(${max_bonus_amount}, max_bonus_amount),
+          is_active=COALESCE(${is_active}, is_active)
         WHERE id=${req.params.id}::uuid RETURNING *
       `);
-      res.json(r.rows[0]);
+      res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/wallet-bonus/:id", requireAdminAuth, async (req, res) => {
@@ -4603,7 +4689,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/subscription-plans", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM subscription_plans ORDER BY price ASC`);
-      res.json(r.rows);
+      res.json(camelize(r.rows));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/subscription-plans", requireAdminAuth, async (req, res) => {
@@ -5223,11 +5309,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
         VALUES (${id}::uuid, ${totalAmt}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         INSERT INTO commission_settlements (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount, direction, balance_before, balance_after, description)
         VALUES (${id}::uuid, ${tripId ? rawSql`${tripId}::uuid` : rawSql`NULL`}, 'commission_debit', ${commAmt}, ${gstAmt}, ${totalAmt}, 'debit', ${prevTotal}, ${newTotal}, ${description || 'Fee deduction'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
 
       const lockResult = await checkAndApplySettlementLock(id, settings);
       const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
@@ -5442,11 +5528,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           (${id}::uuid, 'manual_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
            'credit', ${prevTotal}, ${newTotal}, 'cash',
            'completed', ${description || 'Manual payment received by admin'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
         VALUES (${id}::uuid, ${paidAmt}, 'manual_credit', 'completed', ${description || 'Manual credit by admin'})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({
         success: true,
         newBalance: parseFloat(updRow.wallet_balance ?? 0),
@@ -5551,7 +5637,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${customerId}::uuid, ${tripId || null}::uuid, ${amt}, ${reason || 'Razorpay refund'}, 'razorpay', 'approved',
                   ${'Razorpay refund ID: ' + refundResult.id}, 'Admin', NOW())
           ON CONFLICT DO NOTHING
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json({ success: true, refund: refundResult });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -5775,7 +5861,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               revenue_breakdown=${JSON.stringify(bBreakdown)}::jsonb,
               updated_at=NOW()
           WHERE id=${b.id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
 
       res.json({
@@ -6645,7 +6731,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`
           UPDATE users SET wallet_balance = wallet_balance + ${rewardAmount}
           WHERE id = ${ref.referrer_id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
         const newBal = await rawDb.execute(rawSql`
           SELECT wallet_balance FROM users WHERE id = ${ref.referrer_id}::uuid
         `).catch(() => ({ rows: [] as any[] }));
@@ -6653,7 +6739,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`
           INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
           VALUES (${ref.referrer_id}::uuid, ${'Referral bonus'}, ${rewardAmount}, 0, ${bal}, ${'referral_bonus'}, ${ref.id}::uuid)
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -6696,7 +6782,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase`);
       return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -6735,7 +6821,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`
           UPDATE otp_logs SET attempt_count = COALESCE(attempt_count, 0) + 1
           WHERE phone=${phoneStr} AND is_used=false AND expires_at > NOW()
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
         return res.status(400).json({ message: "Invalid or expired OTP" });
       }
 
@@ -6756,7 +6842,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -6882,7 +6968,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -6941,7 +7027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       // Set referral_code separately (handles DB where column may not exist yet)
       const refCode = 'JAGOPRO' + phone.slice(-6);
-      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(() => {});
+      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(dbCatch("db"));
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -6954,7 +7040,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             await rawDb.execute(rawSql`
               INSERT INTO referrals (referrer_id, referred_id, referral_type, status, reward_amount)
               VALUES (${(referrer.rows[0] as any).id}::uuid, ${user.id}::uuid, ${userType}, 'pending', 50)
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
           }
         } catch (_) {}
       }
@@ -6977,8 +7063,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
-      const walletBalance = parseFloat(user.walletBalance || 0);
-      res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: parseFloat(user.rating || "5.0"), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
+      const walletBalance = safeFloat(user.walletBalance, 0);
+      res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: safeFloat(user.rating, 5.0), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -7109,7 +7195,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (autoZoneId) {
         await rawDb.execute(rawSql`
           UPDATE driver_details SET zone_id=${autoZoneId}::uuid WHERE user_id=${driver.id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -7500,7 +7586,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         fcmToken: custFcmToken,
         driverName: driver.fullName || "Driver",
         tripId: tripData.id,
-      }).catch(() => {});
+      }).catch(dbCatch("db"));
 
       res.json({ success: true, trip: tripData, pickupOtp: otp });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -7550,7 +7636,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   estimatedFare: Number(trip.estimatedFare) || 0,
                 });
               }
-            }).catch(() => {});
+            }).catch(dbCatch("db"));
           }
         });
       }
@@ -7594,7 +7680,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
         sendCustomSms(trip.receiver_phone,
           `JAGO Pro Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
-        ).catch(() => {});
+        ).catch(dbCatch("db"));
       }
       if (io) {
         io.to(`user:${trip.customer_id}`).emit("trip:status_update", { tripId, status: "on_the_way", otp, uiState: 'trip_started' });
@@ -7666,20 +7752,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         driverName: driver.fullName || "Driver",
         otp: otp || "",
         tripId,
-      }).catch(() => {});
+      }).catch(dbCatch("db"));
 
       // 📱 If booked for someone else — send OTP as SMS to passenger phone
       if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {
         sendCustomSms(tripRow.passenger_phone,
           `JAGO Pro: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
-        ).catch(() => {});
+        ).catch(dbCatch("db"));
       }
       // 📦 For parcel — remind sender with pickup OTP via SMS
       if (tripRow?.trip_type === 'parcel' || tripRow?.trip_type === 'delivery') {
         const senderPhone = tripRow.customer_phone;
         if (senderPhone) sendCustomSms(senderPhone,
           `JAGO Pro Parcel: Driver ${driver.fullName || ''} arrived. Pickup OTP: ${otp}. Share to hand over parcel.`
-        ).catch(() => {});
+        ).catch(dbCatch("db"));
       }
 
       if (io && tripRow?.customer_id) {
@@ -7729,7 +7815,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const svc = (t2.trip_type === 'parcel' || t2.trip_type === 'delivery') ? 'parcel' : 'ride';
             logHeatmapEvent('pickup', parseFloat(t2.pickup_lat), parseFloat(t2.pickup_lng), svc);
           }
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       res.json({ success: true, message: "Trip started" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7795,7 +7881,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE trip_requests
         SET current_status='completed', ride_ended_at=NOW(),
             actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
-            tips=${tipsVal}, payment_status='paid',
+            tips=${tipsVal}, payment_status=CASE WHEN payment_status IN ('paid_online','wallet_paid','partial_payment') THEN payment_status ELSE 'paid' END,
             ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
             user_payable=${userPayable}, gst_amount=${gstAmount},
             vehicle_type_name=${vehicleTypeName},
@@ -7883,7 +7969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
               VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
             console.log(`[WALLET] ✅ Full deduction ₹${userPayable} from customer ${tripCustomerId}`);
           } else if (custBal > 0) {
             // Partial wallet deduction — ATOMIC: CTE captures old balance, zeroes it in one statement
@@ -7899,7 +7985,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               await rawDb.execute(rawSql`
                 UPDATE trip_requests SET payment_status='pending_payment',
                   pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
-              `).catch(() => {});
+              `).catch(dbCatch("db"));
               walletPendingAmount = userPayable;
               console.log(`[WALLET] ⚠️  Partial skipped (balance=0 by concurrent tx) — customer ${tripCustomerId}`);
             } else {
@@ -7908,11 +7994,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               await rawDb.execute(rawSql`
                 UPDATE trip_requests SET payment_status='partial_payment',
                   pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
-              `).catch(() => {});
+              `).catch(dbCatch("db"));
               await rawDb.execute(rawSql`
                 INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
                 VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
-              `).catch(() => {});
+              `).catch(dbCatch("db"));
               walletPaidAmount = deducted;
               walletPendingAmount = remaining;
               console.log(`[WALLET] ⚠️  Partial: ₹${deducted} from wallet, ₹${remaining} pending (cash/UPI) — customer ${tripCustomerId}`);
@@ -7922,7 +8008,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='pending_payment',
                 pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
             walletPendingAmount = userPayable;
             console.log(`[WALLET] ⚠️  No balance: full ₹${userPayable} pending (cash/UPI) — customer ${tripCustomerId}`);
           }
@@ -7948,14 +8034,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (tripCustomerId) {
         await rawDb.execute(rawSql`
           UPDATE users SET completed_rides_count = completed_rides_count + 1 WHERE id=${tripCustomerId}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
 
       // ✅ Clear driver's current trip — driver is now free for the next ride
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
 
       // AI: Update driver performance stats + clear trip waypoints
-      updateDriverStats(driver.id).catch(() => {});
+      updateDriverStats(driver.id).catch(dbCatch("db"));
       clearTripWaypoints(tripId);
 
       const completedTrip = camelize(r.rows[0]) as any;
@@ -7986,7 +8072,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 🔔 FCM: notify customer
       const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
       const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
-      notifyCustomerTripCompleted({ fcmToken: custFcmComp, fare: userPayable, tripId }).catch(() => {});
+      notifyCustomerTripCompleted({ fcmToken: custFcmComp, fare: userPayable, tripId }).catch(dbCatch("db"));
 
       res.json({
         success: true,
@@ -8051,13 +8137,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
             VALUES (${driver.id}::uuid, ${penalty}, 'cancel_penalty', 'completed',
               ${'Auto-deducted: ' + cancelCount + ' cancellations in 24h'})
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
           log(`[CancelPenalty] Driver ${driver.id} fined ₹${penalty} (${cancelCount} cancels in 24h)`, 'cancel');
         }
         // Mark this cancel as cancelled_by=driver on the trip
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET cancelled_by='driver' WHERE id=${tripId}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       } catch (_) {}
       clearTripWaypoints(tripId);
 
@@ -8089,17 +8175,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
           const dDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nd.driverId}::uuid`);
           const dFcm = (dDevRes.rows[0] as any)?.fcm_token;
-          if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(() => {});
+          if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(dbCatch("db"));
         }
       } else {
         // No drivers available — cancel trip and notify customer via both socket + FCM
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
           WHERE id=${tripId}::uuid AND current_status='searching'
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
         const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
         const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
+        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(dbCatch("db"));
         if (io && trip.customerId) {
           io.to(`user:${trip.customerId}`).emit("trip:no_drivers", {
             tripId, message: "Sorry, no pilots available in your area right now. Please try again.",
@@ -8276,7 +8362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${driver.id}::uuid, ${payAmt}, 'commission_payment', ${order.id}, 'pending', ${'Commission settlement ₹' + payAmt})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ order, keyId, pendingBalance: pendingAmt });
     } catch (e: any) {
       const msg = e.message || e.error?.description || JSON.stringify(e).slice(0, 200);
@@ -8351,12 +8437,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
            'credit', ${prevTotal}, ${newTotal}, 'razorpay',
            ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
            ${'Driver payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
           razorpay_signature=${razorpaySignature||''}, verified_at=NOW()
         WHERE razorpay_order_id=${razorpayOrderId}
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({
         success: true,
         paidAmount: paidAmt,
@@ -8628,7 +8714,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${driver.id}::uuid, ${amt}, 'wallet_topup', ${order.id}, 'pending', 'Wallet recharge via Razorpay')
         ON CONFLICT DO NOTHING
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ order, keyId, amount: amt });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -8930,8 +9016,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Store zone_id + coupon/discount on trip (best-effort)
       const newTripId2 = (trip.rows[0] as any).id;
       detectZoneId(Number(pickupLat), Number(pickupLng)).then(zid => {
-        if (zid) rawDb.execute(rawSql`UPDATE trip_requests SET zone_id=${zid}::uuid WHERE id=${newTripId2}::uuid`).catch(() => {});
-      }).catch(() => {});
+        if (zid) rawDb.execute(rawSql`UPDATE trip_requests SET zone_id=${zid}::uuid WHERE id=${newTripId2}::uuid`).catch(dbCatch("db"));
+      }).catch(dbCatch("db"));
       if (validatedCouponCode || discountAmount > 0) {
         rawDb.execute(rawSql`
           UPDATE trip_requests SET
@@ -8939,19 +9025,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             discount_amount = ${discountAmount},
             original_fare = ${computedFare}
           WHERE id = ${newTripId2}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       // ── Link online payment to this trip for auto-refund on cancel ──────────
       if (razorpayPaymentId) {
         const newTripId = (trip.rows[0] as any).id;
-        rawDb.execute(rawSql`
-          UPDATE customer_payments SET trip_id=${newTripId}::uuid
-          WHERE razorpay_payment_id=${razorpayPaymentId} AND customer_id=${customer.id}::uuid AND payment_type='ride_payment'
-        `).catch(() => {});
-        rawDb.execute(rawSql`
-          UPDATE trip_requests SET payment_status='paid_online', razorpay_payment_id=${razorpayPaymentId}
-          WHERE id=${newTripId}::uuid
-        `).catch(() => {});
+        // Verify payment actually completed before trusting the ID
+        const payCheck = await rawDb.execute(rawSql`
+          SELECT id FROM customer_payments
+          WHERE razorpay_payment_id=${razorpayPaymentId} AND customer_id=${customer.id}::uuid
+            AND payment_type='ride_payment' AND status='completed'
+          LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        if (payCheck.rows.length) {
+          rawDb.execute(rawSql`
+            UPDATE customer_payments SET trip_id=${newTripId}::uuid
+            WHERE razorpay_payment_id=${razorpayPaymentId} AND customer_id=${customer.id}::uuid AND payment_type='ride_payment'
+          `).catch(dbCatch("db"));
+          rawDb.execute(rawSql`
+            UPDATE trip_requests SET payment_status='paid_online', razorpay_payment_id=${razorpayPaymentId}
+            WHERE id=${newTripId}::uuid
+          `).catch(dbCatch("db"));
+        }
       }
 
       const tripRow = camelize(trip.rows[0]) as any;
@@ -9006,7 +9101,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
         // Fallback to legacy broadcast if dispatch engine fails
-        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(() => {});
+        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(dbCatch("db"));
       });
 
       res.json({
@@ -9187,7 +9282,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${trip.driver_id}::uuid`);
         const drvDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.driver_id}::uuid`);
         const drvFcm = (drvDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(() => {});
+        notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(dbCatch("db"));
         // Real-time socket: ensures driver TripScreen closes immediately even if FCM is delayed
         io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
       }
@@ -9221,7 +9316,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               await rawDb.execute(rawSql`
                 UPDATE trip_requests SET payment_status='refunded_to_bank', razorpay_refund_id=${rzpRefundId}
                 WHERE id=${effectiveTripId}::uuid
-              `).catch(() => {});
+              `).catch(dbCatch("db"));
               console.log(`[CANCEL-REFUND] ₹${refundAmt} bank-refunded via Razorpay ${rzpRefundId}, trip ${effectiveTripId}`);
             }
           }
@@ -9231,7 +9326,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
             walletRefund = refundAmt;
             console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
           }
@@ -9267,7 +9362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               INSERT INTO transactions (user_id, trip_id, account, debit, credit, balance, transaction_type)
               VALUES (${customer.id}::uuid, ${effectiveTripId}::uuid, ${'Cancel Fee'}, ${cancelFee}, 0,
                 ${walBal - cancelFee}, ${'cancel_fee'})
-            `).catch(() => {});
+            `).catch(dbCatch("db"));
             log(`[CancelFee] Customer ${customer.id} charged ₹${cancelFee} for late cancellation`, 'cancel');
           } else {
             cancelFee = 0; // Don't charge if wallet empty — just log
@@ -9320,7 +9415,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO reviews (trip_id, reviewer_id, reviewee_id, rating, comment, review_type)
           VALUES (${tripId}::uuid, ${customer.id}::uuid, ${driverId}::uuid, ${parsedRating}, ${review||''}, 'customer_to_driver')
           ON CONFLICT DO NOTHING
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       // Free driver from current trip
       if (driverId) await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driverId}::uuid`);
@@ -10063,7 +10158,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
         VALUES (${customer.id}::uuid, ${`Wallet recharge via ${paymentMethod}`}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${paymentRef||null})
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ success: true, balance: newBal, message: `₹${amt} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
     */
@@ -10096,7 +10191,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO customer_payments (customer_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${customer.id}::uuid, ${amt}, 'wallet_topup', ${order.id}, 'pending', 'Wallet topup via Razorpay')
         ON CONFLICT DO NOTHING
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
       console.error("[wallet-order]", e.message || e);
@@ -10167,7 +10262,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO customer_payments (customer_id, trip_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${customer.id}::uuid, ${tripId || null}::uuid, ${amt}, 'ride_payment', ${order.id}, 'pending', 'Ride payment via Razorpay')
         ON CONFLICT DO NOTHING
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.json({ order, keyId, amount: amt });
     } catch (e: any) {
       const msg = e.message || e.error?.description || e.error?.reason || JSON.stringify(e).slice(0, 200);
@@ -10200,13 +10295,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
         WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       // Mark trip as paid_online so cancel-trip can auto-refund to wallet
       if (linkedTripId) {
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET payment_status='paid_online', razorpay_payment_id=${razorpayPaymentId}
           WHERE id=${linkedTripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled')
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json({ success: true, paymentId: razorpayPaymentId, amount: verifiedAmt });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -10264,7 +10359,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   await rawDb.execute(rawSql`
                     UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: status=' + fetchedStatus}
                     WHERE event_id=${eventId}
-                  `).catch(() => {});
+                  `).catch(dbCatch("db"));
                   break;
                 }
                 if (fetchedOrderId && orderId && fetchedOrderId !== orderId) {
@@ -10272,7 +10367,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   await rawDb.execute(rawSql`
                     UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: order_id mismatch'}
                     WHERE event_id=${eventId}
-                  `).catch(() => {});
+                  `).catch(dbCatch("db"));
                   break;
                 }
                 if (Math.abs(fetchedAmount - amount) > 0.5) {
@@ -10280,7 +10375,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   await rawDb.execute(rawSql`
                     UPDATE razorpay_webhook_logs SET error_msg=${'API verify failed: amount mismatch'}
                     WHERE event_id=${eventId}
-                  `).catch(() => {});
+                  `).catch(dbCatch("db"));
                   break;
                 }
                 console.info(`${tag} API verification OK paymentId=${paymentId}`);
@@ -10394,7 +10489,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                     ${rec.paymentType === "subscription" ? "subscription_purchase" : "driver_payment"},
                     ${JSON.stringify({ orderId, paymentId, paymentType: rec.paymentType })}::jsonb
                   )
-                `).catch(() => {});
+                `).catch(dbCatch("db"));
               }
             }
           }
@@ -10447,12 +10542,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             UPDATE driver_payments
             SET status = 'failed', failure_reason = ${failReason}, updated_at = NOW()
             WHERE razorpay_order_id = ${orderId} AND status = 'pending'
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
           await rawDb.execute(rawSql`
             UPDATE customer_payments
             SET status = 'failed', failure_reason = ${failReason}
             WHERE razorpay_order_id = ${orderId} AND status = 'pending'
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
           console.error(`[WEBHOOK:ALERT] Payment failed orderId=${orderId} — "${failReason}"`);
           break;
         }
@@ -10633,7 +10728,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Mark as successfully processed in audit log
       await rawDb.execute(rawSql`
         UPDATE razorpay_webhook_logs SET processed = true WHERE event_id = ${eventId}
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       console.info(`[WEBHOOK] ${eventType} (${eventId}) ✓ done`);
 
     } catch (procErr: any) {
@@ -10642,7 +10737,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE razorpay_webhook_logs
         SET error_msg = ${String(procErr.message ?? "unknown").slice(0, 500)}
         WHERE event_id = ${eventId}
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
     }
   };
 
@@ -10694,7 +10789,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           false,
           ${"Signature mismatch — rejected"}
         )
-      `).catch(() => {});
+      `).catch(dbCatch("db"));
       res.status(400).json({ message: "Invalid webhook signature" });
       return;
     }
@@ -10833,7 +10928,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (allUploaded) {
         await rawDb.execute(rawSql`
           UPDATE users SET verification_status='under_review' WHERE id=${driver.id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
 
       res.json({ success: true, message: "Document uploaded. Under admin review.", allRequiredUploaded: allUploaded });
@@ -10945,7 +11040,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const msg = action === 'approve'
           ? "Your KYC documents have been approved! You can now start accepting rides."
           : `Your KYC documents were rejected. ${note ? 'Reason: ' + note : 'Please re-upload correct documents.'}`;
-        sendFcmNotification({ fcmToken, title: "KYC Update", body: msg }).catch(() => {});
+        sendFcmNotification({ fcmToken, title: "KYC Update", body: msg }).catch(dbCatch("db"));
       }
 
       res.json({ success: true, action, driverId });
@@ -11282,7 +11377,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const photoUrl = req.file ? `/uploads/${req.file.filename}` : null;
       if (!photoUrl || !tripId) return res.status(400).json({ message: "photo and tripId required" });
       // Ensure column exists, then update
-      await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS pickup_photo_url TEXT`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS pickup_photo_url TEXT`).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         UPDATE trip_requests SET pickup_photo_url=${photoUrl}
         WHERE id=${tripId}::uuid AND driver_id=${user.id}::uuid
@@ -11381,7 +11476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (vehicleType) {
         await rawDb.execute(rawSql`
           UPDATE driver_details SET vehicle_type=${vehicleType}, updated_at=now() WHERE user_id=${user.id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json({ success: true, message: "Profile updated" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -11485,7 +11580,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const plan = camelize(planR.rows[0] as any) as any;
       const startDate = new Date();
       const endDate = new Date(startDate.getTime() + plan.durationDays * 86400000);
-      await rawDb.execute(rawSql`ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100)`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100)`).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         INSERT INTO driver_subscriptions (id, driver_id, plan_id, start_date, end_date, payment_amount, payment_status, rides_used, is_active, razorpay_payment_id, created_at)
         VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, ${razorpayPaymentId}, now())
@@ -11630,7 +11725,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               free_period_end = COALESCE(free_period_end, NOW() + INTERVAL '30 days'),
               launch_free_active = true
           WHERE id=${id}::uuid AND user_type='driver'
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       // Send FCM notification if token exists
       const tokenR = await rawDb.execute(rawSql`SELECT fcm_token, full_name FROM users WHERE id=${id}::uuid`).catch(() => ({ rows: [] }));
@@ -11667,7 +11762,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Auto-expire silently
       if (launchFreeActive && freePeriodEnd && freePeriodEnd < now) {
-        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(dbCatch("db"));
         launchFreeActive = false;
       }
 
@@ -11752,7 +11847,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Auto-expire if period ended
       if (launchFreeActive && freePeriodEnd && freePeriodEnd < now) {
-        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE users SET launch_free_active=false WHERE id=${user.id}::uuid`).catch(dbCatch("db"));
         launchFreeActive = false;
       }
 
@@ -12068,7 +12163,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const _markNotificationsRead = async (req: any, res: any) => {
     try {
       const user = (req as any).currentUser;
-      await rawDb.execute(rawSql`UPDATE notification_log SET is_read=true WHERE user_id=${user.id}::uuid`).catch(() => {});
+      await rawDb.execute(rawSql`UPDATE notification_log SET is_read=true WHERE user_id=${user.id}::uuid`).catch(dbCatch("db"));
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   };
@@ -12379,7 +12474,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // Award reward
       if (chosen.reward_type === 'coins' && parseFloat(chosen.reward_amount) > 0) {
         await rawDb.execute(rawSql`UPDATE users SET jago_coins = COALESCE(jago_coins,0) + ${parseInt(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
-        await rawDb.execute(rawSql`INSERT INTO coins_ledger (user_id, amount, type, description) VALUES (${user.id}::uuid, ${parseInt(chosen.reward_amount)}, 'spin_wheel', 'Daily spin reward: ${chosen.label}')`).catch(() => {});
+        await rawDb.execute(rawSql`INSERT INTO coins_ledger (user_id, amount, type, description) VALUES (${user.id}::uuid, ${parseInt(chosen.reward_amount)}, 'spin_wheel', 'Daily spin reward: ${chosen.label}')`).catch(dbCatch("db"));
       } else if (chosen.reward_type === 'wallet' && parseFloat(chosen.reward_amount) > 0) {
         await rawDb.execute(rawSql`UPDATE users SET wallet_balance = COALESCE(wallet_balance,0) + ${parseFloat(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
       }
@@ -12817,11 +12912,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         };
         const vcVehicleType = vehicleTypeMap[key];
         if (vcVehicleType) {
-          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE vehicle_type=${vcVehicleType}`).catch(() => {});
+          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE vehicle_type=${vcVehicleType}`).catch(dbCatch("db"));
         }
         // Parcel — all parcel vehicles share one service toggle
         if (key === 'parcel_delivery') {
-          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type='parcel'`).catch(() => {});
+          await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type='parcel'`).catch(dbCatch("db"));
         }
         // Also sync business_settings legacy toggle
         const legacyKeyMap: Record<string, string> = {
@@ -12835,7 +12930,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             INSERT INTO business_settings (key_name, value, settings_type)
             VALUES (${'service_' + legacyKey + '_enabled'}, ${isActive ? '1' : '0'}, 'service_settings')
             ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
-          `).catch(() => {});
+          `).catch(dbCatch("db"));
         }
       }
 
@@ -12859,7 +12954,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
 
   // Parcel migration: add gst_amt column if missing
-  await rawDb.execute(rawSql`ALTER TABLE parcel_orders ADD COLUMN IF NOT EXISTS gst_amt NUMERIC(10,2) DEFAULT 0`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE parcel_orders ADD COLUMN IF NOT EXISTS gst_amt NUMERIC(10,2) DEFAULT 0`).catch(dbCatch("db"));
 
   // Hardcoded defaults — fallback only when parcel_vehicle_types DB row not found
   const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string; maxWeightKg: number; loadCharge: number }> = {
@@ -12888,11 +12983,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     const pv = pvRes.rows[0] as any;
     const hc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
     const vehicleName  = pv?.name           || hc.name;
-    const maxWeightKg  = parseFloat(pv?.max_weight_kg || hc.maxWeightKg);
-    const vcBaseFare   = parseFloat(pv?.base_fare     || hc.baseFare);
-    const vcPerKm      = parseFloat(pv?.per_km        || hc.perKm);
-    const vcPerKg      = parseFloat(pv?.per_kg        || hc.perKg);
-    const vcLoadCharge = parseFloat(pv?.load_charge   || hc.loadCharge);
+    const maxWeightKg  = safeFloat(pv?.max_weight_kg  ?? hc.maxWeightKg, 10);
+    const vcBaseFare   = safeFloat(pv?.base_fare      ?? hc.baseFare,    30);
+    const vcPerKm      = safeFloat(pv?.per_km         ?? hc.perKm,       8);
+    const vcPerKg      = safeFloat(pv?.per_kg         ?? hc.perKg,       5);
+    const vcLoadCharge = safeFloat(pv?.load_charge    ?? hc.loadCharge,  0);
 
     // 2. Zone-based parcel_fares override
     let pfRow: any = {};
@@ -12914,19 +13009,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (pfRes.rows.length) pfRow = pfRes.rows[0];
     }
 
-    const baseFare    = pfRow.base_fare    ? parseFloat(pfRow.base_fare)    : vcBaseFare;
-    const perKm       = pfRow.fare_per_km  ? parseFloat(pfRow.fare_per_km)  : vcPerKm;
-    const perKg       = pfRow.fare_per_kg  ? parseFloat(pfRow.fare_per_kg)  : vcPerKg;
-    const loadCharge  = pfRow.loading_charge ? parseFloat(pfRow.loading_charge) : vcLoadCharge;
-    const minFare     = pfRow.minimum_fare ? parseFloat(pfRow.minimum_fare) : 0;
-    const helperRate  = parseFloat(pfRow.helper_charge_per_hour || '0');
+    const baseFare    = pfRow.base_fare      != null ? safeFloat(pfRow.base_fare,       vcBaseFare)   : vcBaseFare;
+    const perKm       = pfRow.fare_per_km    != null ? safeFloat(pfRow.fare_per_km,     vcPerKm)      : vcPerKm;
+    const perKg       = pfRow.fare_per_kg    != null ? safeFloat(pfRow.fare_per_kg,     vcPerKg)      : vcPerKg;
+    const loadCharge  = pfRow.loading_charge != null ? safeFloat(pfRow.loading_charge,  vcLoadCharge) : vcLoadCharge;
+    const minFare     = pfRow.minimum_fare   != null ? safeFloat(pfRow.minimum_fare,    0)            : 0;
+    const helperRate  = safeFloat(pfRow.helper_charge_per_hour, 0);
     const maxHelpers  = parseInt(pfRow.max_helpers || '0') || 0;
 
     // 3. Configurable commission from platform_services
     const platRes = await rawDb.execute(rawSql`
       SELECT commission_pct FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
     `).catch(() => ({ rows: [] as any[] }));
-    const commPctNum = parseFloat((platRes.rows[0] as any)?.commission_pct || '15');
+    const commPctNum = safeFloat((platRes.rows[0] as any)?.commission_pct, 15);
     const commRate   = commPctNum / 100;
     const gstRate    = 0.05;
 
@@ -12953,8 +13048,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     try {
       const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1,
               totalDistanceKm, pickupLat, pickupLng } = req.body;
-      const wt   = Math.max(0.1, parseFloat(weightKg) || 1);
-      const dist = Math.max(0.5, parseFloat(totalDistanceKm) || 5);
+      const wt   = Math.max(0.1, safeFloat(weightKg, 1));
+      const dist = Math.max(0.5, safeFloat(totalDistanceKm, 5));
 
       const f = await resolveParcelFare(
         vehicleCategory, dist, wt,
@@ -13041,10 +13136,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }
       }
 
-      const dist = parseFloat(totalDistanceKm) || 5;
+      const dist = safeFloat(totalDistanceKm, 5);
 
       // Calculate billable weight (actual vs volumetric)
-      const dims = { lengthCm: parseFloat(lengthCm) || 0, widthCm: parseFloat(widthCm) || 0, heightCm: parseFloat(heightCm) || 0, weightKg: parseFloat(weightKg) || 1 };
+      const dims = { lengthCm: safeFloat(lengthCm, 0), widthCm: safeFloat(widthCm, 0), heightCm: safeFloat(heightCm, 0), weightKg: safeFloat(weightKg, 1) };
       const weightInfo = calculateBillableWeight(dims);
       const wt = weightInfo.billableWeightKg;
 
@@ -13151,7 +13246,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
                 totalFare: Number(totalFare) || 0,
                 orderId: order.id,
                 vehicleCategory: vehicleCategory as string,
-              }).catch(() => {});
+              }).catch(dbCatch("db"));
             }
           }
         } catch (_) {}
@@ -13165,7 +13260,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           companyId: b2bCompanyId,
           timestamp: new Date().toISOString(),
           data: { vehicleCategory, totalFare, drops: dropsWithOtp.length },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
 
       // Emit parcel lifecycle event
@@ -13229,14 +13324,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
               total_trips = GREATEST(0, total_trips - 1),
               updated_at = NOW()
           WHERE id = ${cancelled.b2b_company_id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
         fireB2BWebhook({
           eventType: "order_cancelled",
           orderId: cancelled.id,
           companyId: cancelled.b2b_company_id,
           timestamp: new Date().toISOString(),
           data: { reason, refundedFare: parseFloat(cancelled.total_fare || '0') },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -13278,7 +13373,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           companyId: order.b2b_company_id,
           timestamp: new Date().toISOString(),
           data: { driverId, driverName: (dNameR.rows[0] as any)?.full_name || '' },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
       res.json({ success: true, order });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -13310,14 +13405,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
       // Notify all receivers that parcel has been picked up
       const drops: any[] = typeof order.drop_locations === 'string' ? JSON.parse(order.drop_locations) : (order.drop_locations || []);
-      notifyAllReceivers(order.id, drops, "pickup_started", driverName).catch(() => {});
+      notifyAllReceivers(order.id, drops, "pickup_started", driverName).catch(dbCatch("db"));
 
       // B2B webhook
       if (order.is_b2b && order.b2b_company_id) {
         fireB2BWebhook({
           eventType: "parcel_picked", orderId: order.id, companyId: order.b2b_company_id,
           timestamp: new Date().toISOString(), data: { driverName },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
 
       if (io) io.to(`user:${order.customer_id}`).emit('parcel:in_transit', { orderId: order.id });
@@ -13370,7 +13465,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           receiverName: drop.receiverName || "Customer",
           eventType: "delivered",
           orderId: order.id,
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
 
       if (allDelivered) {
@@ -13389,7 +13484,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
               revenue_model = ${parcelBreakdown.model},
               revenue_breakdown = ${JSON.stringify(parcelBreakdown)}::jsonb
           WHERE id = ${req.params.id}::uuid
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
 
         // Settle: driver wallet + admin revenue + GST wallet + commission_settlements
         const payMethod = (order.payment_method || 'cash').toLowerCase();
@@ -13413,7 +13508,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           fireB2BWebhook({
             eventType: "parcel_delivered", orderId: order.id, companyId: order.b2b_company_id,
             timestamp: new Date().toISOString(), data: { totalFare: order.total_fare, slaBreached },
-          }).catch(() => {});
+          }).catch(dbCatch("db"));
         }
       }
       res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx], slaBreached });
@@ -13556,9 +13651,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // ── B2B: Schema migration — add login columns ─────────────────────────────
-  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_email VARCHAR(255)`).catch(() => {});
-  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_password_hash VARCHAR(255)`).catch(() => {});
-  await rawDb.execute(rawSql`CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_email ON b2b_companies(b2b_email) WHERE b2b_email IS NOT NULL`).catch(() => {});
+  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_email VARCHAR(255)`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_password_hash VARCHAR(255)`).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_email ON b2b_companies(b2b_email) WHERE b2b_email IS NOT NULL`).catch(dbCatch("db"));
 
   // ── B2B: Login with company credentials (no app user session needed) ──────
   app.post("/api/app/b2b/login", async (req, res) => {
@@ -13777,7 +13872,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (company.status === 'suspended') return res.status(403).json({ message: 'Company account is suspended' });
 
       const vc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
-      const wt = parseFloat(weightKg) || 1;
+      const wt = safeFloat(weightKg, 1);
 
       // Pre-calculate total cost to validate wallet balance
       let grandTotal = 0;
@@ -13854,7 +13949,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           companyId,
           timestamp: new Date().toISOString(),
           data: { vehicleCategory, totalFare: total, bulkBatch: true },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
 
       const newBalance = parseFloat((deductR.rows[0] as any).wallet_balance || '0');
@@ -13898,7 +13993,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ON CONFLICT (key_name) DO UPDATE SET value=${isActive ? '1' : '0'}, updated_at=now()
       `);
       // Sync vehicle_categories is_active
-      await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${!!isActive} WHERE type=${key}`).catch(() => {});
+      await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${!!isActive} WHERE type=${key}`).catch(dbCatch("db"));
       // Sync platform_services service_status
       const statusVal = isActive ? 'active' : 'inactive';
       const platformKeyMap: Record<string, string[]> = {
@@ -13910,7 +14005,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       };
       const platformKeys = platformKeyMap[key] || [];
       for (const pk of platformKeys) {
-        await rawDb.execute(rawSql`UPDATE platform_services SET service_status=${statusVal}, updated_at=NOW() WHERE service_key=${pk}`).catch(() => {});
+        await rawDb.execute(rawSql`UPDATE platform_services SET service_status=${statusVal}, updated_at=NOW() WHERE service_key=${pk}`).catch(dbCatch("db"));
       }
       res.json({ success: true, key, isActive });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -13989,7 +14084,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             reason: "No driver available nearby. Please try again.",
           });
         }
-        await appendTripStatus(r.id, 'cancelled', 'system', 'Auto-cancelled: no driver in 12 minutes').catch(() => {});
+        await appendTripStatus(r.id, 'cancelled', 'system', 'Auto-cancelled: no driver in 12 minutes').catch(dbCatch("db"));
       }
       if (stale.rows.length) console.log(`[EXPIRE] Auto-cancelled ${stale.rows.length} stale searching trip(s)`);
     } catch (e: any) {
@@ -14039,11 +14134,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           const nd = nextBest[0];
           io.to(`user:${nd.driverId}`).emit("trip:new_request", { tripId: trip.id, pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0 });
           if (nd.fcmToken) {
-            notifyDriverNewRide({ fcmToken: nd.fcmToken, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: trip.id }).catch(() => {});
+            notifyDriverNewRide({ fcmToken: nd.fcmToken, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: trip.id }).catch(dbCatch("db"));
           }
           console.log(`[TIMEOUT] Trip ${trip.id} safety-net reassigned to driver ${nd.driverId}`);
         } else if (io) {
-          notifyNearbyDriversNewTrip(trip.id, trip.pickupLat, trip.pickupLng, trip.vehicleCategoryId, excludeList).catch(() => {});
+          notifyNearbyDriversNewTrip(trip.id, trip.pickupLat, trip.pickupLng, trip.vehicleCategoryId, excludeList).catch(dbCatch("db"));
         }
       }
     } catch (e: any) {
@@ -14121,7 +14216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         await rawDb.execute(rawSql`
           INSERT INTO trip_status_log (trip_id, status, changed_by, note)
           VALUES (${r.id}::uuid, 'arrival_delayed', 'system', 'Driver accepted >15 min ago, not yet arrived')
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
         console.log(`[ARRIVAL-TIMEOUT] Trip ${r.id} — driver accepted 15+ min ago, notified parties`);
       }
     } catch (e: any) {
@@ -14151,7 +14246,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // Initialize AI tables on startup
   initAiTables().then(() => {
     console.log("[AI] Intelligence layer ready");
-    refreshAllDriverStats().catch(() => {});
+    refreshAllDriverStats().catch(dbCatch("db"));
   });
 
   // ── AI: Smart Suggestions for customer ─────────────────────────────────
@@ -14300,7 +14395,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   // ── Periodic driver stats refresh (every 10 minutes) ──────────────────
   setInterval(() => {
-    refreshAllDriverStats().catch(() => {});
+    refreshAllDriverStats().catch(dbCatch("db"));
   }, 10 * 60 * 1000);
 
   // ── Periodic stale trip cleanup (every 2 minutes) ────────────────────────
@@ -14477,7 +14572,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       updated_at TIMESTAMP DEFAULT NOW()
     );
     INSERT INTO heatmap_config (id) VALUES (1) ON CONFLICT DO NOTHING;
-  `).catch(() => {});
+  `).catch(dbCatch("db"));
 
   // ── Helper: fire-and-forget event log (never blocks request) ──────────────
   function logHeatmapEvent(
@@ -14489,7 +14584,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     rawDb.execute(rawSql`
       INSERT INTO heatmap_events (event_type, lat, lng, service_type, created_at)
       VALUES (${eventType}, ${lat}, ${lng}, ${serviceType}, NOW())
-    `).catch(() => {});
+    `).catch(dbCatch("db"));
   }
 
   // ── Grid Computation Engine ───────────────────────────────────────────────
@@ -15220,8 +15315,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     try {
       const { lengthCm = 0, widthCm = 0, heightCm = 0, weightKg = 1 } = req.body;
       const result = calculateBillableWeight({
-        lengthCm: parseFloat(lengthCm), widthCm: parseFloat(widthCm),
-        heightCm: parseFloat(heightCm), weightKg: parseFloat(weightKg),
+        lengthCm: safeFloat(lengthCm, 0), widthCm: safeFloat(widthCm, 0),
+        heightCm: safeFloat(heightCm, 0), weightKg: safeFloat(weightKg, 0),
       });
       res.json(result);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -15310,7 +15405,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           companyId: String(companyId),
           timestamp: new Date().toISOString(),
           data: { bulkUpload: true, ordersCreated: results.length, totalOrders: csvRows.length },
-        }).catch(() => {});
+        }).catch(dbCatch("db"));
       }
 
       // Clean up uploaded file
@@ -15722,7 +15817,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         await rawDb.execute(rawSql`
           UPDATE platform_services SET revenue_model=${revenueModel}, updated_at=NOW()
           WHERE service_key=${sk}
-        `).catch(() => {});
+        `).catch(dbCatch("db"));
       }
       res.json({ success: true, service: String(service), revenueModel });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }

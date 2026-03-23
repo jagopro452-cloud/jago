@@ -512,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // Far more battery-efficient than calling getCurrentPosition every 3 s.
     _posStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.balanced, // cell+WiFi assisted — less power than 'high'
+        accuracy: LocationAccuracy.medium, // cell+WiFi assisted — less power than 'high'
         distanceFilter: 15,                  // no update until driver moves 15 m
       ),
     ).listen((pos) {
