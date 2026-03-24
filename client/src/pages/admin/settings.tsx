@@ -13,9 +13,6 @@ type OtpSettings = {
   maxAttempts: number;
 };
 
-  },
-];
-
 function PasswordChangePanel() {
   const { toast } = useToast();
   const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
