@@ -1870,7 +1870,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Protect admin APIs except auth recovery routes.
   app.use("/api/admin", async (req, res, next) => {
-    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password", "/emergency-reset", "/diagnostic"]);
+    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password", "/emergency-reset"]);
     if (publicPaths.has(req.path)) return next();
     const token = extractBearerToken(req);
     if (!token) return res.status(401).json({ message: "Admin authorization required" });
@@ -1900,6 +1900,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) {
       res.status(503).json({ status: "error", db: "disconnected" });
     }
+  });
+
+  // Diagnostic endpoint (unprotected)
+  app.get("/api/diag/admin-status", async (_req, res) => {
+    try {
+      const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      const syncOnRestart = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART;
+      
+      if (!adminEmail) {
+        return res.json({ error: "ADMIN_EMAIL not configured", config: { adminEmail: null } });
+      }
+
+      const r = await rawDb.execute(rawSql`
+        SELECT id, email, password, is_active FROM admins WHERE LOWER(email) = ${adminEmail} LIMIT 1
+      `);
+
+      if (!r.rows.length) {
+        return res.json({
+          error: "Admin account not found in database",
+          config: { adminEmail, passwordConfigured: !!adminPassword, syncOnRestart },
+          admin: null
+        });
+      }
+
+      const admin: any = r.rows[0];
+      res.json({
+        success: true,
+        config: { adminEmail, passwordConfigured: !!adminPassword, syncOnRestart, passwordHashLength: (admin.password || "").length },
+        admin: { id: admin.id, email: admin.email, isActive: admin.is_active, passwordHash: (admin.password || "").substring(0, 30) + "..." }
+      });
+    } catch (e: any) { res.status(500).json({ error: safeErrMsg(e) }); }
   });
 
   // Razorpay connectivity diagnostic (admin-only)
@@ -2903,38 +2935,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ts: new Date().toISOString(),
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-  });
-
-  // ── DIAGNOSTIC: Check admin status (no auth required for diagnosis) ──────
-  app.get("/api/admin/diagnostic", async (_req, res) => {
-    try {
-      const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-      const adminPassword = process.env.ADMIN_PASSWORD;
-      const syncOnRestart = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART;
-      
-      if (!adminEmail) {
-        return res.json({ error: "ADMIN_EMAIL not configured", config: { adminEmail: null } });
-      }
-
-      const r = await rawDb.execute(rawSql`
-        SELECT id, email, password, is_active FROM admins WHERE LOWER(email) = ${adminEmail} LIMIT 1
-      `);
-
-      if (!r.rows.length) {
-        return res.json({
-          error: "Admin account not found in database",
-          config: { adminEmail, passwordConfigured: !!adminPassword, syncOnRestart },
-          admin: null
-        });
-      }
-
-      const admin: any = r.rows[0];
-      res.json({
-        success: true,
-        config: { adminEmail, passwordConfigured: !!adminPassword, syncOnRestart, passwordHashLength: (admin.password || "").length },
-        admin: { id: admin.id, email: admin.email, isActive: admin.is_active, passwordHash: admin.password?.substring(0, 30) + "..." }
-      });
-    } catch (e: any) { res.status(500).json({ error: safeErrMsg(e) }); }
   });
 
   // ── FORCE admin password reset (requires OPS key or reset key) ──────────────
