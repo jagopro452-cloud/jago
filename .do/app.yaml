@@ -38,7 +38,7 @@ services:
       - key: ADMIN_NAME
         value: "Jago Admin"
       - key: ADMIN_PASSWORD
-        value: "JagoAdmin@2026!"
+        value: "Greeshmant@2023"
         type: SECRET
       - key: ADMIN_PASSWORD_SYNC_ON_RESTART
         value: "true"
