@@ -1931,7 +1931,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             const SizedBox(height: 10),
             Text(
               value,
-              style: AppText.statMedium(null).copyWith(
+              style: AppText.statMedium().copyWith(
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w800,
               ),
@@ -1975,7 +1975,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         Expanded(
           child: Text(
             tip,
-            style: AppText.bodySecondary(null).copyWith(
+            style: AppText.body(null).copyWith(
               height: 1.4,
             ),
           ),

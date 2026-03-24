@@ -91,33 +91,33 @@ class AppText {
   // ──────────────────────────────────────────────────────────────────────────
   // HEADING HIERARCHY
   // ──────────────────────────────────────────────────────────────────────────
-  static TextStyle h1(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle h1(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 32,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
     letterSpacing: -0.5,
   );
 
-  static TextStyle h2(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle h2(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 28,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
     letterSpacing: -0.3,
   );
 
-  static TextStyle h3(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle h3(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 24,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle h4(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle h4(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 20,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle heading(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle heading(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 22,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
@@ -126,25 +126,25 @@ class AppText {
   // ──────────────────────────────────────────────────────────────────────────
   // BODY TEXT
   // ──────────────────────────────────────────────────────────────────────────
-  static TextStyle subheading(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle subheading(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 15,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle body(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle body(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 14,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
   );
 
-  static TextStyle bodyPrimary(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle bodyPrimary(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 14,
     fontWeight: FontWeight.w500,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle bodySmall(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle bodySmall(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 13,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
@@ -153,19 +153,19 @@ class AppText {
   // ──────────────────────────────────────────────────────────────────────────
   // LABELS & CAPTIONS
   // ──────────────────────────────────────────────────────────────────────────
-  static TextStyle label(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle label(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 12,
     fontWeight: FontWeight.w500,
     color: AppColors.textSecondary,
   );
 
-  static TextStyle labelSmall(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle labelSmall(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 11,
     fontWeight: FontWeight.w500,
     color: AppColors.textTertiary,
   );
 
-  static TextStyle caption(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle caption(BuildContext? context) => GoogleFonts.poppins(
     fontSize: 12,
     fontWeight: FontWeight.w400,
     color: AppColors.textHint,
@@ -539,13 +539,11 @@ class AppInputs {
       fillColor: AppColors.surface,
       border: InputBorder.none,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      hintStyle: AppText.textSmall,
+      hintStyle: textSmall,
     );
   }
-}
 
-extension AppTextExt on AppText {
-  static TextStyle textSmall = GoogleFonts.poppins(
+  static TextStyle get textSmall => GoogleFonts.poppins(
     fontSize: 13,
     color: AppColors.textSecondary,
   );
