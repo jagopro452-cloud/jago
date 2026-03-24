@@ -1910,6 +1910,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ pong: true });
   });
 
+  // Env vars diagnostic endpoint (shows what's configured, sanitized)
+  app.get("/api/diag/env", (_req, res) => {
+    const envConfig = {
+      NODE_ENV: process.env.NODE_ENV || "not-set",
+      DATABASE_URL: process.env.DATABASE_URL ? "***configured***" : "NOT-SET",
+      ADMIN_EMAIL: process.env.ADMIN_EMAIL || "NOT-SET",
+      ADMIN_NAME: process.env.ADMIN_NAME ? "***set***" : "NOT-SET",
+      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? "***set***" : "NOT-SET",
+      ADMIN_PASSWORD_SYNC_ON_RESTART: process.env.ADMIN_PASSWORD_SYNC_ON_RESTART || "default-false",
+      ADMIN_SESSION_TTL_HOURS: process.env.ADMIN_SESSION_TTL_HOURS || "24",
+      ADMIN_2FA_REQUIRED: process.env.ADMIN_2FA_REQUIRED || "false",
+      ADMIN_RESET_KEY: process.env.ADMIN_RESET_KEY ? "***set***" : "NOT-SET",
+      OPS_API_KEY: process.env.OPS_API_KEY ? "***set***" : "NOT-SET",
+    };
+    res.json({ environments: envConfig, timestamp: new Date().toISOString() });
+  });
+
   // Diagnostic endpoint (unprotected)
   app.get("/api/diag/admin-status", async (_req, res) => {
     try {
