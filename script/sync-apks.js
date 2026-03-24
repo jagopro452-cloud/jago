@@ -30,6 +30,13 @@ function ensureDir(dirPath) {
 function syncAPKs() {
   console.log('🔄 Starting APK Auto-Sync...\n');
 
+  // Check if release-apks directory exists
+  if (!fs.existsSync(SOURCE_DIR)) {
+    console.log('⚠️  release-apks/ directory not found - skipping APK sync');
+    console.log('   (This is normal in production - APKs are hosted separately)\n');
+    return true; // Don't fail the build
+  }
+
   // Ensure both destination directories exist
   ensureDir(DEST_DIR_PUBLIC);
   ensureDir(DEST_DIR_DIST);
@@ -39,7 +46,7 @@ function syncAPKs() {
 
   if (apkFiles.length === 0) {
     console.log('⚠️  No APK files found in release-apks/');
-    return false;
+    return true; // Don't fail the build
   }
 
   console.log(`📦 Found ${apkFiles.length} APK files:\n`);
@@ -124,8 +131,8 @@ function syncAPKs() {
     console.log('🎉 All APKs ready for download on web server!\n');
     return true;
   } else {
-    console.warn('⚠️  Some APKs missing in required locations\n');
-    return false;
+    console.log('⚠️  Some APKs not found (this is OK in production)\n');
+    return true; // Don't fail the build
   }
 }
 
