@@ -14,19 +14,31 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // IMPORTANT: Serve static files ONLY  from /public directory
+  // Do NOT use catch-all middleware that might intercept /api requests
+  app.use(express.static(distPath, {
+    // Cache static assets (CSS, JS, images) for 1 year since they're hashed
+    maxAge: '1y',
+    // But don't cache index.html - it gets new asset hashes
+    setHeaders: (res, filepath) => {
+      if (filepath.endsWith('index.html')) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    }
+  }));
 
-  // fall through to index.html if the file doesn't exist - BUT ONLY FOR NON-API ROUTES
-  // no-cache on index.html to prevent stale asset hash references
-  // IMPORTANT: Skip /api routes - let them 404 naturally if not handled by API routes
-  // Using wildcard pattern that works in Express 4+
-  app.use("*", (req, res) => {
-    // Don't serve index.html for /api or /v* paths (API endpoints)
-    // These should have been handled by registerRoutes() already
-    if (req.path.startsWith("/api") || req.path.startsWith("/v1") || req.path.startsWith("/v2")) {
+  // CRITICAL: Handle 404s for routes that weren't matched by API handlers or static files
+  // This MUST only serve index.html for client-side routing (non-API paths)
+  app.use((req, res) => {
+    // NEVER serve index.html for API routes - they should 404 if not handled
+    if (req.path.startsWith("/api/") || req.path.startsWith("/api") || 
+        req.path.startsWith("/v1/") || req.path.startsWith("/v2/")) {
       return res.status(404).json({ message: "API endpoint not found" });
     }
     
+    // For client routes, serve index.html (React Router will handle routing)
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
