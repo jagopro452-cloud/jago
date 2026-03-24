@@ -145,12 +145,42 @@ class _OffersScreenState extends State<OffersScreen> {
     final color = _discountColor(type);
 
     String? expiryText;
+    Color? expiryColor;
     if (expiry != null && expiry.isNotEmpty) {
       try {
         final dt = DateTime.parse(expiry);
-        final days = dt.difference(DateTime.now()).inDays;
-        expiryText = days <= 0 ? 'Expires today!' : 'Expires in $days days';
-      } catch (_) {}
+        final now = DateTime.now();
+        final days = dt.difference(now).inDays;
+        
+        if (days < 0) {
+          expiryText = 'EXPIRED';
+          expiryColor = JT.error;
+        } else if (days == 0) {
+          expiryText = 'Expires today!';
+          expiryColor = const Color(0xFFEA580C);
+        } else if (days == 1) {
+          expiryText = 'Expires tomorrow';
+          expiryColor = const Color(0xFFEA580C);
+        } else if (days < 7) {
+          expiryText = 'Expires in $days days';
+          expiryColor = const Color(0xFFEA580C);
+        } else if (days < 30) {
+          final weeks = (days / 7).ceil();
+          expiryText = 'Expires in $weeks week${weeks > 1 ? 's' : ''}';
+          expiryColor = const Color(0xFFD97706);
+        } else if (days < 365) {
+          final months = (days / 30).ceil();
+          expiryText = 'Expires in $months month${months > 1 ? 's' : ''}';
+          expiryColor = const Color(0xFF059669);
+        } else {
+          final years = (days / 365).floor();
+          expiryText = 'Expires in $years year${years > 1 ? 's' : ''}';
+          expiryColor = const Color(0xFF059669);
+        }
+      } catch (e) {
+        expiryText = 'Expiry date unknown';
+        expiryColor = const Color(0xFF64748B);
+      }
     }
 
     return Container(
@@ -192,7 +222,7 @@ class _OffersScreenState extends State<OffersScreen> {
                     const SizedBox(width: 6),
                   ],
                   if (expiryText != null)
-                    _tag(expiryText, const Color(0xFFFFF1F2), const Color(0xFFE11D48)),
+                    _tag(expiryText, expiryColor?.withValues(alpha: 0.1) ?? const Color(0xFFFFF1F2), expiryColor ?? const Color(0xFFE11D48)),
                 ]),
               ]),
             ),

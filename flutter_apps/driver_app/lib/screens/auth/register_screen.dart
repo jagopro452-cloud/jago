@@ -463,6 +463,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Widget _datePicker(String label, DateTime? value, Function(DateTime) onPick) {
+    // Determine date range based on label
+    bool isExpiry = label.toLowerCase().contains('expiry');
+    bool isDOB = label.toLowerCase().contains('birth');
+    
+    DateTime initialDate;
+    DateTime firstDate;
+    DateTime lastDate;
+    
+    if (isDOB) {
+      // Date of Birth: 18-80 years ago
+      initialDate = DateTime.now().subtract(const Duration(days: 9855)); // ~27 years
+      firstDate = DateTime(1940);
+      lastDate = DateTime.now().subtract(const Duration(days: 6570)); // Minimum 18 years
+    } else if (isExpiry) {
+      // License/Document Expiry: Today to 10 years in future
+      initialDate = DateTime.now().add(const Duration(days: 1095)); // 3 years default
+      firstDate = DateTime.now();
+      lastDate = DateTime.now().add(const Duration(days: 3650)); // 10 years future
+    } else {
+      // Default: past dates
+      initialDate = DateTime.now();
+      firstDate = DateTime(1950);
+      lastDate = DateTime.now();
+    }
+    
     return ListTile(
       tileColor: JT.surfaceAlt,
       shape: RoundedRectangleBorder(
@@ -471,20 +496,72 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       leading: const Icon(Icons.calendar_month, color: JT.primary),
       title: Text(label, style: JT.caption),
-      subtitle: Text(
-        value == null ? 'Select Date' : DateFormat('dd MMM yyyy').format(value),
-        style: JT.bodyPrimary,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value == null ? 'Select Date' : DateFormat('dd MMM yyyy').format(value),
+            style: JT.bodyPrimary,
+          ),
+          if (isExpiry && value != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _getExpiryStatus(value),
+              style: _getExpiryStatusStyle(value),
+            ),
+          ],
+        ],
       ),
       onTap: () async {
         final d = await showDatePicker(
           context: context,
-          initialDate: DateTime.now().subtract(const Duration(days: 6570)),
-          firstDate: DateTime(1950),
-          lastDate: DateTime.now(),
+          initialDate: value ?? initialDate,
+          firstDate: firstDate,
+          lastDate: lastDate,
+          builder: (context, child) => Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                primary: JT.primary,
+                surface: Colors.white,
+              ),
+            ),
+            child: child!,
+          ),
         );
         if (d != null) onPick(d);
       },
     );
+  }
+
+  String _getExpiryStatus(DateTime expiryDate) {
+    final now = DateTime.now();
+    final diff = expiryDate.difference(now);
+    
+    if (diff.inDays < 0) {
+      return 'EXPIRED ${diff.inDays.abs()} days ago';
+    } else if (diff.inDays == 0) {
+      return 'EXPIRES TODAY!';
+    } else if (diff.inDays <= 30) {
+      return 'Expires in ${diff.inDays} days';
+    } else if (diff.inDays <= 365) {
+      final months = (diff.inDays / 30).ceil();
+      return 'Expires in $months months';
+    } else {
+      final years = (diff.inDays / 365).floor();
+      return 'Expires in $years year${years > 1 ? 's' : ''}';
+    }
+  }
+
+  TextStyle _getExpiryStatusStyle(DateTime expiryDate) {
+    final now = DateTime.now();
+    final diff = expiryDate.difference(now);
+    
+    if (diff.inDays < 0) {
+      return TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JT.error);
+    } else if (diff.inDays <= 30) {
+      return TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFF97316));
+    }
+    return TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: const Color(0xFF059669));
   }
 
   Widget _imageTile(String label, File? file, VoidCallback onTap) {
