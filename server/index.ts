@@ -51,6 +51,34 @@ export function log(message: string, source = "express") {
 
 // Security headers
 app.use((_req, res, next) => {
+  // CORS headers — allow requests from frontend domain(s)
+  const origin = _req.headers.origin || "*";
+  const allowedOrigins = [
+    "https://jagopro.org",
+    "https://www.jagopro.org",
+    "http://localhost:5173",
+    "http://localhost:5000",
+    "http://127.0.0.1:5173",
+  ];
+  
+  // If origin is in allowed list, or if no origin header (same-site), allow it
+  if (allowedOrigins.includes(origin as string) || !_req.headers.origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
+    // Allow all localhost variants for development
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Max-Age", "3600");
+  
+  // Handle preflight requests
+  if (_req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("X-XSS-Protection", "1; mode=block");
