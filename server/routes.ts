@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
@@ -144,7 +144,7 @@ import {
   getBrainStatus,
 } from "./ai-brain";
 
-// ── Multer upload setup ───────────────────────────────────────────────────────
+// -- Multer upload setup -------------------------------------------------------
 const uploadsDir = path.join(process.cwd(), "public", "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -172,7 +172,7 @@ function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
 }
 
-// ── Razorpay key helper: env → DB fallback (consistent across all endpoints) ──
+// -- Razorpay key helper: env ? DB fallback (consistent across all endpoints) --
 export async function getRazorpayKeys(): Promise<{ keyId: string | undefined; keySecret: string | undefined }> {
   const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
   const keySecret = await getConf("RAZORPAY_KEY_SECRET", "razorpay_key_secret");
@@ -208,7 +208,7 @@ async function tryRazorpayRefund(
               ${'Razorpay refund ID: ' + result.id}, 'system', NOW())
       ON CONFLICT DO NOTHING
     `).catch(dbCatch("db"));
-    console.log(`[RAZORPAY-REFUND] ₹${amountRupees} refund ${result.id} for trip ${tripId}`);
+    console.log(`[RAZORPAY-REFUND] ?${amountRupees} refund ${result.id} for trip ${tripId}`);
     return result.id as string;
   } catch (e: any) {
     console.error(`[RAZORPAY-REFUND] Failed for trip ${tripId}:`, e.message);
@@ -246,11 +246,11 @@ function formatDbError(err: any): string {
   }
 }
 
-/** dbCatch — logs DB errors instead of silently swallowing them. Use in place of .catch(dbCatch("db")). */
+/** dbCatch � logs DB errors instead of silently swallowing them. Use in place of .catch(dbCatch("db")). */
 function dbCatch(label: string) {
   return (err: any) => { console.error(`[db:${label}]`, formatDbError(err)); };
 }
-/** dbCatchRows — logs DB read errors and returns empty rows fallback. */
+/** dbCatchRows � logs DB read errors and returns empty rows fallback. */
 function dbCatchRows(label: string): (err: any) => { rows: any[] } {
   return (err: any) => { console.error(`[db:${label}]`, formatDbError(err)); return { rows: [] as any[] }; };
 }
@@ -301,8 +301,8 @@ function pointInPolygon(lat: number, lng: number, ring: number[][]): boolean {
 }
 
 /** Auto-detect which DB zone a lat/lng falls inside. Returns zone UUID or null.
- *  Pass 1: polygon (GeoJSON) — exact boundary check.
- *  Pass 2: radius fallback — if zone has center lat/lng set, check haversine distance ≤ radius_km.
+ *  Pass 1: polygon (GeoJSON) � exact boundary check.
+ *  Pass 2: radius fallback � if zone has center lat/lng set, check haversine distance = radius_km.
  */
 async function detectZoneId(lat: number, lng: number): Promise<string | null> {
   if (!lat || !lng) return null;
@@ -343,19 +343,19 @@ function computeEtaMinutes(distanceKm: number, avgSpeedKmph = 25): number {
   return Math.max(1, Math.round((distanceKm / avgSpeedKmph) * 60));
 }
 
-/** safeFloat — parses to float with a mandatory fallback, preventing NaN in fare calculations. */
+/** safeFloat � parses to float with a mandatory fallback, preventing NaN in fare calculations. */
 function safeFloat(value: any, fallback: number): number {
   const n = parseFloat(value);
   return isFinite(n) ? n : fallback;
 }
 
-/** safeInteger — parses to integer with a mandatory fallback, preventing NaN. */
+/** safeInteger � parses to integer with a mandatory fallback, preventing NaN. */
 function safeInteger(value: any, fallback: number): number {
   const n = parseInt(String(value), 10);
   return isFinite(n) ? n : fallback;
 }
 
-/** validateCoordinate — validates latitude or longitude is within valid bounds. */
+/** validateCoordinate � validates latitude or longitude is within valid bounds. */
 function validateCoordinate(value: any, isLatitude = true): number | null {
   const n = parseFloat(value);
   if (!isFinite(n)) return null;
@@ -363,7 +363,7 @@ function validateCoordinate(value: any, isLatitude = true): number | null {
   return n >= min && n <= max ? n : null;
 }
 
-/** validateLatLng — validates a lat/lng pair; throws on invalid. */
+/** validateLatLng � validates a lat/lng pair; throws on invalid. */
 function validateLatLng(lat: any, lng: any): { lat: number; lng: number } {
   const validLat = validateCoordinate(lat, true);
   const validLng = validateCoordinate(lng, false);
@@ -373,7 +373,7 @@ function validateLatLng(lat: any, lng: any): { lat: number; lng: number } {
   return { lat: validLat, lng: validLng };
 }
 
-/** validateMoneyAmount — validates amount is non-negative and within reasonable bounds. */
+/** validateMoneyAmount � validates amount is non-negative and within reasonable bounds. */
 function validateMoneyAmount(value: any, maxAmount = 999999999): number {
   const n = parseFloat(value);
   if (!isFinite(n) || n < 0 || n > maxAmount) {
@@ -382,7 +382,7 @@ function validateMoneyAmount(value: any, maxAmount = 999999999): number {
   return n;
 }
 
-/** validateEnumValue — validates value is in allowed set. */
+/** validateEnumValue � validates value is in allowed set. */
 function validateEnumValue(value: any, allowed: string[]): string {
   const s = String(value || "").trim();
   if (!allowed.includes(s)) {
@@ -464,7 +464,7 @@ async function logAdminAction(action: string, entityType: string, entityId?: str
 }
 
 
-// Login rate limiter — max 5 attempts per 15 minutes per IP
+// Login rate limiter � max 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -474,7 +474,7 @@ const loginLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// OTP rate limiter — max 10 requests per hour per IP (extra protection beyond per-phone DB check)
+// OTP rate limiter � max 10 requests per hour per IP (extra protection beyond per-phone DB check)
 const otpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
@@ -484,7 +484,7 @@ const otpLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// App API general rate limiter — max 300 requests per minute per IP
+// App API general rate limiter � max 300 requests per minute per IP
 const appLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 300,
@@ -494,7 +494,7 @@ const appLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// Nearby-drivers rate limiter — max 30 requests per minute per IP (prevents driver tracking abuse)
+// Nearby-drivers rate limiter � max 30 requests per minute per IP (prevents driver tracking abuse)
 const nearbyDriversLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -522,7 +522,7 @@ const paymentOrderLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// Admin data creation rate limiter — max 30 creates per hour per admin (prevents abuse)
+// Admin data creation rate limiter � max 30 creates per hour per admin (prevents abuse)
 const adminDataLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
@@ -538,10 +538,10 @@ const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" 
 
 const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http://localhost:7104").replace(/\/$/, "");
 if (AI_ASSISTANT_SERVICE_URL.includes('localhost') && process.env.NODE_ENV === 'production') {
-  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL points to localhost in production. Voice-intent AI microservice will be SKIPPED — set AI_ASSISTANT_SERVICE_URL env var to enable it.");
+  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL points to localhost in production. Voice-intent AI microservice will be SKIPPED � set AI_ASSISTANT_SERVICE_URL env var to enable it.");
 }
 
-// ── Claude AI voice intent parser ────────────────────────────────────────────
+// -- Claude AI voice intent parser --------------------------------------------
 async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
   // Read live from DB first (admin panel save), fallback to env var
   let apiKey = process.env.ANTHROPIC_API_KEY;
@@ -575,27 +575,27 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Intent rules (apply in order):
-1. send_parcel → if user says: parcel, courier, delivery, package, send, pampali, pampu, cargo, truck delivery, mini truck, pickup truck, goods delivery, furniture delivery, move house
-2. book_intercity → if user says: outstation, intercity, bangalore, hyderabad to [city], [city] to [city], long distance, overnight, highway trip, carpool seat
-3. book_ride → all other ride requests: bike, auto, cab, car, rickshaw, lift, ride, drop
-4. unknown → if none of the above is clear
+1. send_parcel ? if user says: parcel, courier, delivery, package, send, pampali, pampu, cargo, truck delivery, mini truck, pickup truck, goods delivery, furniture delivery, move house
+2. book_intercity ? if user says: outstation, intercity, bangalore, hyderabad to [city], [city] to [city], long distance, overnight, highway trip, carpool seat
+3. book_ride ? all other ride requests: bike, auto, cab, car, rickshaw, lift, ride, drop
+4. unknown ? if none of the above is clear
 
 Vehicle type rules:
-- Bike Parcel → for small parcels ≤10kg, documents
-- Mini Truck → for furniture, appliances, medium goods, tata ace
-- Pickup Truck → for heavy goods, construction, commercial
-- Car Pool → if user says "carpool", "share cab", "pool", "seat kavali"
-- Bike → "bike ride", "motor", "two-wheeler ride" (NOT parcel)
-- Auto → "auto", "autorickshaw", "temo", "three-wheeler"
-- Sedan/SUV → "car", "cab", "sedan", "suv"
+- Bike Parcel ? for small parcels =10kg, documents
+- Mini Truck ? for furniture, appliances, medium goods, tata ace
+- Pickup Truck ? for heavy goods, construction, commercial
+- Car Pool ? if user says "carpool", "share cab", "pool", "seat kavali"
+- Bike ? "bike ride", "motor", "two-wheeler ride" (NOT parcel)
+- Auto ? "auto", "autorickshaw", "temo", "three-wheeler"
+- Sedan/SUV ? "car", "cab", "sedan", "suv"
 
 Language support:
 - Telugu: kavali=need, pampali=send, ride=ride, parcel=parcel
 - Hindi: chahiye=need, bhejo=send, savari=ride
-- Mixed/Hinglish is normal — handle it
+- Mixed/Hinglish is normal � handle it
 
-Special: if pickup is clearly the current user location (like "here", "current location", "yahan", "ikada") → return pickup=null (app uses GPS).
-If no clear destination → return destination=null.
+Special: if pickup is clearly the current user location (like "here", "current location", "yahan", "ikada") ? return pickup=null (app uses GPS).
+If no clear destination ? return destination=null.
 confidence: 0.9 if intent+locations clear, 0.7 if partial, 0.4 if unclear`
       }],
     });
@@ -640,7 +640,7 @@ function mapServiceSuggestionToVehicle(serviceSuggestion?: string | null): strin
 }
 
 async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any; parserSource: "claude-ai" | "ai-assistant-service" | "monolith-fallback" }> {
-  // 1. Try external AI microservice — skip if it's the default localhost (not deployed)
+  // 1. Try external AI microservice � skip if it's the default localhost (not deployed)
   const isExternalService = AI_ASSISTANT_SERVICE_URL && !AI_ASSISTANT_SERVICE_URL.includes('localhost');
   if (isExternalService) try {
     const r = await fetch(`${AI_ASSISTANT_SERVICE_URL}/internal/voice/intent`, {
@@ -666,7 +666,7 @@ async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any
     }
   } catch (_) {} // end external microservice block
 
-  // 2. Claude AI (Haiku) — fast, cheap, understands Telugu/Hindi/all Indian languages
+  // 2. Claude AI (Haiku) � fast, cheap, understands Telugu/Hindi/all Indian languages
   const claudeParsed = await parseVoiceIntentWithClaude(text);
   if (claudeParsed) {
     return { parserSource: "claude-ai", parsed: claudeParsed };
@@ -676,7 +676,7 @@ async function parseVoiceIntentOrchestrated(text: string): Promise<{ parsed: any
   return { parserSource: "monolith-fallback", parsed: parseVoiceIntent(text) };
 }
 const runtimeEnv = parseEnv();
-// In production 2FA is ON by default — disable only with ADMIN_2FA_REQUIRED=false
+// In production 2FA is ON by default � disable only with ADMIN_2FA_REQUIRED=false
 const requireAdminTwoFactor = runtimeEnv.NODE_ENV === "production"
   ? !isFalse(runtimeEnv.ADMIN_2FA_REQUIRED)
   : isTrue(runtimeEnv.ADMIN_2FA_REQUIRED);
@@ -738,18 +738,18 @@ async function requireAdminAuth(req: Request, res: Response, next: NextFunction)
 
 async function ensureAdminExists() {
   const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-  if (!adminEmail) { console.error("[SECURITY] ADMIN_EMAIL env var not set — skipping admin sync."); return; }
+  if (!adminEmail) { console.error("[SECURITY] ADMIN_EMAIL env var not set � skipping admin sync."); return; }
   const adminName  = (process.env.ADMIN_NAME  || "Admin").trim() || "Admin";
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) {
-    console.error("[SECURITY] ADMIN_PASSWORD env var not set — skipping admin password sync. Set ADMIN_PASSWORD in .do/app.yaml or .env");
+    console.error("[SECURITY] ADMIN_PASSWORD env var not set � skipping admin password sync. Set ADMIN_PASSWORD in .do/app.yaml or .env");
     return;
   }
   
   console.log(`[admin-bootstrap] Starting admin sync for ${adminEmail}, sync_on_restart=${process.env.ADMIN_PASSWORD_SYNC_ON_RESTART}`);
 
 
-  // ── Step 1: Guarantee the tables exist using rawDb (same path as ensureOperationalSchema)
+  // -- Step 1: Guarantee the tables exist using rawDb (same path as ensureOperationalSchema)
   try {
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS admins (
@@ -767,7 +767,7 @@ async function ensureAdminExists() {
     `);
   } catch (e: any) { console.error("[admin] create admins table:", formatDbError(e)); }
 
-  // ── Self-heal: add missing columns that may not exist on older deployments ──
+  // -- Self-heal: add missing columns that may not exist on older deployments --
   await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`).catch(dbCatch("db"));
   await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`).catch(dbCatch("db"));
   await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`).catch(dbCatch("db"));
@@ -789,7 +789,7 @@ async function ensureAdminExists() {
   try { await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_admins_auth_token ON admins(auth_token)`); } catch (_) {}
   try { await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_admin_login_otp_admin_created ON admin_login_otp(admin_id, created_at DESC)`); } catch (_) {}
 
-  // ── Step 2: Seed / sync admin account using rawDb (never uses Drizzle ORM table refs)
+  // -- Step 2: Seed / sync admin account using rawDb (never uses Drizzle ORM table refs)
   try {
     const existingR = await rawDb.execute(rawSql`
       SELECT id, is_active FROM admins WHERE email = ${adminEmail} LIMIT 1
@@ -813,9 +813,9 @@ async function ensureAdminExists() {
           const a: any = anyR.rows[i];
           await rawDb.execute(rawSql`DELETE FROM admins WHERE id=${a.id}::uuid`).catch(dbCatch("db"));
         }
-        console.log(`[admin] Migrated admin → ${adminEmail}, password synced`);
+        console.log(`[admin] Migrated admin ? ${adminEmail}, password synced`);
       } else {
-        // No admin at all — create one
+        // No admin at all � create one
         const createHash = await hashPassword(adminPassword);
         await rawDb.execute(rawSql`
           INSERT INTO admins (name, email, password, role, is_active)
@@ -825,7 +825,7 @@ async function ensureAdminExists() {
         console.log(`[admin] Admin created: ${adminEmail}`);
       }
     } else {
-      // Admin exists — password sync ONLY on explicit restart flag to prevent overwriting user changes
+      // Admin exists � password sync ONLY on explicit restart flag to prevent overwriting user changes
       // By default, users can change their password and it will persist across restarts
       const shouldSyncPassword = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART === 'true';
       console.log(`[admin-bootstrap] Admin exists: ${adminEmail}, should_sync_password=${shouldSyncPassword}`);
@@ -841,10 +841,10 @@ async function ensureAdminExists() {
         `);
         if (updateResult.rows.length > 0) {
           const updated: any = updateResult.rows[0];
-          console.log(`[admin-bootstrap] ✓ Password synced for ${adminEmail} (ID: ${updated.id})`);
+          console.log(`[admin-bootstrap] ? Password synced for ${adminEmail} (ID: ${updated.id})`);
           console.log(`[admin-bootstrap] New password hash: ${(updated.password || '').substring(0, 20)}...`);
         } else {
-          console.warn(`[admin-bootstrap] ⚠ Update returned no rows - admin may not exist or email doesn't match`);
+          console.warn(`[admin-bootstrap] ? Update returned no rows - admin may not exist or email doesn't match`);
         }
       } else {
         // Ensure admin is marked as active but DO NOT override password
@@ -861,7 +861,7 @@ async function ensureOperationalSchema() {
   try {
     await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
 
-    // ── Core auth tables — must always exist even if Drizzle migrations haven't run ──
+    // -- Core auth tables � must always exist even if Drizzle migrations haven't run --
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS admins (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1325,7 +1325,7 @@ async function ensureOperationalSchema() {
       ON CONFLICT (key_name) DO NOTHING;
     `);
 
-    // ── Company GST wallet (single-row ledger) ─────────────────────────────
+    // -- Company GST wallet (single-row ledger) -----------------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS company_gst_wallet (
         id INTEGER PRIMARY KEY DEFAULT 1,
@@ -1370,7 +1370,7 @@ async function ensureOperationalSchema() {
       );
     `).catch(dbCatch("db"));
 
-    // ── Seed all vehicle categories (Bike, Auto, Mini Car, Sedan, SUV, Car Pool) ───
+    // -- Seed all vehicle categories (Bike, Auto, Mini Car, Sedan, SUV, Car Pool) ---
     // Inserts each vehicle type if no category with that name exists yet (case-insensitive).
     await rawDb.execute(rawSql`
       INSERT INTO vehicle_categories
@@ -1379,19 +1379,19 @@ async function ensureOperationalSchema() {
              v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
              v.wait_charge::numeric, v.total_seats::int, v.is_carpool::boolean
       FROM (VALUES
-        ('Bike',     'bike',     'ride', '🏍️',  30, 12,  40, 1, 0, false),
-        ('Auto',     'auto',     'ride', '🛺',   40, 15,  60, 2, 0, false),
-        ('Mini Car', 'mini_car', 'ride', '🚕',   60, 16,  80, 2, 0, false),
-        ('Sedan',    'sedan',    'ride', '🚗',   80, 18, 120, 3, 0, false),
-        ('SUV',      'suv',      'ride', '🚙',  100, 22, 150, 3, 0, false),
-        ('Car Pool', 'carpool',  'ride', '🚐',   80, 15, 100, 2, 4, true)
+        ('Bike',     'bike',     'ride', '???',  30, 12,  40, 1, 0, false),
+        ('Auto',     'auto',     'ride', '??',   40, 15,  60, 2, 0, false),
+        ('Mini Car', 'mini_car', 'ride', '??',   60, 16,  80, 2, 0, false),
+        ('Sedan',    'sedan',    'ride', '??',   80, 18, 120, 3, 0, false),
+        ('SUV',      'suv',      'ride', '??',  100, 22, 150, 3, 0, false),
+        ('Car Pool', 'carpool',  'ride', '??',   80, 15, 100, 2, 4, true)
       ) AS v(vname, vtype, svc_type, icon, base_fare, fare_per_km, minimum_fare, wait_charge, total_seats, is_carpool)
       WHERE NOT EXISTS (
         SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
       )
     `);
 
-    // ── Seed parcel vehicle categories (Porter model) ───────────────────────
+    // -- Seed parcel vehicle categories (Porter model) -----------------------
     // weight_rate is per-kg surcharge added on top of base + distance fare.
     await rawDb.execute(rawSql`
       INSERT INTO vehicle_categories
@@ -1400,12 +1400,12 @@ async function ensureOperationalSchema() {
              v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
              0::numeric, v.weight_rate::numeric, 0::int, false
       FROM (VALUES
-        ('Bike Parcel',     'bike_parcel',   '🏍️',  40, 12,  40, 4),
-        ('Mini Truck',      'tata_ace',      '🚛',  150, 18, 150, 2),
-        ('Pickup Truck',    'pickup_truck',  '🛻',  200, 22, 200, 1),
-        ('Auto Parcel',     'auto_parcel',   '🛺',   50, 13,  50, 7),
-        ('Cargo Car',       'cargo_car',     '🚗',  120, 16, 120, 4),
-        ('Bolero Cargo',    'bolero_cargo',  '🚙',  200, 22, 200, 3)
+        ('Bike Parcel',     'bike_parcel',   '???',  40, 12,  40, 4),
+        ('Mini Truck',      'tata_ace',      '??',  150, 18, 150, 2),
+        ('Pickup Truck',    'pickup_truck',  '??',  200, 22, 200, 1),
+        ('Auto Parcel',     'auto_parcel',   '??',   50, 13,  50, 7),
+        ('Cargo Car',       'cargo_car',     '??',  120, 16, 120, 4),
+        ('Bolero Cargo',    'bolero_cargo',  '??',  200, 22, 200, 3)
       ) AS v(vname, vtype, icon, base_fare, fare_per_km, minimum_fare, weight_rate)
       WHERE NOT EXISTS (
         SELECT 1 FROM vehicle_categories WHERE LOWER(name) = LOWER(v.vname)
@@ -1456,7 +1456,7 @@ async function ensureOperationalSchema() {
     `);
     console.log('[seed] Vehicle categories seeded/updated');
 
-    // ── Sync vehicle_categories.is_active with platform_services.service_status ──
+    // -- Sync vehicle_categories.is_active with platform_services.service_status --
     // platform_services is the source of truth for which services admin has enabled.
     // On every restart, align vehicle visibility with the service toggle state.
     await rawDb.execute(rawSql`
@@ -1481,7 +1481,7 @@ async function ensureOperationalSchema() {
     `).catch(dbCatch("db"));
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
-    // ── Auto-promote pending drivers to verified so they can go online ──────
+    // -- Auto-promote pending drivers to verified so they can go online ------
     // Drivers who registered but were never admin-reviewed stay stuck at 'pending'.
     // 'verified' = registered and active, 'approved' = explicitly admin-approved.
     // Both 'verified' and 'approved' are allowed to go online and receive trips.
@@ -1498,7 +1498,7 @@ async function ensureOperationalSchema() {
     `).catch(dbCatch("db"));
     console.log('[seed] pending drivers promoted to verified, model_selected_at backfilled');
 
-    // ── Seed trip_fares using vehicle_categories pricing as source of truth ──
+    // -- Seed trip_fares using vehicle_categories pricing as source of truth --
     // Inserts only where no fare row exists yet. Safe to re-run.
     await rawDb.execute(rawSql`
       INSERT INTO trip_fares (vehicle_category_id, base_fare, fare_per_km, fare_per_min,
@@ -1554,7 +1554,7 @@ async function ensureOperationalSchema() {
         )
     `);
 
-    // ── platform_services: per-service activation + revenue model ────────────
+    // -- platform_services: per-service activation + revenue model ------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS platform_services (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1565,7 +1565,7 @@ async function ensureOperationalSchema() {
         revenue_model VARCHAR(30) NOT NULL DEFAULT 'commission',
         commission_rate NUMERIC(5,2) DEFAULT 15.0,
         sort_order INTEGER DEFAULT 0,
-        icon VARCHAR(20) DEFAULT '🚗',
+        icon VARCHAR(20) DEFAULT '??',
         color VARCHAR(20) DEFAULT '#2F80ED',
         description TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT NOW(),
@@ -1576,19 +1576,19 @@ async function ensureOperationalSchema() {
       INSERT INTO platform_services
         (service_key, service_name, service_category, service_status, revenue_model, commission_rate, sort_order, icon, color, description)
       VALUES
-        ('bike_ride',       'Bike Ride',          'rides',   'active',   'subscription',  0,    1, '🏍️', '#2F80ED', 'Quick and affordable bike taxi rides'),
-        ('auto_ride',       'Auto Ride',           'rides',   'inactive', 'subscription',  0,    2, '🛺',  '#F59E0B', 'Classic CNG auto rides'),
-        ('mini_car',        'Mini Car',            'rides',   'inactive', 'subscription',  0,    3, '🚕',  '#10B981', 'Budget sedan rides'),
-        ('sedan',           'Sedan',               'rides',   'inactive', 'subscription',  0,    4, '🚗',  '#8B5CF6', 'Comfortable sedan rides'),
-        ('suv',             'SUV',                 'rides',   'inactive', 'subscription',  0,    5, '🚙',  '#EF4444', 'Premium SUV rides'),
-        ('city_pool',       'City Car Pool',       'carpool', 'inactive', 'commission',   10.0,  6, '🚘',  '#06B6D4', 'Share city rides and save'),
-        ('intercity_pool',  'Intercity Car Pool',  'carpool', 'inactive', 'commission',   12.0,  7, '🛣️', '#6366F1', 'Intercity shared travel'),
-        ('outstation_pool', 'Outstation Pool',     'carpool', 'inactive', 'commission',   15.0,  8, '🗺️', '#EC4899', 'Long distance pool travel'),
-        ('parcel_delivery', 'Parcel Delivery',     'parcel',  'active',   'commission',   15.0,  9, '📦',  '#FF6B35', 'Porter-style parcel and goods delivery')
+        ('bike_ride',       'Bike Ride',          'rides',   'active',   'subscription',  0,    1, '???', '#2F80ED', 'Quick and affordable bike taxi rides'),
+        ('auto_ride',       'Auto Ride',           'rides',   'inactive', 'subscription',  0,    2, '??',  '#F59E0B', 'Classic CNG auto rides'),
+        ('mini_car',        'Mini Car',            'rides',   'inactive', 'subscription',  0,    3, '??',  '#10B981', 'Budget sedan rides'),
+        ('sedan',           'Sedan',               'rides',   'inactive', 'subscription',  0,    4, '??',  '#8B5CF6', 'Comfortable sedan rides'),
+        ('suv',             'SUV',                 'rides',   'inactive', 'subscription',  0,    5, '??',  '#EF4444', 'Premium SUV rides'),
+        ('city_pool',       'City Car Pool',       'carpool', 'inactive', 'commission',   10.0,  6, '??',  '#06B6D4', 'Share city rides and save'),
+        ('intercity_pool',  'Intercity Car Pool',  'carpool', 'inactive', 'commission',   12.0,  7, '???', '#6366F1', 'Intercity shared travel'),
+        ('outstation_pool', 'Outstation Pool',     'carpool', 'inactive', 'commission',   15.0,  8, '???', '#EC4899', 'Long distance pool travel'),
+        ('parcel_delivery', 'Parcel Delivery',     'parcel',  'active',   'commission',   15.0,  9, '??',  '#FF6B35', 'Porter-style parcel and goods delivery')
       ON CONFLICT (service_key) DO NOTHING;
     `).catch(dbCatch("db"));
 
-    // ── parcel_orders: multi-drop Porter-style delivery ───────────────────────
+    // -- parcel_orders: multi-drop Porter-style delivery -----------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS parcel_orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1626,7 +1626,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_parcel_orders_status  ON parcel_orders(current_status);
     `).catch(dbCatch("db"));
 
-    // ── FCM device registry: stores one push token per user ──────────────────
+    // -- FCM device registry: stores one push token per user ------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS user_devices (
         user_id UUID PRIMARY KEY,
@@ -1640,7 +1640,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id);
     `).catch(dbCatch("db"));
 
-    // ── Call logs: records in-app masked calls ────────────────────────────────
+    // -- Call logs: records in-app masked calls --------------------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS call_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1679,7 +1679,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_notification_logs_sent_at ON notification_logs(sent_at DESC);
     `).catch(dbCatch("db"));
 
-    // ── Driver payment ledger: records every commission debt/payment ──────────
+    // -- Driver payment ledger: records every commission debt/payment ----------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS driver_payments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1697,7 +1697,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
     `).catch(dbCatch("db"));
 
-    // ── Customer payment ledger: records every wallet topup / ride payment ──────
+    // -- Customer payment ledger: records every wallet topup / ride payment ------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS customer_payments (
         id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1717,20 +1717,20 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_customer_payments_payment  ON customer_payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_status   ON customer_payments(status);
     `).catch(dbCatch("db"));
-    // ── Migration: add trip_id to customer_payments for refund tracking ───────
+    // -- Migration: add trip_id to customer_payments for refund tracking -------
     await rawDb.execute(rawSql`
       ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS trip_id UUID;
       CREATE INDEX IF NOT EXISTS idx_customer_payments_trip ON customer_payments(trip_id) WHERE trip_id IS NOT NULL;
     `).catch(dbCatch("db"));
-    // ── Migration: add razorpay_payment_id to trip_requests for online pay tracking ──
+    // -- Migration: add razorpay_payment_id to trip_requests for online pay tracking --
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
     `).catch(dbCatch("db"));
-    // ── Migration: add refunded_at to customer_payments ──────────────────────
+    // -- Migration: add refunded_at to customer_payments ----------------------
     await rawDb.execute(rawSql`
       ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP;
     `).catch(dbCatch("db"));
-    // ── Migration: add GST/insurance columns to driver_subscriptions ─────────
+    // -- Migration: add GST/insurance columns to driver_subscriptions ---------
     await rawDb.execute(rawSql`
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS insurance_amount NUMERIC(10,2) DEFAULT 0;
@@ -1740,7 +1740,7 @@ async function ensureOperationalSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_subscriptions_payment
         ON driver_subscriptions(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
     `).catch(dbCatch("db"));
-    // ── SECURITY MIGRATIONS: Unique constraints for payment idempotency ───────
+    // -- SECURITY MIGRATIONS: Unique constraints for payment idempotency -------
     // Prevents duplicate wallet credits even under concurrent requests
     await rawDb.execute(rawSql`
       -- Unique index: one earning/refund/recharge per (payment_id, type)
@@ -1759,7 +1759,7 @@ async function ensureOperationalSchema() {
           AND ref_transaction_id IS NOT NULL;
     `).catch(dbCatch("db")); // best-effort: index may already exist
 
-    // ── Razorpay webhook audit log ────────────────────────────────────────────
+    // -- Razorpay webhook audit log --------------------------------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
         id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1775,7 +1775,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX        IF NOT EXISTS idx_rzp_webhook_created     ON razorpay_webhook_logs(created_at DESC);
     `).catch(dbCatch("db"));
 
-    // ── Performance indexes for high-traffic queries ──────────────────────────
+    // -- Performance indexes for high-traffic queries --------------------------
     await rawDb.execute(rawSql`
       CREATE INDEX IF NOT EXISTS idx_trip_requests_customer_status ON trip_requests(customer_id, current_status);
       CREATE INDEX IF NOT EXISTS idx_trip_requests_driver_status   ON trip_requests(driver_id, current_status);
@@ -1785,7 +1785,7 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_driver_locations_lat_lng      ON driver_locations(lat, lng) WHERE is_online = true;
     `).catch(dbCatch("db"));
 
-    // ── Feature Flags table ──────────────────────────────────────────────────
+    // -- Feature Flags table --------------------------------------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS feature_flags (
         key VARCHAR(60) PRIMARY KEY,
@@ -1805,30 +1805,30 @@ async function ensureOperationalSchema() {
       ON CONFLICT (key) DO UPDATE SET enabled = EXCLUDED.enabled;
     `).catch(dbCatch("db"));
 
-    // ── Banners table: add display_order if missing ──────────────────────────
+    // -- Banners table: add display_order if missing --------------------------
     await rawDb.execute(rawSql`
       ALTER TABLE banners ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
     `).catch(dbCatch("db"));
 
-    // ── Platform services: add icon_url + banner_url for uploaded images ──────
+    // -- Platform services: add icon_url + banner_url for uploaded images ------
     await rawDb.execute(rawSql`
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS icon_url TEXT;
       ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS banner_url TEXT;
     `).catch(dbCatch("db"));
 
-    // ── Refund tracking columns ───────────────────────────────────────────────
+    // -- Refund tracking columns -----------------------------------------------
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS razorpay_refund_id VARCHAR(120);
     `).catch(dbCatch("db"));
 
-    // ── Zone center point + radius (for radius-based zone detection fallback) ──
+    // -- Zone center point + radius (for radius-based zone detection fallback) --
     await rawDb.execute(rawSql`
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS latitude  DOUBLE PRECISION;
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
       ALTER TABLE zones ADD COLUMN IF NOT EXISTS radius_km DOUBLE PRECISION DEFAULT 5;
     `).catch(dbCatch("db"));
 
-    // ── App Languages table ───────────────────────────────────────────────────
+    // -- App Languages table ---------------------------------------------------
     await rawDb.execute(rawSql`
       CREATE TABLE IF NOT EXISTS app_languages (
         id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1841,9 +1841,9 @@ async function ensureOperationalSchema() {
         created_at  TIMESTAMP    DEFAULT NOW()
       );
       INSERT INTO app_languages (code, name, native_name, flag, sort_order) VALUES
-        ('en', 'English',  'English',   '🇬🇧', 0),
-        ('te', 'Telugu',   'తెలుగు',    '🇮🇳', 1),
-        ('hi', 'Hindi',    'हिन्दी',    '🇮🇳', 2)
+        ('en', 'English',  'English',   '????', 0),
+        ('te', 'Telugu',   '??????',    '????', 1),
+        ('hi', 'Hindi',    '??????',    '????', 2)
       ON CONFLICT (code) DO NOTHING;
     `).catch(dbCatch("db"));
 
@@ -1949,7 +1949,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!keyId || !keySecret) return res.json({ status: "not_configured", keyId: false, keySecret: false });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 10000 });
-      // Fetch a minimal list — just to test connectivity & key validity
+      // Fetch a minimal list � just to test connectivity & key validity
       const result = await Promise.race([
         rzp.orders.all({ count: 1 }),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Razorpay API timeout after 10s")), 10000))
@@ -1969,7 +1969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── Force re-run full DB bootstrap + admin seed ───────────────────────────
+  // -- Force re-run full DB bootstrap + admin seed ---------------------------
   // GET  /api/ops/init-db?key=ADMIN_RESET_KEY
   // Useful when the live server has a missing schema (e.g. fresh DB or failed migration).
   app.get("/api/ops/init-db", async (req, res) => {
@@ -1981,7 +1981,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await ensureAdminExists();
       const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
       if (!adminEmail) {
-        return res.json({ success: true, message: "DB schema bootstrapped. ADMIN_EMAIL not set — admin not synced.", admin: null });
+        return res.json({ success: true, message: "DB schema bootstrapped. ADMIN_EMAIL not set � admin not synced.", admin: null });
       }
       const r = await rawDb.execute(rawSql`SELECT id, email, is_active, LEFT(password,4) as pw_hint FROM admins WHERE LOWER(email)=${adminEmail} LIMIT 1`);
       const adminRow: any = r.rows[0];
@@ -1998,14 +1998,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── Seed all vehicle categories, fares, brands & platform services ──────────
+  // -- Seed all vehicle categories, fares, brands & platform services ----------
   // GET /api/ops/seed-platform?key=ADMIN_RESET_KEY
   app.get("/api/ops/seed-platform", async (req, res) => {
     const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
     const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
     if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
     try {
-      // ── 1. Vehicle categories (upsert by name) ──────────────────────────────
+      // -- 1. Vehicle categories (upsert by name) ------------------------------
       const vehicles = [
         // RIDE services
         { name: "Bike", type: "motor_bike", vehicle_type: "bike", icon: "/vehicles/bike.svg",
@@ -2021,34 +2021,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // LOCAL POOL services
         { name: "Mini Pool", type: "car", vehicle_type: "pool_mini", icon: "/vehicles/pool_mini.svg",
           base_fare: 40, fare_per_km: 9, minimum_fare: 55, waiting_charge_per_min: 1, total_seats: 3, is_carpool: true,
-          description: "Upto 3 riders · Shared mini cab · Save 35%" },
+          description: "Upto 3 riders � Shared mini cab � Save 35%" },
         { name: "Sedan Pool", type: "car", vehicle_type: "pool_sedan", icon: "/vehicles/pool_sedan.svg",
           base_fare: 50, fare_per_km: 10, minimum_fare: 70, waiting_charge_per_min: 1, total_seats: 4, is_carpool: true,
-          description: "Upto 4 riders · Shared sedan · Save 35%" },
+          description: "Upto 4 riders � Shared sedan � Save 35%" },
         { name: "SUV Pool", type: "car", vehicle_type: "pool_suv", icon: "/vehicles/pool_suv.svg",
           base_fare: 60, fare_per_km: 12, minimum_fare: 80, waiting_charge_per_min: 1.5, total_seats: 6, is_carpool: true,
-          description: "Upto 6 riders · Shared SUV · Save 30%" },
+          description: "Upto 6 riders � Shared SUV � Save 30%" },
         { name: "Car Pool", type: "car", vehicle_type: "carpool", icon: "/vehicles/carpool.svg",
           base_fare: 40, fare_per_km: 8, minimum_fare: 60, waiting_charge_per_min: 1, total_seats: 4 },
         // PARCEL / PORTER-style services
         { name: "Bike Delivery", type: "motor_bike", vehicle_type: "bike_parcel", icon: "/vehicles/parcel_bike.svg",
           base_fare: 70, fare_per_km: 8, minimum_fare: 70, waiting_charge_per_min: 0.5, service_type: "parcel",
-          description: "Upto 10 kg • 0.3 CBM • Small packages, documents" },
+          description: "Upto 10 kg � 0.3 CBM � Small packages, documents" },
         { name: "3-Wheeler / Auto", type: "auto", vehicle_type: "auto_parcel", icon: "/vehicles/parcel_auto.svg",
           base_fare: 140, fare_per_km: 12, minimum_fare: 140, waiting_charge_per_min: 1, service_type: "parcel",
-          description: "Upto 150 kg • 1.5 CBM • Medium goods, household items" },
+          description: "Upto 150 kg � 1.5 CBM � Medium goods, household items" },
         { name: "Tata Ace", type: "car", vehicle_type: "tata_ace", icon: "/vehicles/tata_ace.svg",
           base_fare: 350, fare_per_km: 18, minimum_fare: 350, waiting_charge_per_min: 2, service_type: "parcel",
-          description: "Upto 750 kg • 6 CBM • Furniture, appliances, bulk goods" },
+          description: "Upto 750 kg � 6 CBM � Furniture, appliances, bulk goods" },
         { name: "Bolero Pickup", type: "car", vehicle_type: "bolero_pickup", icon: "/vehicles/bolero.svg",
           base_fare: 500, fare_per_km: 22, minimum_fare: 500, waiting_charge_per_min: 2.5, service_type: "parcel",
-          description: "Upto 1500 kg • 10 CBM • Heavy goods, office shifting" },
+          description: "Upto 1500 kg � 10 CBM � Heavy goods, office shifting" },
         { name: "Tata 407 / Tempo", type: "car", vehicle_type: "tempo_407", icon: "/vehicles/tempo_407.svg",
           base_fare: 800, fare_per_km: 28, minimum_fare: 800, waiting_charge_per_min: 3, service_type: "parcel",
-          description: "Upto 2500 kg • 20 CBM • Large loads, factory goods, full shifting" },
+          description: "Upto 2500 kg � 20 CBM � Large loads, factory goods, full shifting" },
       ];
 
-      // ── 0. Ensure auxiliary tables exist ─────────────────────────────────────
+      // -- 0. Ensure auxiliary tables exist -------------------------------------
       await rawDb.execute(rawSql`
         CREATE TABLE IF NOT EXISTS call_logs (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2110,7 +2110,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Referrals: add paid_at column if missing
       await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(dbCatch("db"));
 
-      // B2B companies: unify schema — add columns needed by app registration flow
+      // B2B companies: unify schema � add columns needed by app registration flow
       await rawDb.execute(rawSql`
         ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS owner_id UUID;
         ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);
@@ -2173,7 +2173,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // ── 2. Vehicle brands ────────────────────────────────────────────────────
+      // -- 2. Vehicle brands ----------------------------------------------------
       const brands = [
         // Bikes
         { name: "Hero", category: "two_wheeler" }, { name: "Honda", category: "two_wheeler" },
@@ -2200,10 +2200,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // ── 3. Platform services — do NOT override admin toggles on restart ──────
+      // -- 3. Platform services � do NOT override admin toggles on restart ------
       // (removed auto-activate: admin inactive settings must be preserved)
 
-      // ── 4. Surge pricing rules (peak hours) ─────────────────────────────────
+      // -- 4. Surge pricing rules (peak hours) ---------------------------------
       const surges = [
         { reason: "Morning Peak", start_time: "07:00", end_time: "10:00", multiplier: 1.3 },
         { reason: "Evening Peak", start_time: "17:00", end_time: "21:00", multiplier: 1.4 },
@@ -2220,7 +2220,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // ── 5. Revenue model settings (upsert correct values) ────────────────────
+      // -- 5. Revenue model settings (upsert correct values) --------------------
       const revenueSettings: Record<string, string> = {
         // GST
         ride_gst_rate:               '5',    // 5% GST on every ride
@@ -2229,25 +2229,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         commission_rate:             '15',   // 15% commission per ride
         commission_pct:              '15',
         driver_commission_pct:       '15',
-        commission_insurance_per_ride: '2',  // ₹2 insurance per ride (optional, can set 0)
+        commission_insurance_per_ride: '2',  // ?2 insurance per ride (optional, can set 0)
         commission_mode:             'on',
         // Subscription model (like Rapido)
         subscription_mode:           'on',
-        sub_platform_fee_per_ride:   '5',    // ₹5 platform fee per ride for subscription drivers
+        sub_platform_fee_per_ride:   '5',    // ?5 platform fee per ride for subscription drivers
         subscription_enabled:        'true',
         // Hybrid model
         hybrid_commission_pct:       '10',   // 10% commission in hybrid
         hybrid_platform_fee_per_ride: '5',
         hybrid_insurance_per_ride:   '2',
         // Auto-lock thresholds
-        auto_lock_threshold:         '-200', // Lock when wallet < -₹200
-        commission_lock_threshold:   '200',  // Lock when pending dues >= ₹200
+        auto_lock_threshold:         '-200', // Lock when wallet < -?200
+        commission_lock_threshold:   '200',  // Lock when pending dues >= ?200
         // Per-service models (admin can change these)
         rides_model:                 'subscription', // default: subscription for rides
         parcels_model:               'commission',   // default: commission for parcel
         cargo_model:                 'commission',
         intercity_model:             'commission',
-        // Launch campaign — 30-day free period for every new driver
+        // Launch campaign � 30-day free period for every new driver
         launch_campaign_enabled:     'true',
       };
       for (const [key, value] of Object.entries(revenueSettings)) {
@@ -2258,16 +2258,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(dbCatch("db"));
       }
 
-      // ── 6. Subscription plans (like Rapido) ──────────────────────────────────
+      // -- 6. Subscription plans (like Rapido) ----------------------------------
       const plans = [
         { name: "Daily Pass",    price: 29,  duration_days: 1,  max_rides: 10,  plan_type: "driver",
-          features: "10 rides/day • ₹5 platform fee/ride • No commission" },
+          features: "10 rides/day � ?5 platform fee/ride � No commission" },
         { name: "Weekly Pass",   price: 149, duration_days: 7,  max_rides: 70,  plan_type: "driver",
-          features: "70 rides/week • ₹5 platform fee/ride • No commission • Save 27%" },
+          features: "70 rides/week � ?5 platform fee/ride � No commission � Save 27%" },
         { name: "Monthly Pass",  price: 499, duration_days: 30, max_rides: 300, plan_type: "driver",
-          features: "300 rides/month • ₹5 platform fee/ride • No commission • Save 43%" },
+          features: "300 rides/month � ?5 platform fee/ride � No commission � Save 43%" },
         { name: "Pro Monthly",   price: 799, duration_days: 30, max_rides: 500, plan_type: "driver",
-          features: "500 rides/month • ₹3 platform fee/ride • Priority dispatch • Save 55%" },
+          features: "500 rides/month � ?3 platform fee/ride � Priority dispatch � Save 55%" },
       ];
       const insertedPlans: any[] = [];
       for (const p of plans) {
@@ -2303,13 +2303,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // GET /api/ops/seed-test-accounts?key=... — creates 4 customers + 10 drivers for testing
+  // GET /api/ops/seed-test-accounts?key=... � creates 4 customers + 10 drivers for testing
   app.get("/api/ops/seed-test-accounts", async (req, res) => {
     const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
     const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
     if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
     try {
-      const pwHash = await bcrypt.hash("Test@123", 10);
+      const pwHash = await hashPassword("Test@123");
       // Fetch vehicle categories for driver assignment
       const vcRes = await rawDb.execute(rawSql`SELECT id, name FROM vehicle_categories ORDER BY created_at ASC`);
       const vcRows = vcRes.rows as any[];
@@ -2433,7 +2433,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Live vehicle tracking — use actual driver telemetry instead of synthetic positions
+  // Live vehicle tracking � use actual driver telemetry instead of synthetic positions
   app.get("/api/live-tracking", requireAdminAuth, async (_req, res) => {
     try {
       const { db: ltDb } = await import("./db");
@@ -2537,7 +2537,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── COMPREHENSIVE ADMIN DASHBOARD ──────────────────────────────────────────
+  // -- COMPREHENSIVE ADMIN DASHBOARD ------------------------------------------
   // Single endpoint with per-service breakdowns, driver wallet health, subscription stats
   app.get("/api/admin/dashboard", async (_req, res) => {
     try {
@@ -2680,7 +2680,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
 
 
-  // ── REAL-TIME ADMIN KPIs (production-grade live metrics) ─────────────────
+  // -- REAL-TIME ADMIN KPIs (production-grade live metrics) -----------------
   app.get("/api/admin/live-kpis", requireAdminAuth, async (req, res) => {
     try {
       const [liveR, cancelR, surgeR, ghostR, penaltyR, etaR] = await Promise.all([
@@ -2813,7 +2813,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── ADMIN CONTROL: Ride Ops and Live Monitoring ──────────────────────────
+  // -- ADMIN CONTROL: Ride Ops and Live Monitoring --------------------------
   app.get("/api/admin/rides/active", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -2897,7 +2897,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/complaints", requireAdminAuth, async (req, res) => {
     try {
       const status = String(req.query.status || 'all');
-      // ── SECURITY: Validate status enum to prevent SQL injection ──
+      // -- SECURITY: Validate status enum to prevent SQL injection --
       const validStatus = validateEnumValue(status, ['all', 'pending', 'resolved', 'in_progress']);
       const r = await rawDb.execute(rawSql`
         SELECT rc.*, t.ref_id, c.full_name as customer_name, d.full_name as driver_name
@@ -2945,7 +2945,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── FORCE admin password reset (requires OPS key or reset key) ──────────────
+  // -- FORCE admin password reset (requires OPS key or reset key) --------------
   // POST /api/ops/force-admin-password-reset
   // This forcefully resets admin password when normal password sync isn't working
   app.post("/api/ops/force-admin-password-reset", async (req, res) => {
@@ -2971,7 +2971,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.log(`[FORCE-RESET] Forcefully resetting admin password for ${adminEmail}`);
       
       // Hash the password
-      const hash = await bcrypt.hash(adminPassword, 10);
+      const hash = await hashPassword(adminPassword);
       console.log(`[FORCE-RESET] Generated bcrypt hash: ${hash.substring(0, 30)}...`);
 
       // Update admin record
@@ -3027,7 +3027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Auth — with rate limiting and bcrypt password verification
+  // Auth � with rate limiting and bcrypt password verification
   app.post("/api/admin/login", loginLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -3050,7 +3050,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         admin = await lookupAdmin(email);
       } catch (dbErr: any) {
         if (String(dbErr.message).toLowerCase().includes("does not exist")) {
-          console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
+          console.warn("[admin-login] admins table missing � running bootstrap then retrying...");
           await ensureAdminExists();
           admin = await lookupAdmin(email);
         } else {
@@ -3064,7 +3064,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (requireAdminTwoFactor) {
         const adminPhone = runtimeEnv.ADMIN_PHONE;
         if (!adminPhone) {
-          // 2FA is required but no delivery target — block login with clear message
+          // 2FA is required but no delivery target � block login with clear message
           return res.status(503).json({ message: "Admin 2FA is enabled but ADMIN_PHONE is not configured. Contact system administrator." });
         }
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -3097,7 +3097,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } catch (sessionErr: any) {
         // Self-heal if auth_token_expires_at or other columns were added after table was first created
         if (String(sessionErr.message).toLowerCase().includes("does not exist")) {
-          console.warn("[admin-login] Missing column — running schema self-heal then retrying...");
+          console.warn("[admin-login] Missing column � running schema self-heal then retrying...");
           await ensureAdminExists();
           // Re-query admin after self-heal
           const requeriedAdmin = await lookupAdmin(email);
@@ -3162,7 +3162,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ success: true });
   });
 
-  // ── ADMIN: Forgot Password — send OTP to email ────────────────────────────
+  // -- ADMIN: Forgot Password � send OTP to email ----------------------------
   app.post("/api/admin/forgot-password", async (req, res) => {
     try {
       const { email } = req.body;
@@ -3178,12 +3178,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (process.env.NODE_ENV === 'production' || !isDevOtpResponseEnabled) {
         res.json({ success: true, message: "Password reset OTP sent to your email." });
       } else {
-        res.json({ success: true, message: "Password reset OTP sent (dev mode — check console).", otp, dev: true });
+        res.json({ success: true, message: "Password reset OTP sent (dev mode � check console).", otp, dev: true });
       }
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Reset Password — verify OTP and set new password ───────────────
+  // -- ADMIN: Reset Password � verify OTP and set new password ---------------
   app.post("/api/admin/reset-password", async (req, res) => {
     try {
       const { email, otp, newPassword } = req.body;
@@ -3195,13 +3195,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!otpRow.rows.length) return res.status(400).json({ message: "Invalid or expired OTP" });
       await rawDb.execute(rawSql`UPDATE admin_otp_resets SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`);
-      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      const hashedPassword = await hashPassword(newPassword);
       await rawDb.execute(rawSql`UPDATE admins SET password=${hashedPassword} WHERE email=${email}`);
       res.json({ success: true, message: "Password reset successfully. You can now login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Emergency password reset (protected by ADMIN_RESET_KEY) ────────
+  // -- ADMIN: Emergency password reset (protected by ADMIN_RESET_KEY) --------
   // Call: POST /api/admin/emergency-reset  { key: "...", email: "...", password: "..." }
   // Only works if ADMIN_RESET_KEY env var is set on the server.
   app.post("/api/admin/emergency-reset", async (req, res) => {
@@ -3211,7 +3211,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!key || key !== resetKey) return res.status(403).json({ message: "Invalid reset key" });
     if (!email || !password || password.length < 6) return res.status(400).json({ message: "email and password (min 6 chars) required" });
     try {
-      const hash = await bcrypt.hash(password, 12);
+      const hash = await hashPassword(password);
       const r = await rawDb.execute(rawSql`
         UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL
         WHERE LOWER(email)=${email.trim().toLowerCase()}
@@ -3243,13 +3243,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "Admin account not found" });
       }
       
-      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, (adminR.rows[0] as any).password);
+      const isCurrentPasswordValid = await verifyPassword(currentPassword, (adminR.rows[0] as any).password);
       if (!isCurrentPasswordValid) {
         return res.status(401).json({ message: "Current password is incorrect" });
       }
       
       // Hash new password and update
-      const newHash = await bcrypt.hash(newPassword, 10);
+      const newHash = await hashPassword(newPassword);
       await rawDb.execute(rawSql`
         UPDATE admins SET password=${newHash} WHERE id=${admin.id}::uuid
       `);
@@ -3263,7 +3263,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── Catch-all protection for legacy /api/ admin routes ──────────────────
+  // -- Catch-all protection for legacy /api/ admin routes ------------------
   // All /api/ routes that are NOT explicitly excluded below are admin-only.
   // This complements the /api/admin/* global middleware and per-route requireAdminAuth.
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
@@ -3274,12 +3274,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       p === "/ping"             ||  // simple test endpoint
       p.startsWith("/diag/")    ||  // diagnostic endpoints
       p.startsWith("/ops/")     ||  // requireOpsKey
-      p.startsWith("/app/")     ||  // mobile app routes — each has authApp
+      p.startsWith("/app/")     ||  // mobile app routes � each has authApp
       p.startsWith("/admin/")   ||  // global admin middleware at line 1101
-      p.startsWith("/driver/")  ||  // mobile driver routes — each has authApp
+      p.startsWith("/driver/")  ||  // mobile driver routes � each has authApp
       p.startsWith("/webhook")       // payment callbacks (Razorpay, etc.)
     ) return next();
-    // Everything else is a legacy admin route → require admin auth
+    // Everything else is a legacy admin route ? require admin auth
     return requireAdminAuth(req, res, next);
   });
 
@@ -3455,7 +3455,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/zones", requireAdminAuth, async (req, res) => {
     try {
       if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
-        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+        return res.status(400).json({ message: "Invalid zone coordinates � must be a valid GeoJSON Polygon or MultiPolygon" });
       }
       const zone = await storage.createZone(req.body);
       res.status(201).json(zone);
@@ -3467,7 +3467,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
       if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
-        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+        return res.status(400).json({ message: "Invalid zone coordinates � must be a valid GeoJSON Polygon or MultiPolygon" });
       }
       const zone = await storage.updateZone(String(req.params.id), req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
@@ -3480,7 +3480,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/zones/:id", requireAdminAuth, async (req, res) => {
     try {
       if (req.body.coordinates !== undefined && !validateZoneCoordinates(req.body.coordinates)) {
-        return res.status(400).json({ message: "Invalid zone coordinates — must be a valid GeoJSON Polygon or MultiPolygon" });
+        return res.status(400).json({ message: "Invalid zone coordinates � must be a valid GeoJSON Polygon or MultiPolygon" });
       }
       const zone = await storage.updateZone(String(req.params.id), req.body);
       if (!zone) return res.status(404).json({ message: "Zone not found" });
@@ -3536,7 +3536,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── VEHICLE-FARES: All vehicle categories with their current fare config ──
+  // -- VEHICLE-FARES: All vehicle categories with their current fare config --
   // Used by the admin Fare Setup page (single unified view of all vehicles).
   app.get("/api/vehicle-fares", async (req, res) => {
     try {
@@ -3654,7 +3654,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Pricing Management ─────────────────────────────────────────────
+  // -- ADMIN: Pricing Management ---------------------------------------------
 
   // GET all vehicle categories with full pricing (vehicle_categories + trip_fares merged)
   app.get("/api/admin/pricing/vehicles", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
@@ -3694,7 +3694,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // PUT /api/admin/pricing/vehicles/:id — update vehicle pricing in both vehicle_categories + trip_fares
+  // PUT /api/admin/pricing/vehicles/:id � update vehicle pricing in both vehicle_categories + trip_fares
   app.put("/api/admin/pricing/vehicles/:id", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { id } = req.params;
@@ -3766,7 +3766,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // PATCH /api/admin/pricing/vehicles/:id/availability — toggle vehicle availability
+  // PATCH /api/admin/pricing/vehicles/:id/availability � toggle vehicle availability
   app.patch("/api/admin/pricing/vehicles/:id/availability", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { isActive } = req.body;
@@ -3779,7 +3779,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // GET /api/admin/pricing/settings — get GST rate, launch campaign, commission settings
+  // GET /api/admin/pricing/settings � get GST rate, launch campaign, commission settings
   app.get("/api/admin/pricing/settings", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings ORDER BY key_name`);
@@ -3795,11 +3795,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // PUT /api/admin/pricing/settings — update one or more pricing settings
+  // PUT /api/admin/pricing/settings � update one or more pricing settings
   app.put("/api/admin/pricing/settings", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const updates = req.body as Record<string, string>;
-      if (!updates || typeof updates !== 'object') return res.status(400).json({ message: "Body must be an object of key→value" });
+      if (!updates || typeof updates !== 'object') return res.status(400).json({ message: "Body must be an object of key?value" });
       const allowedKeys = new Set([
         'ride_gst_rate', 'driver_commission_pct', 'launch_campaign_enabled',
         'active_model', 'rides_model', 'parcels_model', 'cargo_model', 'intercity_model',
@@ -3822,9 +3822,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Admin: Commission Settlement Endpoints ────────────────────────────────
+  // --- Admin: Commission Settlement Endpoints --------------------------------
 
-  // GET /api/admin/commission-settlements — all settlement rows, filterable
+  // GET /api/admin/commission-settlements � all settlement rows, filterable
   app.get("/api/admin/commission-settlements", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { driverId, type, direction, page = '1', limit = '50' } = req.query as Record<string, string>;
@@ -3847,7 +3847,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // GET /api/admin/commission-settlements/drivers — per-driver pending balance summary
+  // GET /api/admin/commission-settlements/drivers � per-driver pending balance summary
   app.get("/api/admin/commission-settlements/drivers", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const rows = await rawDb.execute(rawSql`
@@ -3869,7 +3869,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // POST /api/admin/commission-settlements/drivers/:driverId/settle — admin manually settles partial/full amount
+  // POST /api/admin/commission-settlements/drivers/:driverId/settle � admin manually settles partial/full amount
   app.post("/api/admin/commission-settlements/drivers/:driverId/settle", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { driverId } = req.params;
@@ -3877,7 +3877,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const payAmt = parseFloat(String(amount));
       // SECURITY: Cap settlement amount to prevent accidental/malicious over-credit
       if (!payAmt || payAmt <= 0 || payAmt > 100000 || isNaN(payAmt)) {
-        return res.status(400).json({ message: "Invalid amount. Must be between ₹0.01 and ₹1,00,000." });
+        return res.status(400).json({ message: "Invalid amount. Must be between ?0.01 and ?1,00,000." });
       }
 
       const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
@@ -3930,7 +3930,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Transactions
+  // -- Transactions
   app.get("/api/transactions", async (req, res) => {
     try {
       const { userId, page, limit } = req.query as Record<string, string>;
@@ -4090,7 +4090,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── OTP Settings (Admin) ─────────────────────────────────────────────────
+  // -- OTP Settings (Admin) -------------------------------------------------
   app.get("/api/otp-settings", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`);
@@ -4281,7 +4281,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── NEW MODULE ROUTES ──────────────────────────────────────────
+  // -- NEW MODULE ROUTES ------------------------------------------
   // Helper: direct DB queries for new tables
   const { db: rawDb } = await import("./db");
   const { sql: rawSql } = await import("drizzle-orm");
@@ -4656,8 +4656,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/b2b-companies/:id/wallet", requireAdminAuth, async (req, res) => {
     try {
       const { amount, type } = req.body;
-      // ── SECURITY: Validate amount is non-negative and within bounds ──
-      const validAmount = validateMoneyAmount(amount, 99999999); // Max ₹99.9M per transaction
+      // -- SECURITY: Validate amount is non-negative and within bounds --
+      const validAmount = validateMoneyAmount(amount, 99999999); // Max ?99.9M per transaction
       const validType = validateEnumValue(type, ['credit', 'deduct']);
       const r = validType === "deduct"
         ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${validAmount} WHERE id=${req.params.id}::uuid RETURNING *`)
@@ -4683,7 +4683,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/parcel-categories", adminDataLimiter, requireAdminAuth, async (req, res) => {
     try {
       const { name, is_active } = req.body;
-      // ── SECURITY: Validate name is string, non-empty, and reasonable length ──
+      // -- SECURITY: Validate name is string, non-empty, and reasonable length --
       const validName = String(name || "").trim();
       if (!validName || validName.length === 0) {
         throw new Error("Category name is required");
@@ -4725,7 +4725,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/vehicle-brands", async (req, res) => {
     try {
       const { category } = req.query;
-      // ── SECURITY: Validate category enum to prevent SQL injection ──
+      // -- SECURITY: Validate category enum to prevent SQL injection --
       const allowedCategories = ['two_wheeler', 'three_wheeler', 'four_wheeler', 'auto', 'cab', 'parcel'];
       const r = category
         ? await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true AND category=${validateEnumValue(String(category), allowedCategories)} ORDER BY name ASC`)
@@ -4802,7 +4802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/parcel-fares", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
-      // ── SECURITY: Validate all numeric fares are non-negative; prevent NaN from parseInt ──
+      // -- SECURITY: Validate all numeric fares are non-negative; prevent NaN from parseInt --
       const validBaseFare = validateMoneyAmount(baseFare || 0, 100000);
       const validFarePerKm = validateMoneyAmount(farePerKm || 0, 10000);
       const validFarePerKg = validateMoneyAmount(farePerKg || 0, 10000);
@@ -4818,7 +4818,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
-      // ── SECURITY: Validate all numeric fares are non-negative ──
+      // -- SECURITY: Validate all numeric fares are non-negative --
       const validBaseFare = validateMoneyAmount(baseFare || 0, 100000);
       const validFarePerKm = validateMoneyAmount(farePerKm || 0, 10000);
       const validFarePerKg = validateMoneyAmount(farePerKg || 0, 10000);
@@ -4869,7 +4869,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
-  // PATCH: toggle is_active only — safe partial update (does not wipe other fields)
+  // PATCH: toggle is_active only � safe partial update (does not wipe other fields)
   app.patch("/api/surge-pricing/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive, is_active } = req.body;
@@ -5073,9 +5073,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!name || latitude == null || longitude == null || !cityName) {
         return res.status(400).json({ message: "name, latitude, longitude, cityName are required" });
       }
-      // ── SECURITY: Validate coordinates within bounds ──
+      // -- SECURITY: Validate coordinates within bounds --
       const coords = validateLatLng(latitude, longitude);
-      // ── SECURITY: Validate string lengths to prevent buffer issues ──
+      // -- SECURITY: Validate string lengths to prevent buffer issues --
       const validName = String(name || "").trim();
       const validCity = String(cityName || "").trim();
       const validAddress = String(fullAddress || "").trim();
@@ -5094,14 +5094,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/popular-locations/:id", adminDataLimiter, requireAdminAuth, async (req, res) => {
     try {
       const { name, latitude, longitude, cityName, fullAddress, isActive } = req.body || {};
-      // ── SECURITY: Validate optional coordinates if provided ──
+      // -- SECURITY: Validate optional coordinates if provided --
       let validLat = undefined, validLng = undefined;
       if (latitude != null && longitude != null) {
         const coords = validateLatLng(latitude, longitude);
         validLat = coords.lat;
         validLng = coords.lng;
       }
-      // ── SECURITY: Validate string lengths if provided ──
+      // -- SECURITY: Validate string lengths if provided --
       let validName = undefined, validCity = undefined, validAddress = undefined;
       if (name) {
         validName = String(name).trim();
@@ -5140,7 +5140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Business settings — bulk update
+  // Business settings � bulk update
   app.put("/api/business-settings", requireAdminAuth, async (req, res) => {
     try {
       const settings = req.body as Record<string, string>;
@@ -5152,7 +5152,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Business Pages — GET by settings_type
+  // Business Pages � GET by settings_type
   app.get("/api/business-pages", async (req, res) => {
     try {
       const type = (req.query.type as string) || "pages_settings";
@@ -5161,7 +5161,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Business Pages — upsert single setting
+  // Business Pages � upsert single setting
   app.post("/api/business-pages", async (req, res) => {
     try {
       const { keyName, value, settingsType } = req.body;
@@ -5181,9 +5181,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`SELECT id, password FROM admins WHERE role='superadmin' LIMIT 1`);
       if (!r.rows.length) return res.status(404).json({ message: "Admin not found" });
       const admin = r.rows[0] as any;
-      const valid = await bcrypt.compare(String(currentPassword), admin.password);
+      const valid = await verifyPassword(String(currentPassword), admin.password);
       if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
-      const hash = await bcrypt.hash(String(newPassword), 10);
+      const hash = await hashPassword(String(newPassword));
       await rawDb.execute(rawSql`UPDATE admins SET password=${hash} WHERE id=${admin.id}::uuid`);
       res.json({ success: true, message: "Password changed successfully" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -5232,7 +5232,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Customer Wallet top-up / deduct (admin operation — adjusts users.wallet_balance)
+  // Customer Wallet top-up / deduct (admin operation � adjusts users.wallet_balance)
   app.post("/api/customer-wallet/topup", requireAdminAuth, async (req, res) => {
     try {
       const { userId, amount, type } = req.body;
@@ -5252,7 +5252,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Notifications send — broadcasts real FCM push to all matching user devices
+  // Notifications send � broadcasts real FCM push to all matching user devices
   app.post("/api/notifications/send", requireAdminAuth, async (req, res) => {
     try {
       const { title, message, target = "all", userType = "all" } = req.body;
@@ -5272,7 +5272,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const recipientCount = fcmRows.length;
 
-      // Fire FCM pushes (non-blocking — best effort)
+      // Fire FCM pushes (non-blocking � best effort)
       let deliveredCount = 0;
       if (fcmRows.length > 0) {
         const pushPromises = fcmRows.map(async (r: any) => {
@@ -5299,7 +5299,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Car Sharing APIs ────────────────────────────────────────────────────────
+  // --- Car Sharing APIs --------------------------------------------------------
 
   // Stats
   app.get("/api/car-sharing/stats", requireAdminAuth, async (req, res) => {
@@ -5397,7 +5397,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Revenue Model Settings ──────────────────────────────────────────────────
+  // --- Revenue Model Settings --------------------------------------------------
 
   app.get("/api/revenue-model", async (_req, res) => {
     try {
@@ -5421,8 +5421,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Module-Based Revenue Config ─────────────────────────────────────────────
-  // GET /api/app/revenue-config — used by both apps to determine commission/subscription
+  // --- Module-Based Revenue Config ---------------------------------------------
+  // GET /api/app/revenue-config � used by both apps to determine commission/subscription
   app.get("/api/app/revenue-config", authApp, async (_req, res) => {
     try {
       const rows = await rawDb.execute(rawSql`SELECT * FROM service_revenue_config ORDER BY module_name`);
@@ -5441,7 +5441,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // GET /api/admin/module-revenue — admin read all module configs
+  // GET /api/admin/module-revenue � admin read all module configs
   app.get("/api/admin/module-revenue", requireAdminAuth, async (_req, res) => {
     try {
       const rows = await rawDb.execute(rawSql`SELECT * FROM service_revenue_config ORDER BY module_name`);
@@ -5449,7 +5449,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // PUT /api/admin/module-revenue/:module — admin update one module
+  // PUT /api/admin/module-revenue/:module � admin update one module
   app.put("/api/admin/module-revenue/:module", requireAdminAuth, async (req, res) => {
     try {
       const module = req.params.module as string;
@@ -5476,7 +5476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Admin Revenue Stats ─────────────────────────────────────────────────────
+  // --- Admin Revenue Stats -----------------------------------------------------
   app.get("/api/admin-revenue", requireAdminAuth, async (req, res) => {
     try {
       const { from, to, revenueType, page = 1, limit = 50 } = req.query;
@@ -5510,7 +5510,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Driver Commission Settlement System ────────────────────────────────────
+  // --- Driver Commission Settlement System ------------------------------------
 
   // Helper: recalculate total_pending_balance and check auto-lock/unlock
   async function checkAndApplySettlementLock(driverId: string, settings: Record<string, string>) {
@@ -5524,7 +5524,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (total >= lockThreshold && !isCurrentlyLocked) {
       await rawDb.execute(rawSql`
         UPDATE users SET is_locked=true,
-          lock_reason=${'Pending balance ₹' + total.toFixed(2) + ' exceeds ₹' + lockThreshold + '. Pay to unlock ride access.'},
+          lock_reason=${'Pending balance ?' + total.toFixed(2) + ' exceeds ?' + lockThreshold + '. Pay to unlock ride access.'},
           locked_at=NOW()
         WHERE id=${driverId}::uuid
       `);
@@ -5572,7 +5572,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Deduct platform fee per ride (called after ride completion — legacy endpoint)
+  // Deduct platform fee per ride (called after ride completion � legacy endpoint)
   app.post("/api/driver-wallet/:id/deduct", requireAdminAuth, async (req, res) => {
     try {
       const id = String(req.params.id);
@@ -5657,7 +5657,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
       const keySecret = await getConf("RAZORPAY_KEY_SECRET", "razorpay_key_secret");
       if (!keyId || !keySecret) {
-        return res.status(503).json({ message: "Payment gateway not configured. Add Razorpay keys in Admin → Configuration." });
+        return res.status(503).json({ message: "Payment gateway not configured. Add Razorpay keys in Admin ? Configuration." });
       }
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
@@ -5682,13 +5682,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (caller.id !== id) return res.status(403).json({ message: "Forbidden: you can only settle your own wallet" });
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
       if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) return res.status(400).json({ message: "Missing payment details" });
-      // SECURITY: Idempotency — reject if this payment was already processed
+      // SECURITY: Idempotency � reject if this payment was already processed
       const alreadyDone = await rawDb.execute(rawSql`
         SELECT id FROM commission_settlements WHERE razorpay_payment_id=${razorpayPaymentId} LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       if (alreadyDone.rows.length) return res.status(409).json({ message: "Payment already processed", alreadySettled: true });
       const { keySecret } = await getRazorpayKeys();
-      if (!keySecret) return res.status(503).json({ message: "Payment verification not configured — contact support" });
+      if (!keySecret) return res.status(503).json({ message: "Payment verification not configured � contact support" });
       // Timing-safe HMAC verification
       const expectedSig = crypto.createHmac("sha256", keySecret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
       const sigValid = expectedSig.length === razorpaySignature.length &&
@@ -5708,7 +5708,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const prevTotal      = parseFloat(bal.total_pending_balance ?? '0') || 0;
       const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
       const prevGst        = parseFloat(bal.pending_gst_balance ?? '0') || 0;
-      // Amount from DB — never trust client-sent amount
+      // Amount from DB � never trust client-sent amount
       const pendingRec = await rawDb.execute(rawSql`
         SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${id}::uuid AND status='pending' LIMIT 1
       `);
@@ -5767,9 +5767,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           (${id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
            'credit', ${prevTotal}, ${newTotal}, 'razorpay',
            ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
-           ${'Commission payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
+           ${'Commission payment via Razorpay. Commission: ?' + commReduction.toFixed(2) + ', GST: ?' + gstReduction.toFixed(2)})
       `).catch((e: any) => console.error('[SETTLE-CS]', e.message));
-      // driver_payments already marked completed atomically above — no duplicate INSERT needed
+      // driver_payments already marked completed atomically above � no duplicate INSERT needed
 
       res.json({
         success: true,
@@ -5854,7 +5854,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Refund Requests ─────────────────────────────────────────────────────────
+  // --- Refund Requests ---------------------------------------------------------
 
   app.get("/api/refund-requests", async (req, res) => {
     try {
@@ -5889,8 +5889,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!['approved', 'denied', 'pending'].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      // SECURITY: Atomic transition — only approve if currently 'pending' to prevent double-credit.
-      // If admin clicks approve twice, second request finds status!='pending' and returns 0 rows → 409.
+      // SECURITY: Atomic transition � only approve if currently 'pending' to prevent double-credit.
+      // If admin clicks approve twice, second request finds status!='pending' and returns 0 rows ? 409.
       const whereClause = status === 'approved'
         ? rawSql`WHERE id=${id}::uuid AND status='pending'`   // guard: can only approve once
         : rawSql`WHERE id=${id}::uuid AND status != 'approved'`; // can update pending/denied freely
@@ -5915,14 +5915,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             VALUES (${refund.customer_id}::uuid, ${'Admin approved refund'}, ${refundAmt}, 0, ${newBal}, ${'admin_refund'}, ${id})
             ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
           `).catch((e: any) => console.error('[REFUND-APPROVE-TX]', e.message));
-          console.log(`[REFUND-APPROVED] ₹${refundAmt} credited to customer ${refund.customer_id}, refund ${id}`);
+          console.log(`[REFUND-APPROVED] ?${refundAmt} credited to customer ${refund.customer_id}, refund ${id}`);
         }
       }
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Initiate Razorpay refund (calls Razorpay API) ────────────────────
+  // -- Admin: Initiate Razorpay refund (calls Razorpay API) --------------------
   app.post("/api/admin/razorpay-refund", requireAdminAuth, async (req, res) => {
     try {
       const { paymentId, amount, tripId, customerId, reason } = req.body;
@@ -5939,7 +5939,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notes: { reason: reason || "Admin initiated refund", trip_id: tripId || "", customer_id: customerId || "" },
       });
       // Log the refund initiation
-      console.log(`[ADMIN-REFUND] Initiated Razorpay refund: ${refundResult.id} for payment ${paymentId}, ₹${amt}`);
+      console.log(`[ADMIN-REFUND] Initiated Razorpay refund: ${refundResult.id} for payment ${paymentId}, ?${amt}`);
       // Create a refund request record if customerId provided
       if (customerId) {
         await rawDb.execute(rawSql`
@@ -5953,7 +5953,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Intercity Car Sharing ────────────────────────────────────────────────────
+  // --- Intercity Car Sharing ----------------------------------------------------
 
   // Settings CRUD
   app.get("/api/intercity-cs/settings", async (_req, res) => {
@@ -6056,7 +6056,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── OUTSTATION POOL ────────────────────────────────────────────────────────
+  // -- OUTSTATION POOL --------------------------------------------------------
   // Driver: post a city-to-city ride, list own rides
   app.post("/api/app/driver/outstation-pool/rides", authApp, async (req, res) => {
     try {
@@ -6136,7 +6136,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const bookings = bookingsR.rows as any[];
       const totalRevenue = bookings.reduce((sum: number, b: any) => sum + parseFloat(b.total_fare || 0), 0);
 
-      // Calculate revenue: commission% + GST + insurance → admin
+      // Calculate revenue: commission% + GST + insurance ? admin
       const breakdown = await calculateRevenueBreakdown(totalRevenue, "outstation_pool", driver.id);
 
       // Settle revenue (driver wallet + admin revenue + GST wallet)
@@ -6330,7 +6330,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Call Logs — real data from call_logs table
+  // Call Logs � real data from call_logs table
   app.get("/api/call-logs", async (req, res) => {
     try {
       const status = (req.query.status as string) || "all";
@@ -6368,7 +6368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Support Chat (Admin ↔ User) ────────────────────────────────────────────
+  // -- Support Chat (Admin ? User) --------------------------------------------
   app.get('/api/support-chat', async (req, res) => {
     try {
       const userId = req.query.userId as string;
@@ -6408,11 +6408,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Static uploads ──────────────────────────────────────────────────────────
+  // -- Static uploads ----------------------------------------------------------
   const express = (await import("express")).default;
   app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
-  // ── File upload (requires admin or app auth) ────────────────────────────────
+  // -- File upload (requires admin or app auth) --------------------------------
   app.post("/api/upload", (req, res, next) => {
     // Allow either admin auth or app auth
     const authHeader = req.headers.authorization || "";
@@ -6426,7 +6426,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver verification ─────────────────────────────────────────────────────
+  // -- Driver verification -----------------------------------------------------
   app.patch("/api/drivers/:id/verify", requireAdminAuth, async (req, res) => {
     try {
       const { status, note, licenseNumber, vehicleNumber, vehicleModel } = req.body;
@@ -6456,7 +6456,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel Attributes ───────────────────────────────────────────────────────
+  // -- Parcel Attributes -------------------------------------------------------
   app.get("/api/parcel-attributes", async (req, res) => {
     try {
       const type = req.query.type as string;
@@ -6499,7 +6499,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Insurance Plans ──────────────────────────────────────────────
+  // -- Insurance Plans ----------------------------------------------
   app.get("/api/insurance-plans", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM insurance_plans ORDER BY premium_monthly ASC`);
@@ -6534,7 +6534,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver Insurance ─────────────────────────────────────────────
+  // -- Driver Insurance ---------------------------------------------
   app.get("/api/driver-insurance", async (req, res) => {
     try {
       const driverId = req.query.driverId as string;
@@ -6555,7 +6555,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver Subscriptions ─────────────────────────────────────────
+  // -- Driver Subscriptions -----------------------------------------
   app.get("/api/driver-subscriptions", async (req, res) => {
     try {
       const driverId = req.query.driverId as string;
@@ -6577,7 +6577,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Reports ──────────────────────────────────────────────────────
+  // -- Reports ------------------------------------------------------
   app.get("/api/reports/earnings", async (req, res) => {
     try {
       const { from, to } = req.query;
@@ -6625,7 +6625,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Safety Alerts ───────────────────────────────────────────────────────────
+  // --- Safety Alerts -----------------------------------------------------------
   app.get("/api/safety-alerts", async (req, res) => {
     try {
       const status = req.query.status as string;
@@ -6723,7 +6723,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Police Stations ──────────────────────────────────────────────────────────
+  // --- Police Stations ----------------------------------------------------------
   app.get("/api/police-stations", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT ps.*, z.name as zone_name FROM police_stations ps LEFT JOIN zones z ON z.id::uuid = ps.zone_id ORDER BY ps.name`);
@@ -6765,7 +6765,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── Female Matching Algorithm — Driver Pool ──────────────────────────────────
+  // --- Female Matching Algorithm � Driver Pool ----------------------------------
   // GET matching algorithm stats
   app.get("/api/matching/stats", async (_req, res) => {
     try {
@@ -7065,11 +7065,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // ██  MOBILE APP APIs — Driver App + Customer App                       ██
-  // ═══════════════════════════════════════════════════════════════════════
+  // -----------------------------------------------------------------------
+  // ��  MOBILE APP APIs � Driver App + Customer App                       ��
+  // -----------------------------------------------------------------------
 
-  // ── OTP SEND (Firebase Only) ──────────────────────────────────────────────
+  // -- OTP SEND (Firebase Only) ----------------------------------------------
   // All OTP verification uses Firebase Phone Auth. The Flutter app handles
   // Firebase SMS on-device; the server just tells the client to use Firebase.
   app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
@@ -7098,22 +7098,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
           VALUES (${phoneStr}, ${smsResult.otp}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         `).catch(dbCatch("db"));
-        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → SMS (${smsResult.provider})`);
+        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? SMS (${smsResult.provider})`);
         return res.json({ success: true, provider: 'sms', message: 'OTP sent via SMS.' });
       }
 
-      // SMS delivery failed — record firebase marker so verify-firebase-token still works
+      // SMS delivery failed � record firebase marker so verify-firebase-token still works
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `).catch(dbCatch("db"));
-      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase (SMS unavailable)`);
+      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? Firebase (SMS unavailable)`);
       return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── OTP VERIFY + LOGIN / REGISTER ────────────────────────────────────────
+  // -- OTP VERIFY + LOGIN / REGISTER ----------------------------------------
   app.post("/api/app/verify-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, otp, userType = "customer", name, referralCode } = req.body;
@@ -7177,7 +7177,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Generate secure auth token (30-day expiry)
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      // Store auth token in users.auth_token (NOT in fcm_token — that's for Firebase)
+      // Store auth token in users.auth_token (NOT in fcm_token � that's for Firebase)
       await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
 
       // If driver, get wallet info
@@ -7211,7 +7211,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── FIREBASE TOKEN VERIFICATION ───────────────────────────────────────────
+  // -- FIREBASE TOKEN VERIFICATION -------------------------------------------
   app.post("/api/app/verify-firebase-token", async (req, res) => {
     try {
       const { firebaseIdToken, phone, userType = "customer" } = req.body;
@@ -7220,7 +7220,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       let phoneStr = "";
 
-      // Try Firebase Admin SDK first (needs service account key — reads from DB or env)
+      // Try Firebase Admin SDK first (needs service account key � reads from DB or env)
       const { getFirebaseAdminAsync } = await import("./fcm.js");
       const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
@@ -7232,7 +7232,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
         }
       } else {
-        // Fallback: verify token via Firebase REST API (only needs Web API key — no service account needed)
+        // Fallback: verify token via Firebase REST API (only needs Web API key � no service account needed)
         // Try the Web API key from env var first, then fall back to the known app key
         const webApiKey = process.env.FIREBASE_WEB_API_KEY || '';
         let restVerified = false;
@@ -7256,7 +7256,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         } catch (_) {}
 
-        // Final fallback: Firebase verified on-device — trust the phone number the app sent
+        // Final fallback: Firebase verified on-device � trust the phone number the app sent
         // Safe because: (1) send-otp was called recently (rate-limited), (2) Firebase SDK verified OTP on-device
         if (!restVerified) {
           const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
@@ -7269,11 +7269,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ORDER BY created_at DESC LIMIT 1
           `).catch(() => ({ rows: [] as any[] }));
           if (!otpReq.rows.length) {
-            console.warn(`[AUTH] Firebase fallback denied — no recent send-otp for ${clientPhone}`);
+            console.warn(`[AUTH] Firebase fallback denied � no recent send-otp for ${clientPhone}`);
             return res.status(401).json({ message: "Session expired. Please tap Resend OTP and try again." });
           }
           phoneStr = clientPhone;
-          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10,'*')} — Firebase Admin not configured`);
+          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10,'*')} � Firebase Admin not configured`);
         }
       }
 
@@ -7332,7 +7332,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── PASSWORD-BASED REGISTER ───────────────────────────────────────────────
+  // -- PASSWORD-BASED REGISTER -----------------------------------------------
   app.post("/api/app/register", loginLimiter, async (req, res) => {
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
@@ -7344,7 +7344,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
       const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
-      const passwordHash = await bcrypt.hash(password, 10);
+      const passwordHash = await hashPassword(password);
       const insertRes = await rawDb.execute(rawSql`
         INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
         VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
@@ -7373,7 +7373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PASSWORD-BASED LOGIN ──────────────────────────────────────────────────
+  // -- PASSWORD-BASED LOGIN --------------------------------------------------
   app.post("/api/app/login-password", loginLimiter, async (req, res) => {
     try {
       const { phone, password, userType = "customer" } = req.body;
@@ -7383,7 +7383,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = camelize(userRes.rows[0]) as any;
       if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
       if (!user.passwordHash) return res.status(400).json({ message: "Password not set. Please use Forgot Password to set one." });
-      const match = await bcrypt.compare(password, user.passwordHash);
+      const match = await verifyPassword(password, user.passwordHash);
       if (!match) return res.status(401).json({ message: "Incorrect password. Please try again." });
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -7393,7 +7393,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── FORGOT PASSWORD (Firebase verification) ──────────────────────────────
+  // -- FORGOT PASSWORD (Firebase verification) ------------------------------
   // Uses Firebase Phone Auth instead of SMS OTP for password reset
   app.post("/api/app/forgot-password", otpLimiter, async (req, res) => {
     try {
@@ -7404,12 +7404,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
       if (!userRes.rows.length) return res.status(404).json({ message: "No account found with this phone number." });
       // Use Firebase Phone Auth for password reset verification
-      console.log(`[RESET] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase password reset`);
+      console.log(`[RESET] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? Firebase password reset`);
       res.json({ success: true, provider: 'firebase', message: 'Verify your phone via Firebase to reset password.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── RESET PASSWORD (verify OTP + set new password) ────────────────────────
+  // -- RESET PASSWORD (verify OTP + set new password) ------------------------
   app.post("/api/app/reset-password", async (req, res) => {
     try {
       const { phone, otp, newPassword, userType = "customer" } = req.body;
@@ -7419,13 +7419,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
       const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
       if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
-      const passwordHash = await bcrypt.hash(newPassword, 10);
+      const passwordHash = await hashPassword(newPassword);
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Reset password via Firebase token (SMS-free flow) ────────────────────
+  // -- Reset password via Firebase token (SMS-free flow) --------------------
   app.post("/api/app/reset-password-firebase", async (req, res) => {
     try {
       const { firebaseIdToken, phone, newPassword, userType = "customer" } = req.body;
@@ -7461,13 +7461,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
       if (!userRes.rows.length) return res.status(404).json({ message: "User not found." });
 
-      const passwordHash = await bcrypt.hash(newPassword, 10);
+      const passwordHash = await hashPassword(newPassword);
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-    // ── AUTH MIDDLEWARE (simple token check) ─────────────────────────────────
+    // -- AUTH MIDDLEWARE (simple token check) ---------------------------------
   async function authApp(req: Request, res: Response, next: NextFunction) {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -7486,7 +7486,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(401).json({ message: "Auth failed" }); }
   }
 
-  // Role-specific guards — always used after authApp
+  // Role-specific guards � always used after authApp
   function requireDriver(req: Request, res: Response, next: NextFunction) {
     const user = (req as any).currentUser;
     if (user?.userType !== "driver") return res.status(403).json({ message: "Driver access required" });
@@ -7498,13 +7498,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   }
 
-  // ── DRIVER: Go Online / Offline + Location Update ─────────────────────────
+  // -- DRIVER: Go Online / Offline + Location Update -------------------------
   app.post("/api/app/driver/location", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { lat, lng, heading = 0, speed = 0, isOnline } = req.body;
       
-      // ── SECURITY: Validate coordinates and numeric values ──
+      // -- SECURITY: Validate coordinates and numeric values --
       const coords = validateLatLng(lat, lng);
       const validHeading = safeFloat(heading, 0);
       const validSpeed = safeFloat(speed, 0);
@@ -7513,11 +7513,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (validSpeed < 0) throw new Error("Speed cannot be negative");
       if (validHeading < 0 || validHeading > 360) throw new Error("Heading must be 0-360");
       
-      // isOnline defaults to true — if you're sending location, you are online.
-      // Fallback chain: body.isOnline → true (never false here; going offline is via online-status endpoint)
+      // isOnline defaults to true � if you're sending location, you are online.
+      // Fallback chain: body.isOnline ? true (never false here; going offline is via online-status endpoint)
       const effectiveOnline = isOnline !== undefined ? Boolean(isOnline) : true;
       
-      // Upsert location — always include updated_at=NOW() in both INSERT and ON CONFLICT
+      // Upsert location � always include updated_at=NOW() in both INSERT and ON CONFLICT
       await rawDb.execute(rawSql`
         INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
         VALUES (${driver.id}::uuid, ${coords.lat}, ${coords.lng}, ${validHeading}, ${validSpeed}, ${effectiveOnline}, NOW())
@@ -7542,7 +7542,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { isOnline } = req.body;
       if (isOnline) {
-        // Check verification status FIRST — driver cannot go online until approved
+        // Check verification status FIRST � driver cannot go online until approved
         const verR = await rawDb.execute(rawSql`SELECT verification_status, rejection_note FROM users WHERE id=${driver.id}::uuid`);
         const vs = (verR.rows[0] as any)?.verification_status;
         if (!['approved', 'verified'].includes(vs)) {
@@ -7556,7 +7556,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const modelRow = modelR.rows[0] as any;
         if (!modelRow?.model_selected_at) {
           if (modelRow?.revenue_model) {
-            // Auto-heal: driver has a revenue model set (e.g. by admin) but model_selected_at was never recorded — backfill it
+            // Auto-heal: driver has a revenue model set (e.g. by admin) but model_selected_at was never recorded � backfill it
             await rawDb.execute(rawSql`UPDATE users SET model_selected_at=NOW() WHERE id=${driver.id}::uuid`);
           } else {
             return res.status(403).json({ message: 'Please choose your revenue model before going online.', needsModelSelection: true });
@@ -7578,7 +7578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             }
           }
         }
-        // Check document expiry — insurance, RC, PUC must be valid
+        // Check document expiry � insurance, RC, PUC must be valid
         const docExpR = await rawDb.execute(rawSql`
           SELECT doc_type, expiry_date FROM driver_documents
           WHERE driver_id=${driver.id}::uuid
@@ -7596,7 +7596,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             docType: expDoc.doc_type,
           });
         }
-        // Check wallet lock (applies to both models — negative balance)
+        // Check wallet lock (applies to both models � negative balance)
         const walletR = await rawDb.execute(rawSql`SELECT is_locked, wallet_balance, lock_reason FROM users WHERE id=${driver.id}::uuid`);
         const w = walletR.rows[0] as any;
         const currentBalance = parseFloat(w?.wallet_balance || 0);
@@ -7610,7 +7610,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         // Block if wallet is below threshold (auto-lock that wasn't yet written)
         if (currentBalance < lockThreshold) {
-          const lockMsg = `Wallet balance ₹${currentBalance.toFixed(2)} is below minimum threshold ₹${lockThreshold}. Recharge wallet to go online.`;
+          const lockMsg = `Wallet balance ?${currentBalance.toFixed(2)} is below minimum threshold ?${lockThreshold}. Recharge wallet to go online.`;
           await rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${lockMsg}, locked_at=NOW() WHERE id=${driver.id}::uuid`);
           return res.status(403).json({
             message: lockMsg, isLocked: true, walletBalance: currentBalance
@@ -7660,7 +7660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const lng = req.body.lng;
       const hasValidCoords = lat != null && lng != null && isFinite(Number(lat)) && isFinite(Number(lng)) && (Number(lat) !== 0 || Number(lng) !== 0);
       await rawDb.execute(rawSql`UPDATE users SET is_online=${isOnline} WHERE id=${driver.id}::uuid`);
-      // UPSERT driver_locations — only update lat/lng if we have a real GPS fix; never write 0,0
+      // UPSERT driver_locations � only update lat/lng if we have a real GPS fix; never write 0,0
       if (hasValidCoords) {
         await rawDb.execute(rawSql`
           INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
@@ -7678,7 +7678,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get profile + wallet + current trip ───────────────────────────
+  // -- DRIVER: Get profile + wallet + current trip ---------------------------
   app.get("/api/app/driver/profile", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -7731,7 +7731,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Incoming trip request (polling) ───────────────────────────────
+  // -- DRIVER: Incoming trip request (polling) -------------------------------
   app.get("/api/app/driver/incoming-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -7785,7 +7785,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Active trip (app state recovery) ─────────────────────────────
+  // -- DRIVER: Active trip (app state recovery) -----------------------------
   // Returns the driver's current in-progress trip so the app can restore TripScreen
   // after a crash, kill, or network loss.
   app.get("/api/app/driver/active-trip", authApp, requireDriver, async (req, res) => {
@@ -7805,7 +7805,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Accept trip ───────────────────────────────────────────────────
+  // -- DRIVER: Accept trip ---------------------------------------------------
   app.post("/api/app/driver/accept-trip", authApp, requireDriver, driverTripActionLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -7813,7 +7813,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
 
-      // ── Subscription gate: rides use subscription model; parcels use commission (no gate) ──
+      // -- Subscription gate: rides use subscription model; parcels use commission (no gate) --
       const tripTypeR = await rawDb.execute(rawSql`
         SELECT trip_type FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
@@ -7852,7 +7852,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // ── Account lock check ────────────────────────────────────────────────
+      // -- Account lock check ------------------------------------------------
       if (driver.is_locked || driver.isLocked) {
         return res.status(403).json({
           message: driver.lock_reason || driver.lockReason || "Account locked. Please clear pending dues to accept rides.",
@@ -7863,7 +7863,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Generate pickup OTP
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Atomically claim trip — busy check embedded in WHERE to prevent TOCTOU race:
+      // Atomically claim trip � busy check embedded in WHERE to prevent TOCTOU race:
       // if driver already has an active trip this UPDATE returns 0 rows.
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
@@ -7884,7 +7884,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const info = exists.rows[0] as any;
         if (!info) return res.status(404).json({ message: "Trip not found" });
         if (info.current_status === 'accepted') return res.status(409).json({ message: "Trip already accepted by another driver" });
-        // Check if driver is already on another trip (busy — blocked by NOT EXISTS)
+        // Check if driver is already on another trip (busy � blocked by NOT EXISTS)
         const busy = await rawDb.execute(rawSql`SELECT id FROM trip_requests WHERE driver_id=${driver.id}::uuid AND current_status IN ('driver_assigned','accepted','arrived','on_the_way') LIMIT 1`);
         if (busy.rows.length) return res.status(400).json({ message: "You already have an active trip" });
         return res.status(400).json({ message: `Cannot accept trip in status: ${info.current_status}` });
@@ -7893,14 +7893,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Mark driver as on current trip
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=${tripId}::uuid WHERE id=${driver.id}::uuid`);
 
-      // Notify dispatch engine — clears timers and notifies other drivers
+      // Notify dispatch engine � clears timers and notifies other drivers
       onDriverAccepted(tripId, driver.id);
 
       const tripData = camelize(r.rows[0]) as any;
       await appendTripStatus(tripData.id, 'driver_assigned', 'driver', 'Driver accepted trip');
       await logRideLifecycleEvent(tripData.id, 'driver_assigned', driver.id, 'driver', { pickupOtp: otp });
 
-      // 🔌 Socket: notify customer — driver accepted, show pilot details
+      // ?? Socket: notify customer � driver accepted, show pilot details
       if (io) {
         io.to(`user:${tripData.customerId}`).emit("trip:accepted", {
           tripId: tripData.id,
@@ -7915,7 +7915,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         io.emit("trip:taken", { tripId: tripData.id });
       }
 
-      // 🔔 FCM: notify customer
+      // ?? FCM: notify customer
       const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripData.customerId}::uuid`);
       const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
       notifyCustomerDriverAccepted({
@@ -7928,7 +7928,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Reject / skip trip ─────────────────────────────────────────────
+  // -- DRIVER: Reject / skip trip ---------------------------------------------
   app.post("/api/app/driver/reject-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -7936,10 +7936,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.json({ success: true });
 
-      // Clear current_trip_id on this driver (defensive — should not be set for searching trips)
+      // Clear current_trip_id on this driver (defensive � should not be set for searching trips)
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid AND current_trip_id=${tripId}::uuid`);
 
-      // Record rejection — keep trip in 'searching', clear driver_id assignment if any
+      // Record rejection � keep trip in 'searching', clear driver_id assignment if any
       const tripRes = await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='searching', driver_id=NULL,
@@ -7951,7 +7951,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
 
       if (tripRes.rows.length) {
-        // Notify dispatch engine — immediately moves to next driver in queue
+        // Notify dispatch engine � immediately moves to next driver in queue
         onDriverRejected(tripId, driver.id).catch((err: any) => {
           console.error('[DISPATCH] onDriverRejected error:', err.message);
           // Fallback: legacy re-assignment if dispatch engine not tracking this trip
@@ -7981,7 +7981,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Verify pickup OTP + start ride ────────────────────────────────
+  // -- DRIVER: Verify pickup OTP + start ride --------------------------------
   app.post("/api/app/driver/verify-pickup-otp", authApp, requireDriver, driverTripActionLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8012,7 +8012,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Pickup OTP verified');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'verify-pickup-otp' });
-      // 📦 For parcel — send delivery OTP to receiver via SMS when pickup is done
+      // ?? For parcel � send delivery OTP to receiver via SMS when pickup is done
       if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
         sendCustomSms(trip.receiver_phone,
           `JAGO Pro Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
@@ -8026,7 +8026,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Verify delivery OTP (Parcel) ─────────────────────────────────
+  // -- DRIVER: Verify delivery OTP (Parcel) ---------------------------------
   app.post("/api/app/driver/verify-delivery-otp", authApp, requireDriver, driverTripActionLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8049,7 +8049,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Arrived at pickup ─────────────────────────────────────────────
+  // -- DRIVER: Arrived at pickup ---------------------------------------------
   app.post("/api/app/driver/arrived", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8080,7 +8080,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');
       await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver');
 
-      // 🔔 Notify customer — driver arrived, show OTP
+      // ?? Notify customer � driver arrived, show OTP
       const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
       const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
       notifyCustomerDriverArrived({
@@ -8090,13 +8090,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripId,
       }).catch(dbCatch("db"));
 
-      // 📱 If booked for someone else — send OTP as SMS to passenger phone
+      // ?? If booked for someone else � send OTP as SMS to passenger phone
       if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {
         sendCustomSms(tripRow.passenger_phone,
           `JAGO Pro: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
         ).catch(dbCatch("db"));
       }
-      // 📦 For parcel — remind sender with pickup OTP via SMS
+      // ?? For parcel � remind sender with pickup OTP via SMS
       if (tripRow?.trip_type === 'parcel' || tripRow?.trip_type === 'delivery') {
         const senderPhone = tripRow.customer_phone;
         if (senderPhone) sendCustomSms(senderPhone,
@@ -8113,7 +8113,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Start trip (arrived → on_the_way) ────────────────────────────
+  // -- DRIVER: Start trip (arrived ? on_the_way) ----------------------------
   app.post("/api/app/driver/start-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8140,10 +8140,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
         RETURNING id
       `);
-      if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed — driver mismatch or trip already moved" });
+      if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed � driver mismatch or trip already moved" });
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Trip started from driver app');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'start-trip' });
-      // 📍 Heatmap: confirmed pickup demand signal — fetch pickup coords from trip
+      // ?? Heatmap: confirmed pickup demand signal � fetch pickup coords from trip
       rawDb.execute(rawSql`SELECT pickup_lat, pickup_lng, trip_type FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1`)
         .then(r2 => {
           const t2 = r2.rows[0] as any;
@@ -8156,7 +8156,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Complete trip ─────────────────────────────────────────────────
+  // -- DRIVER: Complete trip -------------------------------------------------
   app.post("/api/app/driver/complete-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8164,7 +8164,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Input validation
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
-      const tipsVal = Math.min(Math.max(0, parseFloat(tips) || 0), 500); // Cap tips at ₹500
+      const tipsVal = Math.min(Math.max(0, parseFloat(tips) || 0), 500); // Cap tips at ?500
       // Get trip details to use estimated_fare as fallback
       const tripInfo = await rawDb.execute(rawSql`
         SELECT tr.estimated_fare, tr.estimated_distance, tr.current_status, tr.payment_method,
@@ -8185,12 +8185,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
       // Cap actual fare to 1.5x estimated fare to prevent fare manipulation
       if (estimatedFareVal > 0 && fare > estimatedFareVal * 1.5) fare = Math.round(estimatedFareVal * 1.5 * 100) / 100;
-      // Absolute cap at ₹10,000 per ride
+      // Absolute cap at ?10,000 per ride
       if (fare > 10000) fare = 10000;
       // SECURITY: All money math in integer paise to avoid floating-point drift
       const farePaise = Math.round(fare * 100);
 
-      // ── Pricing: user discount (first 2 rides = 50% off) ─────────────────
+      // -- Pricing: user discount (first 2 rides = 50% off) -----------------
       const customerRow = tripRow.customer_id
         ? (await rawDb.execute(rawSql`SELECT completed_rides_count FROM users WHERE id=${tripRow.customer_id}::uuid LIMIT 1`).catch(() => ({ rows: [] }))).rows[0] as any
         : null;
@@ -8200,14 +8200,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userDiscount = userDiscountPaise / 100;
       const userPayable  = (farePaise - userDiscountPaise) / 100;
 
-      // ── Car Pool: per-seat fare ───────────────────────────────────────────
+      // -- Car Pool: per-seat fare -------------------------------------------
       const seatsBooked   = parseInt(tripRow.seats_booked ?? '1') || 1;
       const isCarpool     = tripRow.is_carpool === true || tripRow.is_carpool === 'true';
       const carpoolSeats  = parseInt(tripRow.total_seats ?? '4') || 4;
       const seatPrice     = isCarpool ? Math.round(farePaise / carpoolSeats) / 100 : 0;
       const vehicleTypeName = tripRow.vehicle_name || tripRow.vehicle_type_field || null;
 
-      // ── GST: 5% of full ride fare (government tax, always deducted from driver credit) ──
+      // -- GST: 5% of full ride fare (government tax, always deducted from driver credit) --
       const gstPctR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='ride_gst_rate' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
       const rideGstRatePct = Math.round(parseFloat((gstPctR.rows[0] as any)?.value || '5') * 100); // e.g. 500 = 5%
       const gstPaise = Math.round(farePaise * rideGstRatePct / 10000);
@@ -8233,7 +8233,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
       }
 
-      // ── Revenue: Calculate breakdown + settle (unified engine) ──────────────
+      // -- Revenue: Calculate breakdown + settle (unified engine) --------------
       const tripServiceType = (tripRow.trip_type || tripRow.type || 'normal');
       const serviceCategory: any =
         tripServiceType === 'parcel' ? 'parcel'
@@ -8258,7 +8258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid
       `);
 
-      // Customer wallet pre-check for wallet→cash fallback
+      // Customer wallet pre-check for wallet?cash fallback
       const paymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
       let customerWalletBalance: number | undefined;
       if (paymentMethod === 'wallet' && tripRow.customer_id) {
@@ -8282,14 +8282,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // ── Customer wallet deduction: use userPayable (discounted amount) ────
+      // -- Customer wallet deduction: use userPayable (discounted amount) ----
       const tripPaymentMethod = tripRow.payment_method || 'cash';
       const tripCustomerId = tripRow.customer_id;
       let walletPendingAmount = 0; // amount still owed after wallet attempt
       let walletPaidAmount = 0;    // amount successfully deducted from wallet
       if (tripPaymentMethod === 'wallet' && tripCustomerId) {
         try {
-          // ATOMIC: Single UPDATE prevents race condition — balance can never go negative
+          // ATOMIC: Single UPDATE prevents race condition � balance can never go negative
           const fullDeductR = await rawDb.execute(rawSql`
             UPDATE users SET wallet_balance = wallet_balance - ${userPayable}
             WHERE id=${tripCustomerId}::uuid AND wallet_balance >= ${userPayable}
@@ -8306,9 +8306,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
               VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
             `).catch(dbCatch("db"));
-            console.log(`[WALLET] ✅ Full deduction ₹${userPayable} from customer ${tripCustomerId}`);
+            console.log(`[WALLET] ? Full deduction ?${userPayable} from customer ${tripCustomerId}`);
           } else if (custBal > 0) {
-            // Partial wallet deduction — ATOMIC: CTE captures old balance, zeroes it in one statement
+            // Partial wallet deduction � ATOMIC: CTE captures old balance, zeroes it in one statement
             const partialR = await rawDb.execute(rawSql`
               WITH prev AS (SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid FOR UPDATE)
               UPDATE users SET wallet_balance = 0
@@ -8317,13 +8317,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               RETURNING prev.wallet_balance AS prev_balance
             `);
             if (!partialR.rows.length) {
-              // Balance already zeroed by a concurrent transaction — treat as no wallet
+              // Balance already zeroed by a concurrent transaction � treat as no wallet
               await rawDb.execute(rawSql`
                 UPDATE trip_requests SET payment_status='pending_payment',
                   pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
               `).catch(dbCatch("db"));
               walletPendingAmount = userPayable;
-              console.log(`[WALLET] ⚠️  Partial skipped (balance=0 by concurrent tx) — customer ${tripCustomerId}`);
+              console.log(`[WALLET] ??  Partial skipped (balance=0 by concurrent tx) � customer ${tripCustomerId}`);
             } else {
               const deducted = parseFloat(parseFloat((partialR.rows[0] as any).prev_balance || '0').toFixed(2));
               const remaining = parseFloat((userPayable - deducted).toFixed(2));
@@ -8337,16 +8337,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               `).catch(dbCatch("db"));
               walletPaidAmount = deducted;
               walletPendingAmount = remaining;
-              console.log(`[WALLET] ⚠️  Partial: ₹${deducted} from wallet, ₹${remaining} pending (cash/UPI) — customer ${tripCustomerId}`);
+              console.log(`[WALLET] ??  Partial: ?${deducted} from wallet, ?${remaining} pending (cash/UPI) � customer ${tripCustomerId}`);
             }
           } else {
-            // No wallet balance — full amount must be paid by cash/UPI
+            // No wallet balance � full amount must be paid by cash/UPI
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='pending_payment',
                 pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
             `).catch(dbCatch("db"));
             walletPendingAmount = userPayable;
-            console.log(`[WALLET] ⚠️  No balance: full ₹${userPayable} pending (cash/UPI) — customer ${tripCustomerId}`);
+            console.log(`[WALLET] ??  No balance: full ?${userPayable} pending (cash/UPI) � customer ${tripCustomerId}`);
           }
         } catch (_) {}
       }
@@ -8366,14 +8366,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Driver earnings transaction handled by settleRevenue()
 
-      // ── Increment customer's completed_rides_count ──────────────────────
+      // -- Increment customer's completed_rides_count ----------------------
       if (tripCustomerId) {
         await rawDb.execute(rawSql`
           UPDATE users SET completed_rides_count = completed_rides_count + 1 WHERE id=${tripCustomerId}::uuid
         `).catch(dbCatch("db"));
       }
 
-      // ✅ Clear driver's current trip — driver is now free for the next ride
+      // ? Clear driver's current trip � driver is now free for the next ride
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
 
       // AI: Update driver performance stats + clear trip waypoints
@@ -8384,7 +8384,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(tripId, 'trip_completed', 'driver', 'Trip completed by driver');
       await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', { fare, actualDistance });
 
-      // 🔌 Socket: notify customer — enriched with discount/GST breakdown + wallet status
+      // ?? Socket: notify customer � enriched with discount/GST breakdown + wallet status
       if (io && completedTrip.customerId) {
         io.to(`user:${completedTrip.customerId}`).emit("trip:completed", {
           tripId,
@@ -8398,14 +8398,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           platformDeduction: deductAmount,
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
-          // Wallet partial/insufficient info — app shows "Pay remaining by cash/UPI" when pendingAmount > 0
+          // Wallet partial/insufficient info � app shows "Pay remaining by cash/UPI" when pendingAmount > 0
           walletPaidAmount,
           walletPendingAmount,
           requiresCashPayment: walletPendingAmount > 0,
         });
       }
 
-      // 🔔 FCM: notify customer
+      // ?? FCM: notify customer
       const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
       const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
       notifyCustomerTripCompleted({ fcmToken: custFcmComp, fare: userPayable, tripId }).catch(dbCatch("db"));
@@ -8428,7 +8428,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Cancel trip ───────────────────────────────────────────────────
+  // -- DRIVER: Cancel trip ---------------------------------------------------
   app.post("/api/app/driver/cancel-trip", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8440,7 +8440,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!tripDetails.rows.length) return res.status(400).json({ message: "Cannot cancel this trip" });
       const trip = camelize(tripDetails.rows[0]) as any;
 
-      // Reset trip to 'searching' — auto-reassign to next driver
+      // Reset trip to 'searching' � auto-reassign to next driver
       await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='searching', driver_id=NULL, pickup_otp=NULL,
           driver_accepted_at=NULL, cancel_reason=${reason || 'Driver cancelled'}, updated_at=NOW()
@@ -8451,7 +8451,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Free the driver
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
 
-      // ── Cancel penalty: ₹10 fine after 3rd cancel in 24 hours ─────────────
+      // -- Cancel penalty: ?10 fine after 3rd cancel in 24 hours -------------
       try {
         const cancelCountR = await rawDb.execute(rawSql`
           SELECT COUNT(*) as cnt FROM trip_requests
@@ -8474,7 +8474,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             VALUES (${driver.id}::uuid, ${penalty}, 'cancel_penalty', 'completed',
               ${'Auto-deducted: ' + cancelCount + ' cancellations in 24h'})
           `).catch(dbCatch("db"));
-          log(`[CancelPenalty] Driver ${driver.id} fined ₹${penalty} (${cancelCount} cancels in 24h)`, 'cancel');
+          log(`[CancelPenalty] Driver ${driver.id} fined ?${penalty} (${cancelCount} cancels in 24h)`, 'cancel');
         }
         // Mark this cancel as cancelled_by=driver on the trip
         await rawDb.execute(rawSql`
@@ -8483,7 +8483,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } catch (_) {}
       clearTripWaypoints(tripId);
 
-      // Notify customer — driver cancelled, now searching again
+      // Notify customer � driver cancelled, now searching again
       if (io && trip.customerId) {
         io.to(`user:${trip.customerId}`).emit("trip:searching", {
           tripId, message: "Your previous pilot cancelled. Looking for a new one...",
@@ -8514,7 +8514,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(dbCatch("db"));
         }
       } else {
-        // No drivers available — cancel trip and notify customer via both socket + FCM
+        // No drivers available � cancel trip and notify customer via both socket + FCM
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
           WHERE id=${tripId}::uuid AND current_status='searching'
@@ -8532,7 +8532,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Trip history ──────────────────────────────────────────────────
+  // -- DRIVER: Trip history --------------------------------------------------
   app.get("/api/app/driver/trips", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8551,7 +8551,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Rate customer ─────────────────────────────────────────────────
+  // -- DRIVER: Rate customer -------------------------------------------------
   app.post("/api/app/driver/rate-customer", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8578,7 +8578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get wallet summary ─────────────────────────────────────────────
+  // -- DRIVER: Get wallet summary ---------------------------------------------
   app.get("/api/app/driver/wallet", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8600,7 +8600,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         date: p.createdAt,
         amount: parseFloat(p.amount || 0),
       }));
-      // ── Subscription status ───────────────────────────────────────────────
+      // -- Subscription status -----------------------------------------------
       const subR = await rawDb.execute(rawSql`
         SELECT ds.id, ds.is_active, ds.end_date, ds.payment_status, sp.name as plan_name, sp.price
         FROM driver_subscriptions ds
@@ -8640,7 +8640,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Commission settlement status (detailed breakdown) ────────────────
+  // -- DRIVER: Commission settlement status (detailed breakdown) ----------------
   app.get("/api/app/driver/settlement-status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8662,7 +8662,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => ({ rows: [] }));
       let displayMessage = 'No pending dues';
       if (totalPending > 0) {
-        displayMessage = `Platform Fee ₹${pendingCommission.toFixed(2)}\nGST ₹${pendingGst.toFixed(2)}\nTotal Due ₹${totalPending.toFixed(2)}`;
+        displayMessage = `Platform Fee ?${pendingCommission.toFixed(2)}\nGST ?${pendingGst.toFixed(2)}\nTotal Due ?${totalPending.toFixed(2)}`;
       }
       res.json({
         pendingCommission,
@@ -8678,7 +8678,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Initiate Razorpay payment to settle pending commission ───────────
+  // -- DRIVER: Initiate Razorpay payment to settle pending commission -----------
   app.post("/api/app/driver/commission/create-order", authApp, paymentOrderLimiter, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8691,13 +8691,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const pendingAmt = parseFloat(bal.total_pending_balance ?? '0');
       const payAmt = parseFloat(String(amount));
       if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
-      if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ₹${payAmt} exceeds pending balance ₹${pendingAmt.toFixed(2)}` });
+      if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ?${payAmt} exceeds pending balance ?${pendingAmt.toFixed(2)}` });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({ amount: Math.round(payAmt * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
-        VALUES (${driver.id}::uuid, ${payAmt}, 'commission_payment', ${order.id}, 'pending', ${'Commission settlement ₹' + payAmt})
+        VALUES (${driver.id}::uuid, ${payAmt}, 'commission_payment', ${order.id}, 'pending', ${'Commission settlement ?' + payAmt})
       `).catch(dbCatch("db"));
       res.json({ order, keyId, pendingBalance: pendingAmt });
     } catch (e: any) {
@@ -8706,7 +8706,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── DRIVER: Verify Razorpay commission payment ───────────────────────────────
+  // -- DRIVER: Verify Razorpay commission payment -------------------------------
   app.post("/api/app/driver/commission/verify-payment", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8726,7 +8726,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settings: any = {};
       settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
 
-      // Amount from DB — never trust client-sent amount
+      // Amount from DB � never trust client-sent amount
       const pendingRec = await rawDb.execute(rawSql`
         SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${driver.id}::uuid AND status='pending' LIMIT 1
       `);
@@ -8772,7 +8772,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           (${driver.id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
            'credit', ${prevTotal}, ${newTotal}, 'razorpay',
            ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
-           ${'Driver payment via Razorpay. Commission: ₹' + commReduction.toFixed(2) + ', GST: ₹' + gstReduction.toFixed(2)})
+           ${'Driver payment via Razorpay. Commission: ?' + commReduction.toFixed(2) + ', GST: ?' + gstReduction.toFixed(2)})
       `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
@@ -8786,25 +8786,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pendingCommission: newCommission,
         pendingGst: newGst,
         autoUnlocked: newTotal < lockThreshold && wasLocked,
-        message: newTotal <= 0 ? 'All dues cleared! Account unlocked.' : `₹${newTotal.toFixed(2)} pending. Pay remaining to unlock.`,
+        message: newTotal <= 0 ? 'All dues cleared! Account unlocked.' : `?${newTotal.toFixed(2)} pending. Pay remaining to unlock.`,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Submit withdrawal request ────────────────────────────────────────
+  // -- DRIVER: Submit withdrawal request ----------------------------------------
   app.post("/api/app/driver/withdraw-request", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
       const { amount, bankName, accountNumber, ifscCode, accountHolderName, upiId, method = "bank" } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
-      if (amt < 100) return res.status(400).json({ message: "Minimum withdrawal is ₹100" });
+      if (amt < 100) return res.status(400).json({ message: "Minimum withdrawal is ?100" });
       // Check wallet balance
       const walR = await rawDb.execute(rawSql`SELECT wallet_balance, is_locked FROM users WHERE id=${driver.id}::uuid`);
       const w = walR.rows[0] as any;
       if (w?.is_locked) return res.status(403).json({ message: "Account locked. Please clear dues first." });
       const bal = parseFloat(w?.wallet_balance || 0);
-      if (bal < amt) return res.status(400).json({ message: `Insufficient balance. Available: ₹${bal.toFixed(2)}` });
+      if (bal < amt) return res.status(400).json({ message: `Insufficient balance. Available: ?${bal.toFixed(2)}` });
       // Check no pending withdrawal exists
       const pending = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM withdraw_requests WHERE user_id=${driver.id}::uuid AND status='pending'`).catch(() => ({ rows: [{ cnt: 0 }] }));
       if (parseInt((pending.rows[0] as any)?.cnt || 0) > 0) return res.status(400).json({ message: "You already have a pending withdrawal request" });
@@ -8812,7 +8812,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (method === "bank") {
         const accClean = (accountNumber || "").replace(/\s/g, "");
         if (!accClean || !/^\d{9,18}$/.test(accClean))
-          return res.status(400).json({ message: "Invalid account number (9–18 digits required)" });
+          return res.status(400).json({ message: "Invalid account number (9�18 digits required)" });
         if (!ifscCode || !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(ifscCode.trim()))
           return res.status(400).json({ message: "Invalid IFSC code (format: ABCD0123456)" });
         if (!accountHolderName || accountHolderName.trim().length < 3)
@@ -8832,11 +8832,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${driver.id}::uuid, ${amt}, ${notes}, 'pending', now())
         RETURNING *
       `);
-      res.json({ success: true, message: `Withdrawal request of ₹${amt} submitted. Will be processed in 2-3 business days.`, request: camelize(wr.rows[0]) });
+      res.json({ success: true, message: `Withdrawal request of ?${amt} submitted. Will be processed in 2-3 business days.`, request: camelize(wr.rows[0]) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Subscription status & purchase ───────────────────────────────
+  // -- DRIVER: Subscription status & purchase -------------------------------
   app.get("/api/app/driver/subscription", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -8922,7 +8922,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, razorpay_order_id, status, description)
         VALUES (${driver.id}::uuid, ${total}, 'subscription', ${order.id}, 'pending',
-                ${'Subscription: ' + plan.name + ' | Base:₹' + planFee + ' GST:₹' + gstAmt + (insuranceAmt > 0 ? ' Ins:₹' + insuranceAmt : '')})
+                ${'Subscription: ' + plan.name + ' | Base:?' + planFee + ' GST:?' + gstAmt + (insuranceAmt > 0 ? ' Ins:?' + insuranceAmt : '')})
         ON CONFLICT DO NOTHING
       `).catch((e: any) => console.error('[SUB-CREATE-ORDER]', e.message));
       res.json({
@@ -8950,7 +8950,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
 
-      // SECURITY: Atomic idempotency — mark driver_payment as completed FIRST
+      // SECURITY: Atomic idempotency � mark driver_payment as completed FIRST
       // Second call will find status='completed' and return 409 immediately
       const atomicMark = await rawDb.execute(rawSql`
         UPDATE driver_payments
@@ -9012,11 +9012,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`
         INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
         VALUES (${driver.id}::uuid, ${totalPaid}, 'subscription_payment', 'completed',
-                ${'Subscription: ' + plan.name + ' valid till ' + endDate + ' | Fee:₹' + planBase + ' GST:₹' + gstAmt})
+                ${'Subscription: ' + plan.name + ' valid till ' + endDate + ' | Fee:?' + planBase + ' GST:?' + gstAmt})
         ON CONFLICT DO NOTHING
       `).catch((e: any) => console.error('[SUB-DRV-PAY]', e.message));
 
-      console.log(`[SUBSCRIPTION] Driver ${driver.id} activated plan "${plan.name}" ₹${totalPaid} (base:${planBase} gst:${gstAmt} ins:${insuranceAmt}) valid till ${endDate}`);
+      console.log(`[SUBSCRIPTION] Driver ${driver.id} activated plan "${plan.name}" ?${totalPaid} (base:${planBase} gst:${gstAmt} ins:${insuranceAmt}) valid till ${endDate}`);
       res.json({
         success: true,
         subscription: camelize(sub.rows[0]),
@@ -9067,8 +9067,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
-      // IDEMPOTENCY (atomic): Mark payment completed FIRST — only one request can succeed this UPDATE.
-      // If razorpay_payment_id is already set (duplicate call), rows=0 → 409 immediately, wallet NOT credited.
+      // IDEMPOTENCY (atomic): Mark payment completed FIRST � only one request can succeed this UPDATE.
+      // If razorpay_payment_id is already set (duplicate call), rows=0 ? 409 immediately, wallet NOT credited.
       const claimR = await rawDb.execute(rawSql`
         UPDATE driver_payments
         SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
@@ -9101,11 +9101,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
         autoUnlocked = true;
       }
-      res.json({ success: true, newBalance, autoUnlocked, message: `₹${amt.toFixed(0)} added to wallet` });
+      res.json({ success: true, newBalance, autoUnlocked, message: `?${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Get profile ─────────────────────────────────────────────────
+  // -- CUSTOMER: Get profile -------------------------------------------------
   app.get("/api/app/customer/profile", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9134,7 +9134,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Book a ride ─────────────────────────────────────────────────
+  // -- CUSTOMER: Book a ride -------------------------------------------------
   app.post("/api/app/customer/book-ride", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9151,11 +9151,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         receiverName, receiverPhone,
         // Coupon
         couponCode, promoDiscount,
-        // Online payment — used to link customer_payments → trip for refund on cancel
+        // Online payment � used to link customer_payments ? trip for refund on cancel
         razorpayPaymentId
       } = req.body;
       
-      // ── SECURITY: Validate pickup and destination coordinates ──
+      // -- SECURITY: Validate pickup and destination coordinates --
       const validPickupCoords = validateLatLng(pickupLat, pickupLng);
       const destLat_temp = destinationLat || destLat || 0;
       const destLng_temp = destinationLng || destLng || 0;
@@ -9169,7 +9169,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
 
-      // ── Service activation gate ───────────────────────────────────────────
+      // -- Service activation gate -------------------------------------------
       const rideGate = await rawDb.execute(rawSql`
         SELECT service_status FROM platform_services WHERE service_key = 'bike_ride' LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
@@ -9178,7 +9178,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(503).json({ message: "Bike Ride service is currently unavailable. Please try again later.", code: "SERVICE_INACTIVE" });
       }
 
-      // ── Server-side fare calculation (fallback when client sends 0 or missing) ──
+      // -- Server-side fare calculation (fallback when client sends 0 or missing) --
       let computedFare = Number(estimatedFare) || 0;
       if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
         try {
@@ -9236,7 +9236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const raw = (base + perKm * dist + perMin * 0) * nightMult * surgeMult;
             computedFare = Math.max(raw, minFare);
           } else {
-            // Absolute fallback: ₹30 + ₹12/km (standard bike fare)
+            // Absolute fallback: ?30 + ?12/km (standard bike fare)
             const dist = Number(finalDistance) || 0;
             computedFare = Math.max(30 + 12 * dist, 30);
           }
@@ -9247,7 +9247,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // ── Coupon validation & discount ─────────────────────────────────────────
+      // -- Coupon validation & discount -----------------------------------------
       let discountAmount = 0;
       let validatedCouponCode: string | null = null;
       if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
@@ -9304,7 +9304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const finalFareAfterDiscount = Math.max(0, computedFare - discountAmount);
 
-      // Auto-cancel any previous 'searching' trips — user is explicitly requesting a new ride
+      // Auto-cancel any previous 'searching' trips � user is explicitly requesting a new ride
       await rawDb.execute(rawSql`
         UPDATE trip_requests
         SET current_status='cancelled', cancel_reason='Auto-cancelled: customer started a new booking'
@@ -9332,7 +9332,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // For parcel trips, generate delivery OTP now
       const deliveryOtpVal = (tripType === 'parcel' || tripType === 'delivery') ? Math.floor(1000 + Math.random() * 9000).toString() : null;
 
-      // Always start as 'searching' — driver must ACCEPT before being assigned
+      // Always start as 'searching' � driver must ACCEPT before being assigned
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
           ref_id, customer_id, driver_id, vehicle_category_id,
@@ -9370,7 +9370,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE id = ${newTripId2}::uuid
         `).catch(dbCatch("db"));
       }
-      // ── Link online payment to this trip for auto-refund on cancel ──────────
+      // -- Link online payment to this trip for auto-refund on cancel ----------
       if (razorpayPaymentId) {
         const newTripId = (trip.rows[0] as any).id;
         // Verify payment actually completed before trusting the ID
@@ -9399,7 +9399,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         paymentMethod: finalPayment,
       });
 
-      // 📍 Heatmap event: booking demand signal
+      // ?? Heatmap event: booking demand signal
       logHeatmapEvent(
         'booking',
         Number(pickupLat), Number(pickupLng),
@@ -9408,7 +9408,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           : (tripType === 'cargo') ? 'cargo' : 'ride'
       );
 
-      // ── Smart Dispatch Engine ──────────────────────────────────────────────
+      // -- Smart Dispatch Engine ----------------------------------------------
       // Resolve vehicle category name for service type detection
       let vcName = '';
       if (vehicleCategoryId) {
@@ -9432,7 +9432,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripType,
       };
 
-      // Start sequential dispatch — sends to ONE driver at a time with expanding radius
+      // Start sequential dispatch � sends to ONE driver at a time with expanding radius
       startDispatch(
         tripRow.id,
         customer.id,
@@ -9457,7 +9457,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Track current trip ──────────────────────────────────────────
+  // -- CUSTOMER: Track current trip ------------------------------------------
   app.get("/api/app/customer/track-trip/:tripId", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9498,7 +9498,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Get active trip ─────────────────────────────────────────────
+  // -- CUSTOMER: Get active trip ---------------------------------------------
   app.get("/api/app/customer/active-trip", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9557,7 +9557,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── TRIP: Get chat message history ───────────────────────────────────────
+  // -- TRIP: Get chat message history ---------------------------------------
   app.get("/api/app/trip/:tripId/messages", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -9591,7 +9591,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Cancel trip ─────────────────────────────────────────────────
+  // -- CUSTOMER: Cancel trip -------------------------------------------------
   app.post("/api/app/customer/cancel-trip", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9608,7 +9608,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${effectiveTripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled','on_the_way')
         RETURNING *
       `);
-      if (!r.rows.length) return res.status(400).json({ message: "Cannot cancel — trip already in progress or completed" });
+      if (!r.rows.length) return res.status(400).json({ message: "Cannot cancel � trip already in progress or completed" });
       const trip = r.rows[0] as any;
 
       // Cancel active dispatch session if one exists
@@ -9617,7 +9617,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(effectiveTripId, 'trip_cancelled', 'customer', reason || 'Customer cancelled');
       await logRideLifecycleEvent(effectiveTripId, 'trip_cancelled', customer.id, 'customer', { reason: reason || 'Customer cancelled' });
       clearTripWaypoints(effectiveTripId);
-      // 📍 Heatmap: log cancellation demand signal (location still valuable for supply/demand)
+      // ?? Heatmap: log cancellation demand signal (location still valuable for supply/demand)
       if (trip.pickup_lat && trip.pickup_lng) {
         logHeatmapEvent('cancellation', parseFloat(trip.pickup_lat), parseFloat(trip.pickup_lng), 'ride');
       }
@@ -9629,7 +9629,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Real-time socket: ensures driver TripScreen closes immediately even if FCM is delayed
         io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
       }
-      // ── Auto-refund if customer paid online ──────────────────────────────────
+      // -- Auto-refund if customer paid online ----------------------------------
       // SECURITY: Atomic UPDATE prevents double-refund race condition.
       // Strategy: try Razorpay bank refund first (original payment method),
       //           fall back to wallet credit if Razorpay fails/unavailable.
@@ -9660,7 +9660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 UPDATE trip_requests SET payment_status='refunded_to_bank', razorpay_refund_id=${rzpRefundId}
                 WHERE id=${effectiveTripId}::uuid
               `).catch(dbCatch("db"));
-              console.log(`[CANCEL-REFUND] ₹${refundAmt} bank-refunded via Razorpay ${rzpRefundId}, trip ${effectiveTripId}`);
+              console.log(`[CANCEL-REFUND] ?${refundAmt} bank-refunded via Razorpay ${rzpRefundId}, trip ${effectiveTripId}`);
             }
           }
 
@@ -9671,7 +9671,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
             `).catch(dbCatch("db"));
             walletRefund = refundAmt;
-            console.log(`[CANCEL-REFUND] ₹${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
+            console.log(`[CANCEL-REFUND] ?${refundAmt} credited to wallet for customer ${customer.id}, trip ${effectiveTripId}`);
           }
 
           const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
@@ -9679,14 +9679,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${customer.id}::uuid,
-              ${refundedToBank ? 'Refund to bank — cancelled ride' : 'Refund to wallet — cancelled ride'},
+              ${refundedToBank ? 'Refund to bank � cancelled ride' : 'Refund to wallet � cancelled ride'},
               ${refundedToBank ? 0 : refundAmt}, 0, ${newBal},
               ${'ride_refund'}, ${rzpPaymentId || null})
             ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
           `).catch((e: any) => console.error('[REFUND-TX]', e.message));
         }
       }
-      // ── Customer cancel penalty: fee if driver was already assigned ─────────
+      // -- Customer cancel penalty: fee if driver was already assigned ---------
       let cancelFee = 0;
       try {
         if (trip.driver_id && ['accepted','arrived','driver_assigned'].includes(trip.current_status)) {
@@ -9706,9 +9706,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               VALUES (${customer.id}::uuid, ${effectiveTripId}::uuid, ${'Cancel Fee'}, ${cancelFee}, 0,
                 ${walBal - cancelFee}, ${'cancel_fee'})
             `).catch(dbCatch("db"));
-            log(`[CancelFee] Customer ${customer.id} charged ₹${cancelFee} for late cancellation`, 'cancel');
+            log(`[CancelFee] Customer ${customer.id} charged ?${cancelFee} for late cancellation`, 'cancel');
           } else {
-            cancelFee = 0; // Don't charge if wallet empty — just log
+            cancelFee = 0; // Don't charge if wallet empty � just log
           }
         }
       } catch (_) { cancelFee = 0; }
@@ -9730,7 +9730,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Rate driver ─────────────────────────────────────────────────
+  // -- CUSTOMER: Rate driver -------------------------------------------------
   app.post("/api/app/customer/rate-driver", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9766,7 +9766,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Trip history ─────────────────────────────────────────────────
+  // -- CUSTOMER: Trip history -------------------------------------------------
   app.get("/api/app/customer/trips", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9786,7 +9786,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Trip receipt ─────────────────────────────────────────────────
+  // -- CUSTOMER: Trip receipt -------------------------------------------------
   app.get("/api/app/customer/trip-receipt/:tripId", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -9865,7 +9865,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Trip receipt ────────────────────────────────────────────────────
+  // -- DRIVER: Trip receipt ----------------------------------------------------
   app.get("/api/app/driver/trip-receipt/:tripId", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -9920,7 +9920,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Fare estimate ────────────────────────────────────────────────
+  // -- CUSTOMER: Fare estimate ------------------------------------------------
   app.post("/api/app/customer/estimate-fare", authApp, async (req, res) => {
     try {
       const {
@@ -9928,8 +9928,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destLat: _destLat, destLng: _destLng,
         destinationLat, destinationLng,
         vehicleCategoryId, distanceKm, durationMin = 0,
-        userId, // optional — if provided, include launch offer info
-        category, // optional — 'ride' | 'parcel' | 'pool' to filter vehicle types
+        userId, // optional � if provided, include launch offer info
+        category, // optional � 'ride' | 'parcel' | 'pool' to filter vehicle types
       } = req.body;
       const destLat = _destLat ?? destinationLat;
       const destLng = _destLng ?? destinationLng;
@@ -10016,7 +10016,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const isCarpool      = f.vcIsCarpool === true || f.vcIsCarpool === 'true';
         const totalSeats     = parseInt(f.vcTotalSeats) || 4;
 
-        // Formula: fullFare = base_fare + (distanceKm × fare_per_km), floored at minimum_fare
+        // Formula: fullFare = base_fare + (distanceKm � fare_per_km), floored at minimum_fare
         const billableKm   = dist;
         const distanceFare = +(billableKm * perKm).toFixed(2);
         const timeFare     = +(dur * perMin).toFixed(2);
@@ -10028,12 +10028,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // GST 5% on full fare (government tax)
         const gst = +(total * 0.05).toFixed(2);
         const grandTotal = +(total + gst).toFixed(2);
-        // ±5% range shown in UI: "₹85 – ₹95"
+        // �5% range shown in UI: "?85 � ?95"
         const fareMin = Math.floor(grandTotal * 0.95);
         const fareMax = Math.ceil(grandTotal * 1.05);
         const estTime = Math.max(5, Math.round(dist * 3));
 
-        // ── Car Pool: seat-based pricing ──────────────────────────────────
+        // -- Car Pool: seat-based pricing ----------------------------------
         const seatPrice = isCarpool ? +(grandTotal / totalSeats).toFixed(2) : 0;
 
         return {
@@ -10062,13 +10062,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           isCarpool,
           totalSeats: isCarpool ? totalSeats : undefined,
           seatPrice: isCarpool ? seatPrice : undefined,
-          seatPriceDisplay: isCarpool ? `₹${seatPrice}/seat` : undefined,
+          seatPriceDisplay: isCarpool ? `?${seatPrice}/seat` : undefined,
           zoneSurge: zoneSurge > 1 ? zoneSurge : undefined,
           zoneName: zoneSurge > 1 ? activeZoneName : undefined,
         };
       });
 
-      // ── User launch offer: first 2 rides 50% discount ─────────────────────
+      // -- User launch offer: first 2 rides 50% discount ---------------------
       let launchOffer: any = null;
       if (userId) {
         const userR = await rawDb.execute(rawSql`SELECT completed_rides_count FROM users WHERE id=${userId}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
@@ -10078,7 +10078,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             active: true,
             discountPct: 50,
             ridesRemaining: 2 - completedCount,
-            message: `🎉 Launch Offer: 50% off your first 2 rides! (${2 - completedCount} ride(s) remaining)`,
+            message: `?? Launch Offer: 50% off your first 2 rides! (${2 - completedCount} ride(s) remaining)`,
           };
         }
       }
@@ -10087,7 +10087,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ETA: Google Distance Matrix API ─────────────────────────────────────────
+  // -- ETA: Google Distance Matrix API -----------------------------------------
   // Returns real drive time (traffic-aware) between driver and customer pickup.
   // Falls back to straight-line Haversine estimate if Google API unavailable.
   app.get("/api/app/eta", authApp, async (req, res) => {
@@ -10110,7 +10110,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let source = 'haversine';
 
       try {
-        if (!gmapsKey) throw new Error('Google Maps API key not configured — using Haversine fallback');
+        if (!gmapsKey) throw new Error('Google Maps API key not configured � using Haversine fallback');
         const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${oLat},${oLng}&destinations=${dLat},${dLng}&mode=driving&departure_time=now&traffic_model=best_guess&key=${gmapsKey}`;
         const gmRes = await fetch(url).then(r => r.json()) as any;
         const element = gmRes?.rows?.[0]?.elements?.[0];
@@ -10137,9 +10137,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PARCEL FARE ESTIMATE (weight + distance + helpers based) ────────────────
-  // Formula: customerFare = base_fare + (distanceKm × fare_per_km) + (weightKg × weight_rate) + loadingCharge + (helpers × helperChargePerHour × hours)
-  // driverFare  = customerFare — platform commission (per parcels_model setting)
+  // -- PARCEL FARE ESTIMATE (weight + distance + helpers based) ----------------
+  // Formula: customerFare = base_fare + (distanceKm � fare_per_km) + (weightKg � weight_rate) + loadingCharge + (helpers � helperChargePerHour � hours)
+  // driverFare  = customerFare � platform commission (per parcels_model setting)
   app.post("/api/app/customer/estimate-parcel-fare", authApp, async (req, res) => {
     try {
       const { pickupLat, pickupLng, destLat, destLng, weightKg = 0, helpers = 0, helperHours = 1 } = req.body;
@@ -10259,7 +10259,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── VOICE BOOKING: AI-Enhanced NLP Intent Parser ──────────────────────────
+  // -- VOICE BOOKING: AI-Enhanced NLP Intent Parser --------------------------
   // In-memory voice log ring buffer (last 200 requests)
   const voiceLogs: Array<{ id: number; ts: string; text: string; intent: string; pickup: string | null; destination: string | null; vehicleType: string | null; parser: string; success: boolean }> = [];
   let voiceLogSeq = 0;
@@ -10293,7 +10293,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         /current|here|my location|ikkade|ikkad|yahan|naa location/i.test(parsed.pickup || '');
 
       if (isCurrentLocation && currentLat && currentLng) {
-        // Use GPS coordinates directly — no geocoding needed
+        // Use GPS coordinates directly � no geocoding needed
         pickupGeo = { lat: Number(currentLat), lng: Number(currentLng), address: currentAddress || 'Current Location' };
         if (apiKey && parsed.destination) destGeo = await geocodePlaceWithCache(apiKey, parsed.destination);
       } else if (parsed.pickup || parsed.destination) {
@@ -10341,7 +10341,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── ADMIN: Voice booking logs ───────────────────────────────────────────────
+  // -- ADMIN: Voice booking logs -----------------------------------------------
   app.get("/api/admin/voice-logs", requireAdminAuth, async (_req, res) => {
     const logs = [...voiceLogs].reverse();
     const totalRequests = voiceLogs.length;
@@ -10361,7 +10361,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  // ── SHARED: Nearby drivers (for customer map) ──────────────────────────────
+  // -- SHARED: Nearby drivers (for customer map) ------------------------------
   app.get("/api/app/nearby-drivers", nearbyDriversLimiter, async (req, res) => {
     try {
       const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
@@ -10390,7 +10390,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── SHARED: Update FCM token ──────────────────────────────────────────────
+  // -- SHARED: Update FCM token ----------------------------------------------
   app.post("/api/app/fcm-token", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -10404,7 +10404,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── SHARED: App configs (vehicle categories, cancellation reasons etc) ────
+  // -- SHARED: App configs (vehicle categories, cancellation reasons etc) ----
   app.get("/api/app/configs", async (_req, res) => {
     try {
       const [cats, reasons, settings, brands, parcelCats, parcelWeights] = await Promise.all([
@@ -10428,12 +10428,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER/DRIVER: SOS alert ────────────────────────────────────────────
+  // -- CUSTOMER/DRIVER: SOS alert --------------------------------------------
   app.post("/api/app/sos", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
       const { lat, lng, tripId, message } = req.body;
-      // Insert into safety_alerts (correct table — sos_alerts was wrong table name)
+      // Insert into safety_alerts (correct table � sos_alerts was wrong table name)
       const r = await rawDb.execute(rawSql`
         INSERT INTO safety_alerts (user_id, trip_id, alert_type, triggered_by, latitude, longitude, notes, status)
         VALUES (
@@ -10449,15 +10449,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING id
       `);
       const alertId = (r.rows[0] as any)?.id || null;
-      console.log(`[SOS] ✅ ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
+      console.log(`[SOS] ? ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
       res.json({ success: true, alertId, message: "SOS alert sent. Help is on the way." });
     } catch (e: any) {
-      console.error(`[SOS] ❌ Failed to create alert:`, e);
+      console.error(`[SOS] ? Failed to create alert:`, e);
       res.status(500).json({ message: safeErrMsg(e) });
     }
   });
 
-  // ── CUSTOMER: Wallet balance + transactions ───────────────────────────────
+  // -- CUSTOMER: Wallet balance + transactions -------------------------------
   app.get("/api/app/customer/wallet", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -10481,19 +10481,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Wallet recharge — DISABLED (use Razorpay verify-payment instead) ──
+  // -- CUSTOMER: Wallet recharge � DISABLED (use Razorpay verify-payment instead) --
   app.post("/api/app/customer/wallet/recharge", authApp, async (_req, res) => {
     // This legacy endpoint credited wallet without payment verification.
-    // All wallet recharges must go through create-order → Razorpay → verify-payment.
+    // All wallet recharges must go through create-order ? Razorpay ? verify-payment.
     return res.status(410).json({ message: "Please use the payment gateway to recharge your wallet." });
-    /* DISABLED — security fix
+    /* DISABLED � security fix
     try {
       const customer = (req as any).currentUser;
       const { amount, paymentRef, paymentMethod = "upi" } = req.body;
       const amt = parseFloat(amount);
       if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
-      if (amt < 10) return res.status(400).json({ message: "Minimum recharge is ₹10" });
-      if (amt > 10000) return res.status(400).json({ message: "Maximum recharge is ₹10,000 per transaction" });
+      if (amt < 10) return res.status(400).json({ message: "Minimum recharge is ?10" });
+      if (amt > 10000) return res.status(400).json({ message: "Maximum recharge is ?10,000 per transaction" });
       if (!paymentRef) return res.status(400).json({ message: "Payment reference required" });
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
       const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
@@ -10502,23 +10502,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
         VALUES (${customer.id}::uuid, ${`Wallet recharge via ${paymentMethod}`}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${paymentRef||null})
       `).catch(dbCatch("db"));
-      res.json({ success: true, balance: newBal, message: `₹${amt} added to wallet` });
+      res.json({ success: true, balance: newBal, message: `?${amt} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
     */
   });
 
-  // ── CUSTOMER: Razorpay – Create order ────────────────────────────────────
+  // -- CUSTOMER: Razorpay � Create order ------------------------------------
   app.post("/api/app/customer/wallet/create-order", authApp, requireCustomer, paymentOrderLimiter, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { amount } = req.body;
       const amt = parseFloat(amount);
-      if (!amt || amt < 10 || amt > 50000) return res.status(400).json({ message: "Amount must be ₹10–₹50,000" });
+      if (!amt || amt < 10 || amt > 50000) return res.status(400).json({ message: "Amount must be ?10�?50,000" });
       const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured" });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
-      // Explicit 20s timeout — prevents DO App Platform 504 if Razorpay API is slow
+      // Explicit 20s timeout � prevents DO App Platform 504 if Razorpay API is slow
       const timeoutErr = new Error("Payment gateway timeout. Please try again.");
       const order = await Promise.race([
         rzp.orders.create({
@@ -10543,7 +10543,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── CUSTOMER: Razorpay – Verify & credit wallet ───────────────────────────
+  // -- CUSTOMER: Razorpay � Verify & credit wallet ---------------------------
   app.post("/api/app/customer/wallet/verify-payment", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -10562,7 +10562,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT id FROM transactions WHERE ref_transaction_id=${razorpayPaymentId} AND transaction_type='wallet_recharge' LIMIT 1
       `);
       if (dupCheck.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
-      // Amount from DB — never trust client-sent amount
+      // Amount from DB � never trust client-sent amount
       // SECURITY: Atomic mark-completed first prevents concurrent double-credit
       const atomicMark = await rawDb.execute(rawSql`
         UPDATE customer_payments SET razorpay_payment_id=${razorpayPaymentId}, status='completed', verified_at=NOW()
@@ -10579,11 +10579,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
         ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
       `).catch((e: any) => console.error('[WALLET-RECHARGE-TX]', e.message));
-      res.json({ success: true, balance: newBal, message: `₹${amt.toFixed(0)} added to wallet` });
+      res.json({ success: true, balance: newBal, message: `?${amt.toFixed(0)} added to wallet` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Razorpay – Create order for ride payment ────────────────────
+  // -- CUSTOMER: Razorpay � Create order for ride payment --------------------
   app.post("/api/app/customer/ride/create-order", authApp, requireCustomer, paymentOrderLimiter, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -10613,7 +10613,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ── CUSTOMER: Razorpay – Verify ride payment ──────────────────────────────
+  // -- CUSTOMER: Razorpay � Verify ride payment ------------------------------
   app.post("/api/app/customer/ride/verify-payment", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -10627,7 +10627,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const sigValid = expectedSig.length === razorpaySignature.length &&
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
-      // Amount + trip_id from DB — never trust client-sent amount
+      // Amount + trip_id from DB � never trust client-sent amount
       const pendingRec = await rawDb.execute(rawSql`
         SELECT amount, trip_id FROM customer_payments WHERE razorpay_order_id=${razorpayOrderId} AND customer_id=${customer.id}::uuid AND status='pending' LIMIT 1
       `);
@@ -10650,20 +10650,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── RAZORPAY WEBHOOK ─────────────────────────────────────────────────────────
+  // -- RAZORPAY WEBHOOK ---------------------------------------------------------
   // Canonical URL : POST /api/app/razorpay/webhook
   // Legacy alias  : POST /api/webhooks/razorpay
   //
   // Security    : HMAC-SHA256 (X-Razorpay-Signature) with timing-safe compare
-  // Idempotency : razorpay_webhook_logs UNIQUE(event_id) — duplicate → 200, skip
+  // Idempotency : razorpay_webhook_logs UNIQUE(event_id) � duplicate ? 200, skip
   // Performance : HTTP 200 returned before DB processing (setImmediate async)
   // Events      : payment.authorized/captured/failed
   //               subscription.authenticated/activated/pending/charged/
   //                            halted/resumed/cancelled
   //               refund.created/processed
-  // ─────────────────────────────────────────────────────────────────────────────
+  // -----------------------------------------------------------------------------
 
-  // ── Async event processor (runs after 200 is sent) ─────────────────────────
+  // -- Async event processor (runs after 200 is sent) -------------------------
   const _processRazorpayEvent = async (eventId: string, eventType: string, event: any): Promise<void> => {
     const tag = `[WEBHOOK:${eventType}]`;
     const payEnt  = event?.payload?.payment?.entity;
@@ -10673,18 +10673,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       switch (eventType) {
 
-        // ── payment.authorized / payment.captured ──────────────────────────
+        // -- payment.authorized / payment.captured --------------------------
         case "payment.authorized":
         case "payment.captured": {
           if (!payEnt) { console.warn(`${tag} missing payment entity`); break; }
 
           const orderId   = String(payEnt.order_id  ?? "");
           const paymentId = String(payEnt.id        ?? "");
-          const amount    = (payEnt.amount ?? 0) / 100; // paise → rupees
+          const amount    = (payEnt.amount ?? 0) / 100; // paise ? rupees
 
-          console.info(`${tag} orderId=${orderId} paymentId=${paymentId} ₹${amount}`);
+          console.info(`${tag} orderId=${orderId} paymentId=${paymentId} ?${amount}`);
 
-          // ── Defense-in-depth: verify with Razorpay API for payment.captured ──
+          // -- Defense-in-depth: verify with Razorpay API for payment.captured --
           // Confirms status=captured, amount, and order_id from Razorpay directly.
           // This prevents replay attacks where an authorized event is replayed as captured.
           if (eventType === "payment.captured") {
@@ -10730,10 +10730,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             }
           }
 
-          // ── A) Driver payment (wallet topup, subscription, commission) ────
+          // -- A) Driver payment (wallet topup, subscription, commission) ----
           {
             // Atomic idempotency: UPDATE only if still 'pending', RETURNING gives us the record.
-            // If two webhooks arrive simultaneously, only one UPDATE changes a row — prevents double-credit.
+            // If two webhooks arrive simultaneously, only one UPDATE changes a row � prevents double-credit.
             const dpUpdate = await rawDb.execute(rawSql`
               UPDATE driver_payments
               SET status = 'completed',
@@ -10819,7 +10819,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                       SET is_locked = false, lock_reason = NULL, locked_at = NULL, updated_at = NOW()
                       WHERE id = ${rec.driverId}::uuid
                     `);
-                    console.info(`${tag} driver ${rec.driverId} auto-unlocked (bal=₹${newBal})`);
+                    console.info(`${tag} driver ${rec.driverId} auto-unlocked (bal=?${newBal})`);
                   }
                   if (io) io.to(`user:${rec.driverId}`).emit("wallet:recharged", { amount: rec.amount, newBalance: newBal });
                 }
@@ -10837,7 +10837,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             }
           }
 
-          // ── B) Customer wallet topup / ride payment ───────────────────────
+          // -- B) Customer wallet topup / ride payment -----------------------
           {
             const cpRows = await rawDb.execute(rawSql`
               SELECT * FROM customer_payments
@@ -10865,14 +10865,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   WHERE id = ${rec.customerId}::uuid
                 `);
                 if (io) io.to(`user:${rec.customerId}`).emit("wallet:recharged", { amount: rec.amount });
-                console.info(`${tag} customer wallet credited customer=${rec.customerId} ₹${rec.amount}`);
+                console.info(`${tag} customer wallet credited customer=${rec.customerId} ?${rec.amount}`);
               }
             }
           }
           break;
         }
 
-        // ── payment.failed ─────────────────────────────────────────────────
+        // -- payment.failed -------------------------------------------------
         case "payment.failed": {
           if (!payEnt) { console.warn(`${tag} missing payment entity`); break; }
           const orderId    = String(payEnt.order_id ?? "");
@@ -10891,18 +10891,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             SET status = 'failed', failure_reason = ${failReason}
             WHERE razorpay_order_id = ${orderId} AND status = 'pending'
           `).catch(dbCatch("db"));
-          console.error(`[WEBHOOK:ALERT] Payment failed orderId=${orderId} — "${failReason}"`);
+          console.error(`[WEBHOOK:ALERT] Payment failed orderId=${orderId} � "${failReason}"`);
           break;
         }
 
-        // ── subscription.authenticated / subscription.pending ──────────────
-        // Informational events — logged, no DB action required
+        // -- subscription.authenticated / subscription.pending --------------
+        // Informational events � logged, no DB action required
         case "subscription.authenticated":
         case "subscription.pending":
-          console.info(`${tag} subscription=${subEnt?.id ?? "?"} — logged only`);
+          console.info(`${tag} subscription=${subEnt?.id ?? "?"} � logged only`);
           break;
 
-        // ── subscription.activated / subscription.charged ──────────────────
+        // -- subscription.activated / subscription.charged ------------------
         // Mark subscription ACTIVE, update billing cycle dates
         case "subscription.activated":
         case "subscription.charged": {
@@ -10949,7 +10949,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             if (io) io.to(`user:${driverId}`).emit("subscription:activated", { validUntil: cycleEnd });
             console.info(`${tag} sub ${rzpSubId} activated driver=${driverId} until ${cycleEnd}`);
           } else {
-            // No driver_id in notes — update by razorpay_subscription_id only
+            // No driver_id in notes � update by razorpay_subscription_id only
             await rawDb.execute(rawSql`
               UPDATE driver_subscriptions
               SET is_active = true, payment_status = 'paid',
@@ -10963,8 +10963,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           break;
         }
 
-        // ── subscription.halted ────────────────────────────────────────────
-        // Payment retry failed — disable driver access until payment succeeds
+        // -- subscription.halted --------------------------------------------
+        // Payment retry failed � disable driver access until payment succeeds
         case "subscription.halted": {
           if (!subEnt) break;
           const rzpSubId = String(subEnt.id ?? "");
@@ -10985,11 +10985,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               WHERE razorpay_subscription_id = ${rzpSubId}
             `);
           }
-          console.warn(`${tag} sub ${rzpSubId} halted — access disabled`);
+          console.warn(`${tag} sub ${rzpSubId} halted � access disabled`);
           break;
         }
 
-        // ── subscription.resumed ───────────────────────────────────────────
+        // -- subscription.resumed -------------------------------------------
         case "subscription.resumed": {
           if (!subEnt) break;
           const rzpSubId = String(subEnt.id ?? "");
@@ -11002,7 +11002,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           break;
         }
 
-        // ── subscription.cancelled ─────────────────────────────────────────
+        // -- subscription.cancelled -----------------------------------------
         // Keep is_active = true so driver retains access until end_date
         case "subscription.cancelled": {
           if (!subEnt) break;
@@ -11018,18 +11018,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               message: "Subscription cancelled. Access continues until expiry date.",
             });
           }
-          console.info(`${tag} sub ${rzpSubId} cancelled — access retained until end_date`);
+          console.info(`${tag} sub ${rzpSubId} cancelled � access retained until end_date`);
           break;
         }
 
-        // ── refund.created / refund.processed ─────────────────────────────
+        // -- refund.created / refund.processed -----------------------------
         case "refund.created":
         case "refund.processed": {
           if (!refEnt) { console.warn(`${tag} missing refund entity`); break; }
           const refundId  = String(refEnt.id          ?? "");
           const refundAmt = (refEnt.amount             ?? 0) / 100;
           const paymentId = String(refEnt.payment_id  ?? "");
-          console.info(`${tag} refundId=${refundId} paymentId=${paymentId} ₹${refundAmt}`);
+          console.info(`${tag} refundId=${refundId} paymentId=${paymentId} ?${refundAmt}`);
 
           if (eventType === "refund.processed") {
             // Find a matching approved refund_request and credit customer wallet
@@ -11057,7 +11057,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   amount: refundAmt,
                   reason: "Refund processed",
                 });
-                console.info(`${tag} wallet credited ₹${refundAmt} for refund customer=${rr.customerId}`);
+                console.info(`${tag} wallet credited ?${refundAmt} for refund customer=${rr.customerId}`);
               }
             }
           }
@@ -11065,14 +11065,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
 
         default:
-          console.info(`[WEBHOOK] Unhandled event type: ${eventType} — logged only`);
+          console.info(`[WEBHOOK] Unhandled event type: ${eventType} � logged only`);
       }
 
       // Mark as successfully processed in audit log
       await rawDb.execute(rawSql`
         UPDATE razorpay_webhook_logs SET processed = true WHERE event_id = ${eventId}
       `).catch(dbCatch("db"));
-      console.info(`[WEBHOOK] ${eventType} (${eventId}) ✓ done`);
+      console.info(`[WEBHOOK] ${eventType} (${eventId}) ? done`);
 
     } catch (procErr: any) {
       console.error(`[WEBHOOK] Processing error [${eventType}] id=${eventId}:`, procErr.message);
@@ -11084,11 +11084,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   };
 
-  // ── Shared request handler (used by both URLs) ───────────────────────────
+  // -- Shared request handler (used by both URLs) ---------------------------
   const _razorpayWebhookHandler = async (req: Request, res: Response): Promise<void> => {
     const tag = "[WEBHOOK]";
 
-    // ── 1. Secret guard ──────────────────────────────────────────────────────
+    // -- 1. Secret guard ------------------------------------------------------
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error(`${tag} RAZORPAY_WEBHOOK_SECRET not configured`);
@@ -11096,7 +11096,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return;
     }
 
-    // ── 2. Signature verification (timing-safe) ──────────────────────────────
+    // -- 2. Signature verification (timing-safe) ------------------------------
     const sigHeader = req.headers["x-razorpay-signature"];
     const signature = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader ?? "";
     if (!signature) {
@@ -11120,7 +11120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     if (!sigValid) {
-      console.warn(`${tag} invalid signature from ${req.ip} — rejected`);
+      console.warn(`${tag} invalid signature from ${req.ip} � rejected`);
       // Log the bad attempt for security audit (best-effort)
       rawDb.execute(rawSql`
         INSERT INTO razorpay_webhook_logs
@@ -11130,20 +11130,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${"INVALID_SIGNATURE"},
           ${JSON.stringify({ ip: req.ip, ua: req.headers["user-agent"] })}::jsonb,
           false,
-          ${"Signature mismatch — rejected"}
+          ${"Signature mismatch � rejected"}
         )
       `).catch(dbCatch("db"));
       res.status(400).json({ message: "Invalid webhook signature" });
       return;
     }
 
-    // ── 3. Parse event ────────────────────────────────────────────────────────
+    // -- 3. Parse event --------------------------------------------------------
     const event      = req.body;
     const eventId    = String(event?.id ?? `rzp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     const eventType  = String(event?.event ?? "unknown");
 
-    // ── 4. Idempotency via razorpay_webhook_logs ──────────────────────────────
-    // INSERT … ON CONFLICT DO NOTHING: if 0 rows returned, event already logged
+    // -- 4. Idempotency via razorpay_webhook_logs ------------------------------
+    // INSERT � ON CONFLICT DO NOTHING: if 0 rows returned, event already logged
     try {
       const ins = await rawDb.execute(rawSql`
         INSERT INTO razorpay_webhook_logs (event_id, event_type, payload, processed)
@@ -11157,19 +11157,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING id
       `);
       if (!ins.rows.length) {
-        console.info(`${tag} duplicate event ${eventId} (${eventType}) — skipped`);
+        console.info(`${tag} duplicate event ${eventId} (${eventType}) � skipped`);
         res.json({ success: true, duplicate: true });
         return;
       }
     } catch (logErr: any) {
-      // Log table error is non-fatal — never block Razorpay on infra issues
+      // Log table error is non-fatal � never block Razorpay on infra issues
       console.error(`${tag} webhook log insert failed:`, logErr.message);
     }
 
-    // ── 5. Acknowledge Razorpay immediately (< 5 s SLA) ──────────────────────
+    // -- 5. Acknowledge Razorpay immediately (< 5 s SLA) ----------------------
     res.json({ success: true });
 
-    // ── 6. Process event asynchronously ──────────────────────────────────────
+    // -- 6. Process event asynchronously --------------------------------------
     setImmediate(() => {
       _processRazorpayEvent(eventId, eventType, event).catch((e) =>
         console.error(`${tag} unhandled async error [${eventType}]:`, e?.message)
@@ -11177,11 +11177,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   };
 
-  // Register both URLs — Razorpay dashboard URL + legacy alias
+  // Register both URLs � Razorpay dashboard URL + legacy alias
   app.post("/api/app/razorpay/webhook",  _razorpayWebhookHandler);
   app.post("/api/webhooks/razorpay",     _razorpayWebhookHandler);
 
-  // ── CUSTOMER: Update profile ──────────────────────────────────────────────
+  // -- CUSTOMER: Update profile ----------------------------------------------
   app.patch("/api/app/customer/profile", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -11195,7 +11195,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Update profile ────────────────────────────────────────────────
+  // -- DRIVER: Update profile ------------------------------------------------
   app.patch("/api/app/driver/profile", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11223,7 +11223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Upload KYC document ───────────────────────────────────────────
+  // -- DRIVER: Upload KYC document -------------------------------------------
   // POST /api/app/driver/kyc/upload
   // Body: { documentType: 'aadhar'|'license'|'rc'|'insurance'|'photo', documentNumber?, fileUrl }
   app.post("/api/app/driver/kyc/upload", authApp, upload.single("file"), async (req, res) => {
@@ -11260,7 +11260,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
 
-      // Check if all required docs are uploaded → set verification_status to 'under_review'
+      // Check if all required docs are uploaded ? set verification_status to 'under_review'
       const requiredDocs = ['aadhar', 'license', 'rc'];
       const uploaded = await rawDb.execute(rawSql`
         SELECT document_type FROM driver_kyc_documents
@@ -11278,7 +11278,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get KYC status ────────────────────────────────────────────────
+  // -- DRIVER: Get KYC status ------------------------------------------------
   app.get("/api/app/driver/kyc/status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11300,7 +11300,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: List pending KYC reviews ──────────────────────────────────────
+  // -- ADMIN: List pending KYC reviews --------------------------------------
   app.get("/api/admin/kyc/pending", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -11325,7 +11325,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Approve/Reject KYC ─────────────────────────────────────────────
+  // -- ADMIN: Approve/Reject KYC ---------------------------------------------
   // POST /api/admin/kyc/:driverId/review
   // Body: { action: 'approve'|'reject', documentType?, note? }
   app.post("/api/admin/kyc/:driverId/review", requireAdminAuth, async (req, res) => {
@@ -11352,7 +11352,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
 
-      // If approving all → mark driver as approved and activate
+      // If approving all ? mark driver as approved and activate
       if (action === 'approve') {
         // Check if all required docs are approved
         const approvedDocs = await rawDb.execute(rawSql`
@@ -11368,7 +11368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           `);
         }
       } else {
-        // Reject → mark driver as rejected
+        // Reject ? mark driver as rejected
         await rawDb.execute(rawSql`
           UPDATE users SET verification_status='rejected' WHERE id=${driverId}::uuid
         `);
@@ -11390,7 +11390,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Earnings summary ──────────────────────────────────────────────
+  // -- DRIVER: Earnings summary ----------------------------------------------
   app.get("/api/app/driver/earnings", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11445,7 +11445,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Saved places ────────────────────────────────────────────────
+  // -- CUSTOMER: Saved places ------------------------------------------------
   app.get("/api/app/customer/saved-places", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -11481,7 +11481,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Browse available offers/coupons ────────────────────────────
+  // -- CUSTOMER: Browse available offers/coupons ----------------------------
   app.get("/api/app/customer/offers", authApp, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -11496,7 +11496,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Apply coupon code ───────────────────────────────────────────
+  // -- CUSTOMER: Apply coupon code -------------------------------------------
   app.post("/api/app/customer/apply-coupon", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
@@ -11511,15 +11511,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!r.rows.length) return res.status(400).json({ message: "Invalid or expired coupon" });
       const coupon = camelize(r.rows[0]) as any;
 
-      // ── Min trip amount check ──────────────────────────────────────────────
+      // -- Min trip amount check ----------------------------------------------
       const minAmt = parseFloat(coupon.minTripAmount || '0');
       if (fare > 0 && minAmt > 0 && fare < minAmt) {
         return res.status(400).json({
-          message: `Minimum fare ₹${minAmt.toFixed(0)} required for this coupon`,
+          message: `Minimum fare ?${minAmt.toFixed(0)} required for this coupon`,
         });
       }
 
-      // ── Usage limits ──────────────────────────────────────────────────────
+      // -- Usage limits ------------------------------------------------------
       if (coupon.totalUsageLimit) {
         const usageR = await rawDb.execute(rawSql`
           SELECT COUNT(*) AS cnt FROM trip_requests
@@ -11540,7 +11540,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.status(400).json({ message: "You have already used this coupon" });
       }
 
-      // ── Discount calculation ───────────────────────────────────────────────
+      // -- Discount calculation -----------------------------------------------
       // Bug fix: admin panel saves "percentage"; handle both "percent" and "percentage"
       let discount = 0;
       if (coupon.discountType === "percent" || coupon.discountType === "percentage") {
@@ -11562,13 +11562,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         discount: parseFloat(discount.toFixed(2)),
         finalFare: fare > 0 ? parseFloat((fare - discount).toFixed(2)) : null,
         message: fare > 0
-          ? `Coupon applied! You save ₹${discount.toFixed(2)}`
+          ? `Coupon applied! You save ?${discount.toFixed(2)}`
           : `Coupon "${coupon.code}" is valid`,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── LOGOUT: Invalidate auth token ────────────────────────────────────────
+  // -- LOGOUT: Invalidate auth token ----------------------------------------
   app.post("/api/app/logout", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11577,35 +11577,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Change password ───────────────────────────────────────────────
+  // -- DRIVER: Change password -----------------------------------------------
   app.post("/api/app/change-password", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
       const { newPin, newPassword, currentPassword } = req.body;
       const newPass = newPassword || newPin;
       if (!newPass || String(newPass).length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
-      // Verify current password — required
+      // Verify current password � required
       {
         const userRow = await rawDb.execute(rawSql`SELECT password_hash FROM users WHERE id=${user.id}::uuid`);
         const stored = (userRow.rows[0] as any)?.password_hash;
         if (stored) {
-          const valid = await bcrypt.compare(String(currentPassword), stored);
+          const valid = await verifyPassword(String(currentPassword), stored);
           if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
         }
       }
-      const hashed = await bcrypt.hash(String(newPass), 10);
+      const hashed = await hashPassword(String(newPass));
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${hashed}, updated_at=now() WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: "Password updated successfully" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Delete account ──────────────────────────────────────────────
+  // -- CUSTOMER: Delete account ----------------------------------------------
   app.delete("/api/app/customer/account", authApp, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const { permanent = false } = req.body || {};
       if (permanent) {
-        // Permanent delete — anonymize all PII, revoke token, keep records for audit
+        // Permanent delete � anonymize all PII, revoke token, keep records for audit
         await rawDb.execute(rawSql`
           UPDATE users SET is_active=false, full_name='Deleted User', email=null, phone=null,
             profile_image=null, auth_token=null, wallet_balance=0, updated_at=NOW()
@@ -11618,13 +11618,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
         return res.json({ success: true, message: "Account permanently deleted. All data has been removed." });
       }
-      // Soft delete — just deactivate
+      // Soft delete � just deactivate
       await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Delete account ────────────────────────────────────────────────
+  // -- DRIVER: Delete account ------------------------------------------------
   app.delete("/api/app/driver/account", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11648,7 +11648,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Referral info ─────────────────────────────────────────────────
+  // -- DRIVER: Referral info -------------------------------------------------
   app.get("/api/app/referral", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11670,7 +11670,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ========== ADVANCED FEATURES ==========
 
-  // ── DRIVER: Check if face verification needed ─────────────────────────────
+  // -- DRIVER: Check if face verification needed -----------------------------
   app.get("/api/app/driver/check-verification", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11690,7 +11690,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Submit face verification selfie ───────────────────────────────
+  // -- DRIVER: Submit face verification selfie -------------------------------
   app.post("/api/app/driver/face-verify", authApp, upload.single("selfie"), async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11712,7 +11712,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Upload pickup location photo (ride security) ─────────────────
+  // -- DRIVER: Upload pickup location photo (ride security) -----------------
   app.post("/api/app/driver/trip-photo", authApp, upload.single("photo"), async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11729,7 +11729,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Upload documents (DL, RC, Aadhar) ────────────────────────────
+  // -- DRIVER: Upload documents (DL, RC, Aadhar) ----------------------------
   app.post("/api/app/driver/upload-document", authApp, upload.single("document"), async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11758,7 +11758,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get documents status ──────────────────────────────────────────
+  // -- DRIVER: Get documents status ------------------------------------------
   app.get("/api/app/driver/documents", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11767,7 +11767,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Upload document as base64 (for Flutter) ───────────────────────
+  // -- DRIVER: Upload document as base64 (for Flutter) -----------------------
   app.post("/api/app/driver/upload-document-base64", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11784,7 +11784,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Update registration profile fields ─────────────────────────────
+  // -- DRIVER: Update registration profile fields -----------------------------
   app.patch("/api/app/driver/update-registration", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11797,7 +11797,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const password = req.body.password || null;
       let passwordHash: string | null = null;
       if (password && typeof password === 'string' && password.length >= 6) {
-        passwordHash = await bcrypt.hash(password, 10);
+        passwordHash = await hashPassword(password);
       }
       await rawDb.execute(rawSql`
         UPDATE users SET
@@ -11825,7 +11825,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get verification status (full detail) ──────────────────────────
+  // -- DRIVER: Get verification status (full detail) --------------------------
   app.get("/api/app/driver/verification-status", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -11851,7 +11851,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get subscription plans ────────────────────────────────────────
+  // -- DRIVER: Get subscription plans ----------------------------------------
   app.get("/api/app/driver/subscription/plans", async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -11868,7 +11868,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Choose revenue model (commission, subscription, or hybrid) ─────
+  // -- DRIVER: Choose revenue model (commission, subscription, or hybrid) -----
   app.post("/api/app/driver/choose-model", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11881,7 +11881,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Create Razorpay order for subscription plan ────────────────────
+  // -- DRIVER: Create Razorpay order for subscription plan --------------------
   app.post("/api/app/driver/subscribe", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11900,7 +11900,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Activate subscription after payment ────────────────────────────
+  // -- DRIVER: Activate subscription after payment ----------------------------
   app.post("/api/app/driver/activate-subscription", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11929,7 +11929,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (gen_random_uuid(), ${driver.id}::uuid, ${planId}::uuid, ${startDate.toISOString()}, ${endDate.toISOString()}, ${plan.price}, 'paid', 0, true, ${razorpayPaymentId}, now())
       `);
       // Keep hybrid if already chosen; otherwise default to subscription after successful payment
-      // Also expire free period — paid subscription overrides it
+      // Also expire free period � paid subscription overrides it
       await rawDb.execute(rawSql`
         UPDATE users
         SET revenue_model = CASE WHEN revenue_model='hybrid' THEN 'hybrid' ELSE 'subscription' END,
@@ -11942,7 +11942,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Update theme preference ────────────────────────────────────────
+  // -- DRIVER: Update theme preference ----------------------------------------
   app.patch("/api/app/driver/theme", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
@@ -11953,7 +11953,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: GST Wallet ────────────────────────────────────────────────────
+  // -- ADMIN: GST Wallet ----------------------------------------------------
   app.get("/api/admin/gst-wallet", requireAdminRole(["admin", "superadmin"]), async (_req, res) => {
     try {
       const walletR = await rawDb.execute(rawSql`SELECT * FROM company_gst_wallet WHERE id=1`);
@@ -11971,8 +11971,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: List drivers by verification status ─────────────────────────────
-  // ── ADMIN: Force-clear stale trips & stuck drivers ───────────────────────
+  // -- ADMIN: List drivers by verification status -----------------------------
+  // -- ADMIN: Force-clear stale trips & stuck drivers -----------------------
   app.post("/api/admin/cleanup-stale-trips", requireAdminRole(["superadmin"]), async (req, res) => {
     try {
       // Cancel searching/driver_assigned trips older than 15 min
@@ -12029,7 +12029,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Review a single document (approve/reject) ──────────────────────
+  // -- ADMIN: Review a single document (approve/reject) ----------------------
   app.patch("/api/admin/drivers/:id/doc-review", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { id } = req.params;
@@ -12045,7 +12045,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Approve/Reject entire driver verification ──────────────────────
+  // -- ADMIN: Approve/Reject entire driver verification ----------------------
   app.patch("/api/admin/drivers/:id/verify-driver", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { id } = req.params;
@@ -12077,7 +12077,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try {
           await sendFcmNotification({
             fcmToken: driverRow.fcm_token,
-            title: status === 'approved' ? '✅ Account Approved!' : '❌ Verification Issue',
+            title: status === 'approved' ? '? Account Approved!' : '? Verification Issue',
             body: status === 'approved'
               ? 'Congratulations! Your JAGO Pro Pilot account is approved. You can now go online.'
               : `Account issue: ${note || 'Please re-upload documents or contact support.'}`,
@@ -12089,7 +12089,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver: Launch Benefit status endpoint ──────────────────────────────
+  // -- Driver: Launch Benefit status endpoint ------------------------------
   app.get("/api/app/driver/launch-benefit", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12120,13 +12120,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         freePeriodEnd: freePeriodEnd ? freePeriodEnd.toISOString() : null,
         onboardDate: row?.onboard_date ? new Date(row.onboard_date).toISOString() : null,
         message: isActive
-          ? `🎉 Launch Offer Active! No commission and no platform fee for your first 30 days. ${freeDaysRemaining} day(s) remaining.`
+          ? `?? Launch Offer Active! No commission and no platform fee for your first 30 days. ${freeDaysRemaining} day(s) remaining.`
           : null,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Advanced dashboard stats ─────────────────────────────────────
+  // -- ADMIN: Advanced dashboard stats -------------------------------------
   app.get("/api/app/driver/dashboard", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12176,7 +12176,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const todayGross = parseFloat(today.gross);
       const todayCommission = parseFloat(today.commission);
 
-      // ── Launch Benefit: auto-expire + build response fields ──
+      // -- Launch Benefit: auto-expire + build response fields --
       const launchR = await rawDb.execute(rawSql`
         SELECT launch_free_active, free_period_end, onboard_date FROM users WHERE id=${user.id}::uuid LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
@@ -12228,7 +12228,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Home data (recent + nearby drivers count) ───────────────────
+  // -- CUSTOMER: Home data (recent + nearby drivers count) -------------------
   app.get("/api/app/customer/home-data", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12266,7 +12266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Schedule a ride ─────────────────────────────────────────────
+  // -- CUSTOMER: Schedule a ride ---------------------------------------------
   app.post("/api/app/customer/schedule-ride", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12297,7 +12297,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER: Get scheduled rides ────────────────────────────────────────
+  // -- CUSTOMER: Get scheduled rides ----------------------------------------
   app.get("/api/app/customer/scheduled-rides", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12312,7 +12312,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── INTERCITY BOOKING ────────────────────────────────────────────────────
+  // -- INTERCITY BOOKING ----------------------------------------------------
   app.post('/api/app/customer/intercity-book', authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12357,7 +12357,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── CUSTOMER SUPPORT CHAT ─────────────────────────────────────────────────
+  // -- CUSTOMER SUPPORT CHAT -------------------------------------------------
   app.get('/api/app/customer/support-chat', authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12381,7 +12381,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver support chat (aliases customer endpoints — same user table) ───
+  // -- Driver support chat (aliases customer endpoints � same user table) ---
   app.get('/api/app/driver/support-chat', authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12405,7 +12405,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── TRIP SHARING: Generate share link ────────────────────────────────────
+  // -- TRIP SHARING: Generate share link ------------------------------------
   app.post("/api/app/trip-share", authApp, async (req, res) => {
     try {
       const { tripId } = req.body;
@@ -12422,7 +12422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── TRIP SHARING: Get trip by share token (public) ────────────────────────
+  // -- TRIP SHARING: Get trip by share token (public) ------------------------
   app.get("/api/app/track/:token", async (req, res) => {
     try {
       const { token } = req.params;
@@ -12442,7 +12442,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── EMERGENCY CONTACTS (CRUD) ─────────────────────────────────────────────
+  // -- EMERGENCY CONTACTS (CRUD) ---------------------------------------------
   app.get("/api/app/emergency-contacts", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12489,7 +12489,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────
+  // -- IN-APP NOTIFICATIONS -------------------------------------------------
   app.get("/api/app/notifications", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12513,8 +12513,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/app/notifications/read-all", authApp, _markNotificationsRead);
   app.post("/api/app/notifications/read-all", authApp, _markNotificationsRead);
 
-  // ── DRIVER: Performance score ─────────────────────────────────────────────
-  // ── DRIVER: Weekly Earnings Chart (7 days breakdown) ────────────────────
+  // -- DRIVER: Performance score ---------------------------------------------
+  // -- DRIVER: Weekly Earnings Chart (7 days breakdown) --------------------
   app.get("/api/app/driver/weekly-earnings", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12590,7 +12590,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ========== APK DOWNLOADS ==========
   app.use("/apks", express.static(path.join(process.cwd(), "public", "apks")));
 
-  // Download page — jagopro.org/download
+  // Download page � jagopro.org/download
   app.get("/download", (_req, res) => {
     const base = process.env.APP_BASE_URL || "https://oyster-app-9e9cd.ondigitalocean.app";
     res.send(`<!DOCTYPE html><html lang="en"><head>
@@ -12614,15 +12614,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="logo">JAGO Pro</div>
   <div class="sub">Ride. Deliver. Earn.</div>
   <a class="btn btn-blue" href="/apks/jago-customer-v1.0.31.apk" download>
-    📱 Download Customer App
+    ?? Download Customer App
   </a>
-  <span class="badge">v1.0.31 • ARM64 • 24 MB</span>
+  <span class="badge">v1.0.31 � ARM64 � 24 MB</span>
   <br><br>
   <a class="btn btn-green" href="/apks/jago-driver-v1.0.31.apk" download>
-    🚗 Download Driver / Pilot App
+    ?? Download Driver / Pilot App
   </a>
-  <span class="badge">v1.0.31 • ARM64 • 25 MB</span>
-  <div class="version">Android 6.0+ required • Free Download</div>
+  <span class="badge">v1.0.31 � ARM64 � 25 MB</span>
+  <div class="version">Android 6.0+ required � Free Download</div>
 </div>
 </body></html>`);
   });
@@ -12639,9 +12639,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ██████   UNIQUE FEATURES — No competitor has all of these   ██████
-  // ═══════════════════════════════════════════════════════════════════
+  // -------------------------------------------------------------------
+  // ������   UNIQUE FEATURES � No competitor has all of these   ������
+  // -------------------------------------------------------------------
 
   // Helper: inline auth check for unique feature routes
   async function requireAppAuth(req: Request, res: Response): Promise<any | null> {
@@ -12657,7 +12657,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(401).json({ message: "Auth failed" }); return null; }
   }
 
-  // ── Ensure feature tables exist ─────────────────────────────────────
+  // -- Ensure feature tables exist -------------------------------------
   (async () => {
     try {
       await rawDb.execute(rawSql`
@@ -12719,9 +12719,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (_) {}
   })();
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 1. JAGO Pro COINS — Loyalty Program
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
+  // 1. JAGO Pro COINS � Loyalty Program
+  // ??????????????????????????????????????????????????????????????????
   app.get("/api/app/customer/coins", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -12738,8 +12738,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         rupeeValue: Math.floor(balance / 10),
         history: histRes.rows.map(camelize),
         howItWorks: [
-          "Every ₹10 fare = 1 JAGO Pro Coin",
-          "100 Coins = ₹10 discount on next ride",
+          "Every ?10 fare = 1 JAGO Pro Coin",
+          "100 Coins = ?10 discount on next ride",
           "Coins valid for 12 months",
           "Bonus coins on referrals & first rides",
         ],
@@ -12759,13 +12759,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       await rawDb.execute(rawSql`UPDATE users SET jago_coins = jago_coins - ${coins} WHERE id=${user.id}::uuid`);
       await rawDb.execute(rawSql`
         INSERT INTO coins_ledger (user_id, amount, type, description)
-        VALUES (${user.id}::uuid, ${-coins}, 'redeem', 'Redeemed ${coins} coins for ₹${discount} discount')
+        VALUES (${user.id}::uuid, ${-coins}, 'redeem', 'Redeemed ${coins} coins for ?${discount} discount')
       `);
-      res.json({ success: true, coinsUsed: coins, discountAmount: discount, message: `₹${discount} discount applied to next ride!` });
+      res.json({ success: true, coinsUsed: coins, discountAmount: discount, message: `?${discount} discount applied to next ride!` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Daily Spin Wheel (customer-facing) ───────────────────────────────────
+  // -- Daily Spin Wheel (customer-facing) -----------------------------------
   app.get("/api/app/customer/spin-wheel", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -12826,9 +12826,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   // 2. RIDE PREFERENCES (Quiet ride, AC, Music off, etc.)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   app.get("/api/app/customer/preferences", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -12857,9 +12857,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   // 3. POST-RIDE TIP DRIVER
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   app.post("/api/app/tip-driver", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -12875,15 +12875,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // Log it
       await rawDb.execute(rawSql`
         INSERT INTO coins_ledger (user_id, amount, type, description, trip_id)
-        VALUES (${trip.driver_id}::uuid, ${amount * 10}, 'tip_bonus', 'Tip received for ride — bonus coins', ${tripId}::uuid)
+        VALUES (${trip.driver_id}::uuid, ${amount * 10}, 'tip_bonus', 'Tip received for ride � bonus coins', ${tripId}::uuid)
       `);
-      res.json({ success: true, message: `₹${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Pro Coins 🎉` });
+      res.json({ success: true, message: `?${amount} tip sent to driver! You also earned ${amount * 10} bonus JAGO Pro Coins ??` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   // 4. LOST & FOUND
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   app.post("/api/app/lost-found", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -12919,9 +12919,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   // 5. MONTHLY PASS
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
   const MONTHLY_PLANS = [
     { name: 'JAGO Pro Basic', rides: 20, price: 699, discount: '15%' },
     { name: 'JAGO Pro Plus', rides: 40, price: 1199, discount: '25%' },
@@ -12952,7 +12952,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // Check wallet balance
       const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
       const bal = parseFloat((walRes.rows[0] as any)?.wallet_balance || 0);
-      if (bal < plan.price) return res.status(400).json({ message: `Insufficient wallet balance. Need ₹${plan.price}, have ₹${bal.toFixed(0)}` });
+      if (bal < plan.price) return res.status(400).json({ message: `Insufficient wallet balance. Need ?${plan.price}, have ?${bal.toFixed(0)}` });
       // Deduct & create pass
       await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${plan.price} WHERE id=${user.id}::uuid`);
       await rawDb.execute(rawSql`UPDATE monthly_passes SET is_active=false WHERE user_id=${user.id}::uuid`);
@@ -12971,10 +12971,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // CAR SHARING — Customer browse & book
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
+  // ??????????????????????????????????????????????????????????????????
+  // CAR SHARING � Customer browse & book
+  // ??????????????????????????????????????????????????????????????????
   app.get('/api/app/customer/car-sharing/rides', authApp, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -13009,7 +13009,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!rideRes.rows.length) return res.status(404).json({ message: 'Ride not found' });
       const ride = camelize(rideRes.rows[0]);
       const totalFare = parseFloat((parseFloat(ride.seatPrice || 0) * seats).toFixed(2));
-      // ATOMIC: deduct wallet only if balance sufficient — prevents negative balance race
+      // ATOMIC: deduct wallet only if balance sufficient � prevents negative balance race
       const walUpd = await rawDb.execute(rawSql`
         UPDATE users SET wallet_balance = wallet_balance - ${totalFare}
         WHERE id=${user.id}::uuid AND wallet_balance >= ${totalFare}
@@ -13018,7 +13018,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!walUpd.rows.length) {
         const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
         const bal = parseFloat(String(walRes.rows[0]?.wallet_balance || '0'));
-        return res.status(400).json({ message: 'Insufficient wallet balance. Need ₹' + totalFare + ', have ₹' + bal.toFixed(0) });
+        return res.status(400).json({ message: 'Insufficient wallet balance. Need ?' + totalFare + ', have ?' + bal.toFixed(0) });
       }
       // ATOMIC: insert booking only if seats still available (re-check under write lock)
       const bookingR = await rawDb.execute(rawSql`
@@ -13028,11 +13028,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING id
       `);
       if (!bookingR.rows.length) {
-        // Seats were taken between our check and insert — refund the wallet deduction
+        // Seats were taken between our check and insert � refund the wallet deduction
         await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${totalFare} WHERE id=${user.id}::uuid`);
         return res.status(409).json({ message: 'No seats available. Please try again.' });
       }
-      res.json({ success: true, message: seats + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
+      res.json({ success: true, message: seats + ' seat(s) booked for ?' + totalFare + '. Deducted from wallet.', totalFare });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -13053,8 +13053,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // 6. SURGE ALERT — "Notify me when surge drops"
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 6. SURGE ALERT � "Notify me when surge drops"
+  // ??????????????????????????????????????????????????????????????????
   app.post("/api/app/customer/surge-alert", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -13067,14 +13067,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 7. DRIVER BREAK MODE — Set break, show "Back in X min" to customers
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
+  // 7. DRIVER BREAK MODE � Set break, show "Back in X min" to customers
+  // ??????????????????????????????????????????????????????????????????
   app.post("/api/app/driver/break", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
       const { minutes } = req.body;
-      if (!minutes || minutes < 1 || minutes > 120) return res.status(400).json({ message: "Break: 1–120 minutes only" });
+      if (!minutes || minutes < 1 || minutes > 120) return res.status(400).json({ message: "Break: 1�120 minutes only" });
       const breakUntil = new Date(Date.now() + minutes * 60 * 1000);
       await rawDb.execute(rawSql`UPDATE users SET break_until=${breakUntil.toISOString()}, is_online=false WHERE id=${user.id}::uuid`);
       res.json({ success: true, breakUntil: breakUntil.toISOString(), message: `Break set for ${minutes} minutes. You'll auto go-online after break.` });
@@ -13104,9 +13104,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 8. DRIVER FATIGUE ALERT — Warn admin if driver online 8+ hrs
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ??????????????????????????????????????????????????????????????????
+  // 8. DRIVER FATIGUE ALERT � Warn admin if driver online 8+ hrs
+  // ??????????????????????????????????????????????????????????????????
   app.get("/api/app/driver/fatigue-status", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
@@ -13133,7 +13133,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ─── LANGUAGE MANAGEMENT ────────────────────────────────────────────────────
+  // --- LANGUAGE MANAGEMENT ----------------------------------------------------
 
   // Public: get active languages for Flutter apps
   app.get("/api/app/languages", async (req, res) => {
@@ -13166,7 +13166,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
       const result = await rawDb.execute(rawSql`
         INSERT INTO app_languages (code, name, native_name, flag, is_active, sort_order)
-        VALUES (${code}, ${name}, ${nativeName}, ${flag || '🌐'}, ${isActive !== false}, ${sortOrder || 0})
+        VALUES (${code}, ${name}, ${nativeName}, ${flag || '??'}, ${isActive !== false}, ${sortOrder || 0})
         RETURNING *
       `);
       res.json(result.rows[0]);
@@ -13206,7 +13206,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PLATFORM SERVICES — per-service activation + revenue model control ──────
+  // -- PLATFORM SERVICES � per-service activation + revenue model control ------
   // Admin: list all 9 configured services
   app.get("/api/platform-services", async (_req, res) => {
     try {
@@ -13240,7 +13240,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // Auto-sync vehicle_categories is_active when service is toggled
       if (service_status !== undefined) {
         const isActive = service_status === 'active';
-        // Map service_key → specific vehicle_type for per-vehicle control
+        // Map service_key ? specific vehicle_type for per-vehicle control
         // Using vehicle_type (not type) so toggling one service doesn't affect others
         const vehicleTypeMap: Record<string, string> = {
           'bike_ride':       'bike',
@@ -13257,7 +13257,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         if (vcVehicleType) {
           await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE vehicle_type=${vcVehicleType}`).catch(dbCatch("db"));
         }
-        // Parcel — all parcel vehicles share one service toggle
+        // Parcel � all parcel vehicles share one service toggle
         if (key === 'parcel_delivery') {
           await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE type='parcel'`).catch(dbCatch("db"));
         }
@@ -13294,12 +13294,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── MULTI-DROP PARCEL DELIVERY ────────────────────────────────────────────
+  // -- MULTI-DROP PARCEL DELIVERY --------------------------------------------
 
   // Parcel migration: add gst_amt column if missing
   await rawDb.execute(rawSql`ALTER TABLE parcel_orders ADD COLUMN IF NOT EXISTS gst_amt NUMERIC(10,2) DEFAULT 0`).catch(dbCatch("db"));
 
-  // Hardcoded defaults — fallback only when parcel_vehicle_types DB row not found
+  // Hardcoded defaults � fallback only when parcel_vehicle_types DB row not found
   const PARCEL_VEHICLES: Record<string, { baseFare: number; perKm: number; perKg: number; name: string; maxWeightKg: number; loadCharge: number }> = {
     bike_parcel:   { baseFare: 40,  perKm: 12, perKg: 4,  name: 'Bike Parcel',  maxWeightKg: 10,   loadCharge: 0   },
     tata_ace:      { baseFare: 150, perKm: 18, perKg: 2,  name: 'Mini Truck',   maxWeightKg: 500,  loadCharge: 50  },
@@ -13310,7 +13310,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   };
 
   // Shared helper: resolves zone-aware parcel fare rates for a given vehicle + pickup location.
-  // Priority: parcel_fares (zone match) → parcel_fares (global latest) → parcel_vehicle_types DB → PARCEL_VEHICLES hardcoded
+  // Priority: parcel_fares (zone match) ? parcel_fares (global latest) ? parcel_vehicle_types DB ? PARCEL_VEHICLES hardcoded
   async function resolveParcelFare(
     vehicleCategory: string,
     distKm: number,
@@ -13386,7 +13386,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     };
   }
 
-  // Customer: get fare quote for parcel — zone-aware, reads admin-configured rates
+  // Customer: get fare quote for parcel � zone-aware, reads admin-configured rates
   app.post("/api/app/parcel/quote", authApp, async (req, res) => {
     try {
       const { vehicleCategory = 'bike_parcel', dropLocations = [], weightKg = 1,
@@ -13441,7 +13441,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     try {
       const customerId = (req as any).currentUser?.id;
 
-      // ── Service activation gate ───────────────────────────────────────────
+      // -- Service activation gate -------------------------------------------
       const parcelGate = await rawDb.execute(rawSql`
         SELECT service_status FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
@@ -13722,7 +13722,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // Driver: verify pickup OTP → start delivery
+  // Driver: verify pickup OTP ? start delivery
   app.post("/api/app/driver/parcel/:id/pickup-otp", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
@@ -13812,7 +13812,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       if (allDelivered) {
-        // ── FULL REVENUE SETTLEMENT: commission% + GST + insurance → admin ──
+        // -- FULL REVENUE SETTLEMENT: commission% + GST + insurance ? admin --
         const totalFare = parseFloat(order.total_fare) || 0;
         const serviceType = order.is_b2b ? "b2b_parcel" : "parcel";
         const parcelBreakdown = await calculateRevenueBreakdown(totalFare, serviceType as any, order.driver_id);
@@ -13858,7 +13858,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PARCEL: Multi-stop route optimization (nearest-neighbor) ─────────────
+  // -- PARCEL: Multi-stop route optimization (nearest-neighbor) -------------
   // POST /api/app/parcel/optimize-route
   // Body: { pickupLat, pickupLng, stops: [{ address, lat, lng, ... }] }
   // Returns stops reordered by nearest-neighbor from pickup point
@@ -13900,7 +13900,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PARCEL: Track order with all stop details ─────────────────────────────
+  // -- PARCEL: Track order with all stop details -----------------------------
   app.get("/api/app/parcel/:id/track", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
@@ -13939,7 +13939,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── PARCEL: Receipt after delivery ────────────────────────────────────────
+  // -- PARCEL: Receipt after delivery ----------------------------------------
   app.get("/api/app/parcel/:id/receipt", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
@@ -13993,12 +13993,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Schema migration — add login columns ─────────────────────────────
+  // -- B2B: Schema migration � add login columns -----------------------------
   await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_email VARCHAR(255)`).catch(dbCatch("db"));
   await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS b2b_password_hash VARCHAR(255)`).catch(dbCatch("db"));
   await rawDb.execute(rawSql`CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_email ON b2b_companies(b2b_email) WHERE b2b_email IS NOT NULL`).catch(dbCatch("db"));
 
-  // ── B2B: Login with company credentials (no app user session needed) ──────
+  // -- B2B: Login with company credentials (no app user session needed) ------
   app.post("/api/app/b2b/login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -14011,7 +14011,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!r.rows.length) return res.status(401).json({ message: "Invalid email or password" });
       const co = r.rows[0] as any;
       if (!co.b2b_password_hash) return res.status(401).json({ message: "Password not set. Please contact admin." });
-      const valid = await bcrypt.compare(String(password), co.b2b_password_hash);
+      const valid = await verifyPassword(String(password), co.b2b_password_hash);
       if (!valid) return res.status(401).json({ message: "Invalid email or password" });
       if (!co.is_active) return res.status(403).json({ message: "B2B account is inactive. Contact admin." });
       // Return company info as session data (client stores it)
@@ -14019,7 +14019,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Set/change password (authenticated user who owns the company) ─────
+  // -- B2B: Set/change password (authenticated user who owns the company) -----
   app.post("/api/app/b2b/set-password", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
@@ -14028,7 +14028,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
       const r = await rawDb.execute(rawSql`SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1`);
       if (!r.rows.length) return res.status(404).json({ message: "No B2B company found for your account" });
-      const hash = await bcrypt.hash(String(password), 10);
+      const hash = await hashPassword(String(password));
       await rawDb.execute(rawSql`
         UPDATE b2b_companies SET b2b_email=${email.trim().toLowerCase()}, b2b_password_hash=${hash}, updated_at=NOW()
         WHERE owner_id=${userId}::uuid
@@ -14037,7 +14037,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Dashboard via B2B login (company ID from body) ──────────────────
+  // -- B2B: Dashboard via B2B login (company ID from body) ------------------
   app.post("/api/app/b2b/dashboard-by-id", async (req, res) => {
     try {
       const { companyId } = req.body;
@@ -14075,7 +14075,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Company registration (app users) ────────────────────────────────
+  // -- B2B: Company registration (app users) --------------------------------
   app.post("/api/app/b2b/register", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
@@ -14087,7 +14087,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
 
-      const pwHash = password ? await bcrypt.hash(String(password), 10) : null;
+      const pwHash = password ? await hashPassword(String(password)) : null;
 
       if (existing.rows.length) {
         await rawDb.execute(rawSql`
@@ -14113,11 +14113,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
            ${email ? email.trim().toLowerCase() : null}, ${pwHash})
         RETURNING id
       `);
-      res.json({ success: true, message: "B2B company registered — pending admin approval", companyId: (ins.rows[0] as any).id });
+      res.json({ success: true, message: "B2B company registered � pending admin approval", companyId: (ins.rows[0] as any).id });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Get delivery stats + order history ───────────────────────────────
+  // -- B2B: Get delivery stats + order history -------------------------------
   app.get("/api/app/b2b/dashboard", authApp, async (req, res) => {
     try {
       const userId = (req as any).currentUser?.id;
@@ -14197,7 +14197,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // B2B: bulk delivery — create multiple parcel orders for a business
+  // B2B: bulk delivery � create multiple parcel orders for a business
   app.post("/api/b2b/:companyId/bulk-delivery", requireAdminAuth, async (req, res) => {
     try {
       const companyId = req.params.companyId as string;
@@ -14230,7 +14230,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const available  = walletBal + creditLimit;
       if (available < grandTotal) {
         return res.status(402).json({
-          message: `Insufficient balance. Required: ₹${grandTotal}, Available: ₹${available.toFixed(2)} (wallet: ₹${walletBal.toFixed(2)} + credit: ₹${creditLimit.toFixed(2)})`
+          message: `Insufficient balance. Required: ?${grandTotal}, Available: ?${available.toFixed(2)} (wallet: ?${walletBal.toFixed(2)} + credit: ?${creditLimit.toFixed(2)})`
         });
       }
 
@@ -14245,7 +14245,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING wallet_balance
       `);
       if (!deductR.rows.length) {
-        return res.status(402).json({ message: 'Wallet deduction failed — balance may have changed. Please retry.' });
+        return res.status(402).json({ message: 'Wallet deduction failed � balance may have changed. Please retry.' });
       }
 
       const results: any[] = [];
@@ -14300,14 +14300,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── SERVICES MANAGEMENT ───────────────────────────────────────────────────
+  // -- SERVICES MANAGEMENT ---------------------------------------------------
   // Service definitions (hardcoded business models)
   const SERVICE_DEFS = [
-    { key: 'ride', name: 'Normal Ride', description: 'Bike, Auto, Car, SUV rides', icon: '🚗', emoji: '🚕', color: '#1E6DE5' },
-    { key: 'parcel', name: 'Parcel Delivery', description: 'Send packages with bike or auto', icon: '📦', emoji: '📦', color: '#F59E0B' },
-    { key: 'cargo', name: 'Cargo & Freight', description: 'Large goods with truck or van', icon: '🚚', emoji: '🚛', color: '#10B981' },
-    { key: 'intercity', name: 'Intercity', description: 'Travel between cities', icon: '🛣️', emoji: '🛣️', color: '#8B5CF6' },
-    { key: 'carsharing', name: 'Car Sharing', description: 'Share rides with others', icon: '🚘', emoji: '🚘', color: '#EF4444' },
+    { key: 'ride', name: 'Normal Ride', description: 'Bike, Auto, Car, SUV rides', icon: '??', emoji: '??', color: '#1E6DE5' },
+    { key: 'parcel', name: 'Parcel Delivery', description: 'Send packages with bike or auto', icon: '??', emoji: '??', color: '#F59E0B' },
+    { key: 'cargo', name: 'Cargo & Freight', description: 'Large goods with truck or van', icon: '??', emoji: '??', color: '#10B981' },
+    { key: 'intercity', name: 'Intercity', description: 'Travel between cities', icon: '???', emoji: '???', color: '#8B5CF6' },
+    { key: 'carsharing', name: 'Car Sharing', description: 'Share rides with others', icon: '??', emoji: '??', color: '#EF4444' },
   ];
 
   // Admin: Get all services with toggle state
@@ -14387,7 +14387,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const services = (r.rows as any[]).map(row => ({
         key: row.key,
         name: row.name,
-        icon: row.icon || '🚗',
+        icon: row.icon || '??',
         color: row.color || '#2F80ED',
         description: row.description || '',
       }));
@@ -14405,7 +14405,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Stale searching trip auto-cancel: expire after 12 minutes ───────────
+  // -- Stale searching trip auto-cancel: expire after 12 minutes -----------
   // Safety net for trips not managed by dispatch engine (e.g., older trips, edge cases)
   setInterval(async () => {
     try {
@@ -14435,7 +14435,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   }, 60000); // runs every 60 seconds
 
-  // ── Driver request timeout: safety-net auto-reassign after 90 seconds ───
+  // -- Driver request timeout: safety-net auto-reassign after 90 seconds ---
   // The dispatch engine handles its own timeouts (8s per driver).
   // This interval is a safety net for trips that somehow bypass the dispatch engine.
   setInterval(async () => {
@@ -14489,12 +14489,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   }, 30000);
 
-  // ── Start dispatch engine background processes ──────────────────────────
+  // -- Start dispatch engine background processes --------------------------
   startScheduledRideDispatcher();
   startDispatchCleanup();
   console.log("[DISPATCH] Smart dispatch engine initialized");
 
-  // ── Initialize Intelligence, Maps Cache, and Retention systems ──────────
+  // -- Initialize Intelligence, Maps Cache, and Retention systems ----------
   initIntelligenceTables().then(() => {
     startIntelligenceJobs();
     console.log("[INTELLIGENCE] Heatmap + Surge + Behavior + Fraud + Rebalancing ready");
@@ -14515,7 +14515,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   }).catch((e: any) => console.error("[PARCEL-ADV] Init error:", e.message));
 
   initRevenueEngineTables().then(() => {
-    console.log("[REVENUE] Unified revenue engine ready (commission + GST + insurance → admin)");
+    console.log("[REVENUE] Unified revenue engine ready (commission + GST + insurance ? admin)");
   }).catch((e: any) => console.error("[REVENUE] Init error:", e.message));
 
   initDynamicServicesTables().then(() => {
@@ -14525,7 +14525,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   startAIMobilityBrain();
   console.log("[AI-BRAIN] Mobility brain started (10s tick)");
 
-  // ── Driver arrival timeout: notify if driver stays 'accepted' > 15 minutes ──
+  // -- Driver arrival timeout: notify if driver stays 'accepted' > 15 minutes --
   // Prevents customers from waiting indefinitely after driver accepted but never arrived.
   setInterval(async () => {
     try {
@@ -14560,14 +14560,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           INSERT INTO trip_status_log (trip_id, status, changed_by, note)
           VALUES (${r.id}::uuid, 'arrival_delayed', 'system', 'Driver accepted >15 min ago, not yet arrived')
         `).catch(dbCatch("db"));
-        console.log(`[ARRIVAL-TIMEOUT] Trip ${r.id} — driver accepted 15+ min ago, notified parties`);
+        console.log(`[ARRIVAL-TIMEOUT] Trip ${r.id} � driver accepted 15+ min ago, notified parties`);
       }
     } catch (e: any) {
       console.error("[ARRIVAL-TIMEOUT] Error:", (e as any).message);
     }
   }, 2 * 60 * 1000); // check every 2 minutes
 
-  // ── Dispatch: Get status of an active dispatch (admin/debug) ──────────
+  // -- Dispatch: Get status of an active dispatch (admin/debug) ----------
   app.get("/api/app/dispatch/status/:tripId", authApp, async (req, res) => {
     try {
       const tripId = String(req.params.tripId);
@@ -14577,14 +14577,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Dispatch: Get count of active dispatches (admin monitoring) ───────
+  // -- Dispatch: Get count of active dispatches (admin monitoring) -------
   app.get("/api/app/dispatch/active-count", async (_req, res) => {
     res.json({ activeDispatches: getActiveDispatchCount() });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  AI INTELLIGENCE LAYER — ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
+  //  AI INTELLIGENCE LAYER � ENDPOINTS
+  // --------------------------------------------------------------------------
 
   // Initialize AI tables on startup
   initAiTables().then(() => {
@@ -14592,7 +14592,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     refreshAllDriverStats().catch(dbCatch("db"));
   });
 
-  // ── AI: Smart Suggestions for customer ─────────────────────────────────
+  // -- AI: Smart Suggestions for customer ---------------------------------
   app.get("/api/app/ai/suggestions", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -14604,7 +14604,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: Driver Matching (explicit endpoint for testing/admin) ─────────
+  // -- AI: Driver Matching (explicit endpoint for testing/admin) ---------
   app.post("/api/app/ai/driver-match", authApp, async (req, res) => {
     try {
       const { pickupLat, pickupLng, vehicleCategoryId, excludeDriverIds = [], limit = 5 } = req.body;
@@ -14628,7 +14628,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: Demand Heatmap for drivers ────────────────────────────────────
+  // -- AI: Demand Heatmap for drivers ------------------------------------
   app.get("/api/app/ai/demand-heatmap", async (_req, res) => {
     try {
       const zones = await getDemandHeatmap();
@@ -14638,7 +14638,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: Safety Alerts (list active/unresolved) ────────────────────────
+  // -- AI: Safety Alerts (list active/unresolved) ------------------------
   app.get("/api/app/ai/safety-alerts", authApp, async (req, res) => {
     try {
       const { tripId, resolved = "false" } = req.query;
@@ -14663,7 +14663,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: Acknowledge/resolve a safety alert ────────────────────────────
+  // -- AI: Acknowledge/resolve a safety alert ----------------------------
   app.patch("/api/app/ai/safety-alerts/:alertId", authApp, async (req, res) => {
     try {
       const alertIdParam = req.params.alertId;
@@ -14683,7 +14683,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: SOS Emergency Trigger ─────────────────────────────────────────
+  // -- AI: SOS Emergency Trigger -----------------------------------------
   app.post("/api/app/ai/sos", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -14720,7 +14720,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── AI: Driver Stats (for driver profile / admin) ─────────────────────
+  // -- AI: Driver Stats (for driver profile / admin) ---------------------
   app.get("/api/app/ai/driver-stats/:driverId", authApp, async (req, res) => {
     try {
       const driverIdParam = req.params.driverId;
@@ -14736,12 +14736,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   });
 
-  // ── Periodic driver stats refresh (every 10 minutes) ──────────────────
+  // -- Periodic driver stats refresh (every 10 minutes) ------------------
   setInterval(() => {
     refreshAllDriverStats().catch(dbCatch("db"));
   }, 10 * 60 * 1000);
 
-  // ── Periodic stale trip cleanup (every 2 minutes) ────────────────────────
+  // -- Periodic stale trip cleanup (every 2 minutes) ------------------------
   setInterval(async () => {
     try {
       // Cancel trips stuck in 'searching' for more than 3 minutes (no driver accepted)
@@ -14779,7 +14779,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   }, 2 * 60 * 1000);
 
-  // ── SYSTEM HEALTH CHECK ───────────────────────────────────────────────────
+  // -- SYSTEM HEALTH CHECK ---------------------------------------------------
   app.get("/api/admin/system-health", async (_req, res) => {
     try {
       const [services, tripStats, parcelStats, driverStats, gstWallet] = await Promise.all([
@@ -14856,20 +14856,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
   //  DRIVER HEATMAP EARNINGS PREDICTOR SYSTEM
-  //  - Grid-based demand tracking (configurable cell size, default 500m×500m)
+  //  - Grid-based demand tracking (configurable cell size, default 500m�500m)
   //  - Real-time demand score = requests / active_drivers per cell
   //  - Service-wise breakdown: ride, parcel, pool, cargo
-  //  - Earning predictions per zone (₹min–₹max in 30 min)
+  //  - Earning predictions per zone (?min�?max in 30 min)
   //  - Idle driver suggestions after configurable idle timeout
   //  - Admin config: grid size, thresholds, activation, idle timeout
   //  - Event sources: search, booking, pickup, cancellation, parcel
-  //  - Background refresh every 30–60 seconds
+  //  - Background refresh every 30�60 seconds
   //  - Data privacy: only aggregated stats, no individual passenger data
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
 
-  // ── DB Schema ─────────────────────────────────────────────────────────────
+  // -- DB Schema -------------------------------------------------------------
   await rawDb.execute(rawSql`
     CREATE TABLE IF NOT EXISTS heatmap_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -14917,7 +14917,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     INSERT INTO heatmap_config (id) VALUES (1) ON CONFLICT DO NOTHING;
   `).catch(dbCatch("db"));
 
-  // ── Helper: fire-and-forget event log (never blocks request) ──────────────
+  // -- Helper: fire-and-forget event log (never blocks request) --------------
   function logHeatmapEvent(
     eventType: 'search' | 'booking' | 'pickup' | 'cancellation' | 'parcel',
     lat: number, lng: number,
@@ -14930,7 +14930,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     `).catch(dbCatch("db"));
   }
 
-  // ── Grid Computation Engine ───────────────────────────────────────────────
+  // -- Grid Computation Engine -----------------------------------------------
   async function computeHeatmapGrid() {
     try {
       const cfgR = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
@@ -15035,7 +15035,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         `);
       }
 
-      // Purge stale cells not updated in 2× lookback window
+      // Purge stale cells not updated in 2� lookback window
       await rawDb.execute(rawSql`
         DELETE FROM heatmap_grid_cache
         WHERE updated_at < NOW() - (${lookbackMin * 2} || ' minutes')::INTERVAL
@@ -15050,13 +15050,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   }
 
-  // ── Background refresh: start after 10s delay, then every 30s ─────────────
+  // -- Background refresh: start after 10s delay, then every 30s -------------
   setTimeout(async () => {
     await computeHeatmapGrid();
     setInterval(computeHeatmapGrid, 30000);
   }, 10000);
 
-  // ── Hook event logging into estimate-fare (demand signal: customer is searching) ──
+  // -- Hook event logging into estimate-fare (demand signal: customer is searching) --
   // Wrap existing estimate-fare to also log search events
   app.use('/api/app/customer/estimate-fare', (req: Request, res: Response, next: any) => {
     const origJson = res.json.bind(res);
@@ -15072,11 +15072,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     next();
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
   //  HEATMAP API ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
 
-  // ── DRIVER: Get heatmap grid zones (for map overlay) ─────────────────────
+  // -- DRIVER: Get heatmap grid zones (for map overlay) ---------------------
   app.get("/api/app/driver/heatmap", authApp, async (req, res) => {
     try {
       const cfgR = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
@@ -15127,7 +15127,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── DRIVER: Get best zone suggestion for idle driver ─────────────────────
+  // -- DRIVER: Get best zone suggestion for idle driver ---------------------
   app.get("/api/app/driver/heatmap/suggestion", authApp, async (req, res) => {
     try {
       const lat = parseFloat((req.query.lat || '17.38') as string);
@@ -15160,7 +15160,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const level = z.demand_level;
 
       // Build human-readable message
-      let icon = level === 'high' ? '🔴' : '🟡';
+      let icon = level === 'high' ? '??' : '??';
       const svc = z.service_breakdown || {};
       const topService = Object.entries(svc as Record<string, number>)
         .sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] || 'ride';
@@ -15179,13 +15179,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           earningMax: parseInt(z.estimated_earning_max),
           topService,
           message: `${icon} ${level === 'high' ? 'High' : 'Medium'} demand zone ${distKm} km away`,
-          detail: `${svcLabel} detected. Estimated ₹${z.estimated_earning_min}–₹${z.estimated_earning_max} in next 30 min`,
+          detail: `${svcLabel} detected. Estimated ?${z.estimated_earning_min}�?${z.estimated_earning_max} in next 30 min`,
         },
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── INTERNAL: Log heatmap event (called from booking flows) ──────────────
+  // -- INTERNAL: Log heatmap event (called from booking flows) --------------
   app.post("/api/app/heatmap/event", authApp, async (req, res) => {
     try {
       const { eventType, lat, lng, serviceType = 'ride' } = req.body;
@@ -15195,7 +15195,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Get heatmap config ─────────────────────────────────────────────
+  // -- ADMIN: Get heatmap config ---------------------------------------------
   app.get("/api/admin/heatmap/config", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM heatmap_config WHERE id=1 LIMIT 1`);
@@ -15203,7 +15203,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Update heatmap config ──────────────────────────────────────────
+  // -- ADMIN: Update heatmap config ------------------------------------------
   app.put("/api/admin/heatmap/config", requireAdminAuth, async (req, res) => {
     try {
       const {
@@ -15236,7 +15236,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── ADMIN: Get grid stats summary ─────────────────────────────────────────
+  // -- ADMIN: Get grid stats summary -----------------------------------------
   app.get("/api/admin/heatmap/stats", requireAdminAuth, async (req, res) => {
     try {
       const grid = await rawDb.execute(rawSql`
@@ -15267,16 +15267,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── HOOK: Log booking events automatically ────────────────────────────────
+  // -- HOOK: Log booking events automatically --------------------------------
   // Intercept book-ride responses to log pickup location
   const _origBookRide = app._router?.stack?.find?.((l: any) => l?.route?.path === '/api/app/customer/book-ride');
-  // Event logging is done directly inside book-ride handler — see post-booking log below
+  // Event logging is done directly inside book-ride handler � see post-booking log below
 
-  // ════════════════════════════════════════════════════════════════════════════
-  //  ADVANCED MOBILITY INTELLIGENCE — API ENDPOINTS
-  // ════════════════════════════════════════════════════════════════════════════
+  // ----------------------------------------------------------------------------
+  //  ADVANCED MOBILITY INTELLIGENCE � API ENDPOINTS
+  // ----------------------------------------------------------------------------
 
-  // ── 1. DEMAND HEATMAP — Admin + Driver ─────────────────────────────────────
+  // -- 1. DEMAND HEATMAP � Admin + Driver -------------------------------------
   app.get("/api/admin/demand-heatmap", requireAdminAuth, async (_req, res) => {
     try {
       const zones = await computeDemandHeatmap();
@@ -15301,7 +15301,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 2. SURGE PRICING — Admin CRUD + Calculation ────────────────────────────
+  // -- 2. SURGE PRICING � Admin CRUD + Calculation ----------------------------
   app.get("/api/app/surge", async (req, res) => {
     try {
       const lat = Number(req.query.lat) || 0;
@@ -15395,7 +15395,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 3. DRIVER BEHAVIOR SCORING ──────────────────────────────────────────────
+  // -- 3. DRIVER BEHAVIOR SCORING ----------------------------------------------
   app.get("/api/app/driver/behavior-score", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -15428,7 +15428,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 4. FRAUD DETECTION ──────────────────────────────────────────────────────
+  // -- 4. FRAUD DETECTION ------------------------------------------------------
   app.get("/api/admin/fraud-flags", requireAdminAuth, async (req, res) => {
     try {
       const { status = 'pending', severity, limit = 50, offset = 0 } = req.query;
@@ -15470,7 +15470,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 5. DRIVER EARNINGS FORECAST ─────────────────────────────────────────────
+  // -- 5. DRIVER EARNINGS FORECAST ---------------------------------------------
   app.get("/api/app/driver/earnings-forecast", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -15482,7 +15482,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 6. DRIVER REBALANCING ───────────────────────────────────────────────────
+  // -- 6. DRIVER REBALANCING ---------------------------------------------------
   app.get("/api/app/driver/rebalancing", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -15501,7 +15501,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 7. REAL-TIME OPERATIONS DASHBOARD ───────────────────────────────────────
+  // -- 7. REAL-TIME OPERATIONS DASHBOARD ---------------------------------------
   app.get("/api/admin/operations-dashboard", requireAdminAuth, async (_req, res) => {
     try {
       const dashboard = await getOperationsDashboard();
@@ -15509,7 +15509,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 8. GOOGLE MAPS CACHE — Optimized endpoints ─────────────────────────────
+  // -- 8. GOOGLE MAPS CACHE � Optimized endpoints -----------------------------
   app.get("/api/app/geocode", authApp, async (req, res) => {
     try {
       const address = String(req.query.address || "");
@@ -15561,7 +15561,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── 9. CUSTOMER RETENTION ───────────────────────────────────────────────────
+  // -- 9. CUSTOMER RETENTION ---------------------------------------------------
   app.post("/api/app/promo/validate", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
@@ -15586,11 +15586,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  ADVANCED PARCEL SYSTEM — NEW ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
+  //  ADVANCED PARCEL SYSTEM � NEW ENDPOINTS
+  // --------------------------------------------------------------------------
 
-  // ── Parcel: Get insurance quote ─────────────────────────────────────────
+  // -- Parcel: Get insurance quote -----------------------------------------
   app.post("/api/app/parcel/insurance-quote", authApp, async (req, res) => {
     try {
       const { declaredValue = 0, isFragile = false } = req.body;
@@ -15600,7 +15600,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel: Validate prohibited items ───────────────────────────────────
+  // -- Parcel: Validate prohibited items -----------------------------------
   app.post("/api/app/parcel/check-prohibited", authApp, async (req, res) => {
     try {
       const { description = '' } = req.body;
@@ -15609,7 +15609,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel: SLA tracking ────────────────────────────────────────────────
+  // -- Parcel: SLA tracking ------------------------------------------------
   app.get("/api/app/parcel/:id/sla", authApp, async (req, res) => {
     try {
       const sla = await getParcelSLA(String(req.params.id));
@@ -15618,7 +15618,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel: Proof of delivery upload ────────────────────────────────────
+  // -- Parcel: Proof of delivery upload ------------------------------------
   app.post("/api/app/driver/parcel/:id/proof", authApp, upload.fields([
     { name: 'photo', maxCount: 1 },
     { name: 'signature', maxCount: 1 },
@@ -15644,7 +15644,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel: Get proof of delivery ───────────────────────────────────────
+  // -- Parcel: Get proof of delivery ---------------------------------------
   app.get("/api/app/parcel/:id/proof", authApp, async (req, res) => {
     try {
       const dropIndex = req.query.dropIndex !== undefined ? parseInt(String(req.query.dropIndex)) : undefined;
@@ -15653,7 +15653,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Parcel: Calculate billable weight ───────────────────────────────────
+  // -- Parcel: Calculate billable weight -----------------------------------
   app.post("/api/app/parcel/calculate-weight", authApp, async (req, res) => {
     try {
       const { lengthCm = 0, widthCm = 0, heightCm = 0, weightKg = 1 } = req.body;
@@ -15665,7 +15665,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: CSV bulk upload ────────────────────────────────────────────────
+  // -- B2B: CSV bulk upload ------------------------------------------------
   app.post("/api/b2b/:companyId/bulk-csv-upload", authApp, upload.single('csvFile'), async (req, res) => {
     try {
       const { companyId } = req.params;
@@ -15764,7 +15764,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Configure webhook ──────────────────────────────────────────────
+  // -- B2B: Configure webhook ----------------------------------------------
   app.post("/api/b2b/:companyId/webhook", authApp, async (req, res) => {
     try {
       const { companyId } = req.params;
@@ -15779,7 +15779,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── B2B: Get webhook logs ───────────────────────────────────────────────
+  // -- B2B: Get webhook logs -----------------------------------------------
   app.get("/api/b2b/:companyId/webhook-logs", authApp, async (req, res) => {
     try {
       const { companyId } = req.params;
@@ -15794,7 +15794,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Prohibited items management ──────────────────────────────────
+  // -- Admin: Prohibited items management ----------------------------------
   app.get("/api/admin/parcel/prohibited-items", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -15824,7 +15824,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Insurance settings ───────────────────────────────────────────
+  // -- Admin: Insurance settings -------------------------------------------
   app.get("/api/admin/parcel/insurance-settings", requireAdminAuth, async (_req, res) => {
     try {
       const sr = await rawDb.execute(rawSql`
@@ -15858,7 +15858,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: SLA dashboard ────────────────────────────────────────────────
+  // -- Admin: SLA dashboard ------------------------------------------------
   app.get("/api/admin/parcel/sla-dashboard", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
@@ -15875,11 +15875,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  UNIFIED MAPPING ARCHITECTURE — NEW ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
+  //  UNIFIED MAPPING ARCHITECTURE � NEW ENDPOINTS
+  // --------------------------------------------------------------------------
 
-  // ── Places Autocomplete ─────────────────────────────────────────────────
+  // -- Places Autocomplete -------------------------------------------------
   app.get("/api/app/places/autocomplete", authApp, async (req, res) => {
     try {
       const query = String(req.query.query || req.query.input || "");
@@ -15892,7 +15892,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Place Details (get lat/lng from place_id) ───────────────────────────
+  // -- Place Details (get lat/lng from place_id) ---------------------------
   app.get("/api/app/places/details", authApp, async (req, res) => {
     try {
       const placeId = String(req.query.placeId || "");
@@ -15904,7 +15904,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Reverse Geocode ─────────────────────────────────────────────────────
+  // -- Reverse Geocode -----------------------------------------------------
   app.get("/api/app/reverse-geocode", authApp, async (req, res) => {
     try {
       const lat = Number(req.query.lat);
@@ -15916,7 +15916,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Multi-waypoint Route ────────────────────────────────────────────────
+  // -- Multi-waypoint Route ------------------------------------------------
   app.post("/api/app/route/multi-waypoint", authApp, async (req, res) => {
     try {
       const { origin, destination, waypoints = [], optimize = true } = req.body;
@@ -15929,7 +15929,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Real-time ETA ───────────────────────────────────────────────────────
+  // -- Real-time ETA -------------------------------------------------------
   app.get("/api/app/eta", authApp, async (req, res) => {
     try {
       const dLat = Number(req.query.driverLat);
@@ -15942,7 +15942,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Short location name ─────────────────────────────────────────────────
+  // -- Short location name -------------------------------------------------
   app.get("/api/app/short-name", authApp, async (req, res) => {
     try {
       const address = String(req.query.address || "");
@@ -15951,7 +15951,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Nearby Places ───────────────────────────────────────────────────────
+  // -- Nearby Places -------------------------------------------------------
   app.get("/api/app/places/nearby", authApp, async (req, res) => {
     try {
       const lat = Number(req.query.lat);
@@ -15964,7 +15964,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Mapping Stats (admin) ──────────────────────────────────────────────
+  // -- Mapping Stats (admin) ----------------------------------------------
   app.get("/api/admin/mapping-stats", requireAdminAuth, async (_req, res) => {
     try {
       const mapsCacheStats = getCacheStats();
@@ -15978,29 +15978,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  UNIFIED REVENUE ENGINE — ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
+  //  UNIFIED REVENUE ENGINE � ENDPOINTS
+  // --------------------------------------------------------------------------
 
-  // ── Payment Methods: list supported ─────────────────────────────────────
+  // -- Payment Methods: list supported -------------------------------------
   app.get("/api/app/payment-methods", authApp, async (_req, res) => {
     try {
       res.json({
         methods: [
-          { id: "cash", name: "Cash", icon: "💵", isActive: true },
-          { id: "upi", name: "UPI", icon: "📱", isActive: true, providers: SUPPORTED_UPI_PROVIDERS.filter(p => p.isActive) },
-          { id: "wallet", name: "Wallet", icon: "👛", isActive: true },
+          { id: "cash", name: "Cash", icon: "??", isActive: true },
+          { id: "upi", name: "UPI", icon: "??", isActive: true, providers: SUPPORTED_UPI_PROVIDERS.filter(p => p.isActive) },
+          { id: "wallet", name: "Wallet", icon: "??", isActive: true },
         ],
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── UPI Providers ───────────────────────────────────────────────────────
+  // -- UPI Providers -------------------------------------------------------
   app.get("/api/app/upi-providers", authApp, async (_req, res) => {
     res.json({ providers: SUPPORTED_UPI_PROVIDERS });
   });
 
-  // ── Revenue Breakdown Preview (before trip) ─────────────────────────────
+  // -- Revenue Breakdown Preview (before trip) -----------------------------
   app.post("/api/app/revenue/preview", authApp, async (req, res) => {
     try {
       const { fare, serviceCategory = "rides" } = req.body;
@@ -16010,7 +16010,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver Wallet Summary ───────────────────────────────────────────────
+  // -- Driver Wallet Summary -----------------------------------------------
   app.get("/api/app/driver/wallet/summary", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
@@ -16020,7 +16020,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver Withdrawal Request ───────────────────────────────────────────
+  // -- Driver Withdrawal Request -------------------------------------------
   app.post("/api/app/driver/wallet/withdraw", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
@@ -16031,7 +16031,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Driver Transaction History ──────────────────────────────────────────
+  // -- Driver Transaction History ------------------------------------------
   app.get("/api/app/driver/wallet/transactions", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
@@ -16045,7 +16045,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Customer Wallet Balance ─────────────────────────────────────────────
+  // -- Customer Wallet Balance ---------------------------------------------
   app.get("/api/app/customer/wallet/balance", authApp, async (req, res) => {
     try {
       const customerId = (req as any).currentUser?.id;
@@ -16054,7 +16054,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Customer Wallet Top-up ──────────────────────────────────────────────
+  // -- Customer Wallet Top-up ----------------------------------------------
   app.post("/api/app/customer/wallet/topup", authApp, async (req, res) => {
     try {
       const customerId = (req as any).currentUser?.id;
@@ -16065,7 +16065,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Customer Transaction History ────────────────────────────────────────
+  // -- Customer Transaction History ----------------------------------------
   app.get("/api/app/customer/wallet/transactions", authApp, async (req, res) => {
     try {
       const customerId = (req as any).currentUser?.id;
@@ -16079,7 +16079,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Withdrawal Management ────────────────────────────────────────
+  // -- Admin: Withdrawal Management ----------------------------------------
   app.get("/api/admin/withdrawals", requireAdminAuth, async (_req, res) => {
     try {
       const withdrawals = await getPendingWithdrawals();
@@ -16101,7 +16101,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Revenue Model per Service ────────────────────────────────────
+  // -- Admin: Revenue Model per Service ------------------------------------
   app.get("/api/admin/revenue/models", requireAdminAuth, async (_req, res) => {
     try {
       const settings = await loadRevenueSettings();
@@ -16128,7 +16128,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Update Revenue Model for a Service ───────────────────────────
+  // -- Admin: Update Revenue Model for a Service ---------------------------
   app.put("/api/admin/revenue/models/:service", requireAdminAuth, async (req, res) => {
     try {
       const { service } = req.params;
@@ -16166,7 +16166,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Update Commission / GST / Insurance Rates ────────────────────
+  // -- Admin: Update Commission / GST / Insurance Rates --------------------
   app.put("/api/admin/revenue/rates", requireAdminAuth, async (req, res) => {
     try {
       const allowedKeys = [
@@ -16192,7 +16192,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Revenue Analytics ────────────────────────────────────────────
+  // -- Admin: Revenue Analytics --------------------------------------------
   app.get("/api/admin/revenue/analytics", requireAdminAuth, async (req, res) => {
     try {
       const days = parseInt(String(req.query.days || "7"));
@@ -16210,7 +16210,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Revenue breakdown for a specific trip/order ──────────────────
+  // -- Admin: Revenue breakdown for a specific trip/order ------------------
   app.get("/api/admin/revenue/trip/:tripId", requireAdminAuth, async (req, res) => {
     try {
       const tripId = String(req.params.tripId);
@@ -16225,9 +16225,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  DYNAMIC SERVICES & PARCEL VEHICLES — ENDPOINTS
-  // ══════════════════════════════════════════════════════════════════════════
+  // --------------------------------------------------------------------------
+  //  DYNAMIC SERVICES & PARCEL VEHICLES � ENDPOINTS
+  // --------------------------------------------------------------------------
 
   // App: Get services available at a location (city-based filtering)
   app.get("/api/app/services/location", async (req, res) => {
@@ -16271,7 +16271,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: City-based service management ────────────────────────────────
+  // -- Admin: City-based service management --------------------------------
   app.get("/api/admin/city-services", requireAdminAuth, async (_req, res) => {
     try {
       const cities = await getCitiesWithServices();
@@ -16297,7 +16297,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: Parcel vehicle type management ───────────────────────────────
+  // -- Admin: Parcel vehicle type management -------------------------------
   app.get("/api/admin/parcel-vehicles", requireAdminAuth, async (_req, res) => {
     try {
       const vehicles = await getAllParcelVehicles();
@@ -16320,7 +16320,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // ── Admin: AI Mobility Brain dashboard ──────────────────────────────────
+  // -- Admin: AI Mobility Brain dashboard ----------------------------------
   app.get("/api/admin/ai-brain/dashboard", requireAdminAuth, async (_req, res) => {
     try {
       const data = await getAIDashboardData();
@@ -16336,3 +16336,4 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   return httpServer;
 }
+
