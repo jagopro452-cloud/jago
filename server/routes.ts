@@ -1902,6 +1902,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Simple ping
+  app.get("/api/ping", (_req, res) => {
+    res.json({ pong: true });
+  });
+
   // Diagnostic endpoint (unprotected)
   app.get("/api/diag/admin-status", async (_req, res) => {
     try {
