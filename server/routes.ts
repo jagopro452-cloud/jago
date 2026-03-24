@@ -744,6 +744,9 @@ async function ensureAdminExists() {
     console.error("[SECURITY] ADMIN_PASSWORD env var not set — skipping admin password sync. Set ADMIN_PASSWORD in .do/app.yaml or .env");
     return;
   }
+  
+  console.log(`[admin-bootstrap] Starting admin sync for ${adminEmail}, sync_on_restart=${process.env.ADMIN_PASSWORD_SYNC_ON_RESTART}`);
+
 
   // ── Step 1: Guarantee the tables exist using rawDb (same path as ensureOperationalSchema)
   try {
@@ -822,13 +825,27 @@ async function ensureAdminExists() {
       // Admin exists — password sync ONLY on explicit restart flag to prevent overwriting user changes
       // By default, users can change their password and it will persist across restarts
       const shouldSyncPassword = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART === 'true';
+      console.log(`[admin-bootstrap] Admin exists: ${adminEmail}, should_sync_password=${shouldSyncPassword}`);
       if (shouldSyncPassword) {
+        console.log(`[admin-bootstrap] Hashing new password for ${adminEmail}...`);
         const hash = await bcrypt.hash(adminPassword, 10);
-        await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
-        console.log(`[admin] Password synced for ${adminEmail} (ADMIN_PASSWORD_SYNC_ON_RESTART=true)`);
+        console.log(`[admin-bootstrap] Password hash generated: ${hash.substring(0, 20)}...`);
+        const updateResult = await rawDb.execute(rawSql`
+          UPDATE admins 
+          SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL 
+          WHERE LOWER(email)=${adminEmail}
+          RETURNING id, email, password
+        `);
+        if (updateResult.rows.length > 0) {
+          const updated: any = updateResult.rows[0];
+          console.log(`[admin-bootstrap] ✓ Password synced for ${adminEmail} (ID: ${updated.id})`);
+          console.log(`[admin-bootstrap] New password hash: ${(updated.password || '').substring(0, 20)}...`);
+        } else {
+          console.warn(`[admin-bootstrap] ⚠ Update returned no rows - admin may not exist or email doesn't match`);
+        }
       } else {
         // Ensure admin is marked as active but DO NOT override password
-        await rawDb.execute(rawSql`UPDATE admins SET is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
+        await rawDb.execute(rawSql`UPDATE admins SET is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE LOWER(email)=${adminEmail}`);
         console.log(`[admin] Admin ensured active: ${adminEmail} (password NOT overridden)`);
       }
     }
@@ -2886,6 +2903,88 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ts: new Date().toISOString(),
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── FORCE admin password reset (requires OPS key or reset key) ──────────────
+  // POST /api/ops/force-admin-password-reset
+  // This forcefully resets admin password when normal password sync isn't working
+  app.post("/api/ops/force-admin-password-reset", async (req, res) => {
+    try {
+      const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
+      const providedKey = String(req.headers["x-ops-key"] || req.body?.key || "").trim();
+      
+      if (!resetKey || providedKey !== resetKey) {
+        return res.status(403).json({ message: "Invalid or missing operations API key" });
+      }
+
+      const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+      const adminPassword = process.env.ADMIN_PASSWORD;
+
+      if (!adminEmail || !adminPassword) {
+        return res.json({
+          success: false,
+          message: "ADMIN_EMAIL or ADMIN_PASSWORD not configured in environment",
+          config: { emailSet: !!process.env.ADMIN_EMAIL, passwordSet: !!adminPassword }
+        });
+      }
+
+      console.log(`[FORCE-RESET] Forcefully resetting admin password for ${adminEmail}`);
+      
+      // Hash the password
+      const hash = await bcrypt.hash(adminPassword, 10);
+      console.log(`[FORCE-RESET] Generated bcrypt hash: ${hash.substring(0, 30)}...`);
+
+      // Update admin record
+      const result = await rawDb.execute(rawSql`
+        UPDATE admins 
+        SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL
+        WHERE LOWER(email)=${adminEmail}
+        RETURNING id, email, password, is_active
+      `);
+
+      if (result.rows.length === 0) {
+        // Admin doesn't exist, create one
+        console.log(`[FORCE-RESET] Admin doesn't exist, creating new admin: ${adminEmail}`);
+        const adminName = process.env.ADMIN_NAME || "Admin";
+        const createResult = await rawDb.execute(rawSql`
+          INSERT INTO admins (name, email, password, role, is_active)
+          VALUES (${adminName}, ${adminEmail}, ${hash}, 'superadmin', true)
+          RETURNING id, email, password, is_active
+        `);
+        const admin: any = createResult.rows[0];
+        return res.json({
+          success: true,
+          message: `Admin created and password reset`,
+          admin: {
+            id: admin.id,
+            email: admin.email,
+            isActive: admin.is_active,
+            passwordUpdated: true,
+            hashPrefix: (admin.password || '').substring(0, 30) + '...'
+          },
+          credentials: { email: adminEmail, password: adminPassword },
+          nextStep: "Try login at https://jagopro.org/admin/login with these cred entials"
+        });
+      }
+
+      const admin: any = result.rows[0];
+      return res.json({
+        success: true,
+        message: `Admin password force-reset successful`,
+        admin: {
+          id: admin.id,
+          email: admin.email,
+          isActive: admin.is_active,
+          passwordUpdated: true,
+          hashPrefix: (admin.password || '').substring(0, 30) + '...'
+        },
+        credentials: { email: adminEmail, password: adminPassword },
+        nextStep: "Try login at https://jagopro.org/admin/login with these credentials"
+      });
+    } catch (e: any) {
+      console.error("[FORCE-RESET] Error:", formatDbError(e));
+      res.status(500).json({ success: false, message: formatDbError(e) });
+    }
   });
 
   // Auth — with rate limiting and bcrypt password verification
