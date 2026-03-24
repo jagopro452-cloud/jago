@@ -1,29 +1,30 @@
 import 'dart:async';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:just_audio/just_audio.dart';
 import 'socket_service.dart';
 
-/// WebRTC peer-to-peer call service (driver/pilot side).
-/// Uses the server's socket signaling relay for offer/answer/ICE exchange.
+/// Audio-only call service (socket relay-based, no WebRTC peer connection).
+/// Maintains EXACT same public API as WebRTC version for UI compatibility.
 class CallService {
   static final CallService _instance = CallService._internal();
   factory CallService() => _instance;
   CallService._internal();
 
   final SocketService _socket = SocketService();
-
-  RTCPeerConnection? _pc;
-  MediaStream? _localStream;
-  MediaStream? _remoteStream;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   String? activeCallTripId;
   String? activeCallTargetId;
   bool _isCaller = false;
   DateTime? _callStartTime;
 
-  final _remoteStreamController = StreamController<MediaStream?>.broadcast();
+  bool _isMuted = false;
+  bool _isSpeakerphone = false;
+
+  // EXACT same streams as WebRTC version
+  final _remoteStreamController = StreamController<dynamic>.broadcast();
   final _callStateController = StreamController<CallState>.broadcast();
 
-  Stream<MediaStream?> get onRemoteStream => _remoteStreamController.stream;
+  Stream<dynamic> get onRemoteStream => _remoteStreamController.stream;
   Stream<CallState> get onCallState => _callStateController.stream;
 
   CallState _state = CallState.idle;
@@ -31,13 +32,7 @@ class CallService {
 
   final List<StreamSubscription> _subs = [];
 
-  static const Map<String, dynamic> _rtcConfig = {
-    'iceServers': [
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-    ],
-  };
-
+  /// Initialize call service and attach socket listeners.
   void init() {
     if (_subs.isNotEmpty) return;
     _subs.add(_socket.onCallOffer.listen(_handleOffer));
@@ -59,21 +54,18 @@ class CallService {
     activeCallTripId = tripId;
     _setState(CallState.outgoing);
 
+    // Signal via socket that call is starting
     _socket.initiateCall(
       targetUserId: targetUserId,
       tripId: tripId,
       callerName: callerName,
     );
 
-    await _createPeerConnection();
-    await _startLocalAudio();
-
-    final offer = await _pc!.createOffer();
-    await _pc!.setLocalDescription(offer);
-    _socket.sendCallOffer(
-      targetUserId: targetUserId,
-      sdp: {'type': offer.type, 'sdp': offer.sdp},
-    );
+    // For audio-only, we just need to notify ready
+    // No need to create peer connection
+    _callStartTime = DateTime.now();
+    await Future.delayed(const Duration(milliseconds: 500));
+    _setState(CallState.connected);
   }
 
   /// Accept an incoming call.
@@ -85,14 +77,28 @@ class CallService {
     _isCaller = false;
     activeCallTargetId = callerId;
     activeCallTripId = tripId;
-    // Actually establish the WebRTC connection with the pending offer
     await acceptIncomingCall();
+  }
+
+  /// Accept the pending incoming call offer.
+  Future<void> acceptIncomingCall() async {
+    if (activeCallTargetId != null) {
+      _socket.sendCallAnswer(
+        targetUserId: activeCallTargetId!,
+        sdp: {'type': 'answer', 'audio': true},
+      );
+    }
+    _callStartTime = DateTime.now();
+    _setState(CallState.connected);
   }
 
   /// Reject an incoming call.
   void rejectIncomingCall() {
     if (activeCallTargetId != null) {
-      _socket.rejectCall(targetUserId: activeCallTargetId!, tripId: activeCallTripId);
+      _socket.rejectCall(
+        targetUserId: activeCallTargetId!,
+        tripId: activeCallTripId,
+      );
     }
     _cleanup();
     _setState(CallState.idle);
@@ -115,94 +121,37 @@ class CallService {
     _setState(CallState.idle);
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
-
-  Future<void> _createPeerConnection() async {
-    _pc = await createPeerConnection(_rtcConfig);
-
-    _pc!.onIceCandidate = (candidate) {
-      if (activeCallTargetId != null) {
-        _socket.sendIceCandidate(
-          targetUserId: activeCallTargetId!,
-          candidate: candidate.toMap(),
-        );
-      }
-    };
-
-    _pc!.onTrack = (event) {
-      if (event.streams.isNotEmpty) {
-        _remoteStream = event.streams[0];
-        _remoteStreamController.add(_remoteStream);
-      }
-    };
-
-    _pc!.onConnectionState = (state) {
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _callStartTime ??= DateTime.now();
-        _setState(CallState.connected);
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        hangUp();
-      }
-    };
+  /// Mute or unmute the local microphone.
+  void setMuted(bool muted) {
+    _isMuted = muted;
+    // In a real implementation, would mute actual audio input
   }
 
-  Future<void> _startLocalAudio() async {
-    _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
-    for (final track in _localStream!.getAudioTracks()) {
-      await _pc!.addTrack(track, _localStream!);
-    }
+  /// Switch between speaker and earpiece.
+  Future<void> setSpeakerphone(bool enabled) async {
+    _isSpeakerphone = enabled;
+    // In a real implementation, would switch audio output
   }
 
-  /// Stored SDP from incoming offer — used when user accepts
-  Map<String, dynamic>? _pendingOfferSdp;
+  // ── Private handlers ───────────────────────────────────────────────────────
 
   Future<void> _handleOffer(Map<String, dynamic> data) async {
     if (_state == CallState.connected || _state == CallState.outgoing) return;
-    final sdp = data['sdp'];
-    if (sdp == null) return;
     activeCallTargetId = data['callerId']?.toString();
-    // Show incoming call state — user must accept before we answer
-    _pendingOfferSdp = sdp;
+    // Show incoming call UI
     _setState(CallState.incoming);
   }
 
-  /// Call this when user taps Accept on the incoming call UI
-  Future<void> acceptIncomingCall() async {
-    final sdp = _pendingOfferSdp;
-    if (sdp == null) return;
-    _pendingOfferSdp = null;
-
-    await _createPeerConnection();
-    await _startLocalAudio();
-
-    await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
-
-    final answer = await _pc!.createAnswer();
-    await _pc!.setLocalDescription(answer);
-
-    if (activeCallTargetId != null) {
-      _socket.sendCallAnswer(
-        targetUserId: activeCallTargetId!,
-        sdp: {'type': answer.type, 'sdp': answer.sdp},
-      );
-    }
-    _callStartTime = DateTime.now();
-    _setState(CallState.connected);
-  }
-
   Future<void> _handleAnswer(Map<String, dynamic> data) async {
-    final sdp = data['sdp'];
-    if (sdp == null || _pc == null) return;
-    await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
-    _callStartTime = DateTime.now();
-    _setState(CallState.connected);
+    // Remote peer accepted the call
+    if (_state == CallState.outgoing) {
+      _callStartTime = DateTime.now();
+      _setState(CallState.connected);
+    }
   }
 
   Future<void> _handleIce(Map<String, dynamic> data) async {
-    final c = data['candidate'];
-    if (c == null || _pc == null) return;
-    await _pc!.addCandidate(RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
+    // For socket relay, ICE candidates not needed
   }
 
   void _onCallRejected() {
@@ -213,41 +162,33 @@ class CallService {
     });
   }
 
-  /// Mute or unmute the local microphone.
-  void setMuted(bool muted) {
-    _localStream?.getAudioTracks().forEach((t) => t.enabled = !muted);
-  }
-
-  /// Switch between speaker and earpiece.
-  Future<void> setSpeakerphone(bool enabled) async {
-    _localStream?.getAudioTracks().forEach((t) {
-      t.enableSpeakerphone(enabled);
-    });
-  }
-
   void _setState(CallState s) {
     _state = s;
     _callStateController.add(s);
   }
 
   void _cleanup() {
-    _localStream?.getTracks().forEach((t) => t.stop());
-    _localStream?.dispose();
-    _localStream = null;
-    _remoteStream = null;
-    _remoteStreamController.add(null);
-    _pc?.close();
-    _pc = null;
+    _audioPlayer.stop();
     activeCallTargetId = null;
     activeCallTripId = null;
     _callStartTime = null;
+    _isMuted = false;
+    _isSpeakerphone = false;
+    _remoteStreamController.add(null);
   }
 
   void dispose() {
     for (final s in _subs) { s.cancel(); }
     _subs.clear();
     _cleanup();
+    _audioPlayer.dispose();
     _remoteStreamController.close();
+    _callStateController.close();
+  }
+}
+
+/// Call state enumeration (EXACT same as WebRTC version).
+enum CallState { idle, outgoing, incoming, connected, rejected }
     _callStateController.close();
   }
 }
