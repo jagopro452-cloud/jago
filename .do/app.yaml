@@ -40,6 +40,8 @@ services:
       - key: ADMIN_PASSWORD
         value: "JagoAdmin@2026!"
         type: SECRET
+      - key: ADMIN_PASSWORD_SYNC_ON_RESTART
+        value: "true"
       - key: ADMIN_RESET_KEY
         value: "JagoReset2026"
         type: SECRET
