@@ -157,30 +157,38 @@ app.use((req, res, next) => {
     return res.status(status).json({ message, errorId });
   });
 
-  // Setup static files early for production
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  }
-
-  // ─── START SERVER LISTENING EARLY ───
-  // This ensures health checks pass even if background initialization is slow
-  const port = parseInt(process.env.PORT || "5000", 10);
-  const server = httpServer.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
-  });
-
-  // ─── NOW DO BACKGROUND INITIALIZATION (non-blocking) ───
-  
-  // Register routes in background (optional - won't block server startup)
-  registerRoutes(httpServer, app).catch((e: any) => {
+  // ─── REGISTER ROUTES FIRST (CRITICAL) ───
+  // Must complete before server handles any API requests
+  try {
+    log("[server] Registering API routes...");
+    await registerRoutes(httpServer, app);
+    log("[server] API routes registered successfully");
+  } catch (e: any) {
     console.error("[routes] Failed to register routes:", e.message);
+    console.error("[routes] Stack:", e.stack);
     sendAlert({
       level: "critical",
       source: "routes",
       message: "Failed to register API routes",
       details: String(e.message || e),
     }).catch(() => {});
+    process.exit(1);
+  }
+
+  // Setup static files AFTER routes (so routes take precedence)
+  if (process.env.NODE_ENV === "production") {
+    log("[server] Setting up static file serving for production");
+    serveStatic(app);
+  }
+
+  // ─── NOW START SERVER LISTENING ───
+  // Routes are registered and ready to handle requests
+  const port = parseInt(process.env.PORT || "5000", 10);
+  const server = httpServer.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port}`);
   });
+
+  // ─── BACKGROUND INITIALIZATION (non-blocking) ───
 
   // Load API keys from business_settings DB (non-blocking)
   (async () => {
