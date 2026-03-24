@@ -59,9 +59,8 @@ function PhoneScreen({ screen }: { screen: ScreenType }) {
       <div style={{ flex: 1, position: "relative", background: "linear-gradient(160deg,#dbeafe,#e0e7ff)", overflow: "hidden" }}>
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${i * 18}%`, height: 1, background: "rgba(30,109,229,0.08)" }} />)}
         {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${i * 18}%`, width: 1, background: "rgba(30,109,229,0.08)" }} />)}
-        <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.95)", borderRadius: 8, padding: "3px 9px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 5 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F6BFF" }} />
-          <span style={{ fontSize: 9, fontWeight: 800, color: "#2F6BFF", fontFamily: "Space Grotesk,sans-serif", letterSpacing: 1 }}>JAGO</span>
+                <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.95)", borderRadius: 8, padding: "6px 8px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#2F6BFF", boxShadow: "0 0 0 2px rgba(47,107,255,0.2)" }} />
         </div>
         <div style={{ position: "absolute", left: "48%", top: "45%", transform: "translate(-50%,-50%)" }}>
           <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#2F6BFF", border: "3px solid #fff", boxShadow: "0 0 0 7px rgba(21,88,196,0.18)" }} />
@@ -389,7 +388,7 @@ export default function LandingPage() {
         {/* NAV */}
         <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, backdropFilter: "blur(24px)", background: scrolled ? "rgba(6,9,26,0.98)" : "rgba(10,15,46,.4)", borderBottom: `1px solid ${scrolled ? BORDER : "transparent"}`, transition: "all .3s", boxShadow: scrolled ? "0 8px 32px rgba(0,0,0,0.3)" : "none" }}>
           <div className="container" style={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <a href="/" style={{ display: "flex", alignItems: "center", gap: 8 }}><Logo size="md" /></a>
+            <a href="/" style={{ display: "flex", alignItems: "center", gap: 8 }}><Logo size="md" variant="white" /></a>
             <div className="hide-mobile" style={{ display: "flex", gap: 36, alignItems: "center" }}>
               {[["#services","Services"],["#how","How It Works"],["#why","Why JAGO"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
                 <a key={href} href={href} className="nav-link" style={{ fontSize: 14.5 }}>{label}</a>
@@ -409,7 +408,7 @@ export default function LandingPage() {
             {/* LEFT */}
             <div style={{ animation: "jago-fade-up .9s ease forwards" }}>
               <div style={{ marginBottom: 32 }}>
-                <Logo size="xl" />
+                <Logo size="xl" variant="white" />
               </div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: W06, border: `1px solid ${BORDER}`, borderRadius: 30, padding: "6px 14px", marginBottom: 30 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
@@ -544,7 +543,7 @@ export default function LandingPage() {
             <div ref={secWhy.ref} className={`reveal${secWhy.vis ? " vis" : ""}`}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 72, alignItems: "center" }} className="hero-grid">
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why JAGO Pro</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why JAGO</div>
                   <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
                   <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first — for both riders and pilots.</p>
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -765,17 +764,21 @@ export default function LandingPage() {
                 <div style={{ position: "absolute", bottom: -50, left: -50, width: 220, height: 220, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
                 <div style={{ position: "relative", zIndex: 1 }}>
                   <div style={{ width: 64, height: 64, borderRadius: 18, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-                    <Logo size="lg" />
+                    <Logo size="lg" variant="white" />
                   </div>
-                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with JAGO Pro?</h2>
+                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
                     Download now and get your first ride up to <strong style={{ color: W }}>₹50 OFF</strong> with code{" "}
                     <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGOPRO50</strong>
                   </p>
                   <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-                    {[{ label: "App Store", sub: "Download on", isApple: true, href: "https://apps.apple.com" }, { label: "Google Play", sub: "Get it on", isApple: false, href: "https://play.google.com/store" }].map(d => (
-                      <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 12, background: W, color: N800, borderRadius: 14, padding: "14px 26px", textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>
-                        {d.isApple ? <AppleIcon /> : <PlayIcon />}
+                    {[
+                      { label: "Customer APK", sub: "Download", isApple: false, href: "/apks/jago-customer-v1.0.56-release.apk", isAPK: true },
+                      { label: "Driver APK", sub: "Download", isApple: false, href: "/apks/jago-driver-v1.0.58-release.apk", isAPK: true },
+                      { label: "Pilot APK", sub: "Download", isApple: false, href: "/apks/jago-pilot-v1.0.58-release.apk", isAPK: true }
+                    ].map(d => (
+                      <a key={d.label} href={d.href} download className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 12, background: W, color: N800, borderRadius: 14, padding: "14px 26px", textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         <div style={{ textAlign: "left" }}>
                           <div style={{ fontSize: 9.5, opacity: .5, textTransform: "uppercase", letterSpacing: 1 }}>{d.sub}</div>
                           <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.2 }}>{d.label}</div>
@@ -794,7 +797,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 40, marginBottom: 52 }}>
               <div>
-                <Logo size="md" height={36} />
+                <Logo size="md" height={36} variant="white" />
                 <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
               </div>
               {[
@@ -815,7 +818,7 @@ export default function LandingPage() {
               ))}
             </div>
             <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 JAGO Pro Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
+              <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>© 2026 JAGO Technologies Pvt. Ltd. · MindWhile IT Solutions Product · All rights reserved.</p>
               <p style={{ fontSize: 12, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>Made with ❤️ in India</p>
             </div>
           </div>
