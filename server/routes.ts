@@ -8239,6 +8239,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const estimatedFareVal = parseFloat(tripRow.estimated_fare) || 0;
       let fare = parseFloat(actualFare) || estimatedFareVal;
       if (!fare || fare <= 0) return res.status(400).json({ message: "Fare amount is invalid" });
+      
+      // -- HARDENING: Validate fare accuracy before capping --
+      try {
+        const fareValidation = await validateFareAccuracy(tripId, estimatedFareVal, fare, tripRow.customer_id);
+        if (fareValidation.refundRequired) {
+          fare = fare - fareValidation.refundAmount;
+        }
+      } catch (hardeningErr: any) {
+        log('HARDENING-COMPLETE-FARE', hardeningErr.message);
+      }
+      
       // Cap actual fare to 1.5x estimated fare to prevent fare manipulation
       if (estimatedFareVal > 0 && fare > estimatedFareVal * 1.5) fare = Math.round(estimatedFareVal * 1.5 * 100) / 100;
       // Absolute cap at ?10,000 per ride
@@ -9814,6 +9825,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ success: true, walletRefund, cancelFee });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
+
+  // -- CUSTOMER: Boost trip fare to attract drivers (FIX #6 extension) -----
+  app.post("/api/app/customer/trip/:id/boost-fare", authApp, requireCustomer, async (req, res) => {
+    try {
+      const { id: tripId } = req.params;
+      const { boostPercentage } = req.body;
+      const customerId = (req as any).currentUser.id;
+      
+      // Validate boost percentage (10-50%)
+      if (!boostPercentage || boostPercentage < 0.1 || boostPercentage > 0.5) {
+        return res.status(400).json({ error: 'Boost must be 10-50%' });
+      }
+      
+      // Verify customer owns this trip
+      const tripCheck = await rawDb.execute(rawSql`
+        SELECT id, estimated_fare, pickup_lat, pickup_lng, current_status
+        FROM trip_requests 
+        WHERE id = ${tripId}::uuid AND customer_id = ${customerId}::uuid
+      `);
+      
+      if (!tripCheck.rows.length) {
+        return res.status(404).json({ error: 'Trip not found' });
+      }
+      
+      const trip = camelize(tripCheck.rows[0] as any);
+      
+      // Only allow boost if still searching (no driver assigned yet)
+      if (trip.current_status !== 'searching') {
+        return res.status(400).json({ error: 'Cannot boost - trip already assigned or completed' });
+      }
+      
+      // -- HARDENING: Apply boost fare --
+      try {
+        const result = await boostrFareOffer(tripId as string, customerId, boostPercentage);
+        
+        if (!result.success) {
+          return res.status(400).json({ error: result.error });
+        }
+        
+        // Notify nearby drivers of boosted fare
+        if (io) {
+          io.to(`drivers_search:${trip.pickup_lat}:${trip.pickup_lng}`).emit('trip:fare_updated', {
+            tripId,
+            newFare: result.newFare,
+            boostPercentage: boostPercentage * 100,
+          });
+        }
+        
+        return res.json({
+          success: true,
+          newFare: result.newFare,
+          boostPercentage: boostPercentage * 100,
+          message: 'Fare boosted! More drivers will see your trip.',
+        });
+      } catch (hardeningErr: any) {
+        log('HARDENING-BOOST-FARE', hardeningErr.message);
+        return res.status(500).json({ error: 'Boost failed' });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: safeErrMsg(e) });
+    }
+  });
+
 
   // -- CUSTOMER: Rate driver -------------------------------------------------
   app.post("/api/app/customer/rate-driver", authApp, async (req, res) => {
