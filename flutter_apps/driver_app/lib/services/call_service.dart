@@ -189,8 +189,3 @@ class CallService {
 
 /// Call state enumeration (EXACT same as WebRTC version).
 enum CallState { idle, outgoing, incoming, connected, rejected }
-    _callStateController.close();
-  }
-}
-
-enum CallState { idle, outgoing, incoming, connected, rejected }
