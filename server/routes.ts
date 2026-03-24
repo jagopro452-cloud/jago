@@ -143,6 +143,20 @@ import {
   getAIDashboardData,
   getBrainStatus,
 } from "./ai-brain";
+import {
+  checkBookingRateLimit,
+  detectBookingFraud,
+  checkCustomerBans,
+  notifyCustomerWithDriver,
+  setupTripTimeoutHandlers,
+  validateFareAccuracy,
+  notifyTripCompletion,
+  recordDriverCancellation,
+  recordCustomerCancellation,
+  notifyTripCancellation,
+  getTripStatusForCustomer,
+  boostrFareOffer,
+} from "./hardening-routes";
 
 // -- Multer upload setup -------------------------------------------------------
 const uploadsDir = path.join(process.cwd(), "public", "uploads");
@@ -3092,10 +3106,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${admin.id}::uuid, ${otp}, ${expiresAt.toISOString()})
         `);
         // Deliver OTP via SMS to the configured admin phone
-        sendCustomSms(adminPhone, `JAGO Admin login OTP: ${otp}. Valid 5 minutes. Do not share.`).catch((e: any) => {
-          console.error(`[ADMIN-2FA] SMS delivery failed to ${adminPhone}:`, e.message);
-        });
-        console.log(`[ADMIN-2FA] OTP sent to ${adminPhone} for admin ${admin.email}`);
+        if (adminPhone) {
+          sendCustomSms(adminPhone as string, `JAGO Admin login OTP: ${otp}. Valid 5 minutes. Do not share.`).catch((e: any) => {
+            console.error(`[ADMIN-2FA] SMS delivery failed to ${adminPhone}:`, e.message);
+          });
+          console.log(`[ADMIN-2FA] OTP sent to ${adminPhone} for admin ${admin.email}`);
+        }
         const response: any = {
           requiresTwoFactor: true,
           admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
@@ -7911,9 +7927,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=${tripId}::uuid WHERE id=${driver.id}::uuid`);
 
       // Notify dispatch engine � clears timers and notifies other drivers
+            // Notify dispatch engine – clears timers and notifies other drivers
       onDriverAccepted(tripId, driver.id);
 
       const tripData = camelize(r.rows[0]) as any;
+
+      // -- HARDENING: Notify customer with driver details + setup timeouts --
+      try {
+        const driverName = driver.fullName || "Pilot";
+        const driverPhone = driver.phone || "";
+        const driverRating = driver.avgRating || 4.5;
+        
+        // Notify customer with multi-channel notification
+        await notifyCustomerWithDriver(
+          tripData.customerId,
+          driver.id,
+          tripData.id,
+          driverName,
+          driverPhone,
+          driverRating
+        );
+        
+        // Setup timeout handlers (2-min timeout if customer doesn't start ride)
+        await setupTripTimeoutHandlers(tripData.id, tripData.customerId, driver.id);
+      } catch (hardeningErr: any) {
+        log('HARDENING-ACCEPT', hardeningErr.message);
+      }
       await appendTripStatus(tripData.id, 'driver_assigned', 'driver', 'Driver accepted trip');
       await logRideLifecycleEvent(tripData.id, 'driver_assigned', driver.id, 'driver', { pickupOtp: otp });
 
@@ -9349,6 +9388,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // For parcel trips, generate delivery OTP now
       const deliveryOtpVal = (tripType === 'parcel' || tripType === 'delivery') ? Math.floor(1000 + Math.random() * 9000).toString() : null;
 
+            // -- HARDENING: Pre-booking validations --
+      try {
+        // Check rate limit (max 20 bookings/hour per customer)
+        const rateCheck = await checkBookingRateLimit(customer.id, 20);
+        if (!rateCheck.allowed) {
+          return res.status(429).json({ error: rateCheck.reason, code: "RATE_LIMIT_EXCEEDED" });
+        }
+
+        // Check for fraud patterns (detects rapid same-location bookings)
+        const fraudCheck = await detectBookingFraud(customer.id, validPickupCoords.lat, validPickupCoords.lng);
+        if (fraudCheck.isFraudulent) {
+          return res.status(400).json({ error: fraudCheck.reason, code: "FRAUD_DETECTED" });
+        }
+
+        // Check customer bans or locks
+        const banCheck = await checkCustomerBans(customer.id);
+        if (banCheck.banned) {
+          return res.status(403).json({ 
+            error: banCheck.reason, 
+            code: "CUSTOMER_BANNED",
+            banUntil: banCheck.until 
+          });
+        }
+      } catch (hardeningErr: any) {
+        // Log but don't block on hardening errors (fail-open)
+        log('HARDENING-BOOKING-VALIDATION', hardeningErr.message);
+      }
+
+      
       // Always start as 'searching' � driver must ACCEPT before being assigned
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (

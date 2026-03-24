@@ -416,7 +416,7 @@ export function setupSocket(httpServer: HttpServer) {
       // ── Driver: respond to ping (FIX #1: Driver verification) ─────────────────
       socket.on("system:ping_response", async (data: { tripId: string }) => {
         try {
-          if (!userInfo) return;
+          if (!userId) return;
           const { handleDriverPingResponse } = await import("./hardening");
           const success = handleDriverPingResponse(userId);
           if (success) {

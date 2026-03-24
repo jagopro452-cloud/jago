@@ -787,9 +787,3 @@ export async function startHardeningJobs() {
   
   await logInfo('HARDENING-INIT', 'All hardening jobs initialized', {});
 }
-
-export async function sendAlert(opts: { severity: string; title: string; body: string }) {
-  // Slack webhook or email
-  // TODO: Implement based on your alert infrastructure
-  console.warn(`[ALERT-${opts.severity.toUpperCase()}] ${opts.title}: ${opts.body}`);
-}
