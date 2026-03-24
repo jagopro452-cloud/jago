@@ -19,6 +19,7 @@ import { parcelAttributes, admins, cancellationReasons } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 const rawSql = sql;
 import bcrypt from "bcryptjs";
+import { hashPassword, verifyPassword } from "./utils/crypto";
 import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
@@ -798,13 +799,14 @@ async function ensureAdminExists() {
     if (!existingRow) {
       // Check for any admin with a different email (first-deploy email mismatch)
       const anyR = await rawDb.execute(rawSql`SELECT id, email FROM admins ORDER BY created_at ASC LIMIT 5`);
-      const hash = await bcrypt.hash(adminPassword, 10);
+      const hash = await hashPassword(adminPassword);
 
       if (anyR.rows.length > 0) {
         // Migrate the first admin to the configured ADMIN_EMAIL
         const firstAdmin: any = anyR.rows[0];
+        const migrateHash = await hashPassword(adminPassword);
         await rawDb.execute(rawSql`
-          UPDATE admins SET email=${adminEmail}, name=${adminName}, password=${hash}, is_active=true
+          UPDATE admins SET email=${adminEmail}, name=${adminName}, password=${migrateHash}, is_active=true
           WHERE id=${firstAdmin.id}::uuid
         `);
         for (let i = 1; i < anyR.rows.length; i++) {
@@ -814,9 +816,10 @@ async function ensureAdminExists() {
         console.log(`[admin] Migrated admin → ${adminEmail}, password synced`);
       } else {
         // No admin at all — create one
+        const createHash = await hashPassword(adminPassword);
         await rawDb.execute(rawSql`
           INSERT INTO admins (name, email, password, role, is_active)
-          VALUES (${adminName}, ${adminEmail}, ${hash}, 'superadmin', true)
+          VALUES (${adminName}, ${adminEmail}, ${createHash}, 'superadmin', true)
           ON CONFLICT (email) DO NOTHING
         `);
         console.log(`[admin] Admin created: ${adminEmail}`);
@@ -828,7 +831,7 @@ async function ensureAdminExists() {
       console.log(`[admin-bootstrap] Admin exists: ${adminEmail}, should_sync_password=${shouldSyncPassword}`);
       if (shouldSyncPassword) {
         console.log(`[admin-bootstrap] Hashing new password for ${adminEmail}...`);
-        const hash = await bcrypt.hash(adminPassword, 10);
+        const hash = await hashPassword(adminPassword);
         console.log(`[admin-bootstrap] Password hash generated: ${hash.substring(0, 20)}...`);
         const updateResult = await rawDb.execute(rawSql`
           UPDATE admins 
@@ -3056,7 +3059,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       if (!admin) return res.status(401).json({ message: "Invalid credentials" });
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
-      const passwordValid = await bcrypt.compare(String(password), admin.password);
+      const passwordValid = await verifyPassword(password, admin.password);
       if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
       if (requireAdminTwoFactor) {
         const adminPhone = runtimeEnv.ADMIN_PHONE;
@@ -3096,7 +3099,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (String(sessionErr.message).toLowerCase().includes("does not exist")) {
           console.warn("[admin-login] Missing column — running schema self-heal then retrying...");
           await ensureAdminExists();
-          session = await issueAdminSession(admin.id);
+          // Re-query admin after self-heal
+          const requeriedAdmin = await lookupAdmin(email);
+          if (!requeriedAdmin) throw sessionErr;
+          session = await issueAdminSession(requeriedAdmin.id);
         } else {
           throw sessionErr;
         }
@@ -3265,6 +3271,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Skip paths handled by their own auth mechanism or that are truly public
     if (
       p === "/health"           ||  // public health check
+      p === "/ping"             ||  // simple test endpoint
       p.startsWith("/diag/")    ||  // diagnostic endpoints
       p.startsWith("/ops/")     ||  // requireOpsKey
       p.startsWith("/app/")     ||  // mobile app routes — each has authApp

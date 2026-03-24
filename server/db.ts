@@ -12,18 +12,29 @@ if (!process.env.DATABASE_URL) {
 // Cloud DBs (Neon, Supabase, Railway) use intermediate CAs that trigger Node.js SSL errors.
 // Fix: disable cert rejection at pool level only (not globally — global setting breaks all HTTPS).
 const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Production deployment has 2+ instances, so scale connection pool accordingly
+// Each instance needs 25 connections (max 50 total if 2 instances)
+// Development: 20 connections max
+const maxConnections = isProduction ? 50 : 20;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocalDb ? false : { rejectUnauthorized: false },
-  max: 20,
+  max: maxConnections,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,  // Fail fast instead of hanging (was 10000ms)
   allowExitOnIdle: false,
+  application_name: 'jago-api',   // For debugging in pg_stat_statements
 });
 
 pool.on("error", (err) => {
   console.error("[DB] Unexpected pool error:", err.message);
+});
+
+pool.on("connect", () => {
+  console.debug("[DB] New connection established, pool size:", pool.totalCount);
 });
 
 export const db = drizzle(pool, { schema });
