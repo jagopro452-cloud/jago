@@ -341,18 +341,24 @@ export default function LandingPage() {
         html{scroll-behavior:smooth}
         body{font-family:'Inter',sans-serif;background:${N800}}
 
-        @keyframes jago-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+        @keyframes jago-float{0%,100%{transform:translateY(0);filter:drop-shadow(0 20px 40px rgba(21,88,196,0.3))}50%{transform:translateY(-18px);filter:drop-shadow(0 30px 60px rgba(21,88,196,0.4))}}
         @keyframes jago-badge{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
         @keyframes jago-glow{0%,100%{transform:scale(1) translate(0,0);opacity:.5}40%{transform:scale(1.2) translate(20px,-20px);opacity:.3}70%{transform:scale(.85) translate(-18px,14px);opacity:.6}}
         @keyframes jago-fade-up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
         @keyframes jago-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
         @keyframes jago-screen-in{from{opacity:0;transform:translateX(24px) scale(.97)}to{opacity:1;transform:translateX(0) scale(1)}}
         @keyframes jago-pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,88,196,.55)}50%{box-shadow:0 0 0 14px rgba(21,88,196,0)}}
+        @keyframes jago-shimmer{0%{background-position:-1000px 0}100%{background-position:1000px 0}}
+        @keyframes jago-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+        @keyframes jago-slide-in-left{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes jago-slide-in-right{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 
         .reveal{opacity:0;transform:translateY(36px);transition:opacity .8s ease,transform .8s ease}
         .reveal.vis{opacity:1;transform:translateY(0)}
-        .svc-card{transition:transform .25s,box-shadow .25s,background .25s;cursor:pointer}
-        .svc-card:hover{transform:translateY(-6px);background:${N600} !important;box-shadow:0 24px 60px rgba(21,88,196,.22)!important}
+        .svc-card{transition:transform .25s,box-shadow .25s,background .25s;cursor:pointer;position:relative}
+        .svc-card::before{content:'';position:absolute;inset:0;borderRadius:20px;background:linear-gradient(135deg,rgba(99,229,255,0.1),rgba(21,88,196,0.05));opacity:0;transition:opacity .3s}
+        .svc-card:hover::before{opacity:1}
+        .svc-card:hover{transform:translateY(-8px) scale(1.02);background:${N600} !important;box-shadow:0 24px 60px rgba(21,88,196,.25)!important}
         .feat-card{transition:background .2s}
         .feat-card:hover{background:${N600} !important}
         .city-card{transition:transform .2s}
@@ -380,15 +386,15 @@ export default function LandingPage() {
       <div style={{ background: N800, color: W, minHeight: "100vh" }}>
 
         {/* NAV */}
-        <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, backdropFilter: "blur(20px)", background: scrolled ? "rgba(6,9,26,0.96)" : "rgba(10,15,46,.7)", borderBottom: `1px solid ${scrolled ? BORDER : "transparent"}`, transition: "all .3s" }}>
-          <div className="container" style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <a href="/"><img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 36, width: "auto", objectFit: "contain" }} /></a>
-            <div className="hide-mobile" style={{ display: "flex", gap: 32, alignItems: "center" }}>
-              {[["#services","Services"],["#how","How It Works"],["#why","Why JAGO Pro"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
-                <a key={href} href={href} className="nav-link">{label}</a>
+        <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, backdropFilter: "blur(24px)", background: scrolled ? "rgba(6,9,26,0.98)" : "rgba(10,15,46,.4)", borderBottom: `1px solid ${scrolled ? BORDER : "transparent"}`, transition: "all .3s", boxShadow: scrolled ? "0 8px 32px rgba(0,0,0,0.3)" : "none" }}>
+          <div className="container" style={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <a href="/" style={{ display: "flex", alignItems: "center", gap: 8 }}><img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 40, width: "auto", objectFit: "contain" }} /></a>
+            <div className="hide-mobile" style={{ display: "flex", gap: 36, alignItems: "center" }}>
+              {[["#services","Services"],["#how","How It Works"],["#why","Why JAGO"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
+                <a key={href} href={href} className="nav-link" style={{ fontSize: 14.5 }}>{label}</a>
               ))}
             </div>
-            <a href="#download" className="dl-btn" style={{ padding: "9px 20px", borderRadius: 10, background: N500, color: W, fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Get App</a>
+            <a href="#download" className="dl-btn" style={{ padding: "11px 24px", borderRadius: 11, background: N500, color: W, fontSize: 14, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", boxShadow: "0 8px 20px rgba(21,88,196,0.3)" }}>Get App</a>
           </div>
         </nav>
 
@@ -406,38 +412,40 @@ export default function LandingPage() {
               </div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: W06, border: `1px solid ${BORDER}`, borderRadius: 30, padding: "6px 14px", marginBottom: 30 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: W70, fontFamily: "Space Grotesk,sans-serif" }}>Live across 50+ cities in India</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: W70, fontFamily: "Space Grotesk,sans-serif" }}>🚀 50+ cities • 20K+ verified pilots • Real-time tracking</span>
               </div>
-              <h1 style={{ fontSize: "clamp(40px,5vw,72px)", fontWeight: 800, lineHeight: 1.08, marginBottom: 24, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -2 }}>
-                Move Smarter,<br />
-                <span style={{ color: N500 }}>Ride Anywhere.</span>
+              <h1 style={{ fontSize: "clamp(42px,5.5vw,76px)", fontWeight: 800, lineHeight: 1.05, marginBottom: 24, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -2.5, color: W }}>
+                Smart Rides,<br />
+                <span style={{ background: `linear-gradient(135deg,${N500},#63e5ff)`, backgroundClip: "text", WebkitBackgroundClip: "text", color: "transparent" }}>Smarter Journeys.</span>
               </h1>
-              <p style={{ fontSize: 18, color: W70, lineHeight: 1.8, maxWidth: 480, marginBottom: 44 }}>
-                Book a bike, auto, or cab in under 60 seconds. Smart rides with verified pilots — door to door, city to city.
+              <p style={{ fontSize: 18, color: W70, lineHeight: 1.8, maxWidth: 520, marginBottom: 44, fontWeight: 400 }}>
+                Book any ride in under 60 seconds. From city commutes to long hauls — verified pilots, transparent pricing, and real-time tracking built for India.
               </p>
               <div className="hero-btns" style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 56 }}>
-                <a href="#download" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 11, background: W, color: N800, padding: "13px 22px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 700, boxShadow: "0 4px 28px rgba(0,0,0,.4)" }}>
+                <a href="#download" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 11, background: W, color: N800, padding: "14px 24px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 700, boxShadow: "0 12px 32px rgba(255,255,255,0.2), 0 4px 16px rgba(0,0,0,.3)", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(255,255,255,0.5),transparent)", pointerEvents: "none" }} />
                   <AppleIcon />
                   <div><div style={{ fontSize: 9, opacity: .5, textTransform: "uppercase", letterSpacing: 1 }}>Download on</div><div style={{ fontSize: 14, lineHeight: 1.2 }}>App Store</div></div>
                 </a>
-                <a href="#download" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 11, background: W, color: N800, padding: "13px 22px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 700, boxShadow: "0 4px 28px rgba(0,0,0,.4)" }}>
+                <a href="#download" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 11, background: W, color: N800, padding: "14px 24px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 700, boxShadow: "0 12px 32px rgba(255,255,255,0.2), 0 4px 16px rgba(0,0,0,.3)", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(255,255,255,0.5),transparent)", pointerEvents: "none" }} />
                   <PlayIcon />
                   <div><div style={{ fontSize: 9, opacity: .5, textTransform: "uppercase", letterSpacing: 1 }}>Get it on</div><div style={{ fontSize: 14, lineHeight: 1.2 }}>Google Play</div></div>
                 </a>
-                <a href="/auth" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${BORDER}`, color: W70, padding: "13px 22px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600 }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></svg>
-                  <span style={{ marginLeft: 4 }}>Become a Pilot</span>
+                <a href="/auth" className="dl-btn" style={{ display: "flex", alignItems: "center", gap: 9, border: `1.5px solid ${N500}`, background: "rgba(47,107,255,0.08)", color: N500, padding: "14px 24px", borderRadius: 14, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif", fontWeight: 600, boxShadow: "0 4px 12px rgba(21,88,196,0.15)" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></svg>
+                  <span>Become a Pilot</span>
                 </a>
               </div>
-              <div style={{ display: "flex", gap: 44, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
                 {[
-                  { refObj: sRides.ref,  val: `${(sRides.val/1000).toFixed(0)}K+`, label: "Rides" },
-                  { refObj: sCities.ref, val: `${sCities.val}+`, label: "Cities" },
-                  { refObj: sPilots.ref, val: `${(sPilots.val/1000).toFixed(0)}K+`, label: "Pilots" },
+                  { refObj: sRides.ref,  val: `${(sRides.val/1000).toFixed(0)}K+`, label: "Successful Rides" },
+                  { refObj: sCities.ref, val: `${sCities.val}+`, label: "Active Cities" },
+                  { refObj: sPilots.ref, val: `${(sPilots.val/1000).toFixed(0)}K+`, label: "Verified Pilots" },
                 ].map((s, i) => (
-                  <div key={i} ref={s.refObj}>
-                    <p style={{ fontSize: 34, fontWeight: 800, color: W, margin: 0, fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
-                    <p style={{ fontSize: 12, color: W40, margin: "5px 0 0", fontFamily: "Space Grotesk,sans-serif", letterSpacing: .5 }}>{s.label}</p>
+                  <div key={i} ref={s.refObj} style={{ animation: `jago-fade-up .9s ease forwards`, animationDelay: `${i * 0.1}s` }}>
+                    <p style={{ fontSize: 36, fontWeight: 800, color: W, margin: 0, fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
+                    <p style={{ fontSize: 12, color: W40, margin: "6px 0 0", fontFamily: "Space Grotesk,sans-serif", letterSpacing: .5, textTransform: "uppercase" }}>{s.label}</p>
                   </div>
                 ))}
               </div>
