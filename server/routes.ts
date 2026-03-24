@@ -1870,7 +1870,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Protect admin APIs except auth recovery routes.
   app.use("/api/admin", async (req, res, next) => {
-    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password", "/emergency-reset"]);
+    const publicPaths = new Set(["/login", "/login/verify-2fa", "/forgot-password", "/reset-password", "/emergency-reset", "/diagnostic"]);
     if (publicPaths.has(req.path)) return next();
     const token = extractBearerToken(req);
     if (!token) return res.status(401).json({ message: "Admin authorization required" });
