@@ -19,8 +19,10 @@ export function serveStatic(app: Express) {
   // fall through to index.html if the file doesn't exist - BUT ONLY FOR NON-API ROUTES
   // no-cache on index.html to prevent stale asset hash references
   // IMPORTANT: Skip /api routes - let them 404 naturally if not handled by API routes
-  app.use("/{*path}", (req, res) => {
+  // Using wildcard pattern that works in Express 4+
+  app.use("*", (req, res) => {
     // Don't serve index.html for /api or /v* paths (API endpoints)
+    // These should have been handled by registerRoutes() already
     if (req.path.startsWith("/api") || req.path.startsWith("/v1") || req.path.startsWith("/v2")) {
       return res.status(404).json({ message: "API endpoint not found" });
     }
