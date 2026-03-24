@@ -104,63 +104,7 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
-  // Load API keys from business_settings DB into process.env (fills in any missing keys)
-  // This lets admin panel updates work without redeployment.
-  try {
-    const { pool: dbPool } = await import("./db");
-    const settingsRes = await dbPool.query(
-      "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-      ["razorpay_key_id","razorpay_key_secret","razorpay_webhook_secret","fast2sms_api_key","two_factor_api_key","google_maps_key","twilio_account_sid","twilio_auth_token","twilio_phone_number","anthropic_api_key"]
-    );
-    const ENV_MAP: Record<string, string> = {
-      razorpay_key_id:        "RAZORPAY_KEY_ID",
-      razorpay_key_secret:    "RAZORPAY_KEY_SECRET",
-      razorpay_webhook_secret:"RAZORPAY_WEBHOOK_SECRET",
-      fast2sms_api_key:       "FAST2SMS_API_KEY",
-      two_factor_api_key:     "TWO_FACTOR_API_KEY",
-      google_maps_key:        "GOOGLE_MAPS_API_KEY",
-      twilio_account_sid:     "TWILIO_ACCOUNT_SID",
-      twilio_auth_token:      "TWILIO_AUTH_TOKEN",
-      twilio_phone_number:    "TWILIO_PHONE_NUMBER",
-      anthropic_api_key:      "ANTHROPIC_API_KEY",
-    };
-    for (const row of settingsRes.rows as any[]) {
-      const envKey = ENV_MAP[row.key_name];
-      if (envKey && !process.env[envKey] && row.value?.trim()) {
-        process.env[envKey] = row.value.trim();
-        log(`[config] Loaded ${envKey} from DB settings`);
-      }
-    }
-    log("[config] DB settings loaded into runtime config");
-  } catch (e: any) {
-    log(`[config] Could not load DB settings (non-fatal): ${e.message}`);
-  }
-
-  // Redis adapter for Socket.IO (required for PM2 cluster mode)
-  // Install: npm install @socket.io/redis-adapter ioredis
-  setupSocket(httpServer);
-  try {
-    const { createAdapter } = await import("@socket.io/redis-adapter");
-    const { default: IORedis } = await import("ioredis");
-    const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-    const pubClient = new IORedis(REDIS_URL);
-    const subClient = pubClient.duplicate();
-    const { io: socketIo } = await import("./socket");
-    Promise.all([
-      new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
-      new Promise<void>((res, rej) => { subClient.once("ready", res); subClient.once("error", rej); }),
-    ]).then(() => {
-      socketIo.adapter(createAdapter(pubClient, subClient));
-      log("[Socket.IO] Redis adapter connected");
-    }).catch((err: any) => {
-      log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${err.message}`);
-    });
-  } catch (err: any) {
-    log(`[Socket.IO] Redis adapter package not available, using in-memory adapter: ${err.message}`);
-  }
-
-  await registerRoutes(httpServer, app);
-
+  // Setup error handler early
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const errorId = makeErrorId();
@@ -177,7 +121,6 @@ app.use((req, res, next) => {
       return next(err);
     }
 
-    // Never expose internal error details in production
     const isProd = process.env.NODE_ENV === "production";
     const message = isProd && status >= 500
       ? `An internal error occurred. Reference: ${errorId}`
@@ -186,15 +129,87 @@ app.use((req, res, next) => {
     return res.status(status).json({ message, errorId });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // Setup static files early for production
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
   }
+
+  // ─── START SERVER LISTENING EARLY ───
+  // This ensures health checks pass even if background initialization is slow
+  const port = parseInt(process.env.PORT || "5000", 10);
+  const server = httpServer.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port}`);
+  });
+
+  // ─── NOW DO BACKGROUND INITIALIZATION (non-blocking) ───
+  
+  // Register routes in background (optional - won't block server startup)
+  registerRoutes(httpServer, app).catch((e: any) => {
+    console.error("[routes] Failed to register routes:", e.message);
+    sendAlert({
+      level: "critical",
+      source: "routes",
+      message: "Failed to register API routes",
+      details: String(e.message || e),
+    }).catch(() => {});
+  });
+
+  // Load API keys from business_settings DB (non-blocking)
+  (async () => {
+    try {
+      const { pool: dbPool } = await import("./db");
+      const settingsRes = await dbPool.query(
+        "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        ["razorpay_key_id","razorpay_key_secret","razorpay_webhook_secret","fast2sms_api_key","two_factor_api_key","google_maps_key","twilio_account_sid","twilio_auth_token","twilio_phone_number","anthropic_api_key"]
+      );
+      const ENV_MAP: Record<string, string> = {
+        razorpay_key_id:        "RAZORPAY_KEY_ID",
+        razorpay_key_secret:    "RAZORPAY_KEY_SECRET",
+        razorpay_webhook_secret:"RAZORPAY_WEBHOOK_SECRET",
+        fast2sms_api_key:       "FAST2SMS_API_KEY",
+        two_factor_api_key:     "TWO_FACTOR_API_KEY",
+        google_maps_key:        "GOOGLE_MAPS_API_KEY",
+        twilio_account_sid:     "TWILIO_ACCOUNT_SID",
+        twilio_auth_token:      "TWILIO_AUTH_TOKEN",
+        twilio_phone_number:    "TWILIO_PHONE_NUMBER",
+        anthropic_api_key:      "ANTHROPIC_API_KEY",
+      };
+      for (const row of settingsRes.rows as any[]) {
+        const envKey = ENV_MAP[row.key_name];
+        if (envKey && !process.env[envKey] && row.value?.trim()) {
+          process.env[envKey] = row.value.trim();
+          log(`[config] Loaded ${envKey} from DB settings`);
+        }
+      }
+      log("[config] DB settings loaded into runtime config");
+    } catch (e: any) {
+      log(`[config] Could not load DB settings (non-fatal): ${e.message}`);
+    }
+  })();
+
+  // Setup Socket.IO with Redis adapter (non-blocking)
+  setupSocket(httpServer);
+  (async () => {
+    try {
+      const { createAdapter } = await import("@socket.io/redis-adapter");
+      const { default: IORedis } = await import("ioredis");
+      const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+      const pubClient = new IORedis(REDIS_URL);
+      const subClient = pubClient.duplicate();
+      const { io: socketIo } = await import("./socket");
+      Promise.all([
+        new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
+        new Promise<void>((res, rej) => { subClient.once("ready", res); subClient.once("error", rej); }),
+      ]).then(() => {
+        socketIo.adapter(createAdapter(pubClient, subClient));
+        log("[Socket.IO] Redis adapter connected");
+      }).catch((err: any) => {
+        log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${err.message}`);
+      });
+    } catch (err: any) {
+      log(`[Socket.IO] Redis adapter package not available, using in-memory adapter: ${err.message}`);
+    }
+  })();
 
   // Payment retry job: every 5 minutes, check trips stuck in payment_pending
   // for more than 5 minutes and query Razorpay to auto-resolve them
@@ -253,14 +268,15 @@ app.use((req, res, next) => {
     } catch (_) {}
   }, 60 * 1000); // every 60 seconds
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
-  });
+  // Setup Vite in development (after server is listening)
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    } catch (e: any) {
+      console.error("[vite] Failed to setup Vite:", e.message);
+    }
+  }
 
   process.on("unhandledRejection", (reason: any) => {
     const errorId = makeErrorId();
