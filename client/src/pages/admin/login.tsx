@@ -129,10 +129,8 @@ export default function AdminLogin() {
       if (res.ok && data?.token) {
         localStorage.setItem("jago-admin", JSON.stringify({ ...(data.admin || data), token: data.token, expiresAt: data.expiresAt }));
         setLocation("/admin/dashboard");
-      } else if (res.status === 202 && data?.requiresTwoFactor) {
-        setLoginMode("otp");
-        setTwoFaHint(data?.dev && data?.otp ? `Use OTP: ${data.otp}` : "Enter the OTP sent to your admin channel");
       } else {
+        // 2FA disabled - just show error message
         setError(data.message || "Invalid credentials. Please try again.");
       }
     } catch {

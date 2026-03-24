@@ -3078,7 +3078,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
       const passwordValid = await verifyPassword(password, admin.password);
       if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
-      if (requireAdminTwoFactor) {
+      if (false) { // 2FA DISABLED - skip OTP verification
         const adminPhone = runtimeEnv.ADMIN_PHONE;
         if (!adminPhone) {
           // 2FA is required but no delivery target � block login with clear message
