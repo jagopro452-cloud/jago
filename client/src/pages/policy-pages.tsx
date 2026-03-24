@@ -1,5 +1,6 @@
 ﻿import { useEffect } from "react";
 import { useTheme } from "@/components/theme-provider";
+import { Logo } from "@/components/Logo";
 
 const COMPANY = "MindWhile IT Solutions Pvt Ltd";
 const BRAND   = "JAGO Pro";
@@ -81,7 +82,7 @@ function PolicyLayout({ title, badge, children }: { title: string; badge?: strin
         boxShadow: "0 1px 8px rgba(0,0,0,0.07)",
       }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <img src="/jago-logo.png" alt={BRAND} style={{ height: 38, objectFit: "contain", filter: isDark ? "none" : "brightness(0) saturate(100%)" }} />
+          <Logo size="sm" style={{ filter: isDark ? "none" : "brightness(0) saturate(100%)" }} />
         </a>
         <div style={{ flex: 1 }} />
         <div className="policy-nav-links">
@@ -407,7 +408,9 @@ export function AboutPage() {
   return (
     <PolicyLayout title="About JAGO" badge="Our Story">
       <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <img src="/jago-logo.png" alt={BRAND} style={{ height: 72, objectFit: "contain", marginBottom: 16 }} />
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <Logo size="xxl" />
+        </div>
         <p style={{ fontSize: 18, color: "#1e293b", fontWeight: 600, maxWidth: 600, margin: "0 auto", lineHeight: 1.5 }}>
           JAGO is a technology-first mobility and logistics platform built to make urban movement safer, faster, and more dependable.
         </p>

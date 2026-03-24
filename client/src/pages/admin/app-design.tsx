@@ -1,7 +1,5 @@
 ﻿import { useState } from "react";
-const jagoLogoBlue  = "/jago-logo-blue.png";
-const jagoLogoWhite = "/jago-logo-white.png";
-const pilotLogo     = "/pilot-logo.png";
+import { Logo } from "@/components/Logo";
 
 type AppTab = "customer" | "driver";
 
@@ -102,7 +100,7 @@ function C1_Splash() {
 
         <div style={{ flex: 1.4 }} />
         <div style={{ width: 120, height: 120, background: "white", borderRadius: 34, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 30px 70px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.2)" }}>
-          <img src={jagoLogoBlue} style={{ width: 84, objectFit: "contain" }} alt="JAGO Pro"/>
+          <Logo variant="blue" size="xxl" />
         </div>
         <div style={{ marginTop: 32, textAlign: "center" }}>
           <div style={{ fontSize: 48, fontWeight: 900, color: "white", letterSpacing: 10, lineHeight: 1, textShadow: "0 2px 20px rgba(0,0,0,0.3)" }}>JAGO</div>
@@ -133,7 +131,7 @@ function C2_Login() {
         <div style={{ background: "linear-gradient(155deg,#1E5FCC,#4FA9FF,#4FA9FF)", padding: "16px 22px 40px", borderRadius: "0 0 36px 36px", position: "relative", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }}/>
           <div style={{ position: "absolute", bottom: -30, left: -20, width: 130, height: 130, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }}/>
-          <img src={jagoLogoWhite} style={{ height: 24, objectFit: "contain", marginBottom: 22, position: "relative" }} alt="JAGO Pro"/>
+          <div style={{ height: 24, marginBottom: 22, position: "relative" }}><Logo variant="white" size="sm" /></div>
           <div style={{ fontSize: 26, fontWeight: 900, color: "white", lineHeight: 1.25, position: "relative" }}>Welcome Back<br/><span style={{ opacity: 0.9 }}>to JAGO 👋</span></div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 7, position: "relative" }}>Hyderabad &amp; Andhra Pradesh</div>
         </div>
@@ -186,7 +184,7 @@ function C3_Home() {
             <div style={{ width: 36, height: 36, borderRadius: 11, background: "#EFF6FF", border: "1.5px solid #BFDBFE", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="16" height="14" viewBox="0 0 16 14"><rect width="16" height="2.5" rx="1.2" fill="#4FA9FF"/><rect y="5.5" width="12" height="2.5" rx="1.2" fill="#4FA9FF"/><rect y="11" width="8" height="2.5" rx="1.2" fill="#4FA9FF"/></svg>
             </div>
-            <img src={jagoLogoBlue} style={{ height: 17, objectFit: "contain" }} alt="JAGO Pro"/>
+            <div style={{ height: 17 }}><Logo variant="blue" size="xs" /></div>
             <div style={{ flex: 1 }}/>
             <div style={{ position: "relative" }}>
               <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#4FA9FF,#1E5FCC)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "white" }}>R</div>
@@ -437,7 +435,7 @@ function D1_Splash() {
         <div style={{ flex: 1.6 }}/>
         <div style={{ width: 130, height: 130, background: "#0D1B3E", borderRadius: 36, border: "1.5px solid rgba(37,99,235,0.35)", boxShadow: "0 0 80px rgba(37,99,235,0.28), 0 30px 60px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
           <div style={{ position: "absolute", inset: 0, borderRadius: 36, background: "linear-gradient(135deg,rgba(37,99,235,0.12),transparent)" }}/>
-          <img src={pilotLogo} style={{ width: 92, objectFit: "contain", position: "relative" }} alt="JAGO Pro Pilot"/>
+          <Logo variant="pilot" size="xxl" />
         </div>
 
         <div style={{ marginTop: 32, textAlign: "center" }}>
@@ -463,7 +461,7 @@ function D2_Login() {
       <div style={{ height: "100%", background: "#060D1E", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -100, right: -80, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle,rgba(37,99,235,0.14) 0%,transparent 70%)" }}/>
         <div style={{ padding: "14px 20px 0", position: "relative" }}>
-          <img src={pilotLogo} style={{ height: 30, objectFit: "contain", marginBottom: 28 }} alt="JAGO Pro Pilot"/>
+          <div style={{ height: 30, marginBottom: 28 }}><Logo variant="pilot" size="lg" /></div>
           <div style={{ fontSize: 28, fontWeight: 900, color: "white", lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 6 }}>Pilot గా<br/>Login చేయండి 🏍️</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginBottom: 26 }}>ప్రతి trip తో earn చేయండి</div>
 
@@ -514,7 +512,7 @@ function D3_Home() {
           <div style={{ background: "rgba(13,27,62,0.9)", borderRadius: 18, padding: "10px 14px", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.4)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 10px rgba(34,197,94,0.8)" }}/>
-              <img src={pilotLogo} style={{ height: 16, objectFit: "contain" }} alt=""/>
+              <Logo variant="pilot" size="xs" />
             </div>
             <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.08)" }}/>
             <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>Online — Ready ✓</span>
@@ -771,7 +769,7 @@ export default function AppDesignPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ width: 56, height: 56, background: grad, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 10px 30px ${accent}40` }}>
-              <img src={isDriver ? pilotLogo : jagoLogoWhite} style={{ width: isDriver ? 34 : 38, objectFit: "contain" }} alt=""/>
+              <Logo variant={isDriver ? "pilot" : "white"} height={isDriver ? 34 : 38} />
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 22, color: "#0F172A", letterSpacing: -0.5 }}>

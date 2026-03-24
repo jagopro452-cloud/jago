@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef } from "react";
+import { Logo } from "../components/Logo";
 
 /* --- Hooks --- */
 function useReveal() {
@@ -388,7 +389,7 @@ export default function LandingPage() {
         {/* NAV */}
         <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, backdropFilter: "blur(24px)", background: scrolled ? "rgba(6,9,26,0.98)" : "rgba(10,15,46,.4)", borderBottom: `1px solid ${scrolled ? BORDER : "transparent"}`, transition: "all .3s", boxShadow: scrolled ? "0 8px 32px rgba(0,0,0,0.3)" : "none" }}>
           <div className="container" style={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <a href="/" style={{ display: "flex", alignItems: "center", gap: 8 }}><img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 40, width: "auto", objectFit: "contain" }} /></a>
+            <a href="/" style={{ display: "flex", alignItems: "center", gap: 8 }}><Logo size="md" /></a>
             <div className="hide-mobile" style={{ display: "flex", gap: 36, alignItems: "center" }}>
               {[["#services","Services"],["#how","How It Works"],["#why","Why JAGO"],["#cities","Cities"],["#download","Download"]].map(([href, label]) => (
                 <a key={href} href={href} className="nav-link" style={{ fontSize: 14.5 }}>{label}</a>
@@ -408,7 +409,7 @@ export default function LandingPage() {
             {/* LEFT */}
             <div style={{ animation: "jago-fade-up .9s ease forwards" }}>
               <div style={{ marginBottom: 32 }}>
-                <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 56, width: "auto", objectFit: "contain" }} />
+                <Logo size="xl" />
               </div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: W06, border: `1px solid ${BORDER}`, borderRadius: 30, padding: "6px 14px", marginBottom: 30 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
@@ -764,7 +765,7 @@ export default function LandingPage() {
                 <div style={{ position: "absolute", bottom: -50, left: -50, width: 220, height: 220, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
                 <div style={{ position: "relative", zIndex: 1 }}>
                   <div style={{ width: 64, height: 64, borderRadius: 18, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-                    <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 42, width: "auto", objectFit: "contain" }} />
+                    <Logo size="lg" />
                   </div>
                   <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride with JAGO Pro?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
@@ -793,7 +794,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 40, marginBottom: 52 }}>
               <div>
-                <img src="/jago-logo.png" alt="JAGO Pro" style={{ height: 36, width: "auto", objectFit: "contain", marginBottom: 18 }} />
+                <Logo size="md" height={36} />
                 <p style={{ fontSize: 13, color: W40, lineHeight: 1.75, maxWidth: 240 }}>India's fastest-growing ride-hailing platform. Safe, fast, affordable — everywhere.</p>
               </div>
               {[

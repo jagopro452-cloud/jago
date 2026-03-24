@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { Logo } from "../../components/Logo";
 
 function useAdminBootstrap() {
   useEffect(() => {
@@ -177,12 +178,7 @@ export default function AdminLogin() {
 
         <div className="jl-brand-inner">
           {/* Logo */}
-          <div className="jl-logo-wrap">
-            <div className="jl-logo-img-card" data-testid="brand-logo">
-              <img src="/jago-logo-blue.png" alt="JAGO Pro" className="jl-logo-img" />
-            </div>
-            <span className="jl-logo-tag">Admin Console</span>
-          </div>
+          <Logo variant="blue" size="xxl" withTag withBg cardHeight={64} />
 
           {/* Headline */}
           <h2 className="jl-headline">
