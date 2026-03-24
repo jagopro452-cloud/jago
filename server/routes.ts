@@ -348,6 +348,48 @@ function safeFloat(value: any, fallback: number): number {
   return isFinite(n) ? n : fallback;
 }
 
+/** safeInteger — parses to integer with a mandatory fallback, preventing NaN. */
+function safeInteger(value: any, fallback: number): number {
+  const n = parseInt(String(value), 10);
+  return isFinite(n) ? n : fallback;
+}
+
+/** validateCoordinate — validates latitude or longitude is within valid bounds. */
+function validateCoordinate(value: any, isLatitude = true): number | null {
+  const n = parseFloat(value);
+  if (!isFinite(n)) return null;
+  const [min, max] = isLatitude ? [-90, 90] : [-180, 180];
+  return n >= min && n <= max ? n : null;
+}
+
+/** validateLatLng — validates a lat/lng pair; throws on invalid. */
+function validateLatLng(lat: any, lng: any): { lat: number; lng: number } {
+  const validLat = validateCoordinate(lat, true);
+  const validLng = validateCoordinate(lng, false);
+  if (validLat === null || validLng === null) {
+    throw new Error(`Invalid coordinates: lat=${lat}, lng=${lng}`);
+  }
+  return { lat: validLat, lng: validLng };
+}
+
+/** validateMoneyAmount — validates amount is non-negative and within reasonable bounds. */
+function validateMoneyAmount(value: any, maxAmount = 999999999): number {
+  const n = parseFloat(value);
+  if (!isFinite(n) || n < 0 || n > maxAmount) {
+    throw new Error(`Invalid amount: ${value} (must be 0-${maxAmount})`);
+  }
+  return n;
+}
+
+/** validateEnumValue — validates value is in allowed set. */
+function validateEnumValue(value: any, allowed: string[]): string {
+  const s = String(value || "").trim();
+  if (!allowed.includes(s)) {
+    throw new Error(`Invalid value: ${value} (allowed: ${allowed.join(", ")})`);
+  }
+  return s;
+}
+
 /** Returns a safe error message: generic in production, detailed in development. */
 function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
   if (process.env.NODE_ENV === "production") return fallback;
@@ -474,6 +516,16 @@ const paymentOrderLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
   message: { message: "Too many payment requests. Please wait a minute." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+// Admin data creation rate limiter — max 30 creates per hour per admin (prevents abuse)
+const adminDataLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  message: { message: "Too many create operations. Please wait before creating more items." },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -767,11 +819,18 @@ async function ensureAdminExists() {
         console.log(`[admin] Admin created: ${adminEmail}`);
       }
     } else {
-      // Admin exists — always sync password from configured value (env or default).
-      // This ensures the admin can always login after a server restart with the configured password.
-      const hash = await bcrypt.hash(adminPassword, 10);
-      await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
-      console.log(`[admin] Password synced for ${adminEmail} (restart sync)`);
+      // Admin exists — password sync ONLY on explicit restart flag to prevent overwriting user changes
+      // By default, users can change their password and it will persist across restarts
+      const shouldSyncPassword = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART === 'true';
+      if (shouldSyncPassword) {
+        const hash = await bcrypt.hash(adminPassword, 10);
+        await rawDb.execute(rawSql`UPDATE admins SET password=${hash}, is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
+        console.log(`[admin] Password synced for ${adminEmail} (ADMIN_PASSWORD_SYNC_ON_RESTART=true)`);
+      } else {
+        // Ensure admin is marked as active but DO NOT override password
+        await rawDb.execute(rawSql`UPDATE admins SET is_active=true, auth_token=NULL, auth_token_expires_at=NULL WHERE email=${adminEmail}`);
+        console.log(`[admin] Admin ensured active: ${adminEmail} (password NOT overridden)`);
+      }
     }
   } catch (e: any) {
     console.error("[admin] ensureAdminExists error:", formatDbError(e));
@@ -2778,20 +2837,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.get("/api/admin/complaints", async (req, res) => {
+  app.get("/api/admin/complaints", requireAdminAuth, async (req, res) => {
     try {
       const status = String(req.query.status || 'all');
+      // ── SECURITY: Validate status enum to prevent SQL injection ──
+      const validStatus = validateEnumValue(status, ['all', 'pending', 'resolved', 'in_progress']);
       const r = await rawDb.execute(rawSql`
         SELECT rc.*, t.ref_id, c.full_name as customer_name, d.full_name as driver_name
         FROM ride_complaints rc
         LEFT JOIN trip_requests t ON t.id = rc.trip_id
         LEFT JOIN users c ON c.id = rc.customer_id
         LEFT JOIN users d ON d.id = rc.driver_id
-        ${status !== 'all' ? rawSql`WHERE rc.status=${status}` : rawSql``}
+        ${validStatus !== 'all' ? rawSql`WHERE rc.status=${validStatus}` : rawSql``}
         ORDER BY rc.created_at DESC LIMIT 500
       `);
       res.json({ items: camelize(r.rows) });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
 
   app.patch("/api/admin/complaints/:id", requireAdminRole(["admin", "superadmin", "support"]), async (req, res) => {
@@ -3015,6 +3076,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       res.json({ success: true, message: "Admin password reset successfully. You can now login." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.post("/api/admin/change-password", requireAdminAuth, async (req, res) => {
+    try {
+      const admin = (req as any).adminUser;
+      const { currentPassword, newPassword, confirmPassword } = req.body;
+      
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        return res.status(400).json({ message: "Current password, new password, and confirmation are required" });
+      }
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({ message: "New password and confirmation do not match" });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters" });
+      }
+      
+      // Verify current password
+      const adminR = await rawDb.execute(rawSql`
+        SELECT password FROM admins WHERE id=${admin.id}::uuid LIMIT 1
+      `);
+      if (!adminR.rows.length) {
+        return res.status(404).json({ message: "Admin account not found" });
+      }
+      
+      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, (adminR.rows[0] as any).password);
+      if (!isCurrentPasswordValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Hash new password and update
+      const newHash = await bcrypt.hash(newPassword, 10);
+      await rawDb.execute(rawSql`
+        UPDATE admins SET password=${newHash} WHERE id=${admin.id}::uuid
+      `);
+      
+      // Log the change
+      await logAdminAction('password_changed', 'admin_user', admin.id, { email: admin.email });
+      
+      res.json({ success: true, message: "Password changed successfully" });
+    } catch (e: any) {
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // ── Catch-all protection for legacy /api/ admin routes ──────────────────
@@ -4409,11 +4513,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/b2b-companies/:id/wallet", requireAdminAuth, async (req, res) => {
     try {
       const { amount, type } = req.body;
-      const r = type === "deduct"
-        ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${amount} WHERE id=${req.params.id}::uuid RETURNING *`)
-        : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${amount} WHERE id=${req.params.id}::uuid RETURNING *`);
+      // ── SECURITY: Validate amount is non-negative and within bounds ──
+      const validAmount = validateMoneyAmount(amount, 99999999); // Max ₹99.9M per transaction
+      const validType = validateEnumValue(type, ['credit', 'deduct']);
+      const r = validType === "deduct"
+        ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${validAmount} WHERE id=${req.params.id}::uuid RETURNING *`)
+        : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${validAmount} WHERE id=${req.params.id}::uuid RETURNING *`);
+      if (!r.rows.length) return res.status(404).json({ message: 'Company not found' });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/b2b-companies/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -4429,12 +4537,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
-  app.post("/api/parcel-categories", async (req, res) => {
+  app.post("/api/parcel-categories", adminDataLimiter, requireAdminAuth, async (req, res) => {
     try {
       const { name, is_active } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO parcel_categories (name, is_active) VALUES (${name}, ${is_active ?? true}) RETURNING *`);
+      // ── SECURITY: Validate name is string, non-empty, and reasonable length ──
+      const validName = String(name || "").trim();
+      if (!validName || validName.length === 0) {
+        throw new Error("Category name is required");
+      }
+      if (validName.length > 255) {
+        throw new Error("Category name must be 255 characters or less");
+      }
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_categories (name, is_active) VALUES (${validName}, ${is_active ?? true}) RETURNING *`);
       res.status(201).json(r.rows[0]);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/parcel-categories/:id", async (req, res) => {
     try {
@@ -4466,11 +4582,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/vehicle-brands", async (req, res) => {
     try {
       const { category } = req.query;
+      // ── SECURITY: Validate category enum to prevent SQL injection ──
+      const allowedCategories = ['two_wheeler', 'three_wheeler', 'four_wheeler', 'auto', 'cab', 'parcel'];
       const r = category
-        ? await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true AND category=${category as string} ORDER BY name ASC`)
+        ? await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true AND category=${validateEnumValue(String(category), allowedCategories)} ORDER BY name ASC`)
         : await rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true ORDER BY category, name ASC`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
   app.post("/api/vehicle-brands", requireAdminAuth, async (req, res) => {
     try {
@@ -4541,16 +4659,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/parcel-fares", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
-      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers) VALUES (${zoneId}::uuid, ${baseFare||0}, ${farePerKm||0}, ${farePerKg||0}, ${minimumFare||0}, ${loadingCharge||0}, ${helperChargePerHour||0}, ${parseInt(maxHelpers)||0}) RETURNING *`);
+      // ── SECURITY: Validate all numeric fares are non-negative; prevent NaN from parseInt ──
+      const validBaseFare = validateMoneyAmount(baseFare || 0, 100000);
+      const validFarePerKm = validateMoneyAmount(farePerKm || 0, 10000);
+      const validFarePerKg = validateMoneyAmount(farePerKg || 0, 10000);
+      const validMinFare = validateMoneyAmount(minimumFare || 0, 100000);
+      const validLoading = validateMoneyAmount(loadingCharge || 0, 10000);
+      const validHelperCharge = validateMoneyAmount(helperChargePerHour || 0, 5000);
+      const validMaxHelpers = safeInteger(maxHelpers || 0, 0);
+      if (validMaxHelpers < 0) throw new Error("Max helpers cannot be negative");
+      const r = await rawDb.execute(rawSql`INSERT INTO parcel_fares (zone_id, base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers) VALUES (${zoneId}::uuid, ${validBaseFare}, ${validFarePerKm}, ${validFarePerKg}, ${validMinFare}, ${validLoading}, ${validHelperCharge}, ${validMaxHelpers}) RETURNING *`);
       res.status(201).json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
   app.put("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
       const { zoneId, baseFare, farePerKm, farePerKg, minimumFare, loadingCharge, helperChargePerHour, maxHelpers } = req.body;
-      const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${baseFare||0}, fare_per_km=${farePerKm||0}, fare_per_kg=${farePerKg||0}, minimum_fare=${minimumFare||0}, loading_charge=${loadingCharge||0}, helper_charge_per_hour=${helperChargePerHour||0}, max_helpers=${parseInt(maxHelpers)||0} WHERE id=${req.params.id}::uuid RETURNING *`);
+      // ── SECURITY: Validate all numeric fares are non-negative ──
+      const validBaseFare = validateMoneyAmount(baseFare || 0, 100000);
+      const validFarePerKm = validateMoneyAmount(farePerKm || 0, 10000);
+      const validFarePerKg = validateMoneyAmount(farePerKg || 0, 10000);
+      const validMinFare = validateMoneyAmount(minimumFare || 0, 100000);
+      const validLoading = validateMoneyAmount(loadingCharge || 0, 10000);
+      const validHelperCharge = validateMoneyAmount(helperChargePerHour || 0, 5000);
+      const validMaxHelpers = safeInteger(maxHelpers || 0, 0);
+      if (validMaxHelpers < 0) throw new Error("Max helpers cannot be negative");
+      const r = await rawDb.execute(rawSql`UPDATE parcel_fares SET zone_id=${zoneId}::uuid, base_fare=${validBaseFare}, fare_per_km=${validFarePerKm}, fare_per_kg=${validFarePerKg}, minimum_fare=${validMinFare}, loading_charge=${validLoading}, helper_charge_per_hour=${validHelperCharge}, max_helpers=${validMaxHelpers} WHERE id=${req.params.id}::uuid RETURNING *`);
+      if (!r.rows.length) return res.status(404).json({ message: 'Parcel fare not found' });
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
   app.delete("/api/parcel-fares/:id", requireAdminAuth, async (req, res) => {
     try {
@@ -4787,32 +4924,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/popular-locations", requireAdminAuth, async (req, res) => {
+  app.post("/api/popular-locations", adminDataLimiter, requireAdminAuth, async (req, res) => {
     try {
       const { name, latitude, longitude, cityName, fullAddress, isActive } = req.body || {};
       if (!name || latitude == null || longitude == null || !cityName) {
         return res.status(400).json({ message: "name, latitude, longitude, cityName are required" });
       }
+      // ── SECURITY: Validate coordinates within bounds ──
+      const coords = validateLatLng(latitude, longitude);
+      // ── SECURITY: Validate string lengths to prevent buffer issues ──
+      const validName = String(name || "").trim();
+      const validCity = String(cityName || "").trim();
+      const validAddress = String(fullAddress || "").trim();
+      if (validName.length === 0 || validName.length > 255) throw new Error("Location name must be 1-255 characters");
+      if (validCity.length === 0 || validCity.length > 255) throw new Error("City name must be 1-255 characters");
+      if (validAddress.length > 2000) throw new Error("Full address must be 2000 characters or less");
       const r = await rawDb.execute(rawSql`
         INSERT INTO popular_locations (name, latitude, longitude, city_name, full_address, is_active)
-        VALUES (${name}, ${Number(latitude)}, ${Number(longitude)}, ${cityName}, ${fullAddress || null}, ${isActive ?? true})
+        VALUES (${validName}, ${coords.lat}, ${coords.lng}, ${validCity}, ${validAddress || null}, ${isActive ?? true})
         RETURNING *
       `);
       res.status(201).json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
 
-  app.put("/api/popular-locations/:id", requireAdminAuth, async (req, res) => {
+  app.put("/api/popular-locations/:id", adminDataLimiter, requireAdminAuth, async (req, res) => {
     try {
       const { name, latitude, longitude, cityName, fullAddress, isActive } = req.body || {};
+      // ── SECURITY: Validate optional coordinates if provided ──
+      let validLat = undefined, validLng = undefined;
+      if (latitude != null && longitude != null) {
+        const coords = validateLatLng(latitude, longitude);
+        validLat = coords.lat;
+        validLng = coords.lng;
+      }
+      // ── SECURITY: Validate string lengths if provided ──
+      let validName = undefined, validCity = undefined, validAddress = undefined;
+      if (name) {
+        validName = String(name).trim();
+        if (validName.length === 0 || validName.length > 255) throw new Error("Location name must be 1-255 characters");
+      }
+      if (cityName) {
+        validCity = String(cityName).trim();
+        if (validCity.length === 0 || validCity.length > 255) throw new Error("City name must be 1-255 characters");
+      }
+      if (fullAddress) {
+        validAddress = String(fullAddress).trim();
+        if (validAddress.length > 2000) throw new Error("Full address must be 2000 characters or less");
+      }
       const r = await rawDb.execute(rawSql`
         UPDATE popular_locations
         SET
-          name = COALESCE(${name ?? null}, name),
-          latitude = COALESCE(${latitude != null ? Number(latitude) : null}, latitude),
-          longitude = COALESCE(${longitude != null ? Number(longitude) : null}, longitude),
-          city_name = COALESCE(${cityName ?? null}, city_name),
-          full_address = COALESCE(${fullAddress ?? null}, full_address),
+          name = COALESCE(${validName ?? null}, name),
+          latitude = COALESCE(${validLat ? validLat : null}, latitude),
+          longitude = COALESCE(${validLng ? validLng : null}, longitude),
+          city_name = COALESCE(${validCity ?? null}, city_name),
+          full_address = COALESCE(${validAddress ?? null}, full_address),
           is_active = COALESCE(${isActive ?? null}, is_active),
           updated_at = NOW()
         WHERE id = ${req.params.id}::uuid
@@ -4820,7 +4987,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Popular location not found" });
       res.json(camelize(r.rows)[0]);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/popular-locations/:id", requireAdminAuth, async (req, res) => {
@@ -6777,13 +6944,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
-      // Record that OTP was requested — used as proof-of-intent in verify-firebase-token fallback
+      // Generate a real 6-digit OTP and send it via SMS
+      // This serves as a fallback when Firebase Phone Auth is blocked or unavailable
+      const { sendOtpSms } = await import("./sms.js");
+      const smsResult = await sendOtpSms(phoneStr);
+
+      if (smsResult.success) {
+        // Store the real OTP for server-side verification fallback
+        await rawDb.execute(rawSql`
+          INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
+          VALUES (${phoneStr}, ${smsResult.otp}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
+        `).catch(dbCatch("db"));
+        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → SMS (${smsResult.provider})`);
+        return res.json({ success: true, provider: 'sms', message: 'OTP sent via SMS.' });
+      }
+
+      // SMS delivery failed — record firebase marker so verify-firebase-token still works
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `).catch(dbCatch("db"));
-      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase`);
+      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} → Firebase (SMS unavailable)`);
       return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7178,20 +7360,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { lat, lng, heading = 0, speed = 0, isOnline } = req.body;
+      
+      // ── SECURITY: Validate coordinates and numeric values ──
+      const coords = validateLatLng(lat, lng);
+      const validHeading = safeFloat(heading, 0);
+      const validSpeed = safeFloat(speed, 0);
+      
+      // Ensure non-negative speed and heading in [0, 360]
+      if (validSpeed < 0) throw new Error("Speed cannot be negative");
+      if (validHeading < 0 || validHeading > 360) throw new Error("Heading must be 0-360");
+      
       // isOnline defaults to true — if you're sending location, you are online.
       // Fallback chain: body.isOnline → true (never false here; going offline is via online-status endpoint)
       const effectiveOnline = isOnline !== undefined ? Boolean(isOnline) : true;
+      
       // Upsert location — always include updated_at=NOW() in both INSERT and ON CONFLICT
       await rawDb.execute(rawSql`
         INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
-        VALUES (${driver.id}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, ${effectiveOnline}, NOW())
-        ON CONFLICT (driver_id) DO UPDATE SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed},
+        VALUES (${driver.id}::uuid, ${coords.lat}, ${coords.lng}, ${validHeading}, ${validSpeed}, ${effectiveOnline}, NOW())
+        ON CONFLICT (driver_id) DO UPDATE SET lat=${coords.lat}, lng=${coords.lng}, heading=${validHeading}, speed=${validSpeed},
           is_online=${effectiveOnline}, updated_at=NOW()
       `);
       // Also update users table
-      await rawDb.execute(rawSql`UPDATE users SET is_online=${effectiveOnline}, current_lat=${lat}, current_lng=${lng} WHERE id=${driver.id}::uuid`);
+      await rawDb.execute(rawSql`UPDATE users SET is_online=${effectiveOnline}, current_lat=${coords.lat}, current_lng=${coords.lng} WHERE id=${driver.id}::uuid`);
       // Auto-detect and update driver zone from GPS position
-      const autoZoneId = await detectZoneId(Number(lat), Number(lng));
+      const autoZoneId = await detectZoneId(coords.lat, coords.lng);
       if (autoZoneId) {
         await rawDb.execute(rawSql`
           UPDATE driver_details SET zone_id=${autoZoneId}::uuid WHERE user_id=${driver.id}::uuid
@@ -8818,11 +9011,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Online payment — used to link customer_payments → trip for refund on cancel
         razorpayPaymentId
       } = req.body;
+      
+      // ── SECURITY: Validate pickup and destination coordinates ──
+      const validPickupCoords = validateLatLng(pickupLat, pickupLng);
+      const destLat_temp = destinationLat || destLat || 0;
+      const destLng_temp = destinationLng || destLng || 0;
+      const validDestCoords = validateLatLng(destLat_temp, destLng_temp);
+      
       const finalDestAddress = destinationAddress || destAddress || "";
       const finalPickupShort = pickupShortName || shortLocationName(pickupAddress);
       const finalDestShort = destinationShortName || shortLocationName(finalDestAddress);
-      const finalDestLat = destinationLat || destLat || 0;
-      const finalDestLng = destinationLng || destLng || 0;
+      const finalDestLat = validDestCoords.lat;
+      const finalDestLng = validDestCoords.lng;
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
 
@@ -8840,7 +9040,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
         try {
           // Detect zone from pickup location for accurate zone-specific fares
-          const detectedZoneId = await detectZoneId(Number(pickupLat), Number(pickupLng));
+          const detectedZoneId = await detectZoneId(validPickupCoords.lat, validPickupCoords.lng);
           const fareConfig = await rawDb.execute(rawSql`
             SELECT base_fare, fare_per_km, fare_per_min, minimum_fare, night_charge_multiplier
             FROM trip_fares
@@ -8865,7 +9065,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const nightMult = isNight ? parseFloat(fc.night_charge_multiplier || "1") : 1;
             // Apply zone surge factor using detected zone (polygon-based, from DB)
             let surgeMult = 1.0;
-            if (Number(pickupLat) && Number(pickupLng)) {
+            if (validPickupCoords.lat && validPickupCoords.lng) {
               try {
                 const surgeZoneRow = detectedZoneId
                   ? (await rawDb.execute(rawSql`SELECT surge_factor FROM zones WHERE id=${detectedZoneId}::uuid AND surge_factor > 1 LIMIT 1`)).rows[0] as any
@@ -9004,8 +9204,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ${refId}, ${customer.id}::uuid,
           NULL,
           ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
-          ${pickupAddress || ""}, ${Number(pickupLat) || 0}, ${Number(pickupLng) || 0},
-          ${finalDestAddress}, ${Number(finalDestLat) || 0}, ${Number(finalDestLng) || 0},
+          ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
+          ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
           ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
           ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
           ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
@@ -9015,7 +9215,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       // Store zone_id + coupon/discount on trip (best-effort)
       const newTripId2 = (trip.rows[0] as any).id;
-      detectZoneId(Number(pickupLat), Number(pickupLng)).then(zid => {
+      detectZoneId(validPickupCoords.lat, validPickupCoords.lng).then(zid => {
         if (zid) rawDb.execute(rawSql`UPDATE trip_requests SET zone_id=${zid}::uuid WHERE id=${newTripId2}::uuid`).catch(dbCatch("db"));
       }).catch(dbCatch("db"));
       if (validatedCouponCode || discountAmount > 0) {

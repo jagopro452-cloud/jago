@@ -142,24 +142,26 @@ class JagoPilotApp extends StatelessWidget {
   }
 
   static ThemeData _darkTheme() {
-    const primary = Color(0xFF2F80ED);
-    const bg = Color(0xFF0B0B0B);
-    const card = Color(0xFF1A1A1A);
+    const primary = Color(0xFF00D4FF);  // NEON CYAN — premium modern aesthetic
+    const bg = Color(0xFF060A14);        // Ultra-dark background
+    const card = Color(0xFF0F1923);      // Dark Navy surface
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: const ColorScheme.dark(
         primary: primary,
-        secondary: Color(0xFF56CCF2),
+        secondary: Color(0xFF00E676),    // Neon green
+        tertiary: Color(0xFFFFB300),      // Gold accent
         surface: card,
         background: bg,
         onPrimary: Colors.white,
         onSurface: Colors.white,
-        outline: Color(0xFF2A2A2A),
+        outline: Color(0xFF1E3050),
+        error: Color(0xFFFF3D57),         // Neon red
       ),
       scaffoldBackgroundColor: bg,
       cardColor: card,
-      dividerColor: const Color(0xFF2A2A2A),
+      dividerColor: const Color(0xFF1E3050),
       fontFamily: GoogleFonts.poppins().fontFamily,
       textTheme: GoogleFonts.poppinsTextTheme().apply(
         bodyColor: Colors.white,
@@ -180,11 +182,12 @@ class JagoPilotApp extends StatelessWidget {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
-          foregroundColor: Colors.white,
+          foregroundColor: Colors.black,  // Dark text on neon button for contrast
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           padding: const EdgeInsets.symmetric(vertical: 16),
           textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+          shadowColor: primary.withValues(alpha: 0.4),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -192,18 +195,18 @@ class JagoPilotApp extends StatelessWidget {
         fillColor: card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+          borderSide: const BorderSide(color: Color(0xFF1E3050)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+          borderSide: BorderSide(color: const Color(0xFF1E3050).withValues(alpha: 0.4)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.poppins(color: const Color(0xFF6B7280), fontSize: 14),
+        hintStyle: GoogleFonts.poppins(color: const Color(0xFF8899BB), fontSize: 14),
       ),
     );
   }

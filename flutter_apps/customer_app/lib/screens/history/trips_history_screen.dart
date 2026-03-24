@@ -4,6 +4,7 @@ import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:shimmer/shimmer.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../booking/booking_screen.dart';
@@ -366,7 +367,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           // ── List ──
           Expanded(
             child: _loading
-              ? const Center(child: CircularProgressIndicator(color: JT.primary))
+              ? _buildSkeletonList()
               : filtered.isEmpty
                 ? _buildEmpty()
                 : RefreshIndicator(
@@ -424,6 +425,42 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             fontWeight: active ? FontWeight.w700 : FontWeight.w500,
             fontSize: 12,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonList() {
+    Widget box(double w, double h, {double r = 8}) => Container(
+      width: w, height: h,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(r)),
+    );
+    return Shimmer.fromColors(
+      baseColor: const Color(0xFFE5E7EB),
+      highlightColor: const Color(0xFFF3F4F6),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: 6,
+        itemBuilder: (_, __) => Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            box(48, 48, r: 12),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              box(140, 14, r: 6),
+              const SizedBox(height: 8),
+              box(200, 12, r: 5),
+              const SizedBox(height: 6),
+              box(100, 12, r: 5),
+            ])),
+            const SizedBox(width: 8),
+            box(56, 28, r: 8),
+          ]),
         ),
       ),
     );

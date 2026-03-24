@@ -169,7 +169,7 @@ export default function Customers() {
                   data.data.map((item: any, idx: number) => {
                     const user = item.user || item;
                     const name = user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Customer";
-                    const wallet = Number(user.loyaltyPoints || 0).toFixed(0);
+                    const wallet = Number(user.walletBalance || 0).toFixed(0);
 
                     return (
                       <tr key={user.id} data-testid={`customer-row-${user.id}`}>

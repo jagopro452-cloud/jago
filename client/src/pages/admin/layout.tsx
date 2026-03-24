@@ -292,10 +292,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const isActive = (href: string) => location === href || location.startsWith(href + "/");
 
-  // Filter nav sections by role — super_admin / admin / undefined role = full access
-  const adminRole = (admin.role || "").toLowerCase();
-  const isSuperAdmin = !adminRole || adminRole === "superadmin" || adminRole === "super_admin" || adminRole === "admin";
-  const allowedSections: Set<string> | null = isSuperAdmin ? null : (ROLE_SECTION_ACCESS[adminRole] ? new Set(ROLE_SECTION_ACCESS[adminRole]) : null);
+  // Filter nav sections by role — only superadmin gets full access; undefined/null role is DENIED
+  const adminRole = (admin.role || "").toLowerCase().trim();
+  const isSuperAdmin = adminRole === "superadmin" || adminRole === "super_admin";
+  const isAdmin = isSuperAdmin || adminRole === "admin";
+  const allowedSections: Set<string> | null = isAdmin ? null : (ROLE_SECTION_ACCESS[adminRole] ? new Set(ROLE_SECTION_ACCESS[adminRole]) : new Set()); // Empty set = no access
   const visibleNav = allowedSections ? navSections.filter(s => allowedSections.has(s.category)) : navSections;
 
   const handleLogout = async () => {

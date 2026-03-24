@@ -36,7 +36,7 @@ function TopUpModal({ open, onClose, customer, onSave, saving }: any) {
               </div>
               <div className="ms-auto text-end">
                 <div className="text-muted small">Current Balance</div>
-                <div className="fw-bold text-success">₹{Number(customer.loyaltyPoints || 0).toFixed(2)}</div>
+                <div className="fw-bold text-success">₹{Number(customer.walletBalance || 0).toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -111,17 +111,17 @@ export default function CustomerWalletPage() {
   );
 
   const topUp = useMutation({
-    mutationFn: (payload: any) => apiRequest("POST", "/api/customer-wallet/topup", payload),
-    onSuccess: (res: any) => {
+    mutationFn: (payload: any) => apiRequest("POST", "/api/customer-wallet/topup", payload).then(r => r.json()),
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({ title: `Wallet updated — New balance: ₹${res.newBalance?.toFixed(2) ?? "—"}` });
+      toast({ title: `Wallet updated — New balance: ₹${parseFloat(data.newBalance ?? 0).toFixed(2)}` });
       setTopUpTarget(null);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const totalBalance = customers.reduce((sum: number, c: any) => sum + Number(c.loyaltyPoints || 0), 0);
-  const activeWallets = customers.filter((c: any) => (c.loyaltyPoints || 0) > 0).length;
+  const totalBalance = customers.reduce((sum: number, c: any) => sum + Number(c.walletBalance || 0), 0);
+  const activeWallets = customers.filter((c: any) => (c.walletBalance || 0) > 0).length;
 
   return (
     <div className="container-fluid">
@@ -199,7 +199,7 @@ export default function CustomerWalletPage() {
                   </td></tr>
                 ) : filtered.map((c: any, idx: number) => {
                   const name = c.fullName || `${c.firstName || ""} ${c.lastName || ""}`.trim() || "—";
-                  const balance = Number(c.loyaltyPoints || 0);
+                  const balance = Number(c.walletBalance || 0);
                   return (
                     <tr key={c.id} data-testid={`row-wallet-${c.id}`}>
                       <td className="ps-4 text-muted small">{idx + 1}</td>

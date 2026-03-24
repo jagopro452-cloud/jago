@@ -108,7 +108,11 @@
       "Bash(find c:UserskiranDownloads -maxdepth 2 -name *.png -o -name *.jpg)",
       "Bash(find c:UserskiranDownloads -maxdepth 2 -name *jago* -o -name *JAGO* -o -name *logo* -o -name *Logo* -o -name *pilot* -o -name *Pilot*)",
       "Bash(find c:UserskiranDownloads -maxdepth 2 -name *logo* -o -name *Logo*)",
-      "Bash(find c:UserskiranDownloads -maxdepth 2 -name *pilot* -o -name *Pilot*)"
+      "Bash(find c:UserskiranDownloads -maxdepth 2 -name *pilot* -o -name *Pilot*)",
+      "Bash(magick --version)",
+      "Bash(convert --version)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"from PIL import Image; print\\(''PIL installed ok''\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\kiran\\Downloads"

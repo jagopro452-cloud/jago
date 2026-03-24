@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
+import 'package:shimmer/shimmer.dart';
 import '../../services/auth_service.dart';
 import '../../services/localization_service.dart';
 import '../../config/api_config.dart';
@@ -113,6 +114,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.red));
       }
     }
+  }
+
+  Widget _buildProfileSkeleton() {
+    Widget box(double w, double h, {double r = 8}) => Container(
+      width: w, height: h,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(r)),
+    );
+    return SafeArea(
+      child: Shimmer.fromColors(
+        baseColor: const Color(0xFFE5E7EB),
+        highlightColor: const Color(0xFFF3F4F6),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Avatar + name
+            Center(child: Column(children: [
+              box(80, 80, r: 40),
+              const SizedBox(height: 12),
+              box(140, 18, r: 6),
+              const SizedBox(height: 6),
+              box(100, 13, r: 5),
+            ])),
+            const SizedBox(height: 24),
+            // Stats row
+            Row(children: List.generate(3, (_) => Expanded(child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: box(double.infinity, 64, r: 12),
+            )))),
+            const SizedBox(height: 24),
+            // Menu sections
+            ...List.generate(4, (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: box(double.infinity, 120, r: 14),
+            )),
+          ]),
+        ),
+      ),
+    );
   }
 
   void _showSettingsSheet(Color cardBg, Color textColor, Color subColor) {
@@ -324,8 +363,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: _loading
-          ? Center(
-              child: CircularProgressIndicator(color: accentColor))
+          ? _buildProfileSkeleton()
           : SingleChildScrollView(
               child: Column(children: [
                 Container(

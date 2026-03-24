@@ -134,20 +134,23 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       _snack(res['message'] ?? 'Failed to send OTP', error: true);
       return;
     }
-    // OTP is already sent by server — show input immediately
+    // OTP sent by server (real SMS) — show input immediately
+    final provider = res['provider']?.toString() ?? 'sms';
     setState(() { _otpSent = true; _loading = false; });
     _startTimer();
-    _snack('OTP sent to +91$phone');
+    _snack(provider == 'sms'
+        ? 'OTP sent to +91$phone via SMS'
+        : 'OTP sent to +91$phone');
     listenForCode(); // Start SMS auto-read via CodeAutoFill mixin
-    // Also try Firebase Phone Auth in parallel (for auto-verification on supported devices)
-    // If Firebase is blocked/unavailable, server OTP fallback will handle verification
+    // Also try Firebase Phone Auth in parallel (auto-verification on supported devices)
+    // If Firebase is blocked/unavailable, server OTP from SMS will handle verification
     FirebaseOtpService.sendOtp(
       phoneNumber: '+91$phone',
       onCodeSent: (verificationId) {
         if (mounted) _firebaseVerificationId = verificationId;
       },
       onError: (_) {
-        // Firebase blocked or unavailable — server OTP is already sent, ignore this error
+        // Firebase blocked or unavailable — server SMS OTP will be used as fallback
       },
     ).catchError((_) {});
   }

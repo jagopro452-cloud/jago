@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
@@ -386,8 +387,7 @@ class _WalletScreenState extends State<WalletScreen>
     return Scaffold(
       backgroundColor: JT.bgSoft,
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: JT.primary))
+          ? _buildWalletSkeleton()
           : CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildHeader(balanceDouble)),
@@ -423,6 +423,51 @@ class _WalletScreenState extends State<WalletScreen>
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
+    );
+  }
+
+  Widget _buildWalletSkeleton() {
+    Widget box(double w, double h, {double r = 8}) => Container(
+      width: w, height: h,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(r)),
+    );
+    return SafeArea(
+      child: Shimmer.fromColors(
+        baseColor: const Color(0xFFE5E7EB),
+        highlightColor: const Color(0xFFF3F4F6),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Header balance card skeleton
+            Container(
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(20)),
+            ),
+            const SizedBox(height: 20),
+            // Add money button skeleton
+            box(double.infinity, 52, r: 14),
+            const SizedBox(height: 24),
+            // Transactions header
+            box(160, 18, r: 6),
+            const SizedBox(height: 16),
+            // Transaction rows
+            ...List.generate(5, (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(children: [
+                box(40, 40, r: 10),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  box(120, 13, r: 5),
+                  const SizedBox(height: 6),
+                  box(80, 11, r: 5),
+                ])),
+                box(60, 16, r: 6),
+              ]),
+            )),
+          ]),
+        ),
+      ),
     );
   }
 

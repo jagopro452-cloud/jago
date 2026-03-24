@@ -28,7 +28,7 @@ export default function NotificationsPage() {
   const history = historyData?.data || [];
 
   const sendMutation = useMutation({
-    mutationFn: (payload: any) => apiRequest("POST", "/api/notifications/send", payload),
+    mutationFn: (payload: any) => apiRequest("POST", "/api/notifications/send", payload).then(r => r.json()),
     onSuccess: (data: any) => {
       toast({ title: `✅ Notification sent to ${data.recipientCount || 0} users` });
       setForm({ title: "", message: "", target: "all", userType: "all" });

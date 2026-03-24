@@ -14,7 +14,24 @@
       "Bash(flutter pub:*)",
       "Bash(flutter build:*)",
       "Read(//c/Users/kiran/Downloads/jago-main/**)",
-      "Bash(awk 'NR>=2390 && NR<=2600 && /req\\\\.query/' /c/Users/kiran/Downloads/jago-main/server/routes.ts)"
+      "Bash(awk 'NR>=2390 && NR<=2600 && /req\\\\.query/' /c/Users/kiran/Downloads/jago-main/server/routes.ts)",
+      "Bash(zipalign -v -p 4 customer_app/build/app/outputs/flutter-apk/app-release.apk customer_app_v1.0.54_aligned.apk)",
+      "Bash(find /c/Users/kiran/AppData/Local/Android -name apksigner*)",
+      "Bash(head -5 find /c/Users/kiran/AppData/Local/Android -name zipalign*)",
+      "Bash(ls -lh /c/Users/kiran/release-apks/*.apk)",
+      "Bash(JAVA=\"/c/Program Files/Android/Android Studio/jbr/bin/java.exe\" APKSIGNER=\"/c/Users/kiran/AppData/Local/Android/Sdk/build-tools/36.1.0/lib/apksigner.jar\" \"$JAVA\" -jar \"$APKSIGNER\" --help)",
+      "Bash(JAVA=\"/c/Program Files/Android/Android Studio/jbr/bin/java.exe\" APKSIGNER=\"/c/Users/kiran/AppData/Local/Android/Sdk/build-tools/36.1.0/lib/apksigner.jar\" \"$JAVA\" -jar \"$APKSIGNER\" sign --help)",
+      "Read(//c/Users/kiran/release-apks JAVA=/c/Program Files/Android/Android Studio/jbr/bin/java.exe APKSIGNER=/c/Users/kiran/AppData/Local/Android/Sdk/build-tools/36.1.0/lib/**)",
+      "Bash(JAVA=\"/c/Program Files/Android/Android Studio/jbr/bin/java.exe\" APKSIGNER=\"/c/Users/kiran/AppData/Local/Android/Sdk/build-tools/36.1.0/lib/apksigner.jar\" ZIPALIGN=\"/c/Users/kiran/AppData/Local/Android/Sdk/build-tools/36.1.0/zipalign.exe\" KS=\"c:/Users/kiran/Downloads/jago-main/flutter_apps/jago-release-key.jks\" OUTDIR=\"c:/Users/kiran/release-apks\" __NEW_LINE_f6a6616a7900a91e__ \"$ZIPALIGN\" -v -p 4 \"c:/Users/kiran/Downloads/jago-main/flutter_apps/driver_app/build/app/outputs/flutter-apk/app-release.apk\" \"$OUTDIR/jago_pilot_v1.0.57_aligned.apk\")",
+      "Read(//c/Users/kiran/Downloads/jago-main/flutter_apps/driver_app/**)",
+      "Bash(1 __NEW_LINE_f6a6616a7900a91e__ \"$JAVA\" -jar \"$APKSIGNER\" verify --verbose \"$OUTDIR/jago_pilot_v1.0.57.apk\")",
+      "Read(//c/Users/kiran/Downloads/jago-main/flutter_apps/driver_app/$OUTDIR/**)",
+      "Bash(grep -n \"driver_payments\\\\|driver_wallets\\\\|customer_wallets\\\\|driver_wallet\\\\|customer_wallet\" /c/Users/kiran/Downloads/jago-main/migrations/*.sql)",
+      "Bash(npx vitest:*)",
+      "Bash(ls \"c:\\\\Users\\\\kiran\\\\Downloads\\\\jago-main\\\\flutter_apps\\\\driver_app\\\\android\\\\app\"\" && echo \"---\" && ls \"c:UserskiranDownloadsjago-mainflutter_appscustomer_appandroidapp\"\")",
+      "Bash(ls /c/Users/kiran/Downloads/*.jks)",
+      "Bash(find /c/Users/kiran -name *.jks)",
+      "Bash(find /c/Users/kiran -name *.keystore)"
     ]
   }
 }

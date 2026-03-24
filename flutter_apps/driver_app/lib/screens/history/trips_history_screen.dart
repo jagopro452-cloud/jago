@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:shimmer/shimmer.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
@@ -536,14 +537,20 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           // Trip list
           Expanded(
             child: _loading
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(color: _primary, strokeWidth: 2, backgroundColor: _border),
-                      const SizedBox(height: 16),
-                      Text('Loading trips...', style: GoogleFonts.poppins(color: _textHint, fontSize: 13)),
-                    ],
+              ? Shimmer.fromColors(
+                  baseColor: const Color(0xFFE5E7EB),
+                  highlightColor: const Color(0xFFF3F4F6),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    itemCount: 6,
+                    itemBuilder: (_, __) => Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
                 )
               : RefreshIndicator(

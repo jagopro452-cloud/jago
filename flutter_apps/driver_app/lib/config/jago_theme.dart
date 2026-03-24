@@ -1,63 +1,67 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// BACKWARD COMPATIBILITY MODULE
+// This file re-exports the modern app_theme.dart AppColors as JT for convenient 
+// access throughout the driver app during gradual migration.
+// ══════════════════════════════════════════════════════════════════════════════
+
+export 'app_theme.dart' show AppColors, AppText, AppCard, AppGlow, AppButton, AppInputs, AppSpacing, AppAnimation;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'app_theme.dart';
 
+// ── Legacy JT class (compatibility wrapper around modern AppColors) ────────
 class JT {
-  // ── Design System Colors (spec v2) ──────────────────────────────────────
-  static const Color primary     = Color(0xFF2F6BFF);
-  static const Color secondary   = Color(0xFF5B8FFF);
-  static const Color bg          = Color(0xFFFFFFFF);
-  static const Color bgSoft      = Color(0xFFF9FAFB);
-  static const Color surface     = Color(0xFFFFFFFF);
-  static const Color surfaceAlt  = Color(0xFFF3F6FF);
-  static const Color border      = Color(0xFFE5E7EB);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color iconInactive  = Color(0xFFD1D5DB);
-  static const Color error   = Color(0xFFDC2626);
-  static const Color success = Color(0xFF16A34A);
-  static const Color warning = Color(0xFFF59E0B);
+  // THEME COLORS — Neon Aesthetic (mapped from AppColors)
+  static const Color primary     = AppColors.primary;       // #00D4FF neon cyan
+  static const Color secondary   = AppColors.secondary;     // #00E676 neon green
+  static const Color bg          = AppColors.bg;            // #060A14 ultra-dark
+  static const Color bgSoft      = AppColors.surface;       // #0F1923 soft surface
+  static const Color surface     = AppColors.surface;       // #0F1923
+  static const Color surfaceAlt  = AppColors.cardAlt;       // #1A2332
+  static const Color border      = AppColors.border;        // #1E3050
+  static const Color textPrimary = AppColors.textPrimary;   // #FFFFFF white
+  static const Color textSecondary = AppColors.textSecondary; // #8899BB secondary
+  static const Color iconInactive  = AppColors.textTertiary;   // #556677
+  static const Color error   = AppColors.error;             // #FF3D57 neon red
+  static const Color success = AppColors.secondary;         // #00E676 neon green
+  static const Color warning = AppColors.tertiary;          // #FFB300 gold
 
-  static const LinearGradient grad = LinearGradient(
-    colors: [Color(0xFF5B8FFF), Color(0xFF2F6BFF)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  // GRADIENTS — Same as app_theme
+  static LinearGradient get grad => AppColors.neonGrad;
+  static LinearGradient get gradReverse => AppColors.neonGradReverse;
 
-  static List<BoxShadow> get cardShadow => [
-    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 2)),
-  ];
-  static List<BoxShadow> get btnShadow => [
-    BoxShadow(color: primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
-  ];
+  // SHADOWS & GLOWS — Mapped from AppGlow premium system
+  static List<BoxShadow> get cardShadow => AppGlow.softSmall();
+  static List<BoxShadow> get btnShadow => AppGlow.neon(AppColors.primary, blur: 16);
 
-  static TextStyle get h1 => GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: textPrimary);
-  static TextStyle get h2 => GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textPrimary);
-  static TextStyle get h3 => GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: textPrimary);
-  static TextStyle get body => GoogleFonts.poppins(fontSize: 14, color: textSecondary);
-  static TextStyle get bodyPrimary => GoogleFonts.poppins(fontSize: 14, color: textPrimary);
-  static TextStyle get caption => GoogleFonts.poppins(fontSize: 12, color: textSecondary);
-  static TextStyle get btnText => GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white);
+  // TEXT STYLES — Mapped from modern AppText
+  static TextStyle get h1 => AppText.h1(null);
+  static TextStyle get h2 => AppText.h2(null);
+  static TextStyle get h3 => AppText.h3(null);
+  static TextStyle get h4 => AppText.h4(null);
+  static TextStyle get body => AppText.body(null);
+  static TextStyle get bodyPrimary => AppText.bodyPrimary(null);
+  static TextStyle get caption => AppText.caption(null);
+  static TextStyle get btnText => AppText.btnText();
 
-  static Widget gradientButton({required String label, required VoidCallback onTap, bool loading = false}) {
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          gradient: grad,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: btnShadow,
-        ),
-        child: Center(
-          child: loading
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-              : Text(label, style: btnText),
-        ),
-      ),
+  // HELPER COMPONENT
+  static Widget gradientButton({
+    required String label,
+    required VoidCallback onTap,
+    bool loading = false,
+    double height = 56,
+  }) {
+    return AppButton.neonGradient(
+      label: label,
+      onTap: onTap,
+      loading: loading,
+      height: height,
+      neonColor: AppColors.primary,
     );
   }
 
+  // LOGOS — Pilot branding
   static Widget logoBlue({double height = 36}) =>
       SvgPicture.asset('assets/images/pilot_logo_full.svg', height: height, fit: BoxFit.contain);
 
@@ -67,3 +71,4 @@ class JT {
   static Widget logoWhite({double height = 36}) =>
       SvgPicture.asset('assets/images/pilot_logo_full_white.svg', height: height, fit: BoxFit.contain);
 }
+

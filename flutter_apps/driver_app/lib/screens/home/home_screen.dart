@@ -1105,7 +1105,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.92),
+                    AppColors.bg.withValues(alpha: 0.95),
                     Colors.transparent,
                   ],
                 ),
@@ -1144,23 +1144,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: JT.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 14, offset: const Offset(0, 4))],
-        ),
+        decoration: AppCard.neonGlowBorder(color: color),
         child: Row(children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               zone.demandLevel == 'high' ? '🔴 High demand zone ${_calcDist(zone)} away' : '🟡 Medium demand zone ${_calcDist(zone)} away',
-              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+              style: AppText.bodyPrimary(null),
             ),
             if (zone.earningMin > 0)
               Text(
@@ -1168,7 +1163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 style: GoogleFonts.poppins(color: color, fontSize: 11, fontWeight: FontWeight.w600),
               ),
           ])),
-          Icon(Icons.arrow_forward_ios_rounded, color: JT.iconInactive, size: 14),
+          Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textTertiary, size: 14),
         ]),
       ),
     );
@@ -1189,16 +1184,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: _showHeatmap ? JT.primary : JT.surface,
+          gradient: _showHeatmap ? AppColors.neonGrad : null,
+          color: _showHeatmap ? null : AppColors.surface,
           shape: BoxShape.circle,
           border: Border.all(
-            color: _showHeatmap ? JT.primary : JT.border,
+            color: _showHeatmap ? AppColors.primary : AppColors.border,
             width: 1.5),
-          boxShadow: JT.cardShadow,
+          boxShadow: _showHeatmap ? AppGlow.neonIntense(AppColors.primary) : AppGlow.softSmall(),
         ),
         child: Icon(
           Icons.layers_rounded,
-          color: _showHeatmap ? Colors.white : JT.iconInactive,
+          color: _showHeatmap ? Colors.white : AppColors.textTertiary,
           size: 20,
         ),
       ),
@@ -1215,12 +1211,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         Expanded(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: JT.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: JT.border),
-              boxShadow: JT.cardShadow,
-            ),
+            decoration: AppCard.darkElevated(),
             child: Row(children: [
               // Pilot logo with socket indicator
               Stack(clipBehavior: Clip.none, children: [
@@ -1231,8 +1222,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     width: 8, height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _socketConnected ? JT.success : JT.warning,
-                      border: Border.all(color: JT.surface, width: 1.5),
+                      color: _socketConnected ? AppColors.success : AppColors.warning,
+                      border: Border.all(color: AppColors.card, width: 1.5),
+                      boxShadow: _socketConnected
+                          ? AppGlow.neon(AppColors.success, blur: 12)
+                          : [],
                     ),
                   ),
                 ),
@@ -1242,11 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text(
                     '${_getTimeGreeting()}, ${_userName.split(' ').first}!',
-                    style: GoogleFonts.poppins(
-                      color: JT.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: AppText.bodyPrimary(null),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (_isOnline)
@@ -1258,9 +1248,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: JT.success,
+                            color: AppColors.success,
                             boxShadow: [BoxShadow(
-                              color: JT.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
+                              color: AppColors.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
                               blurRadius: 3 + _pulseCtrl.value * 4,
                             )],
                           ),
@@ -1269,7 +1259,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       Text(
                         'Online — trips enabled',
                         style: GoogleFonts.poppins(
-                          color: JT.success,
+                          color: AppColors.success,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1344,13 +1334,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       onTap: onTap,
       child: Container(
         width: 46, height: 46,
-        decoration: BoxDecoration(
-          color: JT.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: JT.border),
-          boxShadow: JT.cardShadow,
-        ),
-        child: Icon(icon, color: JT.textSecondary, size: 20),
+        decoration: AppCard.darkElevated(),
+        child: Icon(icon, color: AppColors.textSecondary, size: 20),
       ),
     );
   }
@@ -1358,14 +1343,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Widget _buildBottomPanel() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-      decoration: BoxDecoration(
-        color: JT.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: JT.border, width: 1),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 28, offset: const Offset(0, -4)),
-        ],
-      ),
+      decoration: AppCard.darkElevated(radius: 24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Drag handle
         Container(
@@ -1376,53 +1354,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             borderRadius: BorderRadius.circular(2),
           ),
         ),
-        // Hero earnings banner
+        // hero earnings banner
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: JT.bgSoft,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JT.border),
-            ),
+            decoration: AppCard.neonBorder(color: AppColors.primary),
             child: Row(children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
                   "Today's Total",
-                  style: GoogleFonts.poppins(
-                    color: JT.textSecondary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
+                  style: AppText.label(null),
                 ),
                 const SizedBox(height: 2),
                 Row(children: [
                   Text(
                     '₹${_earningsToday.toStringAsFixed(0)}',
-                    style: GoogleFonts.poppins(
-                      color: JT.primary,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1,
-                    ),
+                    style: AppText.statBig(color: AppColors.primary),
                   ),
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      color: JT.success.withValues(alpha: 0.10),
+                      gradient: AppColors.successGrad,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: JT.success.withValues(alpha: 0.3)),
+                      boxShadow: AppGlow.neon(AppColors.success, blur: 12),
                     ),
                     child: Text(
                       '$_tripsToday trips',
-                      style: GoogleFonts.poppins(
-                        color: JT.success,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: AppText.badgeText(),
                     ),
                   ),
                 ]),
@@ -1431,20 +1391,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text(
                   'Wallet',
-                  style: GoogleFonts.poppins(
-                    color: JT.textSecondary,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppText.labelSmall(null),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '₹${_walletBalance.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(
-                    color: JT.warning,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: AppText.statMedium(color: AppColors.tertiary),
                 ),
               ]),
             ]),
@@ -1512,13 +1464,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   duration: const Duration(milliseconds: 400),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
-                    gradient: _isOnline
-                        ? JT.grad
-                        : null,
-                    color: _isOnline ? null : JT.surfaceAlt,
+                    gradient: _isOnline ? AppColors.neonGrad : null,
+                    color: _isOnline ? null : AppColors.surface,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: _isOnline ? JT.btnShadow : [],
-                    border: _isOnline ? null : Border.all(color: JT.border),
+                    boxShadow: _isOnline ? AppGlow.neon(AppColors.primary, blur: 16) : [],
+                    border: _isOnline ? null : Border.all(color: AppColors.border),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     AnimatedBuilder(
@@ -1527,7 +1477,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         width: 8, height: 8,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _isOnline ? Colors.white : JT.textSecondary,
+                          color: _isOnline ? Colors.white : AppColors.textSecondary,
                           boxShadow: _isOnline ? [BoxShadow(
                             color: Colors.white.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3),
                             blurRadius: 3 + _pulseCtrl.value * 4,
@@ -1538,12 +1488,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     const SizedBox(width: 7),
                     Text(
                       _isOnline ? 'GO OFFLINE' : 'GO ONLINE',
-                      style: GoogleFonts.poppins(
-                        color: _isOnline ? Colors.white : JT.textSecondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
+                      style: AppText.btnSmallText(color: _isOnline ? Colors.white : AppColors.textSecondary),
                     ),
                   ]),
                 ),
@@ -1554,9 +1499,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: JT.success.withValues(alpha: 0.06),
+                  gradient: AppColors.successGrad.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.success.withValues(alpha: 0.2), width: 1),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.25), width: 1),
+                  boxShadow: AppGlow.neon(AppColors.success, blur: 12),
                 ),
                 child: Row(children: [
                   AnimatedBuilder(
@@ -1565,9 +1511,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       width: 8, height: 8,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: JT.success,
+                        color: AppColors.success,
                         boxShadow: [BoxShadow(
-                          color: JT.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
+                          color: AppColors.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
                           blurRadius: 4 + _pulseCtrl.value * 6,
                         )],
                       ),
@@ -1576,9 +1522,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   const SizedBox(width: 8),
                   Text(
                     'LIVE — Incoming trips enabled',
-                    style: GoogleFonts.poppins(
-                      color: JT.success,
-                      fontSize: 11,
+                    style: AppText.labelSmall(null).copyWith(
+                      color: AppColors.success,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.3,
                     ),
@@ -1586,11 +1531,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   const Spacer(),
                   Text(
                     '₹${_earningsToday.toStringAsFixed(0)} earned',
-                    style: GoogleFonts.poppins(
-                      color: JT.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: AppText.label(null),
                   ),
                 ]),
               ),
@@ -1601,9 +1542,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: JT.success.withValues(alpha: 0.06),
+                  gradient: AppColors.successGrad.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.success.withValues(alpha: 0.25)),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                  boxShadow: AppGlow.neon(AppColors.success, blur: 12),
                 ),
                 child: Row(children: [
                   const Text('🎉', style: TextStyle(fontSize: 18)),
@@ -1612,9 +1554,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Free Period Active',
-                        style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: AppText.bodyPrimary(null).copyWith(fontWeight: FontWeight.w700)),
                       Text('No subscription & no commission for $_freeDaysRemaining more day${_freeDaysRemaining == 1 ? '' : 's'}',
-                        style: GoogleFonts.poppins(color: JT.success, fontSize: 11)),
+                        style: AppText.caption(null).copyWith(color: AppColors.success, fontWeight: FontWeight.w600)),
                     ],
                   )),
                 ]),
@@ -1630,13 +1572,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: JT.primary.withValues(alpha: 0.04),
+                  gradient: AppColors.neonGrad.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.primary.withValues(alpha: 0.15)),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                  boxShadow: AppGlow.neon(AppColors.primary, blur: 12),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Your Eligible Services',
-                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                    style: AppText.label(null).copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, runSpacing: 6, children: _eligibleServices.map((svc) {
                     final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
@@ -1648,10 +1591,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         ? '$name • $comm%'
                         : model == 'subscription' ? '$name • Sub' : name;
                     return Chip(
-                      avatar: const Icon(Icons.directions_car_filled_rounded, size: 14, color: JT.primary),
-                      label: Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
-                      backgroundColor: JT.primary.withValues(alpha: 0.08),
-                      side: BorderSide(color: JT.primary.withValues(alpha: 0.2)),
+                      avatar: const Icon(Icons.directions_car_filled_rounded, size: 14, color: AppColors.primary),
+                      label: Text(label, style: AppText.label(null).copyWith(fontWeight: FontWeight.w600)),
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     );
@@ -1668,19 +1611,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
-                  color: JT.warning.withValues(alpha: 0.06),
+                  gradient: AppColors.warningGrad.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.warning.withValues(alpha: 0.25), width: 1),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3), width: 1),
+                  boxShadow: AppGlow.neon(AppColors.warning, blur: 12),
                 ),
                 child: Row(children: [
-                  const Icon(Icons.inventory_2_rounded, size: 18, color: Color(0xFFF59E0B)),
+                  const Icon(Icons.inventory_2_rounded, size: 18, color: AppColors.tertiary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Parcel deliveries active — stay ready!',
-                      style: GoogleFonts.poppins(
-                        color: JT.warning,
-                        fontSize: 11,
+                      style: AppText.label(null).copyWith(
+                        color: AppColors.warning,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.2,
                       ),
@@ -1689,17 +1632,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: JT.warning.withValues(alpha: 0.12),
+                      gradient: AppColors.warningGrad,
                       borderRadius: BorderRadius.circular(8),
+                      boxShadow: AppGlow.neon(AppColors.warning, blur: 8),
                     ),
                     child: Text(
                       'EARN MORE',
-                      style: GoogleFonts.poppins(
-                        color: JT.warning,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
+                      style: AppText.badgeText().copyWith(letterSpacing: 0.5),
                     ),
                   ),
                 ]),
@@ -1729,14 +1668,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     return Container(
       decoration: BoxDecoration(
-        color: JT.bgSoft,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: const BorderSide(color: JT.primary, width: 3),
-          right: BorderSide(color: JT.border),
-          top: BorderSide(color: JT.border),
-          bottom: BorderSide(color: JT.border),
+          left: BorderSide(color: AppColors.primary, width: 3),
+          right: BorderSide(color: AppColors.border),
+          top: BorderSide(color: AppColors.border),
+          bottom: BorderSide(color: AppColors.border),
         ),
+        boxShadow: AppGlow.soft(AppColors.primary),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1744,9 +1684,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           Container(
             width: 42, height: 42,
             decoration: BoxDecoration(
-              gradient: JT.grad,
+              gradient: AppColors.neonGrad,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: JT.btnShadow,
+              boxShadow: AppGlow.neon(AppColors.primary),
             ),
             child: Icon(vIcon, color: Colors.white, size: 22),
           ),
@@ -1755,11 +1695,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 _vehicleCategory.isNotEmpty ? _vehicleCategory : 'My Vehicle',
-                style: GoogleFonts.poppins(
-                  color: JT.textPrimary,
+                style: AppText.label(null).copyWith(
+                  color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
                 ),
               ),
               if (_vehicleNumber.isNotEmpty || _vehicleModel.isNotEmpty) ...[
@@ -1769,9 +1708,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     if (_vehicleNumber.isNotEmpty) _vehicleNumber.toUpperCase(),
                     if (_vehicleModel.isNotEmpty) _vehicleModel,
                   ].join('  ·  '),
-                  style: GoogleFonts.poppins(
-                    color: JT.textSecondary,
-                    fontSize: 11,
+                  style: AppText.caption(null).copyWith(
+                    color: AppColors.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1782,18 +1720,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: JT.success.withValues(alpha: 0.08),
+                color: AppColors.success.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JT.success.withValues(alpha: 0.25)),
+                border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.location_on_rounded, color: JT.success, size: 10),
+                Icon(Icons.location_on_rounded, color: AppColors.success, size: 10),
                 const SizedBox(width: 3),
                 Text(
                   _zone,
-                  style: GoogleFonts.poppins(
-                    color: JT.success,
-                    fontSize: 10,
+                  style: AppText.caption(null).copyWith(
+                    color: AppColors.success,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1883,16 +1820,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           Container(
             width: 4, height: 16,
             decoration: BoxDecoration(
-              gradient: JT.grad,
+              gradient: AppColors.neonGrad,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(width: 8),
           Text(
             "Today's Performance",
-            style: GoogleFonts.poppins(
-              color: JT.textPrimary,
-              fontSize: 12,
+            style: AppText.label(null).copyWith(
+              color: AppColors.textPrimary,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
             ),
@@ -1901,15 +1837,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: JT.surfaceAlt,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: JT.border),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               _ordinal(DateTime.now().day),
-              style: GoogleFonts.poppins(
-                color: JT.primary,
-                fontSize: 10,
+              style: AppText.caption(null).copyWith(
+                color: AppColors.primary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1919,7 +1854,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       Row(children: [
         Expanded(child: _statCard(
           icon: Icons.currency_rupee_rounded,
-          iconColor: JT.primary,
+          iconColor: AppColors.primary,
           label: 'Earned',
           value: '₹${_earningsToday.toStringAsFixed(0)}',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen())),
@@ -1927,7 +1862,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         const SizedBox(width: 8),
         Expanded(child: _statCard(
           icon: Icons.directions_car_rounded,
-          iconColor: JT.success,
+          iconColor: AppColors.success,
           label: 'Trips',
           value: '$_tripsToday',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
@@ -1935,7 +1870,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         const SizedBox(width: 8),
         Expanded(child: _statCard(
           icon: Icons.star_rounded,
-          iconColor: const Color(0xFFF59E0B),
+          iconColor: AppColors.tertiary,
           label: 'Rating',
           value: _driverRating.toStringAsFixed(1),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
@@ -1943,7 +1878,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         const SizedBox(width: 8),
         Expanded(child: _statCard(
           icon: Icons.account_balance_wallet_rounded,
-          iconColor: const Color(0xFF8B5CF6),
+          iconColor: AppColors.primary,
           label: 'Wallet',
           value: '₹${_walletBalance.toStringAsFixed(0)}',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
@@ -1964,10 +1899,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
         decoration: BoxDecoration(
-          color: JT.bgSoft,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: JT.border, width: 1),
-          boxShadow: JT.cardShadow,
+          border: Border.all(color: AppColors.border, width: 1),
+          boxShadow: AppGlow.soft(iconColor),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1976,35 +1911,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               height: 3, width: 32,
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [iconColor, iconColor.withValues(alpha: 0.2)]),
+                gradient: LinearGradient(
+                  colors: [iconColor, iconColor.withValues(alpha: 0.2)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.10),
+                color: iconColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
-                border: Border.all(color: iconColor.withValues(alpha: 0.2)),
+                border: Border.all(color: iconColor.withValues(alpha: 0.3)),
               ),
               child: Icon(icon, size: 18, color: iconColor),
             ),
             const SizedBox(height: 10),
             Text(
               value,
-              style: GoogleFonts.poppins(
-                color: JT.textPrimary,
-                fontSize: 16,
+              style: AppText.statMedium(null).copyWith(
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 3),
             Text(
               label,
-              style: GoogleFonts.poppins(
-                color: JT.textSecondary,
-                fontSize: 10,
+              style: AppText.caption(null).copyWith(
+                color: AppColors.textSecondary,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.2,
               ),
@@ -2025,28 +1961,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     final tip = tips[DateTime.now().minute % tips.length];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: JT.bgSoft,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: JT.border),
-      ),
+      decoration: AppCard.darkElevated(),
       child: Row(children: [
         Container(
           width: 38, height: 38,
           decoration: BoxDecoration(
-            color: JT.surfaceAlt,
+            color: AppColors.primary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.lightbulb_outline_rounded, color: JT.primary, size: 19),
+          child: Icon(Icons.lightbulb_outline_rounded, color: AppColors.primary, size: 19),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             tip,
-            style: GoogleFonts.poppins(
-              color: JT.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+            style: AppText.bodySecondary(null).copyWith(
               height: 1.4,
             ),
           ),
@@ -2150,19 +2079,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           duration: const Duration(milliseconds: 220),
           width: 44, height: 34,
           decoration: BoxDecoration(
-            color: active ? JT.surfaceAlt : Colors.transparent,
+            color: active ? AppColors.primary.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
-            border: active ? Border.all(color: JT.border, width: 1) : null,
+            border: active ? Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1) : null,
+            boxShadow: active ? AppGlow.soft(AppColors.primary) : null,
           ),
-          child: Icon(icon, size: 20, color: active ? JT.primary : JT.iconInactive),
+          child: Icon(icon, size: 20, color: active ? AppColors.primary : AppColors.textSecondary),
         ),
         const SizedBox(height: 3),
         Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 10,
+          style: AppText.caption(null).copyWith(
             fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            color: active ? JT.primary : JT.iconInactive,
+            color: active ? AppColors.primary : AppColors.textSecondary,
           ),
         ),
       ]),
@@ -2172,16 +2101,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Widget _buildDrawer() {
     return Drawer(
       child: Container(
-        color: JT.bg,
+        color: AppColors.bg,
         child: SafeArea(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: JT.grad,
+                gradient: AppColors.neonGrad,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: JT.btnShadow,
+                boxShadow: AppGlow.neon(AppColors.primary),
               ),
               child: Row(children: [
                 CircleAvatar(
@@ -2189,7 +2118,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   backgroundColor: Colors.white.withValues(alpha: 0.2),
                   child: Text(
                     _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
-                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                    style: AppText.h4(null).copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2197,13 +2129,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(
                       _userName,
-                      style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                      style: AppText.h3(null).copyWith(color: Colors.white),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '+91 $_userPhone',
-                      style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.75), fontSize: 12),
+                      style: AppText.caption(null).copyWith(
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Row(children: [
@@ -2226,7 +2160,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Divider(color: JT.border, height: 1),
+              child: Divider(color: AppColors.border, height: 1),
             ),
             const SizedBox(height: 8),
             _drawerItem(Icons.dashboard_rounded, 'Dashboard', null, () {}),
@@ -2275,19 +2209,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    color: JT.error.withValues(alpha: 0.06),
+                    color: AppColors.error.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: JT.error.withValues(alpha: 0.2), width: 1),
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.2), width: 1),
                   ),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.logout_rounded, color: JT.error, size: 18),
+                    Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       'Logout',
-                      style: GoogleFonts.poppins(
-                        color: JT.error,
+                      style: AppText.label(null).copyWith(
+                        color: AppColors.error,
                         fontWeight: FontWeight.w700,
-                        fontSize: 14,
                       ),
                     ),
                   ]),
@@ -2299,7 +2232,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               child: Center(
                 child: Text(
                   'v1.0.29 • MindWheel IT Solutions',
-                  style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 10),
+                  style: AppText.caption(null).copyWith(color: AppColors.textTertiary),
                 ),
               ),
             ),
@@ -2314,34 +2247,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       leading: Container(
         width: 38, height: 38,
         decoration: BoxDecoration(
-          color: JT.surfaceAlt,
+          color: AppColors.primary.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: JT.border),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
         ),
-        child: Icon(icon, color: JT.primary, size: 18),
+        child: Icon(icon, color: AppColors.primary, size: 18),
       ),
       title: Text(
         label,
-        style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        style: AppText.label(null).copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       trailing: badge != null
         ? Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: JT.success.withValues(alpha: 0.08),
+              color: AppColors.success.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: JT.success.withValues(alpha: 0.25)),
+              border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
             ),
             child: Text(
               badge,
-              style: GoogleFonts.poppins(
-                color: JT.success,
-                fontSize: 12,
+              style: AppText.caption(null).copyWith(
+                color: AppColors.success,
                 fontWeight: FontWeight.w700,
               ),
             ),
           )
-        : Icon(Icons.chevron_right_rounded, color: JT.iconInactive, size: 18),
+        : Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 18),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );

@@ -31,7 +31,7 @@ export default function SurgePricingPage() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: any) => apiRequest("PUT", `/api/surge-pricing/${id}`, { isActive }),
+    mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/surge-pricing/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/surge-pricing"] }),
   });
 

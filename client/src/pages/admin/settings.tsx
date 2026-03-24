@@ -13,7 +13,120 @@ type OtpSettings = {
   maxAttempts: number;
 };
 
+  },
+];
+
+function PasswordChangePanel() {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [loading, setLoading] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.currentPassword || !form.newPassword || !form.confirmPassword) {
+      toast({ title: "All fields are required", variant: "destructive" });
+      return;
+    }
+    if (form.newPassword !== form.confirmPassword) {
+      toast({ title: "New passwords do not match", variant: "destructive" });
+      return;
+    }
+    if (form.newPassword.length < 8) {
+      toast({ title: "Password must be at least 8 characters", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const admin = JSON.parse(localStorage.getItem("jago-admin") || "{}");
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({
+          currentPassword: form.currentPassword,
+          newPassword: form.newPassword,
+          confirmPassword: form.confirmPassword,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: "Password changed successfully" });
+        setForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      } else {
+        toast({ title: data.message || "Failed to change password", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Connection error", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleChangePassword}>
+      <div className="row g-3">
+        <div className="col-12 col-md-6">
+          <label className="form-label fw-semibold fs-14">Current Password</label>
+          <input
+            type="password"
+            className="form-control"
+            value={form.currentPassword}
+            onChange={e => setForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+            placeholder="Enter current password"
+            required
+          />
+        </div>
+        <div className="col-12 col-md-6">
+          <label className="form-label fw-semibold fs-14">New Password</label>
+          <input
+            type="password"
+            className="form-control"
+            value={form.newPassword}
+            onChange={e => setForm(prev => ({ ...prev, newPassword: e.target.value }))}
+            placeholder="Enter new password (min 8 chars)"
+            required
+          />
+        </div>
+        <div className="col-12 col-md-6">
+          <label className="form-label fw-semibold fs-14">Confirm Password</label>
+          <input
+            type="password"
+            className="form-control"
+            value={form.confirmPassword}
+            onChange={e => setForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+            placeholder="Confirm new password"
+            required
+          />
+        </div>
+        <div className="col-12 mt-3">
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={loading}
+            data-testid="btn-change-password"
+          >
+            {loading ? (
+              <><span className="spinner-border spinner-border-sm me-2"></span>Changing...</>
+            ) : (
+              <><i className="bi bi-check-circle-fill me-2"></i>Change Password</>
+            )}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 const settingGroups = [
+  {
+    title: "Change Password",
+    icon: "bi-key-fill",
+    type: "password",
+    fields: [],
+  },
   {
     title: "Business Information",
     icon: "bi-building-fill",
@@ -300,7 +413,9 @@ export default function Settings() {
                 <h6 className="mb-0">{activeGroupData.title}</h6>
               </div>
               <div className="card-body">
-                {activeGroup === "otp" ? (
+                {activeGroup === "password" ? (
+                  <PasswordChangePanel />
+                ) : activeGroup === "otp" ? (
                   <OtpSettingsPanel />
                 ) : isLoading ? (
                   <div className="d-flex justify-content-center py-4">
