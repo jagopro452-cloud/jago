@@ -172,9 +172,9 @@ export async function startDispatch(
 
 /**
  * Called when a driver accepts a trip (from accept-trip endpoint or socket).
- * Clears the dispatch session.
+ * Clears the dispatch session and verifies driver is still online.
  */
-export function onDriverAccepted(tripId: string, driverId: string): void {
+export async function onDriverAccepted(tripId: string, driverId: string): Promise<void> {
   const session = activeDispatches.get(tripId);
   if (!session) return;
 
@@ -191,7 +191,28 @@ export function onDriverAccepted(tripId: string, driverId: string): void {
   }
 
   activeDispatches.delete(tripId);
-  console.log(`[DISPATCH] ✅ PILOT ACCEPTED — trip=${tripId} pilot=${driverId}`);
+  console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId}`);
+  
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FIX #1: Verify driver is still online 5 seconds after accepting
+  // If driver is ghost/offline → reassign to next driver
+  // ─────────────────────────────────────────────────────────────────────────────
+  
+  (async () => {
+    try {
+      const { verifyDriverAfterAccept, logInfo } = await import("./hardening");
+      const isOnline = await verifyDriverAfterAccept(driverId, tripId);
+      if (isOnline) {
+        await logInfo('DISPATCH-VERIFY', 'Driver verified online after accept', {
+          driverId: driverId.toString().slice(0, 8),
+          tripId: tripId.toString().slice(0, 8),
+        });
+      }
+      // If not online, verifyDriverAfterAccept handles reassignment
+    } catch (e: any) {
+      console.error('[Driver verification] Error:', e.message);
+    }
+  })();
 }
 
 /**

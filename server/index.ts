@@ -247,6 +247,26 @@ app.use((req, res, next) => {
     }
   })();
 
+  // ─── INITIALIZE PRODUCTION HARDENING (CRITICAL) ───
+  (async () => {
+    try {
+      const { startHardeningJobs, loadHardeningSettings, logInfo } = await import("./hardening");
+      await loadHardeningSettings();
+      await startHardeningJobs();
+      await logInfo('HARDENING-STARTUP', 'Production hardening system initialized', {});
+    } catch (e: any) {
+      console.error('[hardening] Failed to initialize:', e.message);
+      // Non-fatal: hardening should not prevent server startup
+      // but log it loudly for visibility
+      sendAlert({
+        level: "error",
+        source: "hardening",
+        message: "Hardening system failed to initialize",
+        details: e.message,
+      }).catch(() => {});
+    }
+  })();
+
   // Payment retry job: every 5 minutes, check trips stuck in payment_pending
   // for more than 5 minutes and query Razorpay to auto-resolve them
   setInterval(async () => {

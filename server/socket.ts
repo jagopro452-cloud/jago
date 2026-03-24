@@ -413,6 +413,20 @@ export function setupSocket(httpServer: HttpServer) {
         }
       });
 
+      // ── Driver: respond to ping (FIX #1: Driver verification) ─────────────────
+      socket.on("system:ping_response", async (data: { tripId: string }) => {
+        try {
+          if (!userInfo) return;
+          const { handleDriverPingResponse } = await import("./hardening");
+          const success = handleDriverPingResponse(userId);
+          if (success) {
+            socket.emit("system:ping_ack", { status: "ok" });
+          }
+        } catch (e: any) {
+          console.error("[SOCKET] ping_response error:", e.message);
+        }
+      });
+
       // ── Driver: update trip status ─────────────────────────────────────────
       socket.on("driver:trip_status", async (data: { tripId: string; status: string; otp?: string }) => {
         try {
