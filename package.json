@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "dev:with-db": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-with-db.ps1",
+    "sync-apks": "node script/sync-apks.js",
+    "prebuild": "node script/sync-apks.js",
     "build": "tsx script/build.ts",
+    "prestart": "node script/sync-apks.js",
     "start": "cross-env NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
