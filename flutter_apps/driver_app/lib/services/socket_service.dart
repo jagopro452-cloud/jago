@@ -192,6 +192,17 @@ class SocketService {
       _callRejectedController.add(Map<String, dynamic>.from(data));
     });
 
+    // Ping/pong: server pings driver to confirm still active; auto-respond immediately.
+    // If driver misses 3 consecutive pings the server applies a penalty automatically.
+    _socket!.on('ping_request', (data) {
+      if (_isConnected) {
+        _socket!.emit('ping_response', {
+          'driverId': userId,
+          if (data is Map && data['pingId'] != null) 'pingId': data['pingId'],
+        });
+      }
+    });
+
     _socket!.connect();
     _startHeartbeat();
   }

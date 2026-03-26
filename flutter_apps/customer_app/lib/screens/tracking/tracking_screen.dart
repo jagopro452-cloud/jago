@@ -47,6 +47,10 @@ class _TrackingScreenState extends State<TrackingScreen>
   String _lastAnnouncedStatus = '';
   StreamSubscription? _incomingCallSub;
 
+  // Booking timeout warning (Feature 1) & Boost Fare (Feature 2)
+  Timer? _searchTimeoutTimer;
+  bool _boostLoading = false;
+
   static const Color _blue = Color(0xFF2F7BFF);
   static const Color _green = JT.primaryDark;
 
@@ -65,6 +69,8 @@ class _TrackingScreenState extends State<TrackingScreen>
     // HTTP polling as fallback (every 3s — socket handles real-time)
     _pollTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
+    // Start 90-second timeout warning for searching state
+    _startSearchTimeoutTimer();
   }
 
   void _connectSocket() {
@@ -124,6 +130,8 @@ class _TrackingScreenState extends State<TrackingScreen>
       // Driver assigned (from searching state) — extract driver info from socket event immediately
       _subs.add(_socket.onDriverAssigned.listen((data) {
         if (!mounted) return;
+        // Cancel the search timeout warning — driver found
+        _searchTimeoutTimer?.cancel();
         // Extract driver details from socket event so UI updates instantly (no wait for HTTP poll)
         final driverData = data['driver'];
         final driverMap = driverData is Map ? Map<String, dynamic>.from(driverData as Map) : null;
@@ -173,6 +181,8 @@ class _TrackingScreenState extends State<TrackingScreen>
       _subs.add(_socket.onTripSearching.listen((data) {
         if (!mounted) return;
         setState(() => _status = 'searching');
+        // Restart the 90s timeout warning since we're back to searching
+        _startSearchTimeoutTimer();
       }));
 
       // No drivers available — trip auto-cancelled
@@ -302,6 +312,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     for (final s in _subs) s.cancel();
     _incomingCallSub?.cancel();
     _pollTimer?.cancel();
+    _searchTimeoutTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
     // Don't disconnect socket — it's a shared singleton
@@ -388,6 +399,208 @@ class _TrackingScreenState extends State<TrackingScreen>
       await _tts.stop();
       await _tts.speak(message);
     } catch (_) {}
+  }
+
+  // ── Feature 1: Booking Timeout Warning ────────────────────────────────────
+  void _startSearchTimeoutTimer() {
+    _searchTimeoutTimer?.cancel();
+    _searchTimeoutTimer = Timer(const Duration(seconds: 90), () {
+      if (!mounted || _status != 'searching') return;
+      _showBookingTimeoutWarning();
+    });
+  }
+
+  void _showBookingTimeoutWarning() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        title: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.timer_outlined, color: Color(0xFFF59E0B), size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text('Search is taking long',
+              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+          ),
+        ]),
+        content: Text(
+          'We haven\'t found a pilot yet. You can boost your fare to attract more drivers, or cancel the trip.',
+          style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF6B7280), height: 1.5),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showCancelDialog();
+            },
+            child: Text('Cancel Trip',
+              style: GoogleFonts.poppins(color: const Color(0xFFDC2626), fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showBoostFareSheet();
+            },
+            icon: const Icon(Icons.bolt_rounded, size: 16),
+            label: Text('Boost Fare', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F7BFF),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Feature 2: Boost Fare ──────────────────────────────────────────────────
+  Future<void> _boostFare(int amount) async {
+    if (_boostLoading) return;
+    setState(() => _boostLoading = true);
+    try {
+      final headers = await AuthService.getHeaders();
+      final tripId = _trip?['id']?.toString() ?? widget.tripId;
+      final res = await http.post(
+        Uri.parse(ApiConfig.boostFare(tripId)),
+        headers: headers,
+        body: jsonEncode({'boostAmount': amount}),
+      );
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Row(children: [
+            const Icon(Icons.bolt_rounded, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Text('Fare boosted by ₹$amount! Searching for pilots...',
+              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+          ]),
+          backgroundColor: const Color(0xFF2F7BFF),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 4),
+        ));
+        // Restart the 90s timer after boost
+        _startSearchTimeoutTimer();
+      } else {
+        final err = jsonDecode(res.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(err['message']?.toString() ?? 'Boost failed. Try again.',
+            style: GoogleFonts.poppins(color: Colors.white, fontSize: 13)),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Network error. Try again.',
+            style: GoogleFonts.poppins(color: Colors.white, fontSize: 13)),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    }
+    if (mounted) setState(() => _boostLoading = false);
+  }
+
+  void _showBoostFareSheet() {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30)],
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 44, height: 4,
+            decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 20),
+          Row(children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2F7BFF).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bolt_rounded, color: Color(0xFF2F7BFF), size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Boost Your Fare',
+                style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+              Text('Add extra to attract more pilots',
+                style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF6B7280))),
+            ])),
+          ]),
+          const SizedBox(height: 22),
+          Row(children: [
+            _buildBoostOption(10),
+            const SizedBox(width: 10),
+            _buildBoostOption(20),
+            const SizedBox(width: 10),
+            _buildBoostOption(50),
+          ]),
+          const SizedBox(height: 10),
+          Text('Boost amount will be added to the trip fare',
+            style: GoogleFonts.poppins(color: const Color(0xFF9CA3AF), fontSize: 11),
+            textAlign: TextAlign.center),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildBoostOption(int amount) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: _boostLoading ? null : () {
+          Navigator.pop(context);
+          _boostFare(amount);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [const Color(0xFF2F7BFF), const Color(0xFF1A5FCC)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: const Color(0xFF2F7BFF).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+            const SizedBox(height: 4),
+            Text('₹$amount',
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            Text('Boost', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 10)),
+          ]),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadCancelReasons() async {
@@ -849,6 +1062,28 @@ class _TrackingScreenState extends State<TrackingScreen>
                         fontSize: 11,
                         fontWeight: FontWeight.w600)),
               ]),
+            ),
+            const SizedBox(height: 12),
+            // Boost Fare button — visible during searching to attract more drivers
+            GestureDetector(
+              onTap: _boostLoading ? null : _showBoostFareSheet,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2F7BFF), Color(0xFF1A5FCC)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: const Color(0xFF2F7BFF).withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 3))],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.bolt_rounded, color: Colors.white, size: 15),
+                  const SizedBox(width: 6),
+                  Text(_boostLoading ? 'Boosting...' : 'Boost Fare',
+                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                ]),
+              ),
             ),
             const SizedBox(height: 4),
           ]);

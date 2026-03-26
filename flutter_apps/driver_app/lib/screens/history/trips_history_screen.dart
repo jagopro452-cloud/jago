@@ -716,6 +716,25 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         style: GoogleFonts.poppins(
                                             fontSize: 10, fontWeight: FontWeight.w700, color: _primary)),
                                     ),
+                                    // No-Show badge
+                                    if (t['no_show'] == true || t['penalty_applied'] == true) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: _red.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(7),
+                                          border: Border.all(color: _red.withValues(alpha: 0.35)),
+                                        ),
+                                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                          Icon(Icons.warning_amber_rounded, size: 10, color: _red),
+                                          const SizedBox(width: 3),
+                                          Text('No-Show',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 10, fontWeight: FontWeight.w700, color: _red)),
+                                        ]),
+                                      ),
+                                    ],
                                   ]),
                                 ]),
                               ),

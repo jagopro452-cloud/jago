@@ -96,6 +96,9 @@ class ApiConfig {
   // ── Trip Receipt ─────────────────────────────────────────────────────
   static String tripReceipt(String tripId) => '$baseUrl/api/app/customer/trip-receipt/$tripId';
 
+  // ── Boost Fare ───────────────────────────────────────────────────────
+  static String boostFare(String tripId) => '$baseUrl/api/app/customer/trip/$tripId/boost-fare';
+
   // ── Mapping / Geocoding (proxied through server — avoids Android key restriction) ──
   static String get reverseGeocode => '$baseUrl/api/app/reverse-geocode';
   static String get placesAutocomplete => '$baseUrl/api/app/places/autocomplete';
