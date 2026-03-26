@@ -511,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // ── GPS stream: hardware-managed, emits only when device moves ≥ 15 m ──
     // Far more battery-efficient than calling getCurrentPosition every 3 s.
     _posStream = Geolocator.getPositionStream(
-      locationSettings: const AndroidSettings(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
         intervalDuration: Duration(seconds: 3),
