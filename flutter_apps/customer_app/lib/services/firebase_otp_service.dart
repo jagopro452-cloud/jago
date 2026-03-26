@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Wraps Firebase Phone Authentication.
@@ -12,6 +14,35 @@ class FirebaseOtpService {
   static String? _verificationId;
   static int? _resendToken;
 
+  static String _mapAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-phone-number':
+        return 'Invalid phone number format.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a bit before trying again.';
+      case 'quota-exceeded':
+        return 'OTP quota exceeded. Please try again later.';
+      case 'app-not-authorized':
+        return 'Firebase phone auth is not authorized for this app build.';
+      case 'session-expired':
+        return 'This OTP session expired. Please resend OTP and try again.';
+      case 'invalid-verification-code':
+        return 'Incorrect OTP. Please check the code and try again.';
+      case 'network-request-failed':
+        return 'Network issue while contacting Firebase. Check your connection and try again.';
+      default:
+        return e.message ?? 'Failed to process OTP. Please try again.';
+    }
+  }
+
+  static Future<void> resetVerification() async {
+    _verificationId = null;
+    _resendToken = null;
+    try {
+      await _auth.signOut();
+    } catch (_) {}
+  }
+
   /// Sends OTP to [phoneNumber] (e.g. "+919876543210").
   /// [onCodeSent]   → called with verificationId when SMS is sent.
   /// [onError]      → called with error message on failure.
@@ -21,11 +52,25 @@ class FirebaseOtpService {
     required void Function(String verificationId) onCodeSent,
     required void Function(String error) onError,
     void Function(String idToken)? onAutoVerify,
+    bool forceResend = false,
   }) async {
+    final completer = Completer<void>();
+    Timer? watchdog;
+    var callbackHandled = false;
+
+    void finish() {
+      callbackHandled = true;
+      watchdog?.cancel();
+      if (!completer.isCompleted) completer.complete();
+    }
+
     try {
+      if (!forceResend) {
+        _verificationId = null;
+      }
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
-        forceResendingToken: _resendToken,
+        forceResendingToken: forceResend ? _resendToken : null,
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
           // Auto-retrieval disabled — user must always enter OTP manually.
@@ -39,34 +84,26 @@ class FirebaseOtpService {
           } catch (_) {}
         },
         verificationFailed: (FirebaseAuthException e) {
-          String message;
-          switch (e.code) {
-            case 'invalid-phone-number':
-              message = 'Invalid phone number format.';
-              break;
-            case 'too-many-requests':
-              message = 'Too many attempts. Please try again later.';
-              break;
-            case 'quota-exceeded':
-              message = 'OTP quota exceeded. Please try again tomorrow.';
-              break;
-            case 'app-not-authorized':
-              message = 'App not authorized for Firebase Auth. Contact support.';
-              break;
-            default:
-              message = e.message ?? 'Failed to send OTP. Please try again.';
-          }
-          onError(message);
+          _verificationId = null;
+          onError(_mapAuthError(e));
+          finish();
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
           _resendToken = resendToken;
           onCodeSent(verificationId);
+          finish();
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
         },
       );
+      watchdog = Timer(const Duration(seconds: 25), () {
+        if (callbackHandled) return;
+        onError('OTP is taking longer than usual. Please wait a moment or resend OTP.');
+        finish();
+      });
+      await completer.future;
     } catch (e) {
       onError('Failed to send OTP: ${e.toString()}');
     }
@@ -88,12 +125,14 @@ class FirebaseOtpService {
       verificationId: vId,
       smsCode: smsCode,
     );
-    final userCred = await _auth.signInWithCredential(credential);
-
-    // Force-refresh = true ensures we always get a fresh, non-expired token
-    final idToken = await userCred.user?.getIdToken(true);
-    if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
-    return idToken;
+    try {
+      final userCred = await _auth.signInWithCredential(credential);
+      final idToken = await userCred.user?.getIdToken(true);
+      if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
+      return idToken;
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_mapAuthError(e));
+    }
   }
 
   /// Sign out from Firebase (call on app logout).

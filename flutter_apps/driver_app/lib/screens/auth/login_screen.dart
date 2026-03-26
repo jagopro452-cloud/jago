@@ -127,6 +127,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
+    _firebaseVerificationId = null;
+    await FirebaseOtpService.resetVerification();
     // Server sends OTP via SMS (rate-limit check + real SMS delivery)
     final res = await AuthService.sendOtp(phone, 'driver');
     if (!mounted) return;
@@ -317,7 +319,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                       Text(
                         _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
-                        style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _dark),
+                        style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w600, color: _dark),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -389,7 +391,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         Text("New pilot?  ", style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14)),
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                          child: Text('Register Now', style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w800, fontSize: 14)),
+                          child: Text('Register Now', style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w600, fontSize: 14)),
                         ),
                       ]),
                     ]),
@@ -429,7 +431,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             ),
             border: Border(right: BorderSide(color: _blue.withValues(alpha: 0.2), width: 1.5)),
           ),
-          child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _blue)),
+          child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
         ),
         Expanded(
           child: TextField(
@@ -495,7 +497,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           LengthLimitingTextInputFormatter(6),
         ],
         style: GoogleFonts.poppins(
-          fontSize: 28, fontWeight: FontWeight.w900,
+          fontSize: 28, fontWeight: FontWeight.w700,
           letterSpacing: 16, color: _dark,
         ),
         decoration: InputDecoration(
@@ -528,7 +530,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
         child: _loading
           ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-          : Text(label, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.3)),
+          : Text(label, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 0.3)),
       ),
     );
   }

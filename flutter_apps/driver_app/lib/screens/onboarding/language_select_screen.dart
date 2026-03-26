@@ -73,7 +73,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                 const SizedBox(height: 24),
                 Text('Select App Language',
                   style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w900,
+                    fontSize: 20, fontWeight: FontWeight.w700,
                     color: textMain, letterSpacing: -0.5)),
                 const SizedBox(height: 6),
                 Text('Choose your preferred language',
@@ -120,7 +120,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                                     Text(lang['nativeName']!,
                                       style: TextStyle(
                                         fontSize: 15,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w600,
                                         color: selected ? _primary : textMain,
                                       )),
                                     Text(lang['name']!,
@@ -179,7 +179,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                           _selectedCode == 'ml' ? 'തുടരുക' :
                           _selectedCode == 'bn' ? 'এগিয়ে যান' :
                           _selectedCode == 'mr' ? 'पुढे जा' : 'Continue',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(width: 8),
                         const Icon(Icons.arrow_forward_rounded, size: 18),
@@ -226,13 +226,13 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                 text: const TextSpan(
                   children: [
                     TextSpan(text: 'JA', style: TextStyle(
-                      fontSize: 38, fontWeight: FontWeight.w900,
+                      fontSize: 38, fontWeight: FontWeight.w700,
                       color: _primary, letterSpacing: -1)),
                     TextSpan(text: 'GO ', style: TextStyle(
-                      fontSize: 38, fontWeight: FontWeight.w900,
+                      fontSize: 38, fontWeight: FontWeight.w700,
                       color: Color(0xFFFFD700), letterSpacing: -1)),
                     TextSpan(text: 'Pilot', style: TextStyle(
-                      fontSize: 38, fontWeight: FontWeight.w900,
+                      fontSize: 38, fontWeight: FontWeight.w700,
                       color: Colors.white, letterSpacing: -1)),
                   ],
                 )),
@@ -254,7 +254,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen>
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 17,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: -0.3)),
                 ]),
               ),

@@ -196,7 +196,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       urgency ? 'Respond Now!' : 'New Parcel Delivery!',
                       style: TextStyle(
                         color: urgency ? const Color(0xFFF59E0B) : Colors.white,
-                        fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                        fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
                     ),
                   ]),
                   const SizedBox(height: 8),
@@ -210,7 +210,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       const Text('📦', style: TextStyle(fontSize: 13)),
                       const SizedBox(width: 6),
                       Text(vehicleName, style: const TextStyle(
-                        color: Color(0xFFF59E0B), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+                        color: Color(0xFFF59E0B), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.4)),
                     ]),
                   ),
                 ])),
@@ -233,7 +233,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                     Text('$_countdown',
                       style: TextStyle(
                         color: urgency ? const Color(0xFFF59E0B) : Colors.white,
-                        fontSize: 28, fontWeight: FontWeight.w900, height: 1.0)),
+                        fontSize: 28, fontWeight: FontWeight.w700, height: 1.0)),
                     Text('sec', style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.4),
                       fontSize: 10, fontWeight: FontWeight.w600)),
@@ -264,7 +264,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                   ),
                   const SizedBox(width: 16),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(vehicleName, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                    Text(vehicleName, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
                     Text('Parcel Delivery', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
                   ])),
@@ -275,7 +275,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), blurRadius: 12)]),
                     child: Text('₹${fare}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24)),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 24)),
                   ),
                 ]),
                 const SizedBox(height: 18),
@@ -329,7 +329,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       const Icon(Icons.inventory_2_rounded, color: Colors.white, size: 30),
                       const SizedBox(width: 12),
                       Text('ACCEPT DELIVERY',
-                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
+                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20)),
                     ])),
                   ),
                 ),
@@ -369,7 +369,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
+        Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
         Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
       ]),
     ));

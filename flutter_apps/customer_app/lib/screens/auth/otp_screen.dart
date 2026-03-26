@@ -232,8 +232,8 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                         Text(
                           'Enter 6-digit OTP',
                           style: GoogleFonts.poppins(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
                             color: _navy,
                           ),
                         ),
@@ -272,7 +272,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           enableActiveFill: true,
                           textStyle: GoogleFonts.poppins(
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             color: _navy,
                           ),
                           onCompleted: (_) => _verify(),
@@ -309,6 +309,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                   _startTimer();
                                   FirebaseOtpService.sendOtp(
                                     phoneNumber: '+91${widget.phone}',
+                                    forceResend: true,
                                     onCodeSent: (vId) => setState(() => _verificationId = vId),
                                     onError: (err) => _showSnack(err, error: true),
                                   );
@@ -362,10 +363,10 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                 : Text(
                                     'Verify & Continue',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
                                       color: Colors.white,
-                                      letterSpacing: 0.3,
+                                      letterSpacing: 0.1,
                                     ),
                                   ),
                             ),

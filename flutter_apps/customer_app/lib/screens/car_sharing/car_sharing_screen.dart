@@ -116,7 +116,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
         backgroundColor: Colors.white,
         foregroundColor: _blue,
         elevation: 0.5,
-        title: const Text('Car Sharing', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        title: const Text('Car Sharing', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
         centerTitle: true,
         bottom: TabBar(
           controller: _tabs,
@@ -183,12 +183,12 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
           const Text('📍', style: TextStyle(fontSize: 16)),
           const SizedBox(width: 6),
           Expanded(child: Text('$from → $to',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             maxLines: 1, overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(color: _green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-            child: Text('₹${seatPrice.toStringAsFixed(0)}/seat', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 12)),
+            child: Text('₹${seatPrice.toStringAsFixed(0)}/seat', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600, fontSize: 12)),
           ),
         ]),
         const SizedBox(height: 10),
@@ -263,7 +263,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-            child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800)),
+            child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600)),
           ),
         ]),
         const SizedBox(height: 6),

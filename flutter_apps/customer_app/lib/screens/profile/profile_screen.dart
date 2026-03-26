@@ -230,7 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(children: [
           const Icon(Icons.warning_rounded, color: Colors.red, size: 22),
           const SizedBox(width: 8),
-          Text('Delete Account', style: TextStyle(color: textColor, fontWeight: FontWeight.w800)),
+          Text('Delete Account', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Choose how you want to delete your account:',
@@ -411,7 +411,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(_name,
                           style: TextStyle(
                               fontSize: 20,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                               color: textColor)),
                       const SizedBox(height: 4),
                       Text('+91 $_phone',
@@ -625,7 +625,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 6),
         Text(value,
             style: const TextStyle(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 fontSize: 13,
                 color: Color(0xFF111827))),
         Text(label,
@@ -689,7 +689,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const Icon(Icons.translate_rounded, color: JT.primary, size: 22),
                   const SizedBox(width: 10),
                   Text(L.tr('choose_language'),
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor)),
                 ]),
                 const SizedBox(height: 6),
                 Text('App language will change immediately',

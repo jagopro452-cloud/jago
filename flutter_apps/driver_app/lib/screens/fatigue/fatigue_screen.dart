@@ -105,7 +105,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Safety & Fatigue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+        title: const Text('Safety & Fatigue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18)),
         centerTitle: false,
       ),
       body: _loading
@@ -148,7 +148,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(color: _scoreColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-            child: Text(_scoreLabel, style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w800, fontSize: 12)),
+            child: Text(_scoreLabel, style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w600, fontSize: 12)),
           ),
         ]),
         const SizedBox(height: 20),
@@ -163,7 +163,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
             ),
           ),
           Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('${_safetyScore.toInt()}', style: TextStyle(color: _scoreColor, fontSize: 36, fontWeight: FontWeight.w900)),
+            Text('${_safetyScore.toInt()}', style: TextStyle(color: _scoreColor, fontSize: 36, fontWeight: FontWeight.w700)),
             Text('/100', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
           ]),
         ]),
@@ -241,7 +241,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
           const Spacer(),
         ]),
         const SizedBox(height: 12),
-        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w900)),
+        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 2),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
@@ -286,7 +286,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
       child: ElevatedButton.icon(
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen())),
         icon: const Icon(Icons.free_breakfast_rounded),
-        label: Text(_onBreak ? 'Manage Break' : 'Take a Break', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        label: Text(_onBreak ? 'Manage Break' : 'Take a Break', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           backgroundColor: _onBreak ? _green : _blue,
           foregroundColor: Colors.white,

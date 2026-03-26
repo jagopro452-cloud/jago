@@ -55,7 +55,7 @@ class SocketService {
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
-    if (_isConnected) return;
+    if (_socket?.connected == true) return;
 
     final prefs = await SharedPreferences.getInstance();
     var userId = prefs.getString('user_id') ?? '';

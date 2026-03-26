@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../services/auth_service.dart';
 
 /// Result returned by [MapLocationPicker] when user confirms a location.
 class PickedLocation {
@@ -78,7 +79,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   // Session token for Places Autocomplete (reduces billing)
   String _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
 
-  static const _apiKey = ApiConfig.googleMapsApiKey;
+  // API calls are proxied through server — no client-side key needed
 
   @override
   void initState() {
@@ -107,7 +108,26 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   Future<void> _getCurrentLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final lastPos = await Geolocator.getLastKnownPosition();
       if (!serviceEnabled) {
+        if (lastPos != null && mounted) {
+          setState(() {
+            _lat = lastPos.latitude;
+            _lng = lastPos.longitude;
+            _gpsLat = lastPos.latitude;
+            _gpsLng = lastPos.longitude;
+            _locationLoading = false;
+            _address = 'Using last known location';
+          });
+          final target = LatLng(_lat, _lng);
+          if (_mapController != null) {
+            _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
+          } else {
+            _pendingCamera = target;
+          }
+          _reverseGeocode(_lat, _lng);
+          return;
+        }
         setState(() => _locationLoading = false);
         return;
       }
@@ -115,13 +135,21 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        setState(() => _locationLoading = false);
+      if (perm == LocationPermission.denied) {
+        setState(() {
+          _locationLoading = false;
+          _address = 'Location permission is needed to detect your current location.';
+        });
+        return;
+      }
+      if (perm == LocationPermission.deniedForever) {
+        setState(() {
+          _locationLoading = false;
+          _address = 'Location permission is blocked. Enable it from settings.';
+        });
         return;
       }
 
-      // Try last known position first — instant, no waiting
-      final lastPos = await Geolocator.getLastKnownPosition();
       if (lastPos != null && mounted) {
         setState(() {
           _lat = lastPos.latitude;
@@ -138,9 +166,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         _reverseGeocode(_lat, _lng);
       }
 
-      // Then get fresh accurate position
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
       if (!mounted) return;
       setState(() {
@@ -158,7 +188,29 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       }
       _reverseGeocode(_lat, _lng);
     } catch (_) {
-      setState(() => _locationLoading = false);
+      final lastPos = await Geolocator.getLastKnownPosition();
+      if (!mounted) return;
+      if (lastPos != null) {
+        setState(() {
+          _lat = lastPos.latitude;
+          _lng = lastPos.longitude;
+          _gpsLat = lastPos.latitude;
+          _gpsLng = lastPos.longitude;
+          _locationLoading = false;
+        });
+        final target = LatLng(_lat, _lng);
+        if (_mapController != null) {
+          _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
+        } else {
+          _pendingCamera = target;
+        }
+        _reverseGeocode(_lat, _lng);
+      } else {
+        setState(() {
+          _locationLoading = false;
+          _address = 'Could not detect your location. Please try again.';
+        });
+      }
     }
   }
 
@@ -166,23 +218,39 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   Future<void> _reverseGeocode(double lat, double lng) async {
     setState(() => _geocoding = true);
+    // Try server proxy first
     try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json'
-        '?latlng=$lat,$lng&key=$_apiKey',
-      );
-      final res = await http.get(url);
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final results = data['results'] as List<dynamic>?;
-        if (results != null && results.isNotEmpty && mounted) {
-          setState(() => _address = results[0]['formatted_address'] ?? 'Unknown location');
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr = data['formattedAddress']?.toString() ?? '';
+        if (mounted && addr.isNotEmpty) {
+          setState(() { _address = addr; _geocoding = false; });
+          return;
         }
       }
-    } catch (_) {
-      if (mounted) setState(() => _address = 'Unable to get address');
-    }
-    if (mounted) setState(() => _geocoding = false);
+    } catch (_) {}
+    // Nominatim fallback
+    try {
+      final res = await http.get(
+        Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng'),
+        headers: const {'User-Agent': 'JagoPro/1.0'},
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr = data['display_name']?.toString() ?? '';
+        if (mounted && addr.isNotEmpty) {
+          setState(() { _address = addr; _geocoding = false; });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() { _address = 'Current Location'; _geocoding = false; });
   }
 
   // ─── Places Autocomplete Search ─────────────────────────────────────────
@@ -194,28 +262,26 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     }
     setState(() => _searching = true);
     try {
-      // Only bias toward a location if GPS is confirmed — avoid biasing to India-center
+      final headers = await AuthService.getHeaders();
       final hasGps = _gpsLat != null && _gpsLng != null;
-      final biasParam = hasGps ? '&location=$_gpsLat,$_gpsLng&radius=50000' : '';
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-        '?input=${Uri.encodeComponent(query)}'
-        '&key=$_apiKey'
-        '&sessiontoken=$_sessionToken'
-        '$biasParam'
-        '&components=country:in',
-      );
-      final res = await http.get(url);
+      final qp = StringBuffer('?query=${Uri.encodeComponent(query)}&sessionToken=$_sessionToken');
+      if (hasGps) qp.write('&lat=$_gpsLat&lng=$_gpsLng');
+      final res = await http.get(
+        Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
         if (mounted) {
           setState(() {
             _predictions = preds.map((p) => _PlacePrediction(
-              placeId: p['place_id'] ?? '',
-              description: p['description'] ?? '',
-              mainText: p['structured_formatting']?['main_text'] ?? p['description'] ?? '',
-              secondaryText: p['structured_formatting']?['secondary_text'] ?? '',
+              placeId: p['placeId']?.toString() ?? '',
+              description: p['fullDescription']?.toString() ?? p['mainText']?.toString() ?? '',
+              mainText: p['mainText']?.toString() ?? '',
+              secondaryText: p['secondaryText']?.toString() ?? '',
+              lat: (p['lat'] as num?)?.toDouble(),
+              lng: (p['lng'] as num?)?.toDouble(),
             )).toList();
           });
         }
@@ -234,37 +300,51 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     });
     _searchFocus.unfocus();
 
+    // If the prediction already has coordinates (local DB result), use them directly
+    if (pred.lat != null && pred.lng != null && pred.lat != 0.0 && pred.lng != 0.0) {
+      if (mounted) {
+        setState(() {
+          _lat = pred.lat!;
+          _lng = pred.lng!;
+          _address = pred.description;
+          _geocoding = false;
+        });
+        final target = LatLng(_lat, _lng);
+        if (_mapController != null) {
+          _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+        } else {
+          _pendingCamera = target;
+        }
+      }
+      return;
+    }
+
     try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/details/json'
-        '?place_id=${pred.placeId}'
-        '&fields=geometry,formatted_address'
-        '&key=$_apiKey'
-        '&sessiontoken=$_sessionToken',
-      );
-      final res = await http.get(url);
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse(
+          '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(pred.placeId)}&sessionToken=$_sessionToken',
+        ),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       // Generate a new session token after a detail fetch
       _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final result = data['result'];
-        if (result != null) {
-          final loc = result['geometry']?['location'];
-          final addr = result['formatted_address'] ?? pred.description;
-          if (loc != null) {
-            final lat = (loc['lat'] as num).toDouble();
-            final lng = (loc['lng'] as num).toDouble();
-            setState(() {
-              _lat = lat;
-              _lng = lng;
-              _address = addr;
-              _geocoding = false;
-            });
-            _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(LatLng(lat, lng), 16),
-            );
-            return;
-          }
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final newLat = (data['lat'] as num?)?.toDouble() ?? 0.0;
+        final newLng = (data['lng'] as num?)?.toDouble() ?? 0.0;
+        final address = data['address']?.toString() ?? pred.description;
+        if (newLat != 0.0 && newLng != 0.0 && mounted) {
+          setState(() {
+            _lat = newLat;
+            _lng = newLng;
+            _address = address;
+            _geocoding = false;
+          });
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(LatLng(newLat, newLng), 16),
+          );
+          return;
         }
       }
     } catch (_) {}
@@ -604,11 +684,14 @@ class _PlacePrediction {
   final String description;
   final String mainText;
   final String secondaryText;
-
+  final double? lat;
+  final double? lng;
   const _PlacePrediction({
     required this.placeId,
     required this.description,
     required this.mainText,
     required this.secondaryText,
+    this.lat,
+    this.lng,
   });
 }

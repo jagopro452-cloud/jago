@@ -153,7 +153,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('This Week Earnings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w900, fontSize: 16)),
+          Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w700, fontSize: 16)),
         ]),
         const SizedBox(height: 16),
         SizedBox(

@@ -461,7 +461,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             const SizedBox(width: 4),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('JAGO Pro Logistics', style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
               Text('Porter-style parcel delivery', style: GoogleFonts.poppins(
                   color: Colors.white70, fontSize: 12)),
             ]),
@@ -534,7 +534,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Choose Your Vehicle', style: GoogleFonts.poppins(
-            fontSize: 20, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+            fontSize: 20, fontWeight: FontWeight.w600, color: JT.textPrimary)),
         const SizedBox(height: 4),
         Text('Select based on your package size and weight',
             style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
@@ -635,7 +635,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Text(v.name, style: GoogleFonts.poppins(
-                    fontSize: 15, fontWeight: FontWeight.w800,
+                    fontSize: 15, fontWeight: FontWeight.w600,
                     color: selected ? v.accentColor : JT.textPrimary)),
                 const SizedBox(width: 8),
                 Container(
@@ -683,7 +683,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Pickup & Delivery', style: GoogleFonts.poppins(
-            fontSize: 20, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+            fontSize: 20, fontWeight: FontWeight.w600, color: JT.textPrimary)),
         const SizedBox(height: 4),
         Text('Confirm pickup and enter delivery address',
             style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
@@ -706,7 +706,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('PICKUP LOCATION', style: GoogleFonts.poppins(
                   fontSize: 9, color: JT.primary,
-                  fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                  fontWeight: FontWeight.w600, letterSpacing: 1.2)),
               const SizedBox(height: 2),
               Text(widget.pickupAddress, style: GoogleFonts.poppins(
                   fontSize: 13, color: JT.textPrimary,
@@ -758,7 +758,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                   labelText: 'DELIVERY LOCATION',
                   labelStyle: GoogleFonts.poppins(
                       fontSize: 9, color: _destLat != 0 ? JT.success : JT.textSecondary,
-                      fontWeight: FontWeight.w800, letterSpacing: 1.2),
+                      fontWeight: FontWeight.w600, letterSpacing: 1.2),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -833,7 +833,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Package Details', style: GoogleFonts.poppins(
-            fontSize: 20, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+            fontSize: 20, fontWeight: FontWeight.w600, color: JT.textPrimary)),
         const SizedBox(height: 4),
         Text('Tell us what you\'re sending',
             style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
@@ -841,7 +841,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Item type grid
         Text('ITEM TYPE', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         GridView.count(
@@ -878,7 +878,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Weight
         Text('WEIGHT RANGE', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         ...List.generate(_kWeightOptions.length, (i) {
@@ -939,7 +939,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Item description
         Text('ITEM DESCRIPTION (optional)', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 8),
         TextField(
@@ -964,7 +964,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Special instructions
         Text('SPECIAL INSTRUCTIONS (optional)', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 8),
         TextField(
@@ -1054,7 +1054,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Confirm Booking', style: GoogleFonts.poppins(
-            fontSize: 20, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+            fontSize: 20, fontWeight: FontWeight.w600, color: JT.textPrimary)),
         const SizedBox(height: 4),
         Text('Enter receiver details and review your order',
             style: GoogleFonts.poppins(fontSize: 13, color: JT.textSecondary)),
@@ -1062,7 +1062,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Receiver details
         Text('RECEIVER DETAILS', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         _inputField(_receiverNameCtrl, 'Receiver Name',
@@ -1077,7 +1077,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // Order summary
         Text('ORDER SUMMARY', style: GoogleFonts.poppins(
-            fontSize: 10, fontWeight: FontWeight.w800,
+            fontSize: 10, fontWeight: FontWeight.w600,
             color: JT.iconInactive, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         Container(
@@ -1095,7 +1095,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(_vehicle.name, style: GoogleFonts.poppins(
-                      fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+                      fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary)),
                   Text(_vehicle.capacity, style: GoogleFonts.poppins(
                       fontSize: 12, color: JT.textSecondary)),
                 ])),
@@ -1244,7 +1244,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             Icon(Icons.receipt_long_outlined, color: _vehicle.accentColor, size: 18),
             const SizedBox(width: 8),
             Text('FARE BREAKDOWN', style: GoogleFonts.poppins(
-                fontSize: 10, fontWeight: FontWeight.w800,
+                fontSize: 10, fontWeight: FontWeight.w600,
                 color: _vehicle.accentColor, letterSpacing: 1.2)),
           ]),
         ),
@@ -1259,10 +1259,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           padding: const EdgeInsets.all(16),
           child: Row(children: [
             Text('TOTAL (incl. GST)', style: GoogleFonts.poppins(
-                fontSize: 14, fontWeight: FontWeight.w900, color: JT.textPrimary)),
+                fontSize: 14, fontWeight: FontWeight.w700, color: JT.textPrimary)),
             const Spacer(),
             Text('₹$total', style: GoogleFonts.poppins(
-                fontSize: 22, fontWeight: FontWeight.w900,
+                fontSize: 22, fontWeight: FontWeight.w700,
                 color: _vehicle.accentColor)),
           ]),
         ),
@@ -1345,7 +1345,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                                 color: Colors.white, strokeWidth: 2))
                         : Row(mainAxisSize: MainAxisSize.min, children: [
                             Text(btnLabel, style: GoogleFonts.poppins(
-                                fontSize: 15, fontWeight: FontWeight.w800,
+                                fontSize: 15, fontWeight: FontWeight.w600,
                                 color: enabled ? Colors.white : JT.iconInactive)),
                             if (enabled) ...[
                               const SizedBox(width: 8),

@@ -96,6 +96,13 @@ class ApiConfig {
   // ── Trip Receipt ─────────────────────────────────────────────────────
   static String tripReceipt(String tripId) => '$baseUrl/api/app/customer/trip-receipt/$tripId';
 
+  // ── Mapping / Geocoding (proxied through server — avoids Android key restriction) ──
+  static String get reverseGeocode => '$baseUrl/api/app/reverse-geocode';
+  static String get placesAutocomplete => '$baseUrl/api/app/places/autocomplete';
+  static String get placeDetails => '$baseUrl/api/app/places/details';
+  static String get placesNearby => '$baseUrl/api/app/places/nearby';
+  static String get routeMultiWaypoint => '$baseUrl/api/app/route/multi-waypoint';
+
   // ── Parcel ───────────────────────────────────────────────────────────
   static String get parcelBook => '$baseUrl/api/app/parcel/book';
   static String get parcelQuote => '$baseUrl/api/app/parcel/quote';

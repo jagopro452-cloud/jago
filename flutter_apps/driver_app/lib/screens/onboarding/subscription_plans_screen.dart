@@ -251,7 +251,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 const Text('Total', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 Text(
                   '₹${total.toStringAsFixed(0)}',
-                  style: const TextStyle(color: JT.primary, fontSize: 22, fontWeight: FontWeight.w900),
+                  style: const TextStyle(color: JT.primary, fontSize: 22, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -589,7 +589,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                           ),
                           child: Text(
                             isBestValue ? 'BEST VALUE' : 'POPULAR',
-                            style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w900),
+                            style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w700),
                           ),
                         ),
                     ],
@@ -601,7 +601,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('₹${price.toStringAsFixed(0)}',
-                          style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w900)),
+                          style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 4),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),

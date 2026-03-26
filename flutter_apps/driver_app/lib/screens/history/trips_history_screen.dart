@@ -190,7 +190,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 type == 'parcel' ? 'Parcel Delivery' : 'Ride',
-                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 3),
               Text(_formatDate(t['createdAt']?.toString()),
@@ -261,7 +261,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   await _fetchAndShowReceipt(t['id']?.toString() ?? t['tripId']?.toString() ?? '');
                 },
                 icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                label: Text('View Receipt', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15)),
+                label: Text('View Receipt', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _primary,
                   foregroundColor: Colors.black,
@@ -321,7 +321,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 18),
           Text('Earnings Receipt', style: GoogleFonts.poppins(
-              color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+              color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text(r['receiptNo'] ?? '', style: GoogleFonts.poppins(color: _textHint, fontSize: 12)),
           const SizedBox(height: 20),
@@ -370,7 +370,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 foregroundColor: Colors.black,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              child: Text('Close', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black)),
+              child: Text('Close', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.black)),
             )),
         ])),
       ),
@@ -383,7 +383,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       Text(value, style: GoogleFonts.poppins(
         color: highlight ?? JT.textPrimary,
         fontSize: bold ? 15 : 13,
-        fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+        fontWeight: bold ? FontWeight.w600 : FontWeight.w600)),
     ]);
   }
 
@@ -420,7 +420,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       ),
       const SizedBox(height: 8),
       Text(value, style: GoogleFonts.poppins(
-          color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w800)),
+          color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
       const SizedBox(height: 2),
       Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10)),
     ]));
@@ -449,7 +449,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             ),
             title: Text('My Trips',
               style: GoogleFonts.poppins(
-                  color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 18)),
+                  color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 18)),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 color: _bg,
@@ -484,7 +484,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   indicatorWeight: 2,
                   labelColor: JT.textPrimary,
                   unselectedLabelColor: _textHint,
-                  labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12),
+                  labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 12),
                   unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 12),
                   tabs: [
                     Tab(text: 'All (${_allTrips.length})'),
@@ -655,7 +655,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                                       Text('₹${fare.toStringAsFixed(0)}',
                                         style: GoogleFonts.poppins(
-                                          color: _green, fontSize: 18, fontWeight: FontWeight.w900)),
+                                          color: _green, fontSize: 18, fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 5),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -753,7 +753,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           const SizedBox(height: 8),
           Text(value,
             style: GoogleFonts.poppins(
-                color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+                color: color, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
           Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 9),
             textAlign: TextAlign.center),

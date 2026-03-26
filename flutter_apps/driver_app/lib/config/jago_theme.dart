@@ -12,20 +12,20 @@ import 'app_theme.dart';
 
 // ── Legacy JT class (compatibility wrapper around modern AppColors) ────────
 class JT {
-  // THEME COLORS — Neon Aesthetic (mapped from AppColors)
-  static const Color primary     = AppColors.primary;       // #00D4FF neon cyan
-  static const Color secondary   = AppColors.secondary;     // #00E676 neon green
-  static const Color bg          = AppColors.bg;            // #060A14 ultra-dark
-  static const Color bgSoft      = AppColors.surface;       // #0F1923 soft surface
-  static const Color surface     = AppColors.surface;       // #0F1923
-  static const Color surfaceAlt  = AppColors.cardAlt;       // #1A2332
-  static const Color border      = AppColors.border;        // #1E3050
-  static const Color textPrimary = AppColors.textPrimary;   // #FFFFFF white
-  static const Color textSecondary = AppColors.textSecondary; // #8899BB secondary
-  static const Color iconInactive  = AppColors.textTertiary;   // #556677
-  static const Color error   = AppColors.error;             // #FF3D57 neon red
-  static const Color success = AppColors.secondary;         // #00E676 neon green
-  static const Color warning = AppColors.tertiary;          // #FFB300 gold
+  // THEME COLORS — Clean Blue + White (mapped from AppColors)
+  static const Color primary     = AppColors.primary;       // #2D8CFF blue
+  static const Color secondary   = AppColors.secondary;     // #5BABFF light blue
+  static const Color bg          = AppColors.bg;            // #FFFFFF white
+  static const Color bgSoft      = AppColors.surface;       // #F8FAFE soft surface
+  static const Color surface     = AppColors.surface;       // #F8FAFE
+  static const Color surfaceAlt  = AppColors.cardAlt;       // #F3F7FF blue-tinted
+  static const Color border      = AppColors.border;        // #E5E9F0
+  static const Color textPrimary = AppColors.textPrimary;   // #111827 dark
+  static const Color textSecondary = AppColors.textSecondary; // #6B7280
+  static const Color iconInactive  = AppColors.textTertiary;   // #9CA3AF
+  static const Color error   = AppColors.error;             // #DC2626
+  static const Color success = AppColors.success;           // #16A34A
+  static const Color warning = AppColors.warning;           // #F59E0B
 
   // GRADIENTS — Same as app_theme
   static LinearGradient get grad => AppColors.neonGrad;

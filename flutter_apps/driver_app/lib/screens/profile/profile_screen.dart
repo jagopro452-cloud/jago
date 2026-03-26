@@ -114,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 24),
             Text('Edit Display Name',
-              style: GoogleFonts.poppins(color: _primary, fontSize: 18, fontWeight: FontWeight.w800)),
+              style: GoogleFonts.poppins(color: _primary, fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 20),
             TextField(
               controller: ctrl,
@@ -180,7 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (mounted) setState(() => _savingName = false);
                 },
                 child: Text('Save Changes',
-                  style: GoogleFonts.poppins(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w800)),
+                  style: GoogleFonts.poppins(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w600)),
               ),
             ),
           ]),
@@ -250,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(width: 14),
             Text('Delete Account', style: GoogleFonts.poppins(
-                color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w800)),
+                color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w600)),
           ]),
           const SizedBox(height: 8),
           Text('Choose how you want to remove your account.',
@@ -269,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: BorderSide(color: _amber.withValues(alpha: 0.3)),
                   ),
                   title: Text('Deactivate Account?',
-                    style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w800)),
+                    style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w600)),
                   content: Text('Your account will be deactivated. Your data is kept. Contact support to reactivate.',
                     style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
                   actions: [
@@ -319,7 +319,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: BorderSide(color: _red.withValues(alpha: 0.3)),
                   ),
                   title: Text('Delete Permanently?',
-                    style: GoogleFonts.poppins(color: _red, fontWeight: FontWeight.w800)),
+                    style: GoogleFonts.poppins(color: _red, fontWeight: FontWeight.w600)),
                   content: Text('This will permanently delete all your data including earnings history, KYC documents, and personal information. This cannot be undone.',
                     style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
                   actions: [
@@ -390,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 14),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Support', style: GoogleFonts.poppins(
-                  color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w800)),
+                  color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w600)),
               Text('JAGO Pro Pilot support team always ready!',
                   style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
             ]),
@@ -565,7 +565,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(
                                 _name.isNotEmpty ? _name[0].toUpperCase() : 'P',
                                 style: GoogleFonts.poppins(
-                                    color: _primary, fontSize: 40, fontWeight: FontWeight.w900),
+                                    color: _primary, fontSize: 40, fontWeight: FontWeight.w700),
                               ),
                             ),
                           ),
@@ -593,7 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       else
                         Text(_name,
                           style: GoogleFonts.poppins(
-                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900,
+                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700,
                             letterSpacing: -0.5)),
                       const SizedBox(height: 4),
                       Text('+91-$_phone',
@@ -760,7 +760,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           side: BorderSide(color: _red.withValues(alpha: 0.3)),
                         ),
                         title: Text('Logout', style: GoogleFonts.poppins(
-                            color: Colors.white, fontWeight: FontWeight.w800)),
+                            color: Colors.white, fontWeight: FontWeight.w600)),
                         content: Text('Are you sure you want to logout?',
                           style: GoogleFonts.poppins(color: _textSecondary, fontSize: 14)),
                         actions: [
@@ -813,7 +813,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Icon(icon, color: color, size: 22),
           const SizedBox(height: 8),
           Text(value, style: GoogleFonts.poppins(
-              color: color, fontSize: 17, fontWeight: FontWeight.w900)),
+              color: color, fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10),
             textAlign: TextAlign.center),
@@ -848,7 +848,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(width: 10),
               Text(title, style: GoogleFonts.poppins(
-                color: _textHint, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                color: _textHint, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
             ]),
           ),
           Container(height: 1, color: _border),

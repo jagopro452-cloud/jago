@@ -190,7 +190,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
                           children: [
                             Text(
                               isLast ? 'Get Started' : 'Continue',
-                              style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 16),
+                              style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16),
                             ),
                             const SizedBox(width: 8),
                             const Icon(Icons.arrow_forward_rounded, size: 18),
@@ -268,7 +268,7 @@ class _SlidePage extends StatelessWidget {
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontSize: 32,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   height: 1.15,
                 ),
               ),

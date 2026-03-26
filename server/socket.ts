@@ -360,7 +360,17 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const driver = camelize(driverR.rows[0]) as any;
 
-          // Notify customer via socket
+          // Get driver vehicle details
+          const vehicleR = await rawDb.execute(rawSql`
+            SELECT dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category
+            FROM driver_details dd
+            LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+            WHERE dd.user_id = ${userId}::uuid
+            LIMIT 1
+          `).catch(() => ({ rows: [] }));
+          const vehicle = (vehicleR.rows[0] as any) || {};
+
+          // Notify customer via socket (with full driver + vehicle info)
           io.to(`user:${trip.customerId}`).emit("trip:driver_assigned", {
             tripId,
             driver: {
@@ -369,6 +379,9 @@ export function setupSocket(httpServer: HttpServer) {
               phone: driver.phone,
               rating: driver.rating,
               photo: driver.profilePhoto,
+              vehicleNumber: vehicle.vehicle_number || '',
+              vehicleModel: vehicle.vehicle_model || '',
+              vehicleCategory: vehicle.vehicle_category || '',
               lat: trip.driverLat,
               lng: trip.driverLng,
             },
@@ -472,6 +485,20 @@ export function setupSocket(httpServer: HttpServer) {
                 const customerId = (pendingTripR.rows[0] as any).customer_id;
                 io.to(`user:${customerId}`).emit("trip:payment_pending", {
                   tripId,
+                  status: "payment_pending",
+                  currentStatus: "payment_pending",
+                  message: "Ride complete. Awaiting payment confirmation.",
+                });
+                io.to(`user:${customerId}`).emit("trip:status_update", {
+                  tripId,
+                  status: "payment_pending",
+                  currentStatus: "payment_pending",
+                  message: "Ride complete. Awaiting payment confirmation.",
+                });
+                io.to(`trip:${tripId}`).emit("trip:status_update", {
+                  tripId,
+                  status: "payment_pending",
+                  currentStatus: "payment_pending",
                   message: "Ride complete. Awaiting payment confirmation.",
                 });
               }

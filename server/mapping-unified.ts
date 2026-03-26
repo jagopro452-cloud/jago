@@ -26,6 +26,8 @@ export interface PlacePrediction {
   secondaryText: string;   // "Vijayawada, Andhra Pradesh"
   fullDescription: string; // "Benz Circle, Vijayawada, Andhra Pradesh, India"
   types: string[];
+  lat?: number;
+  lng?: number;
 }
 
 export interface ReverseGeocodeResult {
@@ -243,6 +245,8 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
       secondaryText: row.full_address || "",
       fullDescription: `${row.name}, ${row.full_address || ""}`,
       types: ["popular_location"],
+      lat: parseFloat(String(row.latitude)) || 0,
+      lng: parseFloat(String(row.longitude)) || 0,
     }));
   } catch {
     return [];
@@ -285,47 +289,71 @@ export async function reverseGeocode(
 
   // Layer 3: Google API
   const apiKey = await getGoogleMapsKey();
-  if (!apiKey) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
-
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-    const r = await fetch(url, { signal: controller.signal });
-    if (!r.ok) return null;
-    const data = await r.json() as any;
-    if (data?.status !== "OK" || !data.results?.length) return null;
-
-    const top = data.results[0];
-    const components = top.address_components || [];
-
-    const result: ReverseGeocodeResult = {
-      formattedAddress: top.formatted_address || "",
-      shortName: extractShortName(top.formatted_address || ""),
-      area: findComponent(components, "sublocality_level_1", "sublocality", "neighborhood") || "",
-      city: findComponent(components, "locality", "administrative_area_level_2") || "",
-      state: findComponent(components, "administrative_area_level_1") || "",
-      pincode: findComponent(components, "postal_code") || "",
-      country: findComponent(components, "country") || "India",
-    };
-
-    reverseGeocodeCache.set(key, result);
-
-    // Persist to DB (1 hour TTL)
-    rawDb.execute(rawSql`
-      INSERT INTO maps_cache (cache_type, cache_key, lat, lng, formatted_address, data_json, expires_at)
-      VALUES ('reverse_geocode', ${key}, ${lat}, ${lng}, ${result.formattedAddress}, ${JSON.stringify(result)}::jsonb, NOW() + INTERVAL '60 minutes')
-      ON CONFLICT (cache_type, cache_key) DO UPDATE SET
-        data_json = EXCLUDED.data_json, expires_at = EXCLUDED.expires_at, updated_at = NOW()
-    `).catch(() => {});
-
-    return result;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
+  if (apiKey) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+      const r = await fetch(url, { signal: controller.signal });
+      if (r.ok) {
+        const data = await r.json() as any;
+        if (data?.status === "OK" && data.results?.length) {
+          const top = data.results[0];
+          const components = top.address_components || [];
+          const result: ReverseGeocodeResult = {
+            formattedAddress: top.formatted_address || "",
+            shortName: extractShortName(top.formatted_address || ""),
+            area: findComponent(components, "sublocality_level_1", "sublocality", "neighborhood") || "",
+            city: findComponent(components, "locality", "administrative_area_level_2") || "",
+            state: findComponent(components, "administrative_area_level_1") || "",
+            pincode: findComponent(components, "postal_code") || "",
+            country: findComponent(components, "country") || "India",
+          };
+          reverseGeocodeCache.set(key, result);
+          rawDb.execute(rawSql`
+            INSERT INTO maps_cache (cache_type, cache_key, lat, lng, formatted_address, data_json, expires_at)
+            VALUES ('reverse_geocode', ${key}, ${lat}, ${lng}, ${result.formattedAddress}, ${JSON.stringify(result)}::jsonb, NOW() + INTERVAL '60 minutes')
+            ON CONFLICT (cache_type, cache_key) DO UPDATE SET
+              data_json = EXCLUDED.data_json, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+          `).catch(() => {});
+          return result;
+        }
+      }
+    } catch {}
+    finally { clearTimeout(timeout); }
   }
+
+  // Layer 4: Nominatim fallback (free, no key required)
+  try {
+    const nomController = new AbortController();
+    const nomTimeout = setTimeout(() => nomController.abort(), 4000);
+    try {
+      const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
+      const nr = await fetch(nomUrl, {
+        signal: nomController.signal,
+        headers: { "User-Agent": "JagoPro/1.0 (ride-hailing app)" },
+      });
+      if (nr.ok) {
+        const nd = await nr.json() as any;
+        if (nd?.display_name) {
+          const addr = nd.address || {};
+          const result: ReverseGeocodeResult = {
+            formattedAddress: nd.display_name,
+            shortName: addr.suburb || addr.neighbourhood || addr.city || addr.town || "",
+            area: addr.suburb || addr.neighbourhood || addr.quarter || "",
+            city: addr.city || addr.town || addr.village || addr.county || "",
+            state: addr.state || "",
+            pincode: addr.postcode || "",
+            country: addr.country || "India",
+          };
+          reverseGeocodeCache.set(key, result);
+          return result;
+        }
+      }
+    } finally { clearTimeout(nomTimeout); }
+  } catch {}
+
+  return null;
 }
 
 function findComponent(components: any[], ...types: string[]): string {

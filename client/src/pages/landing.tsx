@@ -352,17 +352,25 @@ export default function LandingPage() {
         @keyframes jago-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
         @keyframes jago-slide-in-left{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
         @keyframes jago-slide-in-right{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes jago-vehicle-float{0%,100%{transform:translateY(0) rotate(-0.5deg)}50%{transform:translateY(-10px) rotate(0.5deg)}}
+        @keyframes jago-vehicle-drive{0%,100%{transform:translateX(-4px) translateY(0)}50%{transform:translateX(4px) translateY(-5px)}}
+        @keyframes jago-road-dash{from{background-position:0 0}to{background-position:60px 0}}
+        @keyframes jago-city-reveal{from{transform:scale(1.08);opacity:.7}to{transform:scale(1);opacity:1}}
 
         .reveal{opacity:0;transform:translateY(36px);transition:opacity .8s ease,transform .8s ease}
         .reveal.vis{opacity:1;transform:translateY(0)}
-        .svc-card{transition:transform .25s,box-shadow .25s,background .25s;cursor:pointer;position:relative}
-        .svc-card::before{content:'';position:absolute;inset:0;borderRadius:20px;background:linear-gradient(135deg,rgba(99,229,255,0.1),rgba(21,88,196,0.05));opacity:0;transition:opacity .3s}
-        .svc-card:hover::before{opacity:1}
-        .svc-card:hover{transform:translateY(-8px) scale(1.02);background:${N600} !important;box-shadow:0 24px 60px rgba(21,88,196,.25)!important}
-        .feat-card{transition:background .2s}
-        .feat-card:hover{background:${N600} !important}
-        .city-card{transition:transform .2s}
-        .city-card:hover{transform:scale(1.04)}
+        .svc-card{transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s,background .28s;cursor:pointer;position:relative;overflow:hidden}
+        .svc-card::after{content:'';position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,rgba(99,229,255,0.07),rgba(21,88,196,0.04));opacity:0;transition:opacity .3s;pointer-events:none}
+        .svc-card:hover::after{opacity:1}
+        .svc-card:hover{transform:translateY(-10px) scale(1.015);box-shadow:0 28px 64px rgba(21,88,196,.3)!important}
+        .svc-card:hover .svc-vehicle{animation:jago-vehicle-float .9s ease-in-out infinite}
+        .svc-vehicle{transition:transform .3s;will-change:transform}
+        .feat-card{transition:background .2s,transform .2s}
+        .feat-card:hover{background:${N600} !important;transform:translateY(-3px)}
+        .city-card{transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s;overflow:hidden;cursor:pointer}
+        .city-card:hover{transform:translateY(-6px) scale(1.03);box-shadow:0 20px 48px rgba(0,0,0,.5)!important}
+        .city-card:hover .city-img{transform:scale(1.08)}
+        .city-img{transition:transform .5s cubic-bezier(.2,.8,.2,1);will-change:transform}
         .dl-btn{transition:transform .2s,box-shadow .2s}
         .dl-btn:hover{transform:translateY(-3px)}
         .nav-link{color:${W40};text-decoration:none;font-size:14px;font-weight:500;font-family:'Space Grotesk',sans-serif;transition:color .2s}
@@ -414,7 +422,7 @@ export default function LandingPage() {
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: W70, fontFamily: "Space Grotesk,sans-serif" }}>🚀 50+ cities • 20K+ verified pilots • Real-time tracking</span>
               </div>
-              <h1 style={{ fontSize: "clamp(42px,5.5vw,76px)", fontWeight: 800, lineHeight: 1.05, marginBottom: 24, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -2.5, color: W }}>
+              <h1 style={{ fontSize: "clamp(40px,5vw,72px)", fontWeight: 700, lineHeight: 1.06, marginBottom: 24, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -2, color: W }}>
                 Smart Rides,<br />
                 <span style={{ background: `linear-gradient(135deg,${N500},#63e5ff)`, backgroundClip: "text", WebkitBackgroundClip: "text", color: "transparent" }}>Smarter Journeys.</span>
               </h1>
@@ -444,7 +452,7 @@ export default function LandingPage() {
                   { refObj: sPilots.ref, val: `${(sPilots.val/1000).toFixed(0)}K+`, label: "Verified Pilots" },
                 ].map((s, i) => (
                   <div key={i} ref={s.refObj} style={{ animation: `jago-fade-up .9s ease forwards`, animationDelay: `${i * 0.1}s` }}>
-                    <p style={{ fontSize: 36, fontWeight: 800, color: W, margin: 0, fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
+                    <p style={{ fontSize: 36, fontWeight: 700, color: W, margin: 0, fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
                     <p style={{ fontSize: 12, color: W40, margin: "6px 0 0", fontFamily: "Space Grotesk,sans-serif", letterSpacing: .5, textTransform: "uppercase" }}>{s.label}</p>
                   </div>
                 ))}
@@ -465,30 +473,40 @@ export default function LandingPage() {
             <div ref={secSvc.ref} className={`reveal${secSvc.vis ? " vis" : ""}`}>
               <div style={{ textAlign: "center", maxWidth: 540, margin: "0 auto 64px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Our Services</div>
-                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Every ride,<br />every need.</h2>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Every ride,<br />every need.</h2>
                 <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls — Jago gets you there.</p>
               </div>
-              <div className="svc-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-                {[
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M9 16l2-6h5l2 4.5"/><path d="M6 16l3.5-8.5"/></svg>, title: "Bike Taxi", desc: "Fastest way through city traffic. Affordable 2-wheeler rides." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M10 18h4M7 15V9l3.5-3H18l2 4v5H10"/></svg>, title: "Auto Ride", desc: "Classic CNG auto rides. Comfortable and pocket-friendly." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a1 1 0 01-1-1v-3l3-5h13l3 5v3a1 1 0 01-1 1h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>, title: "Cab Ride", desc: "AC cab rides for family and business travel across the city." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><rect x="3" y="8" width="7" height="13" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>, title: "Intercity", desc: "Outstation travel with transparent pricing and top pilots." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>, title: "Parcel Delivery", desc: "Send packages door to door � same day, same city." },
-                  { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><path d="M15 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>, title: "Goods Transport", desc: "Move furniture, appliances, and freight with trucks." },
-                ].map((s, i) => (
-                  <div key={i} className="svc-card" style={{ background: N700, borderRadius: 20, padding: "28px 24px", border: `1px solid ${BORDER}` }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${N500},#0e2fa8)`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 24px rgba(21,88,196,0.4)" }}>
-                      {s.icon}
+              {(() => {
+                const CDN = "https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles";
+                const SVC = [
+                  { img: `${CDN}/bike.png`,       bg: "linear-gradient(145deg,#0a1535 0%,#0f2060 100%)", title: "Bike Taxi",       desc: "Fastest way through city traffic. Affordable 2-wheeler rides.",  tag: "2-Wheeler" },
+                  { img: `${CDN}/auto.png`,        bg: "linear-gradient(145deg,#0f1a2e 0%,#0d2b4a 100%)", title: "Auto Ride",       desc: "Classic CNG auto rides. Comfortable and pocket-friendly.",        tag: "3-Wheeler" },
+                  { img: `${CDN}/car.png`,         bg: "linear-gradient(145deg,#0d1640 0%,#142080 100%)", title: "Cab Ride",        desc: "AC cab rides for family and business travel across the city.",   tag: "4-Wheeler" },
+                  { img: `${CDN}/suv.png`,         bg: "linear-gradient(145deg,#0a1530 0%,#0e2455 100%)", title: "Intercity",       desc: "Outstation travel with transparent pricing and top pilots.",     tag: "Long Distance" },
+                  { img: `${CDN}/parcel_bike.png`, bg: "linear-gradient(145deg,#0f2014 0%,#0d3d1c 100%)", title: "Parcel Delivery", desc: "Send packages door to door, same day, same city.",              tag: "Express" },
+                  { img: `${CDN}/truck.png`,       bg: "linear-gradient(145deg,#1a120a 0%,#3d2406 100%)", title: "Goods Transport", desc: "Move furniture, appliances, and freight with ease.",             tag: "Heavy Load" },
+                ];
+                return (
+                <div className="svc-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+                  {SVC.map((s, i) => (
+                    <div key={i} className="svc-card" style={{ background: N700, borderRadius: 20, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}>
+                      <div style={{ borderRadius: "20px 20px 0 0", background: s.bg, height: 130, display: "flex", alignItems: "flex-end", justifyContent: "center", position: "relative", overflow: "hidden", padding: "0 16px 10px" }}>
+                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "repeating-linear-gradient(90deg,rgba(255,255,255,0.12) 0,rgba(255,255,255,0.12) 18px,transparent 18px,transparent 30px)", animation: "jago-road-dash 1.2s linear infinite" }} />
+                        <div style={{ position: "absolute", top: 10, left: 12, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 30, padding: "3px 10px", fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.45)", fontFamily: "Space Grotesk,sans-serif", letterSpacing: .5 }}>{s.tag}</div>
+                        <img src={s.img} alt={s.title} className="svc-vehicle" style={{ height: 86, objectFit: "contain", filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.6))", flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.opacity = '0' }} />
+                      </div>
+                      <div style={{ padding: "20px 22px 22px" }}>
+                        <h3 style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 7, fontFamily: "Space Grotesk,sans-serif", color: W }}>{s.title}</h3>
+                        <p style={{ fontSize: 13, color: W40, lineHeight: 1.7, marginBottom: 14 }}>{s.desc}</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: N500, fontFamily: "Space Grotesk,sans-serif" }}>
+                          Book now <ArrowR />
+                        </div>
+                      </div>
                     </div>
-                    <h3 style={{ fontSize: 16.5, fontWeight: 700, marginBottom: 9, fontFamily: "Space Grotesk,sans-serif", color: W }}>{s.title}</h3>
-                    <p style={{ fontSize: 13.5, color: W40, lineHeight: 1.7, marginBottom: 16 }}>{s.desc}</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: N500, fontFamily: "Space Grotesk,sans-serif" }}>
-                      Book now <ArrowR />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                );
+              })()}
             </div>
           </div>
         </section>
@@ -499,7 +517,7 @@ export default function LandingPage() {
             <div ref={secHow.ref} className={`reveal${secHow.vis ? " vis" : ""}`}>
               <div style={{ textAlign: "center", maxWidth: 560, margin: "0 auto 64px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>How It Works</div>
-                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Ride in 3 simple steps.</h2>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12 }}>Ride in 3 simple steps.</h2>
                 <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From booking to destination — the whole experience is designed to be fast and effortless.</p>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 24 }} className="svc-grid">
@@ -544,7 +562,7 @@ export default function LandingPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 72, alignItems: "center" }} className="hero-grid">
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Why JAGO</div>
-                  <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
+                  <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Built different,<br />built better.</h2>
                   <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 440 }}>We built an obsession-grade experience that puts safety, affordability, and speed first — for both riders and pilots.</p>
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                     <a href="#download" style={{ padding: "12px 22px", borderRadius: 12, background: N500, color: W, fontSize: 14, fontWeight: 700, textDecoration: "none", fontFamily: "Space Grotesk,sans-serif" }}>Get the App</a>
@@ -578,7 +596,7 @@ export default function LandingPage() {
           <div className="container" style={{ position: "relative" }}>
             <div ref={secStats.ref} className={`reveal${secStats.vis ? " vis" : ""}`}>
               <div style={{ textAlign: "center", marginBottom: 60 }}>
-                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", color: W, letterSpacing: -1 }}>Numbers that prove it</h2>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", color: W, letterSpacing: -1 }}>Numbers that prove it</h2>
                 <p style={{ color: W40, fontSize: 15, marginTop: 12 }}>Real performance. Real trust.</p>
               </div>
               <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 20 }}>
@@ -589,7 +607,7 @@ export default function LandingPage() {
                   { refObj: sRating.ref, val: `${(sRating.val/10).toFixed(1)}★`, label: "Avg Rider Rating" },
                 ].map((s, i) => (
                   <div key={i} ref={s.refObj} style={{ textAlign: "center", background: W06, backdropFilter: "blur(12px)", borderRadius: 20, padding: "36px 16px", border: `1px solid ${W10}` }}>
-                    <p style={{ fontSize: 44, fontWeight: 800, color: W, margin: "0 0 10px", fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
+                    <p style={{ fontSize: 44, fontWeight: 700, color: W, margin: "0 0 10px", fontFamily: "Space Grotesk,sans-serif", lineHeight: 1 }}>{s.val}</p>
                     <p style={{ fontSize: 13, color: W40, fontFamily: "Space Grotesk,sans-serif" }}>{s.label}</p>
                   </div>
                 ))}
@@ -604,7 +622,7 @@ export default function LandingPage() {
             <div ref={secApps.ref} className={`reveal${secApps.vis ? " vis" : ""}`}>
               <div style={{ textAlign: "center", marginBottom: 56 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Two Apps, One Platform</div>
-                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1 }}>For every journey</h2>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1 }}>For every journey</h2>
               </div>
               <div className="apps-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 {[
@@ -622,7 +640,7 @@ export default function LandingPage() {
                         }
                       </div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8, fontFamily: "Space Grotesk,sans-serif" }}>{d.sub}</div>
-                      <h3 style={{ fontSize: 24, fontWeight: 800, color: W, marginBottom: 14, fontFamily: "Space Grotesk,sans-serif" }}>{d.title}</h3>
+                      <h3 style={{ fontSize: 22, fontWeight: 700, color: W, marginBottom: 14, fontFamily: "Space Grotesk,sans-serif" }}>{d.title}</h3>
                       <p style={{ fontSize: 15, color: "rgba(255,255,255,0.78)", lineHeight: 1.7, marginBottom: 28 }}>{d.desc}</p>
                       <a href="#download" className="dl-btn" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.25)", color: W, padding: "11px 22px", borderRadius: 12, textDecoration: "none", fontSize: 13, fontWeight: 700, fontFamily: "Space Grotesk,sans-serif" }}>
                         {d.cta} <ArrowR />
@@ -642,7 +660,7 @@ export default function LandingPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }} className="hero-grid">
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Pilot Earnings</div>
-                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Drive more.<br />Earn more.</h2>
+                <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.12, marginBottom: 20 }}>Drive more.<br />Earn more.</h2>
                 <p style={{ fontSize: 15.5, color: W70, lineHeight: 1.8, marginBottom: 36, maxWidth: 420 }}>Jago pilots earn industry-leading pay with daily payouts, surge bonuses, and zero commission cuts for the first 3 months.</p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 36 }}>
                   {[
@@ -652,7 +670,7 @@ export default function LandingPage() {
                     { val: "24h", label: "Daily payout cycle" },
                   ].map((e, i) => (
                     <div key={i} style={{ background: `rgba(21,88,196,0.08)`, borderRadius: 16, padding: "20px 18px", border: `1px solid rgba(21,88,196,0.2)` }}>
-                      <p style={{ fontSize: 26, fontWeight: 800, color: N500, fontFamily: "Space Grotesk,sans-serif", margin: "0 0 4px", lineHeight: 1.1 }}>{e.val}</p>
+                      <p style={{ fontSize: 26, fontWeight: 700, color: N500, fontFamily: "Space Grotesk,sans-serif", margin: "0 0 4px", lineHeight: 1.1 }}>{e.val}</p>
                       <p style={{ fontSize: 12, color: W40, margin: 0, lineHeight: 1.5 }}>{e.label}</p>
                     </div>
                   ))}
@@ -686,7 +704,7 @@ export default function LandingPage() {
           <div className="container">
             <div ref={secCities.ref} className={`reveal${secCities.vis ? " vis" : ""}`} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: N500, textTransform: "uppercase", letterSpacing: 3, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14 }}>Service Areas</div>
-              <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, marginBottom: 14 }}>Growing fast</h2>
+              <h2 style={{ fontSize: "clamp(28px,3.5vw,48px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, marginBottom: 14 }}>Growing fast</h2>
               <p style={{ fontSize: 15, color: W40, maxWidth: 400, margin: "0 auto 56px", lineHeight: 1.7 }}>Serving millions across India, expanding every month.</p>
               <div className="city-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12 }}>
                 {["Hyderabad","Bangalore","Chennai","Pune","Mumbai","Delhi","Kolkata","Jaipur","Ahmedabad","Visakhapatnam"].map((city, i) => (
@@ -716,7 +734,7 @@ export default function LandingPage() {
                       <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", animation: "jago-badge 1.6s infinite" }} />
                       <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)", fontFamily: "Space Grotesk,sans-serif" }}>Now accepting pilots in 50+ cities</span>
                     </div>
-                    <h2 style={{ fontSize: "clamp(28px,3.5vw,52px)", fontWeight: 800, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.1, marginBottom: 18, color: W }}>
+                    <h2 style={{ fontSize: "clamp(28px,3.5vw,52px)", fontWeight: 700, fontFamily: "Space Grotesk,sans-serif", letterSpacing: -1, lineHeight: 1.1, marginBottom: 18, color: W }}>
                       Your vehicle.<br />Your schedule.<br /><span style={{ color: "#60a5fa" }}>Your income.</span>
                     </h2>
                     <p style={{ fontSize: 16, color: W70, lineHeight: 1.8, maxWidth: 440, marginBottom: 36 }}>
@@ -766,7 +784,7 @@ export default function LandingPage() {
                   <div style={{ width: 64, height: 64, borderRadius: 18, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
                     <Logo size="lg" variant="white" />
                   </div>
-                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 800, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride?</h2>
+                  <h2 style={{ fontSize: "clamp(26px,3.5vw,46px)", fontWeight: 700, color: W, fontFamily: "Space Grotesk,sans-serif", marginBottom: 14, letterSpacing: -1 }}>Ready to ride?</h2>
                   <p style={{ fontSize: 16, color: "rgba(255,255,255,0.75)", marginBottom: 44, maxWidth: 440, margin: "0 auto 44px" }}>
                     Download now and get your first ride up to <strong style={{ color: W }}>₹50 OFF</strong> with code{" "}
                     <strong style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>JAGOPRO50</strong>
@@ -781,7 +799,7 @@ export default function LandingPage() {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         <div style={{ textAlign: "left" }}>
                           <div style={{ fontSize: 9.5, opacity: .5, textTransform: "uppercase", letterSpacing: 1 }}>{d.sub}</div>
-                          <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.2 }}>{d.label}</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>{d.label}</div>
                         </div>
                       </a>
                     ))}

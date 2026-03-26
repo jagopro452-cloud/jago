@@ -126,6 +126,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
+    _firebaseVerificationId = null;
+    await FirebaseOtpService.resetVerification();
     // Server sends OTP via SMS first (always works, independent of Firebase)
     final res = await AuthService.sendOtp(phone, 'customer');
     if (!mounted) return;
@@ -228,17 +230,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
-            // Blue gradient top section
+            // Soft blue backdrop
             Positioned.fill(
               child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [JT.primary, JT.secondary, JT.bg],
-                    stops: const [0.0, 0.45, 0.45],
-                  ),
-                ),
+                color: const Color(0xFFF7FAFF),
               ),
             ),
 
@@ -255,28 +250,28 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       Container(
                         width: 76, height: 76,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.white.withValues(alpha: 0.2),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
+                          borderRadius: BorderRadius.circular(24),
+                          color: Colors.white,
+                          border: Border.all(color: const Color(0xFFD8E6F8)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 24,
+                              color: JT.primary.withValues(alpha: 0.08),
+                              blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
                           ],
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(10),
-                          child: JT.logoWhite(height: 44),
+                          child: JT.logoBlue(height: 44),
                         ),
                       ),
                       const SizedBox(height: 18),
-                      JT.logoWhite(height: 36),
+                      JT.logoBlue(height: 36),
                       const SizedBox(height: 6),
                       Text('Your ride, your way', style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.75),
+                        color: JT.textSecondary,
                         letterSpacing: 0.5,
                       )),
                     ],
@@ -292,9 +287,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 position: _cardSlide,
                 child: Container(
                   constraints: BoxConstraints(maxHeight: size.height * 0.64),
-                  decoration: const BoxDecoration(
-                    color: JT.surface,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 24,
+                        offset: const Offset(0, -6),
+                      ),
+                    ],
                   ),
                   child: SingleChildScrollView(
                     padding: EdgeInsets.only(
@@ -316,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       Text(
                         _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
                         style: GoogleFonts.poppins(
-                          fontSize: 26, fontWeight: FontWeight.w800, color: JT.textPrimary,
+                          fontSize: 26, fontWeight: FontWeight.w600, color: JT.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -400,7 +402,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                           child: Text('Create Account', style: GoogleFonts.poppins(
-                            color: JT.primary, fontWeight: FontWeight.w800, fontSize: 14)),
+                            color: JT.primary, fontWeight: FontWeight.w600, fontSize: 14)),
                         ),
                       ]),
                     ]),
@@ -417,13 +419,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildPhoneField() {
     return Container(
       decoration: BoxDecoration(
-        color: JT.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JT.primary.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: const Color(0xFFD8E6F8), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: JT.primary.withValues(alpha: 0.06),
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
             offset: const Offset(0, 2),
           ),
         ],
@@ -432,15 +434,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           decoration: BoxDecoration(
-            color: JT.primary.withValues(alpha: 0.08),
+            color: const Color(0xFFF2F7FF),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(14),
               bottomLeft: Radius.circular(14),
             ),
-            border: Border(right: BorderSide(color: JT.primary.withValues(alpha: 0.2), width: 1.5)),
+            border: const Border(right: BorderSide(color: Color(0xFFD8E6F8), width: 1.2)),
           ),
           child: Text('+91', style: GoogleFonts.poppins(
-            fontSize: 16, fontWeight: FontWeight.w800, color: JT.primary)),
+            fontSize: 16, fontWeight: FontWeight.w600, color: JT.primary)),
         ),
         Expanded(
           child: TextField(
@@ -464,9 +466,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildPasswordField() {
     return Container(
       decoration: BoxDecoration(
-        color: JT.bgSoft,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JT.border, width: 1.5),
+        border: Border.all(color: const Color(0xFFD8E6F8), width: 1.2),
       ),
       child: TextField(
         controller: _passwordCtrl,
@@ -492,9 +494,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: JT.bgSoft,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JT.primary.withValues(alpha: 0.4), width: 2),
+        border: Border.all(color: const Color(0xFFD8E6F8), width: 1.4),
       ),
       child: TextField(
         controller: _otpCtrl,
@@ -507,7 +509,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           LengthLimitingTextInputFormatter(6),
         ],
         style: GoogleFonts.poppins(
-          fontSize: 28, fontWeight: FontWeight.w900,
+          fontSize: 28, fontWeight: FontWeight.w700,
           letterSpacing: 16, color: JT.textPrimary,
         ),
         decoration: InputDecoration(

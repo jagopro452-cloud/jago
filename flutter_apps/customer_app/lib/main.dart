@@ -15,19 +15,17 @@ import 'screens/booking/voice_booking_screen.dart';
 // Global navigator key — used for 401 auto-logout and deep-link navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 Future<void> loadThemePreference() async {
-  final prefs = await SharedPreferences.getInstance();
-  final pref = prefs.getString('theme_pref') ?? prefs.getString('theme_mode') ?? 'system';
-  themeNotifier.value = pref == 'dark' ? ThemeMode.dark : pref == 'light' ? ThemeMode.light : ThemeMode.system;
+  themeNotifier.value = ThemeMode.light;
 }
 
 Future<void> saveThemePreference(String pref) async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('theme_pref', pref);
-  await prefs.setString('theme_mode', pref);
-  themeNotifier.value = pref == 'dark' ? ThemeMode.dark : pref == 'light' ? ThemeMode.light : ThemeMode.system;
+  await prefs.setString('theme_pref', 'light');
+  await prefs.setString('theme_mode', 'light');
+  themeNotifier.value = ThemeMode.light;
 }
 
 void main() async {
@@ -59,15 +57,20 @@ void main() async {
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.error_outline, color: Color(0xFF2F80ED), size: 48),
+              const Icon(Icons.error_outline,
+                  color: Color(0xFF2F80ED), size: 48),
               const SizedBox(height: 16),
               const Text('Something went wrong.\nPlease restart the app.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Color(0xFF0B0B0B), fontWeight: FontWeight.w600)),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFF0B0B0B),
+                      fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Text(details.exceptionAsString(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                  textAlign: TextAlign.center,
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
             ]),
           ),
         ),
@@ -104,7 +107,9 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
   bool _isVoiceBookingUri(Uri uri) {
     final u = uri.toString().toLowerCase();
     return u.startsWith('jago://voice/booking') ||
-        (uri.scheme == 'https' && uri.host == 'jagopro.org' && uri.path.startsWith('/voice-booking'));
+        (uri.scheme == 'https' &&
+            uri.host == 'jagopro.org' &&
+            uri.path.startsWith('/voice-booking'));
   }
 
   Future<void> _openVoiceBookingIfAllowed() async {
@@ -115,7 +120,9 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
     final nav = _navKey.currentState;
     if (nav == null) return;
     _voiceRouteOpen = true;
-    nav.push(MaterialPageRoute(builder: (_) => const VoiceBookingScreen())).whenComplete(() {
+    nav
+        .push(MaterialPageRoute(builder: (_) => const VoiceBookingScreen()))
+        .whenComplete(() {
       _voiceRouteOpen = false;
     });
   }
@@ -123,7 +130,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
   Future<void> _handleIncomingUri(Uri? uri, {bool coldStart = false}) async {
     if (uri == null || !_isVoiceBookingUri(uri)) return;
     if (coldStart) {
-      await Future.delayed(const Duration(milliseconds: 3600));
+      await Future.delayed(const Duration(milliseconds: 2000));
     }
     await _openVoiceBookingIfAllowed();
   }
@@ -140,110 +147,125 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
   }
 
   static ThemeData _lightTheme() {
-    const primary = Color(0xFF2F80ED);
+    const primary = Color(0xFF1677FF);
     const bg = Color(0xFFFFFFFF);
-    const card = Color(0xFFF5F8FF);
+    const card = Color(0xFFF7FAFF);
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: const ColorScheme.light(
         primary: primary,
-        secondary: Color(0xFF56CCF2),
+        secondary: Color(0xFF5B9DFF),
         surface: card,
         background: bg,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
-        onSurface: Color(0xFF0B0B0B),
+        onSurface: Color(0xFF111827),
+        outline: Color(0xFFD9E4F5),
       ),
       scaffoldBackgroundColor: bg,
       cardColor: card,
-      fontFamily: GoogleFonts.poppins().fontFamily,
-      textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: const Color(0xFF0B0B0B),
-        displayColor: const Color(0xFF0B0B0B),
-      ),
+      dividerColor: const Color(0xFFE5EDF7),
+      fontFamily: GoogleFonts.manrope().fontFamily,
+      textTheme: GoogleFonts.manropeTextTheme()
+          .copyWith(
+            headlineLarge: GoogleFonts.manrope(
+                fontSize: 32, fontWeight: FontWeight.w600, height: 1.08),
+            headlineMedium: GoogleFonts.manrope(
+                fontSize: 28, fontWeight: FontWeight.w600, height: 1.1),
+            titleLarge: GoogleFonts.manrope(
+                fontSize: 20, fontWeight: FontWeight.w700, height: 1.15),
+            titleMedium: GoogleFonts.manrope(
+                fontSize: 16, fontWeight: FontWeight.w700, height: 1.2),
+            bodyLarge: GoogleFonts.manrope(
+                fontSize: 15, fontWeight: FontWeight.w500, height: 1.35),
+            bodyMedium: GoogleFonts.manrope(
+                fontSize: 14, fontWeight: FontWeight.w500, height: 1.35),
+            bodySmall: GoogleFonts.manrope(
+                fontSize: 12, fontWeight: FontWeight.w500, height: 1.3),
+            labelLarge: GoogleFonts.manrope(
+                fontSize: 15, fontWeight: FontWeight.w700, height: 1.1),
+          )
+          .apply(
+            bodyColor: const Color(0xFF111827),
+            displayColor: const Color(0xFF111827),
+          ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
-        foregroundColor: const Color(0xFF0B0B0B),
+        foregroundColor: const Color(0xFF111827),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0B0B0B)),
+        titleTextStyle: GoogleFonts.manrope(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF111827)),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
+      ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFFE5EDF7)),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          minimumSize: const Size.fromHeight(54),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 22),
+          textStyle:
+              GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          side: const BorderSide(color: Color(0xFFD6E6FF)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          minimumSize: const Size.fromHeight(54),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 22),
+          textStyle:
+              GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF5F8FF),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9FF))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 2)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14),
+        fillColor: const Color(0xFFF7FAFF),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFDCE7F5))),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: primary, width: 1.6)),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        hintStyle: GoogleFonts.manrope(
+            color: const Color(0xFF94A3B8),
+            fontSize: 14,
+            fontWeight: FontWeight.w500),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       ),
     );
   }
 
   static ThemeData _darkTheme() {
-    const primary = Color(0xFF2F80ED);
-    const bg = Color(0xFF0B0B0B);
-    const card = Color(0xFF1A1A1A);
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: const ColorScheme.dark(
-        primary: primary,
-        secondary: Color(0xFF56CCF2),
-        surface: card,
-        background: bg,
-        onPrimary: Colors.white,
-        onSurface: Colors.white,
-        outline: Color(0xFF2A2A2A),
-      ),
-      scaffoldBackgroundColor: bg,
-      cardColor: card,
-      dividerColor: const Color(0xFF2A2A2A),
-      fontFamily: GoogleFonts.poppins().fontFamily,
-      textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: Colors.white,
-        displayColor: Colors.white,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: bg,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
-        systemOverlayStyle: SystemUiOverlayStyle.light,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: card,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF2A2A2A))),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF2A2A2A))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 2)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.poppins(color: const Color(0xFF6B7280), fontSize: 14),
-      ),
-    );
+    return _lightTheme();
   }
 
   @override
@@ -254,20 +276,19 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: themeNotifier,
           builder: (_, mode, __) {
-            final isDark = mode == ThemeMode.dark ||
-                (mode == ThemeMode.system &&
-                    WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
+            const isDark = false;
             SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
-              statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+              statusBarIconBrightness:
+                  isDark ? Brightness.light : Brightness.dark,
             ));
             return MaterialApp(
               title: 'JAGO Pro',
               debugShowCheckedModeBanner: false,
               navigatorKey: _navKey,
-              themeMode: mode,
+              themeMode: ThemeMode.light,
               theme: _lightTheme(),
-              darkTheme: _darkTheme(),
+              darkTheme: _lightTheme(),
               home: const SplashScreen(),
             );
           },

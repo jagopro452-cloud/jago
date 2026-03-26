@@ -49,8 +49,7 @@ class _WalletScreenState extends State<WalletScreen>
   Future<void> _fetchWallet() async {
     final headers = await AuthService.getHeaders();
     try {
-      final res =
-          await http.get(Uri.parse(ApiConfig.wallet), headers: headers);
+      final res = await http.get(Uri.parse(ApiConfig.wallet), headers: headers);
       if (res.statusCode == 200) {
         if (mounted) {
           setState(() {
@@ -82,7 +81,8 @@ class _WalletScreenState extends State<WalletScreen>
       if (res.statusCode != 200) {
         if (mounted) setState(() => _paying = false);
         if (mounted) {
-          _showSnack(body['message'] ?? 'Failed to create order', Colors.red);
+          _showSnack(
+              body['message'] ?? 'Failed to create order', JT.primaryDark);
         }
         return;
       }
@@ -104,7 +104,8 @@ class _WalletScreenState extends State<WalletScreen>
       _razorpay.open(options);
     } catch (e) {
       if (mounted) setState(() => _paying = false);
-      if (mounted) _showSnack('Network error. Please try again.', Colors.red);
+      if (mounted)
+        _showSnack('Network error. Please try again.', JT.primaryDark);
     }
   }
 
@@ -128,18 +129,17 @@ class _WalletScreenState extends State<WalletScreen>
           _showSnack(
               body['message'] ??
                   '₹${_pendingAmount?.toStringAsFixed(0)} added to wallet!',
-              Colors.green);
+              JT.primary);
           _fetchWallet();
         } else {
           _showSnack(
-              body['message'] ?? 'Payment verification failed', Colors.orange);
+              body['message'] ?? 'Payment verification failed', JT.primaryDark);
         }
       }
     } catch (_) {
       if (mounted) {
-        _showSnack(
-            'Payment done but verification failed. Contact support.',
-            Colors.orange);
+        _showSnack('Payment done but verification failed. Contact support.',
+            JT.primaryDark);
       }
     }
   }
@@ -147,21 +147,22 @@ class _WalletScreenState extends State<WalletScreen>
   void _handlePaymentError(PaymentFailureResponse response) {
     if (mounted) {
       setState(() => _paying = false);
-      _showSnack(
-          response.message ?? 'Payment failed. Please try again.', Colors.red);
+      _showSnack(response.message ?? 'Payment failed. Please try again.',
+          JT.primaryDark);
     }
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {
     if (mounted) {
       setState(() => _paying = false);
-      _showSnack('External wallet: ${response.walletName}', Colors.blue);
+      _showSnack('External wallet: ${response.walletName}', JT.primary);
     }
   }
 
   void _showSnack(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
+      content:
+          Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -172,7 +173,6 @@ class _WalletScreenState extends State<WalletScreen>
     double? selectedPreset;
     final customCtrl = TextEditingController();
 
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -194,8 +194,7 @@ class _WalletScreenState extends State<WalletScreen>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: JT.border,
-                      borderRadius: BorderRadius.circular(2)),
+                      color: JT.border, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: 20),
@@ -220,16 +219,16 @@ class _WalletScreenState extends State<WalletScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
+                      color: JT.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.verified_rounded,
-                        color: Colors.green, size: 14),
+                        color: JT.primary, size: 14),
                     const SizedBox(width: 5),
                     Text('Secured by Razorpay',
                         style: GoogleFonts.poppins(
                             fontSize: 11,
-                            color: Colors.green,
+                            color: JT.primary,
                             fontWeight: FontWeight.w600)),
                   ]),
                 ),
@@ -266,7 +265,9 @@ class _WalletScreenState extends State<WalletScreen>
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
-                              color: sel ? Colors.white : const Color(0xFF374151))),
+                              color: sel
+                                  ? Colors.white
+                                  : const Color(0xFF374151))),
                     ),
                   );
                 }).toList(),
@@ -321,7 +322,7 @@ class _WalletScreenState extends State<WalletScreen>
                 height: 52,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: JT.grad,
+                    color: JT.primary,
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: JT.btnShadow,
                   ),
@@ -332,7 +333,8 @@ class _WalletScreenState extends State<WalletScreen>
                             final raw = customCtrl.text.trim();
                             final amt = double.tryParse(raw);
                             if (amt == null || amt < 10) {
-                              _showSnack('Minimum amount is ₹10', Colors.red);
+                              _showSnack(
+                                  'Minimum amount is ₹10', JT.primaryDark);
                               return;
                             }
                             Navigator.pop(ctx);
@@ -383,7 +385,6 @@ class _WalletScreenState extends State<WalletScreen>
         (_wallet?['history'] as List?) ??
         [];
 
-
     return Scaffold(
       backgroundColor: JT.bgSoft,
       body: _loading
@@ -396,15 +397,26 @@ class _WalletScreenState extends State<WalletScreen>
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                     child: Row(children: [
-                      Text('Transaction History',
+                      Expanded(
+                        child: Text(
+                          'Transaction History',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: JT.textPrimary)),
-                      const Spacer(),
-                      Text('${transactions.length} records',
-                          style: GoogleFonts.poppins(
-                              fontSize: 12, color: const Color(0xFFA0A0A0))),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: JT.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${transactions.length} records',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: const Color(0xFFA0A0A0),
+                        ),
+                      ),
                     ]),
                   ),
                 ),
@@ -415,8 +427,7 @@ class _WalletScreenState extends State<WalletScreen>
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (_, i) =>
-                          _buildTransactionItem(transactions[i]),
+                      (_, i) => _buildTransactionItem(transactions[i]),
                       childCount: transactions.length,
                     ),
                   ),
@@ -428,21 +439,24 @@ class _WalletScreenState extends State<WalletScreen>
 
   Widget _buildWalletSkeleton() {
     Widget box(double w, double h, {double r = 8}) => Container(
-      width: w, height: h,
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(r)),
-    );
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(r)),
+        );
     return SafeArea(
       child: Shimmer.fromColors(
         baseColor: const Color(0xFFE5E7EB),
         highlightColor: const Color(0xFFF3F4F6),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Header balance card skeleton
             Container(
               height: 160,
               decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                  color: Colors.white, borderRadius: BorderRadius.circular(20)),
             ),
             const SizedBox(height: 20),
             // Add money button skeleton
@@ -452,19 +466,24 @@ class _WalletScreenState extends State<WalletScreen>
             box(160, 18, r: 6),
             const SizedBox(height: 16),
             // Transaction rows
-            ...List.generate(5, (_) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(children: [
-                box(40, 40, r: 10),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  box(120, 13, r: 5),
-                  const SizedBox(height: 6),
-                  box(80, 11, r: 5),
-                ])),
-                box(60, 16, r: 6),
-              ]),
-            )),
+            ...List.generate(
+                5,
+                (_) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(children: [
+                        box(40, 40, r: 10),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              box(120, 13, r: 5),
+                              const SizedBox(height: 6),
+                              box(80, 11, r: 5),
+                            ])),
+                        box(60, 16, r: 6),
+                      ]),
+                    )),
           ]),
         ),
       ),
@@ -475,9 +494,7 @@ class _WalletScreenState extends State<WalletScreen>
     return FadeTransition(
       opacity: _headerFade,
       child: Container(
-        decoration: const BoxDecoration(
-          gradient: JT.grad,
-        ),
+        color: JT.bgSoft,
         child: SafeArea(
           bottom: false,
           child: Padding(
@@ -492,17 +509,18 @@ class _WalletScreenState extends State<WalletScreen>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFDCE7F5)),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white, size: 18),
+                          color: JT.textPrimary, size: 18),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Text('My Wallet',
                       style: GoogleFonts.poppins(
-                          color: Colors.white,
+                          color: JT.textPrimary,
                           fontSize: 20,
                           fontWeight: FontWeight.w700)),
                   const Spacer(),
@@ -515,11 +533,12 @@ class _WalletScreenState extends State<WalletScreen>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFDCE7F5)),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.refresh_rounded,
-                          color: Colors.white, size: 20),
+                          color: JT.textPrimary, size: 20),
                     ),
                   ),
                 ]),
@@ -528,10 +547,11 @@ class _WalletScreenState extends State<WalletScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25), width: 1),
+                    border:
+                        Border.all(color: const Color(0xFFDCE7F5), width: 1),
+                    boxShadow: JT.cardShadow,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,33 +560,32 @@ class _WalletScreenState extends State<WalletScreen>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: JT.primary.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
                               Icons.account_balance_wallet_rounded,
-                              color: Colors.white,
+                              color: JT.primary,
                               size: 22),
                         ),
                         const SizedBox(width: 10),
                         Text('My Wallet',
                             style: GoogleFonts.poppins(
-                                color: Colors.white70,
+                                color: JT.textSecondary,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500)),
                       ]),
                       const SizedBox(height: 16),
                       Text('₹${balance.toStringAsFixed(2)}',
                           style: GoogleFonts.poppins(
-                              color: Colors.white,
+                              color: JT.textPrimary,
                               fontSize: 38,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                               height: 1.1)),
                       const SizedBox(height: 4),
                       Text('Available Balance',
                           style: GoogleFonts.poppins(
-                              color: Colors.white60,
-                              fontSize: 13)),
+                              color: JT.textSecondary, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -615,29 +634,28 @@ class _WalletScreenState extends State<WalletScreen>
       {
         'label': 'UPI',
         'icon': Icons.qr_code_rounded,
-        'color': const Color(0xFF10B981),
-        'bg': const Color(0xFFECFDF5),
+        'color': JT.primary,
+        'bg': const Color(0xFFEFF6FF),
       },
       {
         'label': 'Cards',
         'icon': Icons.credit_card_rounded,
-        'color': JT.primary,
+        'color': const Color(0xFF1A6FDB),
         'bg': const Color(0xFFEFF6FF),
       },
       {
         'label': 'Net Banking',
         'icon': Icons.account_balance_rounded,
-        'color': const Color(0xFF7C3AED),
-        'bg': const Color(0xFFF5F3FF),
+        'color': const Color(0xFF5B9DFF),
+        'bg': const Color(0xFFF2F7FF),
       },
       {
         'label': 'Wallets',
         'icon': Icons.wallet_rounded,
-        'color': const Color(0xFFF59E0B),
-        'bg': const Color(0xFFFFFBEB),
+        'color': const Color(0xFF1A6FDB),
+        'bg': const Color(0xFFF2F7FF),
       },
     ];
-
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -661,33 +679,50 @@ class _WalletScreenState extends State<WalletScreen>
               style: GoogleFonts.poppins(
                   fontSize: 11, color: const Color(0xFFA0A0A0))),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: methods.map((m) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Column(children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: m['bg'] as Color,
-                        borderRadius: BorderRadius.circular(14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 360;
+              final itemWidth = isCompact
+                  ? (constraints.maxWidth - 12) / 2
+                  : (constraints.maxWidth - 24) / 4;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 12,
+                children: methods.map((m) {
+                  return SizedBox(
+                    width: itemWidth,
+                    child: Column(children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: m['bg'] as Color,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          m['icon'] as IconData,
+                          color: m['color'] as Color,
+                          size: 22,
+                        ),
                       ),
-                      child: Icon(m['icon'] as IconData,
-                          color: m['color'] as Color, size: 22),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(m['label'] as String,
+                      const SizedBox(height: 8),
+                      Text(
+                        m['label'] as String,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF374151))),
-                  ]),
-                ),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF374151),
+                          height: 1.25,
+                        ),
+                      ),
+                    ]),
+                  );
+                }).toList(),
               );
-            }).toList(),
+            },
           ),
         ],
       ),
@@ -696,29 +731,44 @@ class _WalletScreenState extends State<WalletScreen>
 
   Widget _buildEmpty() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
                 color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(24)),
-            child: const Icon(Icons.receipt_long_outlined,
-                size: 40, color: JT.primary),
-          ),
-          const SizedBox(height: 16),
-          Text('No transactions yet',
-              style: GoogleFonts.poppins(
-                  color: const Color(0xFF374151),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text('Add money to get started',
-              style: GoogleFonts.poppins(
-                  color: const Color(0xFFA0A0A0), fontSize: 13)),
-        ],
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: JT.shadowXs,
+              ),
+              child: const Icon(Icons.receipt_long_outlined,
+                  size: 40, color: JT.primary),
+            ),
+            const SizedBox(height: 18),
+            Text('No transactions yet',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                    color: const Color(0xFF374151),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text('Add money to get started',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                    color: const Color(0xFFA0A0A0), fontSize: 13, height: 1.4)),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: 180,
+              child: JT.gradientButton(
+                label: 'Add Money',
+                onTap: _showAddMoneySheet,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -729,6 +779,7 @@ class _WalletScreenState extends State<WalletScreen>
         .toString()
         .toLowerCase();
     final isRazorpay = method.contains('razorpay');
+    final accent = isCredit ? JT.primary : const Color(0xFF1A6FDB);
     final date = t['date'] ?? t['created_at'] ?? t['createdAt'] ?? '';
 
     return Container(
@@ -738,7 +789,7 @@ class _WalletScreenState extends State<WalletScreen>
         color: JT.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: isCredit ? JT.success : JT.error, width: 3),
+          left: BorderSide(color: accent, width: 3),
           right: BorderSide(color: JT.border),
           top: BorderSide(color: JT.border),
           bottom: BorderSide(color: JT.border),
@@ -750,14 +801,14 @@ class _WalletScreenState extends State<WalletScreen>
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: (isCredit ? JT.success : JT.error).withValues(alpha: 0.1),
+            color: accent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
               isCredit
                   ? Icons.arrow_downward_rounded
                   : Icons.arrow_upward_rounded,
-              color: isCredit ? JT.success : JT.error,
+              color: accent,
               size: 22),
         ),
         const SizedBox(width: 14),
@@ -796,12 +847,16 @@ class _WalletScreenState extends State<WalletScreen>
             ],
           ),
         ),
-        Text(
-          '${isCredit ? '+' : '-'}₹${t['amount']}',
-          style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-              color: isCredit ? JT.success : JT.error),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              '${isCredit ? '+' : '-'}₹${t['amount']}',
+              style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600, fontSize: 16, color: accent),
+            ),
+          ),
         ),
       ]),
     );

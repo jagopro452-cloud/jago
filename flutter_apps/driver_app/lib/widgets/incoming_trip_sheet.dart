@@ -29,9 +29,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   Timer? _countdownTimer;
   bool _responded = false;
 
-  static const Color _blue = Color(0xFF2563EB);
-  static const Color _bg = Color(0xFF0B0B0B);
-  static const Color _surface = Color(0xFF1A1A1A);
+  static const Color _blue = Color(0xFF1677FF);
+  static const Color _bg = Color(0xFFF7FAFF);
+  static const Color _surface = Color(0xFFFFFFFF);
 
   String _shortLocation(String value) {
     final v = value.trim();
@@ -177,30 +177,18 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     final typeEmoji = isCargo ? 'ðŸš›' : isParcel ? 'ðŸ“¦' : 'ðŸš—';
     final typeLabel = isCargo ? 'Cargo' : isParcel ? 'Parcel' : 'Ride';
     final typeColor = isCargo
-        ? const Color(0xFFF59E0B)
+        ? const Color(0xFF1A6FDB)
         : isParcel
-            ? const Color(0xFF10B981)
+            ? const Color(0xFF5B9DFF)
             : _blue;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: urgency
-              ? [
-                  const Color(0xFFF59E0B).withValues(alpha: 0.18),
-                  const Color(0xFFF59E0B).withValues(alpha: 0.05),
-                ]
-              : [
-                  _blue.withValues(alpha: 0.20),
-                  _blue.withValues(alpha: 0.05),
-                ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        color: Colors.white,
+        border: const Border(
+          bottom: BorderSide(color: Color(0xFFE5EDF7)),
         ),
       ),
       child: Row(children: [
@@ -215,17 +203,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: urgency
-                        ? const Color(0xFFF59E0B)
-                        : const Color(0xFF10B981),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (urgency
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF10B981))
-                            .withValues(alpha: 0.4 + 0.4 * _pulseCtrl.value),
-                        blurRadius: 8 + 4 * _pulseCtrl.value,
-                      ),
-                    ],
+                        ? const Color(0xFF1A6FDB)
+                        : _blue,
                   ),
                 ),
               ),
@@ -233,9 +212,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               Text(
                 urgency ? 'Respond Now!' : 'New Trip Request!',
                 style: TextStyle(
-                  color: urgency ? const Color(0xFFF59E0B) : Colors.white,
+                  color: const Color(0xFF111827),
                   fontSize: 22,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: -0.3,
                 ),
               ),
@@ -244,9 +223,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: typeColor.withValues(alpha: 0.15),
+                color: typeColor.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: typeColor.withValues(alpha: 0.35)),
+                border: Border.all(color: typeColor.withValues(alpha: 0.18)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(typeEmoji, style: const TextStyle(fontSize: 13)),
@@ -256,7 +235,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                   style: TextStyle(
                     color: typeColor,
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
                   ),
                 ),
@@ -277,7 +256,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 strokeWidth: 6,
                 backgroundColor: Colors.white.withValues(alpha: 0.10),
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  urgency ? const Color(0xFFF59E0B) : _blue,
+                  urgency ? const Color(0xFF1A6FDB) : _blue,
                 ),
               ),
             ),
@@ -286,16 +265,16 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             Text(
               '$_countdown',
               style: TextStyle(
-                color: urgency ? const Color(0xFFF59E0B) : Colors.white,
+                color: const Color(0xFF111827),
                 fontSize: 28,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 height: 1.0,
               ),
             ),
             Text(
               'sec',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.4),
+                color: const Color(0xFF94A3B8),
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
@@ -306,41 +285,78 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     );
   }
 
+  // Returns the CDN image URL for the vehicle type in the trip
+  String? _vehicleImageUrl() {
+    final trip = widget.trip;
+    final name = (trip['vehicleCategoryName'] ?? trip['vehicleName'] ?? trip['vehicle_name'] ?? '').toString().toLowerCase();
+    final type = (trip['type'] ?? trip['tripType'] ?? '').toString().toLowerCase();
+    final isParcel = type.contains('parcel') || name.contains('parcel');
+    if (name.contains('pickup van') || name.contains('pickup')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/pickup_van.png';
+    }
+    if (name.contains('mini truck') || name.contains('tata ace')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/mini_truck.png';
+    }
+    if (isParcel && name.contains('bike')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png';
+    }
+    if (isParcel && name.contains('auto')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png';
+    }
+    if (name.contains('bike')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png';
+    }
+    if (name.contains('auto')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png';
+    }
+    if (name.contains('car') || name.contains('suv')) {
+      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png';
+    }
+    return null;
+  }
+
   Widget _buildPulsingIcon(bool urgency) {
+    final imageUrl = _vehicleImageUrl();
+    final accentColor = urgency ? const Color(0xFF1A6FDB) : _blue;
+
     return AnimatedBuilder(
       animation: _pulseCtrl,
       builder: (_, __) {
-        final scale = 1.0 + 0.06 * _pulseCtrl.value;
+        final scale = 1.0 + 0.04 * _pulseCtrl.value;
         return Transform.scale(
           scale: scale,
           child: Container(
-            width: 90,
-            height: 90,
+            width: 140,
+            height: 140,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: urgency
-                  ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
-                  : _blue.withValues(alpha: 0.12),
+              color: accentColor.withValues(alpha: 0.07),
               border: Border.all(
-                color: urgency
-                    ? const Color(0xFFF59E0B).withValues(alpha: 0.35)
-                    : _blue.withValues(alpha: 0.35),
+                color: accentColor.withValues(alpha: 0.20),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: (urgency ? const Color(0xFFF59E0B) : _blue)
-                      .withValues(alpha: 0.15 + 0.15 * _pulseCtrl.value),
-                  blurRadius: 20 + 10 * _pulseCtrl.value,
+                  color: accentColor.withValues(alpha: 0.12 + 0.10 * _pulseCtrl.value),
+                  blurRadius: 24 + 12 * _pulseCtrl.value,
                   spreadRadius: 2,
                 ),
               ],
             ),
-            child: Icon(
-              Icons.directions_car_rounded,
-              color: urgency ? const Color(0xFFF59E0B) : _blue,
-              size: 40,
-            ),
+            child: imageUrl != null
+              ? Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.directions_car_rounded,
+                      color: accentColor,
+                      size: 60,
+                    ),
+                  ),
+                )
+              : Icon(Icons.directions_car_rounded, color: accentColor, size: 60),
           ),
         );
       },
@@ -353,10 +369,10 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: const Color(0xFFE5EDF7)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 12,
               offset: const Offset(0, 4))
         ],
@@ -380,14 +396,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 width: 2,
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      _blue.withValues(alpha: 0.5),
-                      const Color(0xFFF59E0B).withValues(alpha: 0.5)
-                    ],
-                  ),
+                  color: const Color(0xFFD8E6F8),
                   borderRadius: BorderRadius.circular(1),
                 ),
               ),
@@ -396,11 +405,11 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B),
+                color: const Color(0xFF1A6FDB),
                 borderRadius: BorderRadius.circular(3),
                 boxShadow: [
                   BoxShadow(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                      color: const Color(0xFF1A6FDB).withValues(alpha: 0.28),
                       blurRadius: 6)
                 ],
               ),
@@ -418,7 +427,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               const SizedBox(height: 3),
               Text(pickup,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: Color(0xFF111827),
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       height: 1.3),
@@ -427,18 +436,18 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Container(
-                    height: 1, color: Colors.white.withValues(alpha: 0.06)),
+                    height: 1, color: Color(0xFFE5EDF7)),
               ),
               const Text('DROP-OFF',
                   style: TextStyle(
-                      color: Color(0xFFFBBF24),
+                      color: Color(0xFF1A6FDB),
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.8)),
               const SizedBox(height: 3),
               Text(dest,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: Color(0xFF111827),
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       height: 1.3),
@@ -457,11 +466,11 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     return Row(children: [
       Expanded(
           child: _stat(Icons.route_rounded, '$dist km', 'Distance',
-              const Color(0xFF10B981))),
+              const Color(0xFF5B9DFF))),
       _vertDivider(),
       Expanded(
           child: _stat(Icons.currency_rupee_rounded, fareLabel, 'Fare',
-              const Color(0xFFF59E0B))),
+              const Color(0xFF1A6FDB))),
       _vertDivider(),
       Expanded(
           child:
@@ -478,9 +487,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             ? Icons.phone_android_rounded
             : Icons.money_rounded;
     final color = method == 'wallet'
-        ? const Color(0xFF8B5CF6)
+        ? const Color(0xFF1A6FDB)
         : method == 'online'
-            ? const Color(0xFF10B981)
+            ? _blue
             : const Color(0xFF6B7280);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -522,12 +531,12 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             style: TextStyle(
                 color: color,
                 fontSize: 15,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 height: 1.0)),
         const SizedBox(height: 3),
         Text(label,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.35),
+                color: const Color(0xFF94A3B8),
                 fontSize: 9,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3)),
@@ -538,7 +547,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
   Widget _vertDivider() => Container(
       width: 1,
       height: 40,
-      color: Colors.white.withValues(alpha: 0.08),
+      color: const Color(0xFFE5EDF7),
       margin: const EdgeInsets.symmetric(horizontal: 4));
 
   Widget _buildButtons() {
@@ -550,17 +559,13 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
           width: double.infinity,
           height: 76,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF16A34A), Color(0xFF15803D)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: _blue,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF16A34A).withValues(alpha: 0.45),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
+                color: _blue.withValues(alpha: 0.14),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -572,7 +577,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 'ACCEPT TRIP',
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   fontSize: 20,
                   letterSpacing: 0.5,
                 ),
@@ -589,9 +594,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
           width: double.infinity,
           height: 50,
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.07),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.red.withValues(alpha: 0.22), width: 1.5),
+            border: Border.all(color: const Color(0xFFF3D2D2), width: 1.2),
           ),
           child: const Center(
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

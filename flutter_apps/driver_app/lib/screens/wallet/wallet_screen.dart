@@ -96,7 +96,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               const SizedBox(width: 14),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Recharge Wallet', style: GoogleFonts.poppins(
-                    color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+                    color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
                 Text('Current: ₹${(_wallet?['walletBalance'] ?? 0).toStringAsFixed(2)}',
                     style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
               ]),
@@ -109,7 +109,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             const SizedBox(height: 24),
 
             Text('SELECT AMOUNT', style: GoogleFonts.poppins(
-                color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
             const SizedBox(height: 12),
 
             // Quick amount chips
@@ -165,12 +165,12 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 keyboardType: TextInputType.number,
                 autofocus: true,
                 onChanged: (v) => setSheet(() { selectedAmount = double.tryParse(v) ?? 0; }),
-                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
                   hintText: 'Enter amount',
                   hintStyle: GoogleFonts.poppins(color: JT.iconInactive),
                   prefixText: '₹ ',
-                  prefixStyle: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w800, fontSize: 18),
+                  prefixStyle: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600, fontSize: 18),
                   filled: true,
                   fillColor: JT.bgSoft,
                   border: OutlineInputBorder(
@@ -233,7 +233,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                           const SizedBox(width: 10),
                           Text(
                             'Pay ₹${(isCustom ? (double.tryParse(customCtrl.text.trim()) ?? 0) : selectedAmount).toInt()} via Razorpay',
-                            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                         ]),
                   ),
                 ),
@@ -346,13 +346,13 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             child: Icon(Icons.check_rounded, color: JT.success, size: 44)),
           const SizedBox(height: 18),
           Text('Recharge Successful!',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Text('₹${amount.toInt()} added to your wallet',
             style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 14), textAlign: TextAlign.center),
           const SizedBox(height: 8),
           Text('New balance: ₹${newBalance.toStringAsFixed(2)}',
-            style: GoogleFonts.poppins(color: JT.primary, fontSize: 16, fontWeight: FontWeight.w800)),
+            style: GoogleFonts.poppins(color: JT.primary, fontSize: 16, fontWeight: FontWeight.w600)),
           if (autoUnlocked) ...[
             const SizedBox(height: 12),
             Container(
@@ -383,7 +383,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 ),
                 child: Center(
                   child: Text('Done', style: GoogleFonts.poppins(
-                      color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                      color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                 ),
               ),
             ),
@@ -441,7 +441,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   Icon(Icons.account_balance_wallet_rounded, color: JT.warning, size: 22),
                   const SizedBox(width: 10),
                   Text('Withdraw Funds', style: GoogleFonts.poppins(
-                      color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+                      color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
                   const Spacer(),
                   IconButton(icon: Icon(Icons.close_rounded, color: JT.iconInactive),
                       onPressed: () => Navigator.pop(ctx)),
@@ -455,7 +455,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                 const SizedBox(height: 14),
 
                 Text('PAYMENT METHOD', style: GoogleFonts.poppins(
-                    color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    color: JT.iconInactive, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
                 const SizedBox(height: 10),
                 Row(children: [
                   _methodBtn(ctx, setModalState, 'Bank Transfer', 'bank', method, (v) => setModalState(() => method = v)),
@@ -551,7 +551,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         child: loading
                           ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : Text('Submit Withdrawal Request', style: GoogleFonts.poppins(
-                              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                              color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                       ),
                     ),
                   ),
@@ -655,7 +655,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                       ),
                       const SizedBox(width: 14),
                       Text('Wallet', style: GoogleFonts.poppins(
-                          color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                          color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600)),
                       const Spacer(),
                       GestureDetector(
                         onTap: () { setState(() => _loading = true); _fetchWallet(); },
@@ -698,7 +698,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         const SizedBox(height: 16),
                         Text('₹${balance.toStringAsFixed(2)}',
                           style: GoogleFonts.poppins(
-                            fontSize: 40, fontWeight: FontWeight.w900,
+                            fontSize: 40, fontWeight: FontWeight.w700,
                             color: Colors.white, letterSpacing: -1.5)),
                         const SizedBox(height: 6),
                         Text(
@@ -722,7 +722,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                             icon: Icon(Icons.add_circle_rounded, color: JT.primary, size: 22),
                             label: Text('Recharge Wallet',
                                 style: GoogleFonts.poppins(
-                                    color: JT.primary, fontWeight: FontWeight.w800, fontSize: 15)),
+                                    color: JT.primary, fontWeight: FontWeight.w600, fontSize: 15)),
                             onPressed: _showRechargeSheet,
                           ),
                         ),
@@ -812,7 +812,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               const Icon(Icons.add_rounded, color: Colors.white, size: 18),
                               const SizedBox(width: 8),
                               Text('Recharge Now', style: GoogleFonts.poppins(
-                                  color: Colors.white, fontWeight: FontWeight.w800)),
+                                  color: Colors.white, fontWeight: FontWeight.w600)),
                             ]),
                           ),
                         ),
@@ -862,7 +862,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               )),
                               Text('${isCredit ? '+' : '-'}₹${amt.toStringAsFixed(2)}',
                                 style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w800, fontSize: 15,
+                                  fontWeight: FontWeight.w600, fontSize: 15,
                                   color: isCredit ? JT.success : JT.error)),
                             ]),
                           );
@@ -916,7 +916,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                                 children: [
                                   Text('₹${(w['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
                                     style: GoogleFonts.poppins(
-                                        color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                                        color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
                                   if ((w['notes']?.toString() ?? '').isNotEmpty)
                                     Text(w['notes']!.toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.poppins(color: JT.iconInactive, fontSize: 11)),
@@ -931,7 +931,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                                 ),
                                 child: Text(status.toUpperCase(),
                                   style: GoogleFonts.poppins(
-                                      color: statusColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                                      color: statusColor, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                               ),
                             ]),
                           );

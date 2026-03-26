@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../services/auth_service.dart';
 import 'booking_screen.dart';
 import 'map_location_picker.dart';
 
@@ -116,11 +117,46 @@ class _LocationScreenState extends State<LocationScreen>
   Future<void> _detectLocation() async {
     setState(() => _detectingLocation = true);
     try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (!serviceEnabled) {
+        if (lastKnown != null) {
+          final addr = await _reverseGeocode(lastKnown.latitude, lastKnown.longitude);
+          if (!mounted) return;
+          setState(() {
+            _pickup = addr;
+            _pickupLat = lastKnown.latitude;
+            _pickupLng = lastKnown.longitude;
+          });
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Turn on location services to detect your pickup point.')),
+          );
+        }
+        return;
+      }
+
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.deniedForever) return;
+      if (perm == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is required to detect your current location.')),
+          );
+        }
+        return;
+      }
+      if (perm == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is blocked. Enable it from app settings.')),
+          );
+        }
+        await Geolocator.openAppSettings();
+        return;
+      }
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high)
           .timeout(const Duration(seconds: 8));
@@ -131,28 +167,64 @@ class _LocationScreenState extends State<LocationScreen>
         _pickupLat = pos.latitude;
         _pickupLng = pos.longitude;
       });
-    } catch (_) {}
-    if (mounted) setState(() => _detectingLocation = false);
+    } catch (_) {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        final addr = await _reverseGeocode(lastKnown.latitude, lastKnown.longitude);
+        if (!mounted) return;
+        setState(() {
+          _pickup = addr;
+          _pickupLat = lastKnown.latitude;
+          _pickupLng = lastKnown.longitude;
+        });
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not detect your location. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _detectingLocation = false);
+    }
   }
 
   Future<String> _reverseGeocode(double lat, double lng) async {
+    // Try server proxy first
+    try {
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+      if (r.statusCode == 200) {
+        final d = jsonDecode(r.body) as Map<String, dynamic>;
+        final parts = <String>[];
+        for (final k in ['area', 'city', 'state']) {
+          final v = d[k]?.toString() ?? '';
+          if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
+        }
+        if (parts.isNotEmpty) return parts.take(3).join(', ');
+        final full = d['formattedAddress']?.toString() ?? '';
+        if (full.isNotEmpty) return full.split(', ').take(3).join(', ');
+      }
+    } catch (_) {}
+    // Nominatim fallback
     try {
       final r = await http.get(
         Uri.parse(
-            'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json'),
-        headers: {'User-Agent': 'JAGOPro/1.0'},
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng'),
+        headers: const {'User-Agent': 'JagoPro/1.0'},
       ).timeout(const Duration(seconds: 5));
       if (r.statusCode == 200) {
-        final d = jsonDecode(r.body);
-        final parts = <String>[];
+        final d = jsonDecode(r.body) as Map<String, dynamic>;
         final addr = d['address'] as Map<String, dynamic>? ?? {};
-        for (final k in ['road', 'suburb', 'city_district', 'city', 'state']) {
+        final parts = <String>[];
+        for (final k in ['suburb', 'neighbourhood', 'city', 'town', 'state']) {
           final v = addr[k]?.toString() ?? '';
           if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
         }
         if (parts.isNotEmpty) return parts.take(3).join(', ');
-        return d['display_name']?.toString().split(', ').take(3).join(', ') ??
-            'Current Location';
+        final full = d['display_name']?.toString() ?? '';
+        if (full.isNotEmpty) return full.split(',').take(3).join(',').trim();
       }
     } catch (_) {}
     return 'Current Location';
@@ -273,35 +345,34 @@ class _LocationScreenState extends State<LocationScreen>
     if (!mounted) return;
     setState(() => _searching = true);
     try {
+      final headers = await AuthService.getHeaders();
       final lat = _pickupLat;
       final lng = _pickupLng;
-      final bias = (lat != 0.0 && lng != 0.0)
-          ? '&lat=$lat&lon=$lng&bounded=0'
-              '&viewbox=${lng - 0.3},${lat + 0.3},${lng + 0.3},${lat - 0.3}'
-          : '';
-      final url = Uri.parse(
-          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}'
-          '&format=json&limit=8&addressdetails=1$bias');
-      final resp =
-          await http.get(url, headers: {'User-Agent': 'JAGOPro/1.0'});
+      final qp = StringBuffer('?query=${Uri.encodeComponent(query)}');
+      if (lat != 0.0 && lng != 0.0) qp.write('&lat=$lat&lng=$lng');
+      final r = await http.get(
+        Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       if (!mounted) return;
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as List;
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final preds = (data['predictions'] as List<dynamic>?) ?? [];
         setState(() {
-          _searchResults = data
-              .map((d) => {
-                    'name': (d['display_name']?.toString() ?? '')
-                        .split(', ')
-                        .take(3)
-                        .join(', '),
-                    'lat':
-                        double.tryParse(d['lat']?.toString() ?? '0') ?? 0.0,
-                    'lng':
-                        double.tryParse(d['lon']?.toString() ?? '0') ?? 0.0,
-                  })
+          _searchResults = preds
+              .map((p) {
+                final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
+                final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
+                return <String, dynamic>{
+                  'name': p['fullDescription']?.toString() ??
+                      p['mainText']?.toString() ?? '',
+                  'placeId': p['placeId']?.toString() ?? '',
+                  'lat': lat2,
+                  'lng': lng2,
+                };
+              })
               .where((r) => (r['name'] as String).isNotEmpty)
-              .toList()
-              .cast<Map<String, dynamic>>();
+              .toList();
         });
       }
     } catch (_) {}
@@ -333,6 +404,51 @@ class _LocationScreenState extends State<LocationScreen>
       _searchResults = [];
     });
     FocusScope.of(context).unfocus();
+  }
+
+  /// Resolves place coordinates from server then selects drop/stop.
+  /// For local DB predictions lat/lng are inline; Google predictions need a detail fetch.
+  Future<void> _selectFromSearch(
+      Map<String, dynamic> p, {required bool forDrop}) async {
+    final name = p['name']?.toString() ?? '';
+    var lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+    var lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+    final placeId = p['placeId']?.toString() ?? '';
+    if ((lat == 0.0 || lng == 0.0) &&
+        placeId.isNotEmpty &&
+        !placeId.startsWith('local:')) {
+      setState(() => _detectingLocation = true);
+      try {
+        final headers = await AuthService.getHeaders();
+        final r = await http
+            .get(
+              Uri.parse(
+                  '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId)}'),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 6));
+        if (r.statusCode == 200) {
+          final d = jsonDecode(r.body) as Map<String, dynamic>;
+          lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
+          lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
+          final resolvedName = d['address']?.toString() ?? name;
+          if (!mounted) return;
+          setState(() => _detectingLocation = false);
+          if (forDrop) {
+            _selectDrop(resolvedName, lat, lng);
+          } else {
+            _selectStop(resolvedName, lat, lng);
+          }
+          return;
+        }
+      } catch (_) {}
+      if (mounted) setState(() => _detectingLocation = false);
+    }
+    if (forDrop) {
+      _selectDrop(name, lat, lng);
+    } else {
+      _selectStop(name, lat, lng);
+    }
   }
 
   void _tryProceed() {
@@ -432,7 +548,7 @@ class _LocationScreenState extends State<LocationScreen>
               _isParcel ? 'Send Parcel' : 'Book a Ride',
               style: GoogleFonts.poppins(
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: JT.textPrimary,
                 letterSpacing: -0.5,
               ),
@@ -471,7 +587,7 @@ class _LocationScreenState extends State<LocationScreen>
               style: GoogleFonts.poppins(
                 color: _accent,
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ]),
@@ -725,7 +841,7 @@ class _LocationScreenState extends State<LocationScreen>
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -862,11 +978,7 @@ class _LocationScreenState extends State<LocationScreen>
                 name: p['name']?.toString() ?? '',
                 icon: Icons.location_on_rounded,
                 iconColor: _accent,
-                onTap: () => _activeField
-                    ? _selectDrop(p['name'] ?? '', (p['lat'] as num).toDouble(),
-                        (p['lng'] as num).toDouble())
-                    : _selectStop(p['name'] ?? '', (p['lat'] as num).toDouble(),
-                        (p['lng'] as num).toDouble()),
+                onTap: () => _selectFromSearch(p, forDrop: _activeField),
               )),
         ]
 

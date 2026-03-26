@@ -20,6 +20,7 @@ import { eq, sql } from "drizzle-orm";
 const rawSql = sql;
 import bcrypt from "bcryptjs";
 import { hashPassword, verifyPassword } from "./utils/crypto";
+import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
 import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
@@ -2884,7 +2885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.get("/api/admin/rides/cancelled", async (_req, res) => {
+  app.get("/api/admin/rides/cancelled", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT t.id, t.ref_id, t.trip_type, t.current_status, t.cancel_reason, t.cancelled_by, t.created_at,
@@ -2899,15 +2900,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.get("/api/admin/rides/:tripId/route", async (req, res) => {
+  app.get("/api/admin/rides/:tripId/route", requireAdminAuth, async (req, res) => {
     try {
-      const { tripId } = req.params;
+      const tripId = String(req.params.tripId || "");
       const events = await rawDb.execute(rawSql`
         SELECT event_type, actor_type, meta, created_at
         FROM ride_events WHERE trip_id=${tripId}::uuid ORDER BY created_at ASC
       `);
       const waypoints = getTripWaypoints(tripId);
       res.json({ events: camelize(events.rows), waypoints });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.post("/api/admin/rides/:tripId/force-cancel", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const admin = (req as any).adminUser;
+      const tripId = String(req.params.tripId || "");
+      const { reason } = req.body || {};
+      const cancelReason = String(reason || "Admin force-cancelled trip");
+
+      const tripR = await rawDb.execute(rawSql`
+        UPDATE trip_requests
+        SET current_status='cancelled',
+            cancelled_by='admin',
+            cancel_reason=${cancelReason},
+            updated_at=NOW()
+        WHERE id=${tripId}::uuid
+          AND current_status NOT IN ('completed','cancelled')
+        RETURNING id, customer_id, driver_id
+      `);
+      if (!tripR.rows.length) {
+        return res.status(409).json({ message: "Trip cannot be force-cancelled in its current state" });
+      }
+
+      const trip = tripR.rows[0] as any;
+      cancelDispatch(tripId);
+      clearTripWaypoints(tripId);
+      if (trip.driver_id) {
+        await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${trip.driver_id}::uuid`).catch(dbCatch("db"));
+      }
+
+      await appendTripStatus(tripId, 'trip_cancelled', 'admin', cancelReason);
+      await logRideLifecycleEvent(tripId, 'trip_force_cancelled', admin?.id, 'admin', { reason: cancelReason });
+      await logAdminAction("force_cancel_trip", "trip", tripId, { reason: cancelReason }, admin?.email);
+
+      if (trip.customer_id) {
+        io.to(`user:${trip.customer_id}`).emit("trip:cancelled", {
+          tripId,
+          cancelledBy: "admin",
+          reason: cancelReason,
+        });
+      }
+      if (trip.driver_id) {
+        io.to(`user:${trip.driver_id}`).emit("trip:cancelled", {
+          tripId,
+          cancelledBy: "admin",
+          reason: cancelReason,
+        });
+      }
+
+      res.json({ success: true, tripId, reason: cancelReason });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -5889,7 +5941,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // --- Refund Requests ---------------------------------------------------------
 
-  app.get("/api/refund-requests", async (req, res) => {
+  app.get("/api/refund-requests", requireAdminAuth, async (req, res) => {
     try {
       const status = req.query.status as string;
       const r = await rawDb.execute(rawSql`
@@ -5905,7 +5957,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/refund-requests", async (req, res) => {
+  app.post("/api/refund-requests", requireAdminAuth, async (req, res) => {
     try {
       const { customerId, tripId, amount, reason, paymentMethod } = req.body;
       const r = tripId
@@ -6151,17 +6203,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Driver: Complete outstation pool ride with revenue settlement
   app.post("/api/app/driver/outstation-pool/rides/:id/complete", authApp, async (req, res) => {
+    let previousRideStatus = "scheduled";
     try {
       const driver = (req as any).currentUser;
       const { id } = req.params;
 
-      // Get ride and all confirmed bookings
+      // Claim completion first so duplicate requests cannot settle revenue twice.
       const rideR = await rawDb.execute(rawSql`
-        SELECT * FROM outstation_pool_rides WHERE id=${id}::uuid AND driver_id=${driver.id}::uuid LIMIT 1
+        WITH target AS (
+          SELECT id, status
+          FROM outstation_pool_rides
+          WHERE id=${id}::uuid
+            AND driver_id=${driver.id}::uuid
+            AND status NOT IN ('completed', 'completing')
+          LIMIT 1
+        )
+        UPDATE outstation_pool_rides opr
+        SET status='completing', updated_at=NOW()
+        FROM target
+        WHERE opr.id = target.id
+        RETURNING opr.*, target.status AS previous_status
       `);
-      if (!rideR.rows.length) return res.status(404).json({ message: "Ride not found" });
+      if (!rideR.rows.length) {
+        const existingR = await rawDb.execute(rawSql`
+          SELECT status FROM outstation_pool_rides WHERE id=${id}::uuid AND driver_id=${driver.id}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const existing = existingR.rows[0] as any;
+        if (!existing) return res.status(404).json({ message: "Ride not found" });
+        return res.status(409).json({ message: existing.status === "completed" ? "Ride already completed" : "Ride completion is already in progress" });
+      }
       const ride = rideR.rows[0] as any;
-      if (ride.status === 'completed') return res.status(400).json({ message: "Ride already completed" });
+      previousRideStatus = String(ride.previous_status || "scheduled");
 
       const bookingsR = await rawDb.execute(rawSql`
         SELECT * FROM outstation_pool_bookings WHERE ride_id=${id}::uuid AND status='confirmed'
@@ -6215,7 +6287,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         walletBalance: settlement.newWalletBalance,
         totalBookings: bookings.length,
       });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      const { id } = req.params;
+      const driver = (req as any).currentUser;
+      await rawDb.execute(rawSql`
+        UPDATE outstation_pool_rides
+        SET status=${previousRideStatus}, updated_at=NOW()
+        WHERE id=${id}::uuid AND driver_id=${driver?.id || null}::uuid AND status='completing'
+      `).catch(dbCatch("db"));
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Customer: search outstation pool rides
@@ -6250,39 +6331,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { rideId, seatsBooked = 1, pickupAddress, dropoffAddress, paymentMethod = 'cash' } = req.body;
       if (!rideId) return res.status(400).json({ message: "rideId is required" });
 
-      const seats = Math.max(1, parseInt(seatsBooked));
+      const seats = clampSeatRequest(seatsBooked);
 
-      // Check availability
-      const rideRes = await rawDb.execute(rawSql`
-        SELECT * FROM outstation_pool_rides
-        WHERE id = ${rideId}::uuid AND is_active = true AND status = 'scheduled'
-        LIMIT 1
-      `);
-      if (!rideRes.rows.length) return res.status(404).json({ message: "Ride not found or no longer available" });
-      const ride = rideRes.rows[0] as any;
-      if (ride.available_seats < seats) return res.status(400).json({ message: `Only ${ride.available_seats} seat(s) available` });
-
-      const totalFare = parseFloat(ride.fare_per_seat) * seats;
-
-      // Create booking and decrement available seats atomically
-      const [bookingRes] = await Promise.all([
-        rawDb.execute(rawSql`
+      const bookingRes = await rawDb.execute(rawSql`
+        WITH ride_claim AS (
+          UPDATE outstation_pool_rides
+          SET available_seats = available_seats - ${seats},
+              updated_at = NOW()
+          WHERE id = ${rideId}::uuid
+            AND is_active = true
+            AND status = 'scheduled'
+            AND available_seats >= ${seats}
+          RETURNING id, from_city, to_city, fare_per_seat, available_seats
+        ),
+        booking AS (
           INSERT INTO outstation_pool_bookings
             (ride_id, customer_id, seats_booked, total_fare, from_city, to_city,
              pickup_address, dropoff_address, payment_method, status, payment_status)
-          VALUES
-            (${rideId}::uuid, ${customer.id}::uuid, ${seats}, ${totalFare},
-             ${ride.from_city}, ${ride.to_city},
-             ${pickupAddress || null}, ${dropoffAddress || null},
-             ${paymentMethod}, 'confirmed', 'pending')
+          SELECT
+            rc.id,
+            ${customer.id}::uuid,
+            ${seats},
+            ROUND((COALESCE(rc.fare_per_seat, 0)::numeric * ${seats}), 2),
+            rc.from_city,
+            rc.to_city,
+            ${pickupAddress || null},
+            ${dropoffAddress || null},
+            ${paymentMethod},
+            'confirmed',
+            'pending'
+          FROM ride_claim rc
           RETURNING *
-        `),
-        rawDb.execute(rawSql`
-          UPDATE outstation_pool_rides
-          SET available_seats = available_seats - ${seats}, updated_at = NOW()
+        )
+        SELECT * FROM booking
+      `);
+      if (!bookingRes.rows.length) {
+        const rideRes = await rawDb.execute(rawSql`
+          SELECT available_seats, status, is_active
+          FROM outstation_pool_rides
           WHERE id = ${rideId}::uuid
-        `),
-      ]);
+          LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const ride = rideRes.rows[0] as any;
+        if (!ride || ride.is_active === false || ride.status !== "scheduled") {
+          return res.status(404).json({ message: "Ride not found or no longer available" });
+        }
+        return res.status(409).json({ message: "Not enough seats available", available: ride.available_seats });
+      }
       res.json({ success: true, booking: camelize(bookingRes.rows[0]) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -6305,7 +6400,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Admin: manage outstation pool
-  app.get("/api/admin/outstation-pool/rides", async (_req, res) => {
+  app.get("/api/admin/outstation-pool/rides", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`
         SELECT opr.*,
@@ -6322,7 +6417,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.get("/api/admin/outstation-pool/bookings", async (req, res) => {
+  app.get("/api/admin/outstation-pool/bookings", requireAdminAuth, async (req, res) => {
     try {
       const status = req.query.status as string;
       const r = await rawDb.execute(rawSql`
@@ -6340,7 +6435,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.patch("/api/admin/outstation-pool/settings", async (req, res) => {
+  app.patch("/api/admin/outstation-pool/settings", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
       const { mode } = req.body; // 'on' | 'off'
       if (!['on','off'].includes(mode)) return res.status(400).json({ message: "mode must be 'on' or 'off'" });
@@ -6354,7 +6449,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET all revenue model settings as a flat key-value map
-  app.get("/api/admin/revenue/settings", async (_req, res) => {
+  app.get("/api/admin/revenue/settings", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings ORDER BY key_name`);
       const obj: Record<string, string> = {};
@@ -8453,8 +8548,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // ?? Socket: notify customer � enriched with discount/GST breakdown + wallet status
       if (io && completedTrip.customerId) {
+        io.to(`user:${completedTrip.customerId}`).emit("trip:status_update", {
+          tripId,
+          status: "completed",
+          currentStatus: "completed",
+          fare: rideFullFare,
+          userDiscount,
+          userPayable,
+          gstAmount,
+          driverWalletCredit,
+          actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
+          paymentMethod: tripRow.payment_method || 'cash',
+          platformDeduction: deductAmount,
+          launchOfferApplied: userDiscount > 0,
+          uiState: 'trip_completed',
+          walletPaidAmount,
+          walletPendingAmount,
+          requiresCashPayment: walletPendingAmount > 0,
+        });
+        io.to(`trip:${tripId}`).emit("trip:status_update", {
+          tripId,
+          status: "completed",
+          currentStatus: "completed",
+          fare: rideFullFare,
+          userDiscount,
+          userPayable,
+          gstAmount,
+          driverWalletCredit,
+          actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
+          paymentMethod: tripRow.payment_method || 'cash',
+          platformDeduction: deductAmount,
+          launchOfferApplied: userDiscount > 0,
+          uiState: 'trip_completed',
+          walletPaidAmount,
+          walletPendingAmount,
+          requiresCashPayment: walletPendingAmount > 0,
+        });
         io.to(`user:${completedTrip.customerId}`).emit("trip:completed", {
           tripId,
+          status: "completed",
+          currentStatus: "completed",
           fare: rideFullFare,
           userDiscount,
           userPayable,
@@ -8466,6 +8599,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
           // Wallet partial/insufficient info � app shows "Pay remaining by cash/UPI" when pendingAmount > 0
+          walletPaidAmount,
+          walletPendingAmount,
+          requiresCashPayment: walletPendingAmount > 0,
+        });
+        io.to(`trip:${tripId}`).emit("trip:completed", {
+          tripId,
+          status: "completed",
+          currentStatus: "completed",
+          fare: rideFullFare,
+          userDiscount,
+          userPayable,
+          gstAmount,
+          driverWalletCredit,
+          actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
+          paymentMethod: tripRow.payment_method || 'cash',
+          platformDeduction: deductAmount,
+          launchOfferApplied: userDiscount > 0,
+          uiState: 'trip_completed',
           walletPaidAmount,
           walletPendingAmount,
           requiresCashPayment: walletPendingAmount > 0,
@@ -8534,7 +8685,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const penalty = parseFloat((penaltyR.rows[0] as any)?.value || '10');
           await rawDb.execute(rawSql`
             UPDATE users SET wallet_balance = wallet_balance - ${penalty}
-            WHERE id = ${driver.id}::uuid AND wallet_balance >= 0
+            WHERE id = ${driver.id}::uuid AND wallet_balance >= ${penalty}
           `);
           await rawDb.execute(rawSql`
             INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
@@ -9561,13 +9712,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
-          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
+          dd.vehicle_number as driver_vehicle_number, dd.vehicle_model as driver_vehicle_model,
           vc.name as vehicle_name,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
         LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
+        LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
         WHERE t.id = ${tripId}::uuid AND t.customer_id = ${customer.id}::uuid
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
@@ -9613,13 +9765,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
           d.profile_photo as driver_photo,
-          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
+          dd.vehicle_number as driver_vehicle_number, dd.vehicle_model as driver_vehicle_model,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading,
           vc.name as vehicle_name
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id
         LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
         WHERE t.customer_id = ${customer.id}::uuid AND t.current_status NOT IN ('completed','cancelled')
         ORDER BY t.created_at DESC LIMIT 1
       `);
@@ -9699,12 +9852,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY created_at DESC LIMIT 1
       `).then(r2 => (r2.rows[0] as any)?.id).catch(() => null);
       if (!effectiveTripId) return res.status(404).json({ message: "No active trip to cancel" });
+      const existingTripR = await rawDb.execute(rawSql`
+        SELECT id, current_status, driver_id, payment_status, razorpay_payment_id
+        FROM trip_requests
+        WHERE id=${effectiveTripId}::uuid
+          AND customer_id=${customer.id}::uuid
+          AND current_status NOT IN ('completed','cancelled','on_the_way')
+        LIMIT 1
+      `);
+      if (!existingTripR.rows.length) return res.status(400).json({ message: "Cannot cancel - trip already in progress or completed" });
+      const existingTrip = existingTripR.rows[0] as any;
+      const previousStatus = String(existingTrip.current_status || "");
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='cancelled', cancelled_by='customer', cancel_reason=${reason||'Customer cancelled'}
         WHERE id=${effectiveTripId}::uuid AND customer_id=${customer.id}::uuid AND current_status NOT IN ('completed','cancelled','on_the_way')
         RETURNING *
       `);
-      if (!r.rows.length) return res.status(400).json({ message: "Cannot cancel � trip already in progress or completed" });
+      if (!r.rows.length) return res.status(400).json({ message: "Cannot cancel - trip already in progress or completed" });
       const trip = r.rows[0] as any;
 
       // Cancel active dispatch session if one exists
@@ -9721,16 +9885,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${trip.driver_id}::uuid`);
         const drvDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.driver_id}::uuid`);
         const drvFcm = (drvDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId }).catch(dbCatch("db"));
+        notifyTripCancelled({ fcmToken: drvFcm, cancelledBy: "customer", tripId: effectiveTripId }).catch(dbCatch("db"));
         // Real-time socket: ensures driver TripScreen closes immediately even if FCM is delayed
-        io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
+        io.to(`user:${trip.driver_id}`).emit("trip:cancelled", { tripId: effectiveTripId, cancelledBy: "customer", reason: "Customer cancelled the trip" });
       }
       // -- Auto-refund if customer paid online ----------------------------------
       // SECURITY: Atomic UPDATE prevents double-refund race condition.
       // Strategy: try Razorpay bank refund first (original payment method),
       //           fall back to wallet credit if Razorpay fails/unavailable.
       let walletRefund: number | null = null;
-      if (trip.payment_status === 'paid_online') {
+      if (existingTrip.payment_status === 'paid_online') {
         const atomicRefund = await rawDb.execute(rawSql`
           UPDATE customer_payments
           SET status='refunded', refunded_at=NOW()
@@ -9742,7 +9906,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
         if (atomicRefund.rows.length) {
           const refundAmt = Math.round(parseFloat((atomicRefund.rows[0] as any).amount) * 100) / 100;
-          const rzpPaymentId = trip.razorpay_payment_id || null;
+          const rzpPaymentId = existingTrip.razorpay_payment_id || null;
           let refundedToBank = false;
 
           // Try Razorpay bank refund first (goes back to customer's UPI/card/bank)
@@ -9785,7 +9949,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // -- Customer cancel penalty: fee if driver was already assigned ---------
       let cancelFee = 0;
       try {
-        if (trip.driver_id && ['accepted','arrived','driver_assigned'].includes(trip.current_status)) {
+        if (shouldApplyCustomerLateCancelFee(previousStatus, existingTrip.driver_id)) {
           const feeR = await rawDb.execute(rawSql`
             SELECT value FROM business_settings WHERE key_name='customer_cancel_penalty' LIMIT 1
           `).catch(() => ({ rows: [] as any[] }));
@@ -9793,9 +9957,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // Deduct from wallet if balance available
           const walletR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid LIMIT 1`);
           const walBal = parseFloat((walletR.rows[0] as any)?.wallet_balance || '0');
-          if (walBal >= cancelFee) {
+          if (canWalletCoverCharge(walBal, cancelFee)) {
             await rawDb.execute(rawSql`
-              UPDATE users SET wallet_balance = wallet_balance - ${cancelFee} WHERE id=${customer.id}::uuid
+              UPDATE users SET wallet_balance = wallet_balance - ${cancelFee}
+              WHERE id=${customer.id}::uuid AND wallet_balance >= ${cancelFee}
             `);
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, trip_id, account, debit, credit, balance, transaction_type)
@@ -10949,8 +11114,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                     WHERE id = ${rec.tripId}::uuid AND current_status = 'payment_pending'
                   `);
                   if (io) {
+                    io.to(`user:${rec.customerId ?? ""}`).emit("trip:status_update", {
+                      tripId: rec.tripId,
+                      status: "completed",
+                      currentStatus: "completed",
+                      message: "Payment confirmed. Trip completed.",
+                    });
                     io.to(`user:${rec.customerId ?? ""}`).emit("trip:completed", {
                       tripId: rec.tripId,
+                      status: "completed",
+                      currentStatus: "completed",
+                      message: "Payment confirmed. Trip completed.",
+                    });
+                    io.to(`trip:${rec.tripId}`).emit("trip:status_update", {
+                      tripId: rec.tripId,
+                      status: "completed",
+                      currentStatus: "completed",
+                      message: "Payment confirmed. Trip completed.",
+                    });
+                    io.to(`trip:${rec.tripId}`).emit("trip:completed", {
+                      tripId: rec.tripId,
+                      status: "completed",
+                      currentStatus: "completed",
                       message: "Payment confirmed. Trip completed.",
                     });
                   }
@@ -13306,7 +13491,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Admin: list all languages
-  app.get("/api/admin/languages", async (req, res) => {
+  app.get("/api/admin/languages", requireAdminAuth, async (req, res) => {
     try {
       const rows = await rawDb.execute(rawSql`
         SELECT id, code, name, native_name, flag, is_active, sort_order, created_at
@@ -13367,7 +13552,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   // -- PLATFORM SERVICES � per-service activation + revenue model control ------
   // Admin: list all 9 configured services
-  app.get("/api/platform-services", async (_req, res) => {
+  app.get("/api/platform-services", requireAdminAuth, async (_req, res) => {
     try {
       const r = await rawDb.execute(rawSql`SELECT * FROM platform_services ORDER BY sort_order ASC`);
       res.json(r.rows);
@@ -13375,9 +13560,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Admin: toggle status / update revenue model + commission rate
-  app.patch("/api/platform-services/:key", async (req, res) => {
+  app.patch("/api/platform-services/:key", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const { key } = req.params;
+      const key = String(req.params.key || "");
       const { service_status, revenue_model, commission_rate } = req.body;
       const updates: string[] = ['updated_at=NOW()'];
       if (service_status !== undefined) updates.push(`service_status='${service_status === 'active' ? 'active' : 'inactive'}'`);

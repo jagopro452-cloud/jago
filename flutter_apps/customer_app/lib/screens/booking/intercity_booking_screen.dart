@@ -181,7 +181,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
           const SizedBox(height: 8),
           Text(
             '₹${(data['estimatedFare'] as num?)?.toStringAsFixed(0) ?? '0'}',
-            style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w900, color: JT.primary),
+            style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700, color: JT.primary),
           ),
           const SizedBox(height: 4),
           const Text('Estimated Fare', style: TextStyle(color: Colors.grey, fontSize: 12)),
@@ -195,7 +195,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
         actions: [
           TextButton(
             onPressed: () { Navigator.pop(context); Navigator.pop(context); },
-            child: Text('OK', style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w800)),
+            child: Text('OK', style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -215,7 +215,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Intercity / Carpool',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: JT.border),
@@ -474,7 +474,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   }
 
   Widget _sectionTitle(String t) => Text(t,
-      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary));
+      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary));
 
   Widget _label(String t) => Padding(
     padding: const EdgeInsets.only(bottom: 6),

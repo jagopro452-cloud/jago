@@ -3,9 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   // Primary
-  static const primary = Color(0xFF2F80ED);
-  static const primaryDark = Color(0xFF1565D8);
-  static const primaryLight = Color(0xFFEFF6FF);
+  static const primary = Color(0xFF2D8CFF);
+  static const primaryDark = Color(0xFF1A6FDB);
+  static const primaryLight = Color(0xFFE8F2FF);
 
   // Dark theme
   static const darkBg = Color(0xFF0B0B0B);
@@ -33,7 +33,7 @@ class AppColors {
 
 class AppText {
   static TextStyle heading(BuildContext context) => GoogleFonts.poppins(
-    fontSize: 22, fontWeight: FontWeight.w800,
+    fontSize: 22, fontWeight: FontWeight.w600,
     color: Theme.of(context).brightness == Brightness.dark ? AppColors.textWhite : AppColors.textDark,
   );
 

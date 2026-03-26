@@ -22,7 +22,7 @@ class LocationService {
       return await Geolocator.getCurrentPosition(
         locationSettings: LocationSettings(
           // Use high accuracy only when explicitly needed (first-fix, active trip start)
-          accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.balanced,
+          accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.medium,
         ),
       );
     } catch (_) {
@@ -33,8 +33,8 @@ class LocationService {
   static Stream<Position> getLocationStream({bool highAccuracy = false}) {
     return Geolocator.getPositionStream(
       locationSettings: LocationSettings(
-        // Use balanced (cell+WiFi) when idle; high only during active trip
-        accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.balanced,
+        // Use medium (cell+WiFi) when idle; high only during active trip
+        accuracy: highAccuracy ? LocationAccuracy.high : LocationAccuracy.medium,
         distanceFilter: highAccuracy ? 5 : 20, // 5 m on trip, 20 m when idle
       ),
     );

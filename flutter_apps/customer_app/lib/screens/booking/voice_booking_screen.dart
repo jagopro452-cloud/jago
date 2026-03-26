@@ -100,18 +100,37 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       ).timeout(const Duration(seconds: 8));
       if (!mounted) return;
       setState(() { _currentLat = pos.latitude; _currentLng = pos.longitude; });
-      final key = ApiConfig.googleMapsApiKey;
-      if (key.isNotEmpty) {
-        final r = await http.get(Uri.parse(
-          'https://maps.googleapis.com/maps/api/geocode/json?latlng=${pos.latitude},${pos.longitude}&key=$key'));
+      // Try server proxy
+      try {
+        final headers = await AuthService.getHeaders();
+        final r = await http.get(
+          Uri.parse('${ApiConfig.reverseGeocode}?lat=${pos.latitude}&lng=${pos.longitude}'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 6));
         if (r.statusCode == 200) {
-          final d = jsonDecode(r.body);
-          final results = d['results'] as List?;
-          if (results != null && results.isNotEmpty && mounted) {
-            setState(() => _currentAddress = results[0]['formatted_address'] ?? 'Current Location');
+          final d = jsonDecode(r.body) as Map<String, dynamic>;
+          final addr = d['formattedAddress']?.toString() ?? '';
+          if (mounted && addr.isNotEmpty) {
+            setState(() => _currentAddress = addr);
+            return;
           }
         }
-      }
+      } catch (_) {}
+      // Nominatim fallback
+      try {
+        final r = await http.get(
+          Uri.parse(
+              'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}'),
+          headers: const {'User-Agent': 'JagoPro/1.0'},
+        ).timeout(const Duration(seconds: 5));
+        if (r.statusCode == 200) {
+          final d = jsonDecode(r.body) as Map<String, dynamic>;
+          final addr = d['display_name']?.toString() ?? '';
+          if (mounted && addr.isNotEmpty) {
+            setState(() => _currentAddress = addr.split(',').take(3).join(',').trim());
+          }
+        }
+      } catch (_) {}
     } catch (_) {}
   }
 
@@ -214,7 +233,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Text('Choose Language', style: GoogleFonts.poppins(
-                color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
           ),
           ..._supportedLangs.map((lang) {
             final available = _availableLocales.any(
@@ -632,7 +651,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Voice Booking',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
         actions: [
           GestureDetector(
             onTap: _selectLanguage,
@@ -890,7 +909,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         Container(width: 3, height: 16, decoration: BoxDecoration(gradient: JT.grad, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text('Available Vehicles', style: GoogleFonts.poppins(
-            fontSize: 14, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+            fontSize: 14, fontWeight: FontWeight.w600, color: JT.textPrimary)),
         if (_distanceKm > 0) ...[
           const Spacer(),
           Text('${_distanceKm.toStringAsFixed(1)} km',
@@ -931,13 +950,13 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(name, style: GoogleFonts.poppins(
                     color: isSelected ? JT.primary : JT.textPrimary,
-                    fontWeight: FontWeight.w800, fontSize: 14)),
+                    fontWeight: FontWeight.w600, fontSize: 14)),
                 Text(time, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('₹$fareVal', style: GoogleFonts.poppins(
                     color: isSelected ? JT.primary : JT.textPrimary,
-                    fontSize: 22, fontWeight: FontWeight.w900)),
+                    fontSize: 22, fontWeight: FontWeight.w700)),
                 if (isSelected)
                   Container(
                     margin: const EdgeInsets.only(top: 2),
@@ -945,7 +964,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                     decoration: BoxDecoration(
                       color: JT.primary, borderRadius: BorderRadius.circular(6)),
                     child: Text('Selected', style: GoogleFonts.poppins(
-                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
                   ),
               ]),
             ]),
@@ -983,7 +1002,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           icon: Icon(_awaitingConfirmation ? Icons.check_rounded : Icons.flash_on_rounded, size: 20),
           label: Text(
             _awaitingConfirmation ? 'CONFIRM' : 'BOOK NOW',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: _awaitingConfirmation ? JT.success : JT.primary,

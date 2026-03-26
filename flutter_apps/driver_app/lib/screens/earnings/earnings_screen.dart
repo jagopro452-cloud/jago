@@ -245,7 +245,7 @@ class _EarningsScreenState extends State<EarningsScreen>
                     style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         letterSpacing: 1)),
               ]),
             ),
@@ -330,7 +330,7 @@ class _EarningsScreenState extends State<EarningsScreen>
             style: GoogleFonts.poppins(
                 color: Colors.white,
                 fontSize: 44,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 height: 1.0,
                 letterSpacing: -1.5)),
         const SizedBox(height: 10),
@@ -386,7 +386,7 @@ class _EarningsScreenState extends State<EarningsScreen>
                   style: GoogleFonts.poppins(
                       color: JT.textPrimary,
                       fontSize: 15,
-                      fontWeight: FontWeight.w800)),
+                      fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -426,7 +426,7 @@ class _EarningsScreenState extends State<EarningsScreen>
                 style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 15,
-                    fontWeight: FontWeight.w900)),
+                    fontWeight: FontWeight.w700)),
           ),
         ]),
         const SizedBox(height: 28),
@@ -493,7 +493,7 @@ class _EarningsScreenState extends State<EarningsScreen>
                             style: GoogleFonts.poppins(
                                 color: isToday ? JT.primary : JT.textSecondary,
                                 fontSize: 10,
-                                fontWeight: isToday ? FontWeight.w800 : FontWeight.w500)),
+                                fontWeight: isToday ? FontWeight.w600 : FontWeight.w500)),
                       ],
                     ),
                   ),

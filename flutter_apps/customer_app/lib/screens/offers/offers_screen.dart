@@ -76,7 +76,7 @@ class _OffersScreenState extends State<OffersScreen> {
           icon: const Icon(Icons.arrow_back_ios_rounded, color: JT.textPrimary, size: 20),
         ),
         title: const Text('Offers & Coupons',
-            style: TextStyle(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+            style: TextStyle(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
         centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -117,7 +117,7 @@ class _OffersScreenState extends State<OffersScreen> {
         const SizedBox(width: 12),
         const Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Exclusive Offers', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+            Text('Exclusive Offers', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
             SizedBox(height: 2),
             Text('Tap "Copy" and apply at booking', style: TextStyle(color: Colors.white70, fontSize: 12)),
           ]),
@@ -206,7 +206,7 @@ class _OffersScreenState extends State<OffersScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JT.textPrimary)),
+                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary)),
                 if (desc != null && desc.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
@@ -234,7 +234,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_discountLabel(offer),
-                style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+                style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
             ),
           ]),
         ),
@@ -262,7 +262,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 ),
                 child: Text(code,
                   style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w900, color: color,
+                    fontSize: 15, fontWeight: FontWeight.w700, color: color,
                     letterSpacing: 2, fontFamily: 'monospace',
                   )),
               ),

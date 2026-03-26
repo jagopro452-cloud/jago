@@ -12,19 +12,17 @@ import 'services/localization_service.dart';
 // Global navigator key — used by FCM service to navigate after notification tap
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 Future<void> loadThemePreference() async {
-  final prefs = await SharedPreferences.getInstance();
-  final pref = prefs.getString('theme_pref') ?? prefs.getString('theme_mode') ?? 'dark';
-  themeNotifier.value = pref == 'light' ? ThemeMode.light : ThemeMode.dark;
+  themeNotifier.value = ThemeMode.light;
 }
 
 Future<void> saveThemePreference(String pref) async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('theme_pref', pref);
-  await prefs.setString('theme_mode', pref);
-  themeNotifier.value = pref == 'light' ? ThemeMode.light : ThemeMode.dark;
+  await prefs.setString('theme_pref', 'light');
+  await prefs.setString('theme_mode', 'light');
+  themeNotifier.value = ThemeMode.light;
 }
 
 void main() async {
@@ -50,16 +48,16 @@ void main() async {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return MaterialApp(
       home: Scaffold(
-        backgroundColor: const Color(0xFF0B0B0B),
+        backgroundColor: const Color(0xFFFFFFFF),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.error_outline, color: Color(0xFF2F80ED), size: 48),
+              const Icon(Icons.error_outline, color: Color(0xFF2D8CFF), size: 48),
               const SizedBox(height: 16),
               const Text('Something went wrong.\nPlease restart the app.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontSize: 16, color: Color(0xFF111827), fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Text(details.exceptionAsString(),
                 textAlign: TextAlign.center,
@@ -77,138 +75,99 @@ class JagoPilotApp extends StatelessWidget {
   const JagoPilotApp({super.key});
 
   static ThemeData _lightTheme() {
-    const primary = Color(0xFF2F80ED);
+    const primary = Color(0xFF1677FF);
     const bg = Color(0xFFFFFFFF);
-    const card = Color(0xFFF5F8FF);
+    const card = Color(0xFFF8FAFE);
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: const ColorScheme.light(
         primary: primary,
-        secondary: Color(0xFF56CCF2),
+        secondary: Color(0xFF5B9DFF),
         surface: card,
         background: bg,
         onPrimary: Colors.white,
-        onSurface: Color(0xFF0B0B0B),
+        onSurface: Color(0xFF111827),
+        outline: Color(0xFFD9E4F5),
       ),
       scaffoldBackgroundColor: bg,
       cardColor: card,
+      dividerColor: const Color(0xFFE5EDF7),
       fontFamily: GoogleFonts.poppins().fontFamily,
       textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: const Color(0xFF0B0B0B),
-        displayColor: const Color(0xFF0B0B0B),
+        bodyColor: const Color(0xFF111827),
+        displayColor: const Color(0xFF111827),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
-        foregroundColor: const Color(0xFF0B0B0B),
+        foregroundColor: const Color(0xFF111827),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: GoogleFonts.poppins(
           fontSize: 18,
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF0B0B0B),
+          color: const Color(0xFF111827),
         ),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
+      ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFFE5EDF7)),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          side: const BorderSide(color: Color(0xFFD6E6FF)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          textStyle: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: card,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFDCE9FF)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDCE7F5)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: primary, width: 2),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primary, width: 1.6),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         hintStyle: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 14),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       ),
     );
   }
 
   static ThemeData _darkTheme() {
-    const primary = Color(0xFF00D4FF);  // NEON CYAN — premium modern aesthetic
-    const bg = Color(0xFF060A14);        // Ultra-dark background
-    const card = Color(0xFF0F1923);      // Dark Navy surface
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: const ColorScheme.dark(
-        primary: primary,
-        secondary: Color(0xFF00E676),    // Neon green
-        tertiary: Color(0xFFFFB300),      // Gold accent
-        surface: card,
-        background: bg,
-        onPrimary: Colors.white,
-        onSurface: Colors.white,
-        outline: Color(0xFF1E3050),
-        error: Color(0xFFFF3D57),         // Neon red
-      ),
-      scaffoldBackgroundColor: bg,
-      cardColor: card,
-      dividerColor: const Color(0xFF1E3050),
-      fontFamily: GoogleFonts.poppins().fontFamily,
-      textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: Colors.white,
-        displayColor: Colors.white,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: bg,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.poppins(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-        systemOverlayStyle: SystemUiOverlayStyle.light,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor: Colors.black,  // Dark text on neon button for contrast
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
-          shadowColor: primary.withValues(alpha: 0.4),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: card,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF1E3050)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: const Color(0xFF1E3050).withValues(alpha: 0.4)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: primary, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.poppins(color: const Color(0xFF8899BB), fontSize: 14),
-      ),
-    );
+    return _lightTheme();
   }
 
   @override
@@ -222,9 +181,9 @@ class JagoPilotApp extends StatelessWidget {
             navigatorKey: navigatorKey,
             title: 'JAGO Pro Pilot',
             debugShowCheckedModeBanner: false,
-            themeMode: mode,
+            themeMode: ThemeMode.light,
             theme: _lightTheme(),
-            darkTheme: _darkTheme(),
+            darkTheme: _lightTheme(),
             home: const SplashScreen(),
           ),
         );

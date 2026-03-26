@@ -120,4 +120,8 @@ class ApiConfig {
 
   // ── Module Revenue Config ─────────────────────────────────────────────
   static String get revenueConfig => '$baseUrl/api/app/revenue-config';
+
+  // ── Mapping (proxied through server — avoids hardcoded key) ─────────────
+  static String get reverseGeocode => '$baseUrl/api/app/reverse-geocode';
+  static String get routeMultiWaypoint => '$baseUrl/api/app/route/multi-waypoint';
 }

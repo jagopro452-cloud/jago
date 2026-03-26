@@ -122,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                   'Join JAGO Pro Today',
                   style: GoogleFonts.poppins(
                     fontSize: 26,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     color: _navy,
                   ),
                 ),
@@ -218,7 +218,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                             'Create Account',
                             style: GoogleFonts.poppins(
                               fontSize: 17,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                               color: Colors.white,
                               letterSpacing: 0.3,
                             ),
@@ -241,7 +241,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       'Login',
                       style: GoogleFonts.poppins(
                         color: _blue,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
                     ),

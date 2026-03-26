@@ -511,9 +511,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // ── GPS stream: hardware-managed, emits only when device moves ≥ 15 m ──
     // Far more battery-efficient than calling getCurrentPosition every 3 s.
     _posStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium, // cell+WiFi assisted — less power than 'high'
-        distanceFilter: 15,                  // no update until driver moves 15 m
+      locationSettings: const AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+        intervalDuration: Duration(seconds: 3),
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationText: 'JAGO Pro Pilot is tracking your location',
+          notificationTitle: 'Location Tracking Active',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       ),
     ).listen((pos) {
       _lastPosition = pos;
@@ -1095,7 +1102,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             mapToolbarEnabled: false,
             circles: _heatmapCircles,
           ),
-          // Subtle white gradient overlay at top for readability
+          // Clean white gradient overlay at top for readability
           Positioned(
             top: 0, left: 0, right: 0,
             child: Container(
@@ -1105,7 +1112,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    AppColors.bg.withValues(alpha: 0.95),
+                    Colors.white.withValues(alpha: 0.95),
                     Colors.transparent,
                   ],
                 ),
@@ -1185,12 +1192,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         height: 46,
         decoration: BoxDecoration(
           gradient: _showHeatmap ? AppColors.neonGrad : null,
-          color: _showHeatmap ? null : AppColors.surface,
+          color: _showHeatmap ? null : Colors.white,
           shape: BoxShape.circle,
           border: Border.all(
             color: _showHeatmap ? AppColors.primary : AppColors.border,
             width: 1.5),
-          boxShadow: _showHeatmap ? AppGlow.neonIntense(AppColors.primary) : AppGlow.softSmall(),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Icon(
           Icons.layers_rounded,
@@ -1211,7 +1218,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         Expanded(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: AppCard.darkElevated(),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: JT.border, width: 1),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2))],
+            ),
             child: Row(children: [
               // Pilot logo with socket indicator
               Stack(clipBehavior: Clip.none, children: [
@@ -1223,10 +1235,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: _socketConnected ? AppColors.success : AppColors.warning,
-                      border: Border.all(color: AppColors.card, width: 1.5),
-                      boxShadow: _socketConnected
-                          ? AppGlow.neon(AppColors.success, blur: 12)
-                          : [],
+                      border: Border.all(color: Colors.white, width: 1.5),
                     ),
                   ),
                 ),
@@ -1236,24 +1245,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text(
                     '${_getTimeGreeting()}, ${_userName.split(' ').first}!',
-                    style: AppText.bodyPrimary(null),
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: JT.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (_isOnline)
                     Row(children: [
-                      AnimatedBuilder(
-                        animation: _pulseCtrl,
-                        builder: (_, __) => Container(
-                          width: 6, height: 6,
-                          margin: const EdgeInsets.only(right: 4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.success,
-                            boxShadow: [BoxShadow(
-                              color: AppColors.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
-                              blurRadius: 3 + _pulseCtrl.value * 4,
-                            )],
-                          ),
+                      Container(
+                        width: 6, height: 6,
+                        margin: const EdgeInsets.only(right: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.success,
                         ),
                       ),
                       Text(
@@ -1270,7 +1272,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       Container(
                         width: 6, height: 6,
                         margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: JT.error.withValues(alpha: 0.6)),
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: JT.textSecondary.withValues(alpha: 0.5)),
                       ),
                       Text(
                         'Offline — tap to go online',
@@ -1297,12 +1299,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             Container(
               width: 46, height: 46,
               decoration: BoxDecoration(
-                color: JT.surface,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JT.border),
-                boxShadow: JT.cardShadow,
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
               ),
-              child: Icon(Icons.notifications_rounded, color: JT.textSecondary, size: 22),
+              child: Icon(Icons.notifications_outlined, color: JT.textSecondary, size: 22),
             ),
             if (_unreadNotifCount > 0)
               Positioned(
@@ -1316,7 +1318,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   child: Center(
                     child: Text(
                       _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
-                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -1334,8 +1336,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       onTap: onTap,
       child: Container(
         width: 46, height: 46,
-        decoration: AppCard.darkElevated(),
-        child: Icon(icon, color: AppColors.textSecondary, size: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: JT.border, width: 1),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
+        ),
+        child: Icon(icon, color: JT.textSecondary, size: 20),
       ),
     );
   }
@@ -1343,7 +1350,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Widget _buildBottomPanel() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-      decoration: AppCard.darkElevated(radius: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: JT.border, width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
+      ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Drag handle
         Container(
@@ -1359,7 +1371,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: AppCard.neonBorder(color: AppColors.primary),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.15), width: 1),
+            ),
             child: Row(children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
@@ -1376,9 +1392,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      gradient: AppColors.successGrad,
+                      color: AppColors.success,
                       borderRadius: BorderRadius.circular(8),
-                      boxShadow: AppGlow.neon(AppColors.success, blur: 12),
                     ),
                     child: Text(
                       '$_tripsToday trips',
@@ -1396,7 +1411,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 const SizedBox(height: 2),
                 Text(
                   '₹${_walletBalance.toStringAsFixed(0)}',
-                  style: AppText.statMedium(color: AppColors.tertiary),
+                  style: AppText.statMedium(color: AppColors.primary),
                 ),
               ]),
             ]),
@@ -1419,8 +1434,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
                     style: GoogleFonts.poppins(
                       color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -1441,56 +1456,77 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     _userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'Pilot',
                     style: GoogleFonts.poppins(
                       color: JT.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   if (!_isOnline)
                     Text(
                       'Tap GO ONLINE to start earning',
                       style: GoogleFonts.poppins(
-                        color: JT.warning,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                        color: JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                 ]),
               ),
-              // Inline toggle button
+              // Online/Offline toggle — prominent action button
               GestureDetector(
                 onTap: _toggling ? null : _toggleOnline,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 400),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  duration: const Duration(milliseconds: 350),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
                   decoration: BoxDecoration(
-                    gradient: _isOnline ? AppColors.neonGrad : null,
-                    color: _isOnline ? null : AppColors.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: _isOnline ? AppGlow.neon(AppColors.primary, blur: 16) : [],
-                    border: _isOnline ? null : Border.all(color: AppColors.border),
+                    gradient: _isOnline ? null : AppColors.neonGrad,
+                    color: _isOnline
+                        ? const Color(0xFFFEF2F2)
+                        : null,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: _isOnline
+                        ? []
+                        : [BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.28),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4))],
+                    border: _isOnline
+                        ? Border.all(color: const Color(0xFFFCA5A5), width: 1)
+                        : null,
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    AnimatedBuilder(
-                      animation: _pulseCtrl,
-                      builder: (_, __) => Container(
-                        width: 8, height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isOnline ? Colors.white : AppColors.textSecondary,
-                          boxShadow: _isOnline ? [BoxShadow(
-                            color: Colors.white.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3),
-                            blurRadius: 3 + _pulseCtrl.value * 4,
-                          )] : [],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      _isOnline ? 'GO OFFLINE' : 'GO ONLINE',
-                      style: AppText.btnSmallText(color: _isOnline ? Colors.white : AppColors.textSecondary),
-                    ),
-                  ]),
+                  child: _toggling
+                      ? SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _isOnline
+                                ? const Color(0xFFDC2626)
+                                : Colors.white,
+                          ),
+                        )
+                      : Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                            width: 7, height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _isOnline
+                                  ? const Color(0xFFDC2626)
+                                  : Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            _isOnline ? 'GO OFFLINE' : 'GO ONLINE',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _isOnline
+                                  ? const Color(0xFFDC2626)
+                                  : Colors.white,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ]),
                 ),
               ),
             ]),
@@ -1499,24 +1535,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  gradient: AppColors.successGrad.withOpacity(0.08),
+                  color: AppColors.success.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.25), width: 1),
-                  boxShadow: AppGlow.neon(AppColors.success, blur: 12),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.20), width: 1),
                 ),
                 child: Row(children: [
-                  AnimatedBuilder(
-                    animation: _pulseCtrl,
-                    builder: (_, __) => Container(
-                      width: 8, height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.success,
-                        boxShadow: [BoxShadow(
-                          color: AppColors.success.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
-                          blurRadius: 4 + _pulseCtrl.value * 6,
-                        )],
-                      ),
+                  Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.success,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1542,10 +1570,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  gradient: AppColors.successGrad.withOpacity(0.06),
+                  color: AppColors.success.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-                  boxShadow: AppGlow.neon(AppColors.success, blur: 12),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.20)),
                 ),
                 child: Row(children: [
                   const Text('🎉', style: TextStyle(fontSize: 18)),
@@ -1572,10 +1599,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  gradient: AppColors.neonGrad.withOpacity(0.05),
+                  color: AppColors.primaryLight,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
-                  boxShadow: AppGlow.neon(AppColors.primary, blur: 12),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Your Eligible Services',
@@ -1611,10 +1637,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
-                  gradient: AppColors.warningGrad.withOpacity(0.06),
+                  color: AppColors.warning.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3), width: 1),
-                  boxShadow: AppGlow.neon(AppColors.warning, blur: 12),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.20), width: 1),
                 ),
                 child: Row(children: [
                   const Icon(Icons.inventory_2_rounded, size: 18, color: AppColors.tertiary),
@@ -1632,9 +1657,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      gradient: AppColors.warningGrad,
+                      color: AppColors.warning,
                       borderRadius: BorderRadius.circular(8),
-                      boxShadow: AppGlow.neon(AppColors.warning, blur: 8),
                     ),
                     child: Text(
                       'EARN MORE',
@@ -1657,6 +1681,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
+  String? _vehicleImageUrlForCategory() {
+    final n = _vehicleCategory.toLowerCase();
+    if (n.contains('bike')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png';
+    if (n.contains('auto')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png';
+    if (n.contains('car') || n.contains('suv')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png';
+    return null;
+  }
+
   Widget _buildVehicleCard() {
     final IconData vIcon = _vehicleCategory.toLowerCase().contains('bike')
       ? Icons.electric_bike_rounded
@@ -1665,30 +1697,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         : _vehicleCategory.toLowerCase().contains('suv')
           ? Icons.directions_car_filled_rounded
           : Icons.directions_car_rounded;
+    final imageUrl = _vehicleImageUrlForCategory();
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border(
-          left: BorderSide(color: AppColors.primary, width: 3),
-          right: BorderSide(color: AppColors.border),
-          top: BorderSide(color: AppColors.border),
-          bottom: BorderSide(color: AppColors.border),
-        ),
-        boxShadow: AppGlow.soft(AppColors.primary),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(children: [
-          Container(
-            width: 42, height: 42,
-            decoration: BoxDecoration(
-              gradient: AppColors.neonGrad,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: AppGlow.neon(AppColors.primary),
-            ),
-            child: Icon(vIcon, color: Colors.white, size: 22),
+          // Vehicle real image / icon fallback
+          SizedBox(
+            width: 52, height: 42,
+            child: imageUrl != null
+              ? Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(vIcon, color: AppColors.primary, size: 28),
+                )
+              : Icon(vIcon, color: AppColors.primary, size: 28),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1752,13 +1782,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         height: 76,
         decoration: BoxDecoration(
           gradient: isOn
-              ? const LinearGradient(colors: [Color(0xFF16A34A), Color(0xFF15803D)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-              : const LinearGradient(colors: [Color(0xFF2F6BFF), Color(0xFF1A4DC8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              ? const LinearGradient(colors: [Color(0xFF22C55E), Color(0xFF16A34A)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+              : const LinearGradient(colors: [Color(0xFF5BABFF), Color(0xFF2D8CFF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: (isOn ? const Color(0xFF16A34A) : const Color(0xFF2F6BFF)).withValues(alpha: 0.40),
-              blurRadius: 20, offset: const Offset(0, 8),
+              color: (isOn ? const Color(0xFF16A34A) : const Color(0xFF2D8CFF)).withValues(alpha: 0.25),
+              blurRadius: 16, offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -1766,18 +1796,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           child: _toggling
             ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.8))
             : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                AnimatedBuilder(
-                  animation: _pulseCtrl,
-                  builder: (_, __) => Container(
-                    width: 12, height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.4 + _pulseCtrl.value * 0.4),
-                        blurRadius: 4 + _pulseCtrl.value * 8,
-                      )],
-                    ),
+                Container(
+                  width: 12, height: 12,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1787,7 +1810,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontSize: 18,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -1820,7 +1843,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           Container(
             width: 4, height: 16,
             decoration: BoxDecoration(
-              gradient: AppColors.neonGrad,
+              color: AppColors.primary,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1899,10 +1922,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border, width: 1),
-          boxShadow: AppGlow.soft(iconColor),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1933,7 +1956,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               value,
               style: AppText.statMedium().copyWith(
                 color: AppColors.textPrimary,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 3),
@@ -1961,7 +1984,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     final tip = tips[DateTime.now().minute % tips.length];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: AppCard.darkElevated(),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+      ),
       child: Row(children: [
         Container(
           width: 38, height: 38,
@@ -2047,7 +2074,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _driverNavItem(Icons.map_rounded, 'Home', 0),
-              _driverNavItem(Icons.currency_rupee_rounded, 'Earnings', 1),
+              _driverNavItem(Icons.route_rounded, 'Trips', 1),
               _driverNavItem(Icons.account_balance_wallet_rounded, 'Wallet', 2),
               _driverNavItem(Icons.person_rounded, 'Profile', 3),
             ],
@@ -2064,7 +2091,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         setState(() => _navIndex = index);
         if (index == 0) return;
         if (index == 1) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()))
               .then((_) => setState(() => _navIndex = 0));
         } else if (index == 2) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()))
@@ -2079,10 +2106,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           duration: const Duration(milliseconds: 220),
           width: 44, height: 34,
           decoration: BoxDecoration(
-            color: active ? AppColors.primary.withValues(alpha: 0.1) : Colors.transparent,
+            color: active ? AppColors.primary.withValues(alpha: 0.08) : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
-            border: active ? Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1) : null,
-            boxShadow: active ? AppGlow.soft(AppColors.primary) : null,
+            border: active ? Border.all(color: AppColors.primary.withValues(alpha: 0.20), width: 1) : null,
           ),
           child: Icon(icon, size: 20, color: active ? AppColors.primary : AppColors.textSecondary),
         ),
@@ -2101,7 +2127,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Widget _buildDrawer() {
     return Drawer(
       child: Container(
-        color: AppColors.bg,
+        color: Colors.white,
         child: SafeArea(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
@@ -2110,7 +2136,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               decoration: BoxDecoration(
                 gradient: AppColors.neonGrad,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: AppGlow.neon(AppColors.primary),
+                boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.20), blurRadius: 16, offset: const Offset(0, 4))],
               ),
               child: Row(children: [
                 CircleAvatar(
@@ -2120,7 +2146,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
                     style: AppText.h4(null).copyWith(
                       color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

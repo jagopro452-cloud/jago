@@ -13,6 +13,7 @@
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { sendNotificationWithFailsafe, logInfo, logWarn, logError, logCritical, recordNoShow, loadHardeningSettings } from "./hardening";
+import { canWalletCoverCharge } from "./utils/stability-guards";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BOOKING VALIDATION (Before trip_requests INSERT)
@@ -344,9 +345,17 @@ export async function recordCustomerCancellation(
   const penaltyAmount = 10;
   
   if (count >= penaltyThreshold) {
+    const walletR = await rawDb.execute(rawSql`
+      SELECT wallet_balance FROM users WHERE id=${customerId}::uuid LIMIT 1
+    `).catch(() => ({ rows: [] as any[] }));
+    const walletBalance = parseFloat((walletR.rows[0] as any)?.wallet_balance || "0");
+    if (!canWalletCoverCharge(walletBalance, penaltyAmount)) {
+      return { penaltyApplied: false, penaltyAmount: 0 };
+    }
+
     await rawDb.execute(rawSql`
       UPDATE users SET wallet_balance = wallet_balance - ${penaltyAmount}
-      WHERE id=${customerId}::uuid
+      WHERE id=${customerId}::uuid AND wallet_balance >= ${penaltyAmount}
     `).catch(() => {});
     
     await logWarn('CANCEL-PENALTY', `Customer cancel penalty applied`, {
