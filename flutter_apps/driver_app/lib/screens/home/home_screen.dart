@@ -234,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       setState(() => _incomingTrip = null);
       Navigator.of(context).popUntil((r) => r.isFirst);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Customer cancelled the trip', style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Text('Customer cancelled the trip', style: TextStyle(fontWeight: FontWeight.w500)),
         backgroundColor: JT.error,
         behavior: SnackBarBehavior.floating,
       ));
@@ -292,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       setState(() => _walletBalance = newBalance);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Wallet recharged! Balance: ₹${newBalance.toStringAsFixed(0)}',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+            style: const TextStyle(fontWeight: FontWeight.w500)),
         backgroundColor: JT.success,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
@@ -385,8 +385,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
         }
       } catch (_) {}
-      // Accurate position (may take a few seconds on cold start)
-      final pos = await Geolocator.getCurrentPosition();
+      // Accurate position with timeout to avoid indefinite hang
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
       if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));
       _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
@@ -401,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Session expired. Please login again.', style: TextStyle(fontWeight: FontWeight.w700)),
+      content: Text('Session expired. Please login again.', style: TextStyle(fontWeight: FontWeight.w500)),
       backgroundColor: JT.error,
       behavior: SnackBarBehavior.floating,
     ));
@@ -659,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           const SizedBox(width: 10),
           Expanded(
             child: Text('Demand Zone Nearby',
-              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.w500)),
           ),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -678,7 +683,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               const Icon(Icons.currency_rupee_rounded, color: JT.success, size: 18),
               const SizedBox(width: 6),
               Text('₹${sugg.earningMin}–₹${sugg.earningMax} in 30 min',
-                style: GoogleFonts.poppins(color: JT.success, fontWeight: FontWeight.bold, fontSize: 14)),
+                style: GoogleFonts.poppins(color: JT.success, fontWeight: FontWeight.w500, fontSize: 14)),
             ]),
           ),
         ]),
@@ -830,7 +835,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: Colors.white)),
       backgroundColor: error ? JT.error : JT.success,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.all(16),
@@ -866,7 +871,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             style: GoogleFonts.poppins(
               color: JT.textPrimary,
               fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 8),
@@ -889,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 'Recharge Wallet Now',
                 style: GoogleFonts.poppins(
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w500,
                   fontSize: 15,
                 ),
               ),
@@ -1038,7 +1043,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   'Document Expired',
                   style: GoogleFonts.poppins(
                     color: JT.textPrimary,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w500,
                     fontSize: 16,
                   ),
                 ),
@@ -1055,7 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   },
                   child: Text(
                     'Update Documents',
-                    style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w500),
                   ),
                 ),
                 TextButton(
@@ -1318,7 +1323,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   child: Center(
                     child: Text(
                       _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
-                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ),
@@ -1353,331 +1358,197 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: JT.border, width: 1),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Drag handle
-        Container(
-          width: 44, height: 4,
-          margin: const EdgeInsets.only(top: 12, bottom: 12),
-          decoration: BoxDecoration(
-            color: JT.border,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        // hero earnings banner
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Drag handle
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 10, bottom: 10),
             decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.15), width: 1),
+              color: JT.border,
+              borderRadius: BorderRadius.circular(2),
             ),
-            child: Row(children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  "Today's Total",
-                  style: AppText.label(null),
-                ),
-                const SizedBox(height: 2),
-                Row(children: [
-                  Text(
-                    '₹${_earningsToday.toStringAsFixed(0)}',
-                    style: AppText.statBig(color: AppColors.primary),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.success,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '$_tripsToday trips',
-                      style: AppText.badgeText(),
-                    ),
-                  ),
-                ]),
-              ]),
-              const Spacer(),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(
-                  'Wallet',
-                  style: AppText.labelSmall(null),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '₹${_walletBalance.toStringAsFixed(0)}',
-                  style: AppText.statMedium(color: AppColors.primary),
-                ),
-              ]),
-            ]),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Column(children: [
-            // Avatar + greeting + toggle row
-            Row(children: [
-              Container(
-                width: 50, height: 50,
-                decoration: BoxDecoration(
-                  gradient: JT.grad,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: JT.btnShadow,
-                ),
-                child: Center(
-                  child: Text(
-                    _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: Column(children: [
+              // Avatar + greeting + small inline toggle
+              Row(children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    gradient: JT.grad,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    _getTimeGreeting(),
-                    style: GoogleFonts.poppins(
-                      color: JT.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'Pilot',
-                    style: GoogleFonts.poppins(
-                      color: JT.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  if (!_isOnline)
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(
-                      'Tap GO ONLINE to start earning',
+                      _getTimeGreeting(),
                       style: GoogleFonts.poppins(
                         color: JT.textSecondary,
                         fontSize: 11,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
-                ]),
-              ),
-              // Online/Offline toggle — prominent action button
-              GestureDetector(
-                onTap: _toggling ? null : _toggleOnline,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                  decoration: BoxDecoration(
-                    gradient: _isOnline ? null : AppColors.neonGrad,
-                    color: _isOnline
-                        ? const Color(0xFFFEF2F2)
-                        : null,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: _isOnline
-                        ? []
-                        : [BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.28),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4))],
-                    border: _isOnline
-                        ? Border.all(color: const Color(0xFFFCA5A5), width: 1)
-                        : null,
-                  ),
-                  child: _toggling
-                      ? SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: _isOnline
-                                ? const Color(0xFFDC2626)
-                                : Colors.white,
-                          ),
-                        )
-                      : Row(mainAxisSize: MainAxisSize.min, children: [
-                          Container(
-                            width: 7, height: 7,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isOnline
-                                  ? const Color(0xFFDC2626)
-                                  : Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            _isOnline ? 'GO OFFLINE' : 'GO ONLINE',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _isOnline
-                                  ? const Color(0xFFDC2626)
-                                  : Colors.white,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ]),
-                ),
-              ),
-            ]),
-            if (_isOnline) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.20), width: 1),
-                ),
-                child: Row(children: [
-                  Container(
-                    width: 8, height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'LIVE — Incoming trips enabled',
-                    style: AppText.labelSmall(null).copyWith(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '₹${_earningsToday.toStringAsFixed(0)} earned',
-                    style: AppText.label(null),
-                  ),
-                ]),
-              ),
-            ],
-            const SizedBox(height: 14),
-            if (_inFreePeriod) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.20)),
-                ),
-                child: Row(children: [
-                  const Text('🎉', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Free Period Active',
-                        style: AppText.bodyPrimary(null).copyWith(fontWeight: FontWeight.w700)),
-                      Text('No subscription & no commission for $_freeDaysRemaining more day${_freeDaysRemaining == 1 ? '' : 's'}',
-                        style: AppText.caption(null).copyWith(color: AppColors.success, fontWeight: FontWeight.w600)),
-                    ],
-                  )),
-                ]),
-              ),
-            ],
-            _buildStatsRow(),
-            if (_vehicleCategory.isNotEmpty || _vehicleNumber.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _buildVehicleCard(),
-            ],
-            if (_eligibleServices.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
-                ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Your Eligible Services',
-                    style: AppText.label(null).copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 8, runSpacing: 6, children: _eligibleServices.map((svc) {
-                    final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
-                    final moduleKey = name.toLowerCase().replaceAll(' ', '_');
-                    final cfg = _revenueConfig[moduleKey];
-                    final model = cfg?['revenueModel']?.toString() ?? '';
-                    final comm = cfg != null ? (cfg['commissionPercentage'] as num?)?.toStringAsFixed(0) : null;
-                    final label = comm != null
-                        ? '$name • $comm%'
-                        : model == 'subscription' ? '$name • Sub' : name;
-                    return Chip(
-                      avatar: const Icon(Icons.directions_car_filled_rounded, size: 14, color: AppColors.primary),
-                      label: Text(label, style: AppText.label(null).copyWith(fontWeight: FontWeight.w600)),
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    );
-                  }).toList()),
-                ]),
-              ),
-            ],
-            if (_isOnline && (
-              _vehicleCategory.toLowerCase().contains('parcel') ||
-              _vehicleCategory.toLowerCase().contains('cargo') ||
-              _vehicleCategory.toLowerCase().contains('bike')
-            )) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.20), width: 1),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.inventory_2_rounded, size: 18, color: AppColors.tertiary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Parcel deliveries active — stay ready!',
-                      style: AppText.label(null).copyWith(
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
+                    Text(
+                      _userName.split(' ').first.isNotEmpty ? _userName.split(' ').first : 'Pilot',
+                      style: GoogleFonts.poppins(
+                        color: JT.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -0.2,
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  ]),
+                ),
+                // Small online/offline toggle
+                GestureDetector(
+                  onTap: _toggling ? null : _toggleOnline,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: AppColors.warning,
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: _isOnline ? null : AppColors.neonGrad,
+                      color: _isOnline ? const Color(0xFFFEF2F2) : null,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: _isOnline ? [] : [BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.20),
+                        blurRadius: 10, offset: const Offset(0, 3))],
                     ),
-                    child: Text(
-                      'EARN MORE',
-                      style: AppText.badgeText().copyWith(letterSpacing: 0.5),
-                    ),
+                    child: _toggling
+                        ? SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2,
+                              color: _isOnline ? const Color(0xFFDC2626) : Colors.white))
+                        : Row(mainAxisSize: MainAxisSize.min, children: [
+                            Container(width: 6, height: 6,
+                              decoration: BoxDecoration(shape: BoxShape.circle,
+                                color: _isOnline ? const Color(0xFFDC2626) : Colors.white)),
+                            const SizedBox(width: 6),
+                            Text(_isOnline ? 'OFFLINE' : 'GO ONLINE',
+                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500,
+                                color: _isOnline ? const Color(0xFFDC2626) : Colors.white)),
+                          ]),
                   ),
-                ]),
-              ),
-            ],
-            const SizedBox(height: 16),
-            _buildToggleBtn(),
-            const SizedBox(height: 14),
-            if (!_isOnline) _buildOfflineTip(),
-            if (!_isOnline) const SizedBox(height: 12),
-            _buildActionRow(),
-            const SizedBox(height: 20),
-          ]),
-        ),
-      ]),
+                ),
+              ]),
+              if (_isOnline) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    Container(width: 7, height: 7,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.success)),
+                    const SizedBox(width: 8),
+                    Text('Live — Incoming trips enabled',
+                      style: AppText.labelSmall(null).copyWith(color: AppColors.success, fontWeight: FontWeight.w500)),
+                    const Spacer(),
+                    Text('₹${_earningsToday.toStringAsFixed(0)} earned', style: AppText.label(null)),
+                  ]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (_inFreePeriod) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    const Text('🎉', style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 8),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Free Period Active', style: AppText.bodyPrimary(null).copyWith(fontWeight: FontWeight.w500)),
+                      Text('No commission for $_freeDaysRemaining more day${_freeDaysRemaining == 1 ? '' : 's'}',
+                        style: AppText.caption(null).copyWith(color: AppColors.success)),
+                    ])),
+                  ]),
+                ),
+              ],
+              _buildStatsRow(),
+              if (_vehicleCategory.isNotEmpty || _vehicleNumber.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _buildVehicleCard(),
+              ],
+              if (_eligibleServices.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Eligible Services', style: AppText.label(null).copyWith(fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 4, children: _eligibleServices.map((svc) {
+                      final name = svc['service_name']?.toString() ?? svc['key']?.toString() ?? '';
+                      final moduleKey = name.toLowerCase().replaceAll(' ', '_');
+                      final cfg = _revenueConfig[moduleKey];
+                      final model = cfg?['revenueModel']?.toString() ?? '';
+                      final comm = cfg != null ? (cfg['commissionPercentage'] as num?)?.toStringAsFixed(0) : null;
+                      final label = comm != null ? '$name • $comm%' : model == 'subscription' ? '$name • Sub' : name;
+                      return Chip(
+                        avatar: const Icon(Icons.directions_car_filled_rounded, size: 13, color: AppColors.primary),
+                        label: Text(label, style: AppText.label(null).copyWith(fontWeight: FontWeight.w400)),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                        side: BorderSide.none,
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      );
+                    }).toList()),
+                  ]),
+                ),
+              ],
+              if (_isOnline && (
+                _vehicleCategory.toLowerCase().contains('parcel') ||
+                _vehicleCategory.toLowerCase().contains('cargo') ||
+                _vehicleCategory.toLowerCase().contains('bike')
+              )) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.inventory_2_rounded, size: 16, color: AppColors.tertiary),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Parcel deliveries active — stay ready!',
+                      style: AppText.label(null).copyWith(color: AppColors.warning, fontWeight: FontWeight.w500))),
+                  ]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (!_isOnline) _buildOfflineTip(),
+              if (!_isOnline) const SizedBox(height: 10),
+              _buildActionRow(),
+              const SizedBox(height: 16),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -1728,7 +1599,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 style: AppText.label(null).copyWith(
                   color: AppColors.textPrimary,
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               if (_vehicleNumber.isNotEmpty || _vehicleModel.isNotEmpty) ...[
@@ -1761,7 +1632,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   _zone,
                   style: AppText.caption(null).copyWith(
                     color: AppColors.success,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ]),
@@ -1810,7 +1681,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontSize: 18,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -1852,7 +1723,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             "Today's Performance",
             style: AppText.label(null).copyWith(
               color: AppColors.textPrimary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               letterSpacing: 0.2,
             ),
           ),
@@ -1868,7 +1739,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               _ordinal(DateTime.now().day),
               style: AppText.caption(null).copyWith(
                 color: AppColors.primary,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -1983,30 +1854,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     ];
     final tip = tips[DateTime.now().minute % tips.length];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
         Container(
-          width: 38, height: 38,
+          width: 34, height: 34,
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.1),
+            color: AppColors.primary.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.lightbulb_outline_rounded, color: AppColors.primary, size: 19),
+          child: Icon(Icons.lightbulb_outline_rounded, color: AppColors.primary, size: 17),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            tip,
-            style: AppText.body(null).copyWith(
-              height: 1.4,
-            ),
-          ),
-        ),
+        const SizedBox(width: 10),
+        Expanded(child: Text(tip, style: AppText.body(null).copyWith(height: 1.4))),
       ]),
     );
   }
@@ -2031,28 +1894,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: JT.bgSoft,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: JT.border, width: 1),
-          boxShadow: JT.cardShadow,
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Column(children: [
           Container(
-            width: 38, height: 38,
+            width: 36, height: 36,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.08),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.2)),
             ),
-            child: Icon(icon, color: color, size: 19),
+            child: Icon(icon, color: color, size: 18),
           ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: GoogleFonts.poppins(color: color, fontSize: 11, fontWeight: FontWeight.w700),
-          ),
+          const SizedBox(height: 4),
+          Text(label, style: GoogleFonts.poppins(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
         ]),
       ),
     );
@@ -2246,7 +2103,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       'Logout',
                       style: AppText.label(null).copyWith(
                         color: AppColors.error,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ]),
@@ -2298,7 +2155,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               badge,
               style: AppText.caption(null).copyWith(
                 color: AppColors.success,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           )

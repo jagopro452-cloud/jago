@@ -129,30 +129,51 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     setState(() => _loading = true);
     _firebaseVerificationId = null;
     await FirebaseOtpService.resetVerification();
-    // Server sends OTP via SMS (rate-limit check + real SMS delivery)
+
+    // PRIMARY: Firebase Phone Auth — await until code is sent or error
+    bool firebaseSent = false;
+    String? firebaseError;
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      onCodeSent: (verificationId) {
+        _firebaseVerificationId = verificationId;
+        firebaseSent = true;
+      },
+      onError: (error) { firebaseError = error; },
+      onAutoVerify: (idToken) async {
+        // Auto-verified (Android only) — log in immediately
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
+        if (mounted && (res['success'] == true || res['token'] != null)) {
+          Navigator.pushAndRemoveUntil(context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+        }
+      },
+    );
+
+    if (!mounted) return;
+
+    if (firebaseSent) {
+      // Notify server for rate-limiting (fire-and-forget — don't block user)
+      AuthService.sendOtp(phone, 'driver').catchError((_) {});
+      setState(() { _otpSent = true; _loading = false; });
+      _startTimer();
+      _snack('OTP sent to +91$phone');
+      listenForCode();
+      return;
+    }
+
+    // FALLBACK: Server SMS OTP (when Firebase is blocked/unavailable)
     final res = await AuthService.sendOtp(phone, 'driver');
     if (!mounted) return;
     if (res['success'] != true) {
       setState(() => _loading = false);
-      _snack(res['message'] ?? 'Failed to send OTP', error: true);
+      _snack(firebaseError ?? res['message'] ?? 'Failed to send OTP', error: true);
       return;
     }
-    // OTP sent via SMS — show input immediately (don't wait for Firebase)
     setState(() { _otpSent = true; _loading = false; });
     _startTimer();
-    _snack('OTP sent to +91$phone');
-    listenForCode(); // Start SMS auto-read via CodeAutoFill mixin
-    // Try Firebase in parallel (auto-verification on supported devices)
-    // If blocked, server SMS OTP will be used as fallback
-    FirebaseOtpService.sendOtp(
-      phoneNumber: '+91$phone',
-      onCodeSent: (verificationId) {
-        if (mounted) _firebaseVerificationId = verificationId;
-      },
-      onError: (_) {
-        // Firebase blocked — server SMS OTP handles verification
-      },
-    ).catchError((_) {});
+    _snack('OTP sent to +91$phone via SMS');
+    listenForCode();
   }
 
   Future<void> _verifyOtp() async {

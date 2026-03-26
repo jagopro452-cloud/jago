@@ -1063,6 +1063,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     const isDark = false;
+    final cardH = _bottomCardHeight(context);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
@@ -1155,7 +1156,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // ── 4. Active trip banner (above bottom card) ────────────────────
           if (_activeTrip != null)
             Positioned(
-              bottom: _bottomCardHeight + 12,
+              bottom: cardH + 12,
               left: 16,
               right: 16,
               child: _buildActiveTripBanner(isDark),
@@ -1164,7 +1165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // ── 5. "My location" recenter button ────────────────────────────
           Positioned(
             right: 16,
-            bottom: _bottomCardHeight + (_activeTrip != null ? 90 : 12),
+            bottom: cardH + (_activeTrip != null ? 90 : 12),
             child: _buildRecenterButton(),
           ),
 
@@ -1180,8 +1181,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // Approximate height of the visible bottom card area
-  double get _bottomCardHeight => 340;
+  // Approximate height of the visible bottom card area — responsive
+  double _bottomCardHeight(BuildContext ctx) =>
+      (MediaQuery.of(ctx).size.height * 0.40).clamp(260.0, 360.0);
 
   Widget _buildRecenterButton() {
     return GestureDetector(
@@ -1368,7 +1370,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: JT.surfaceAlt,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: JT.border),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.account_balance_wallet_rounded,
@@ -1379,7 +1380,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: GoogleFonts.poppins(
                       color: JT.primary,
                       fontSize: 12,
-                      fontWeight: FontWeight.w700),
+                      fontWeight: FontWeight.w500),
                 ),
               ]),
             ),
@@ -1430,7 +1431,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 9,
-                        fontWeight: FontWeight.w700),
+                        fontWeight: FontWeight.w500),
                   )),
                 ),
               ),
@@ -1463,7 +1464,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700),
+                  fontWeight: FontWeight.w500),
             )),
           ),
           const SizedBox(width: 12),
@@ -1501,8 +1502,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 decoration: BoxDecoration(
                   color: JT.surfaceAlt,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JT.border),
-                ),
+                  ),
                 child:
                     const Icon(Icons.mic_rounded, color: JT.primary, size: 19),
               ),
@@ -1521,7 +1521,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 7,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           letterSpacing: 0.3)),
                 ),
               ),
@@ -1539,7 +1539,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: JT.border, width: 1),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withValues(alpha: 0.06),
@@ -1681,7 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: JT.textPrimary)),
               const SizedBox(height: 6),
               Text('Check your connection and tap retry',
@@ -1857,7 +1856,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     title,
                     style: GoogleFonts.poppins(
                       fontSize: 26,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: JT.textPrimary,
                       letterSpacing: -0.5,
                       height: 1,
@@ -2338,7 +2337,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: isDark ? JT.surface : JT.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: JT.border),
                 boxShadow: JT.cardShadow,
               ),
               child: Row(children: [
@@ -2351,7 +2349,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Text(label,
                           style: GoogleFonts.poppins(
                               fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: JT.textPrimary)),
                       Text(address,
                           style: GoogleFonts.poppins(
@@ -2488,7 +2486,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Text(statusLabel,
               style: GoogleFonts.poppins(
                   color: JT.textPrimary,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 14)),
           Text(
               isSearching
@@ -2533,7 +2531,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         onPressed: () => Navigator.pop(ctx, true),
                         child: Text('Cancel Ride',
                             style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w700))),
+                                fontWeight: FontWeight.w500))),
                   ],
                 ),
               );
@@ -2695,7 +2693,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: GoogleFonts.poppins(
                       color: JT.primary,
                       fontSize: 24,
-                      fontWeight: FontWeight.w700),
+                      fontWeight: FontWeight.w500),
                 ),
               ),
               const SizedBox(height: 12),
@@ -3322,7 +3320,7 @@ class _AllServicesSheet extends StatelessWidget {
       child: Text(title,
           style: GoogleFonts.poppins(
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: JT.textPrimary)),
     );
   }
@@ -3423,7 +3421,7 @@ class _TutorialTip extends StatelessWidget {
             children: [
               Text(title,
                   style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       fontSize: 13,
                       color: JT.textPrimary)),
               const SizedBox(height: 2),

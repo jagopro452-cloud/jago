@@ -4,7 +4,6 @@ import '../../config/jago_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
-import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../../services/firebase_otp_service.dart';
 import '../home/home_screen.dart';
@@ -197,24 +196,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                               fontSize: 13,
                             ),
                           ),
-                          if (ApiConfig.isDev && widget.otp.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _blue.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'Dev OTP: ${widget.otp}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: const Color(0xFF56CCF2),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ),
