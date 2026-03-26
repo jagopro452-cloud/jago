@@ -25,14 +25,14 @@ export interface DispatchConfig {
 }
 
 const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
-  // driverTimeoutMs=40s: FCM delivery (~3s) + app wake (~2s) + driver reads+decides (~20s) + buffer
-  bike:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 10 },
-  auto:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 10 },
-  cab:        { radiusStepsKm: [5, 8, 12, 15, 20],driverTimeoutMs: 40000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  parcel:     { radiusStepsKm: [5, 8, 12],         driverTimeoutMs: 40000, maxTotalTimeMs: 240000, driversPerStep: 8 },
-  b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 40000, maxTotalTimeMs: 300000, driversPerStep: 8 },
-  carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 40000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 40000, maxTotalTimeMs: 420000, driversPerStep: 10 },
+  // driverTimeoutMs=20s: FCM delivery (~3s) + app wake (~2s) + driver reads+decides (~12s) + buffer
+  bike:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 20000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  auto:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 20000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  cab:        { radiusStepsKm: [5, 8, 12, 15, 20],driverTimeoutMs: 20000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  parcel:     { radiusStepsKm: [5, 8, 12],         driverTimeoutMs: 20000, maxTotalTimeMs: 240000, driversPerStep: 8 },
+  b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 20000, maxTotalTimeMs: 300000, driversPerStep: 8 },
+  carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 20000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 20000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
 function getConfig(serviceType: string): DispatchConfig {
