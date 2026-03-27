@@ -693,7 +693,7 @@ async function findDriversInRadius(
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
   const excludeClause = safeIds.length > 0
-    ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
+    ? rawSql.raw(`AND NOT (u.id = ANY(ARRAY[${safeIds.map(id => `'${id}'::uuid`).join(',')}]))`)
     : rawSql``;
 
   // LEFT JOIN driver_details so pilots without a details row are still found

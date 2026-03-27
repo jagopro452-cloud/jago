@@ -9712,7 +9712,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
-          dd.vehicle_number as driver_vehicle_number, dd.vehicle_model as driver_vehicle_model,
+          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
           vc.name as vehicle_name,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading
         FROM trip_requests t
@@ -9765,7 +9765,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
           d.profile_photo as driver_photo,
-          dd.vehicle_number as driver_vehicle_number, dd.vehicle_model as driver_vehicle_model,
+          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
           dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading,
           vc.name as vehicle_name
         FROM trip_requests t
@@ -10120,7 +10120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           d.full_name as driver_name, d.phone as driver_phone,
           d.profile_photo as driver_photo, d.rating as driver_rating,
           vc.name as vehicle_name, vc.type as vehicle_type, vc.icon as vehicle_icon,
-          dd.vehicle_number, dd.vehicle_model, dd.vehicle_color
+          d.vehicle_number, d.vehicle_model, d.vehicle_color
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id

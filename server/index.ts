@@ -230,8 +230,11 @@ app.use((req, res, next) => {
       const { createAdapter } = await import("@socket.io/redis-adapter");
       const { default: IORedis } = await import("ioredis");
       const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-      const pubClient = new IORedis(REDIS_URL);
+      const pubClient = new IORedis(REDIS_URL, { lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: 0, retryStrategy: () => null });
       const subClient = pubClient.duplicate();
+      // Prevent unhandled error events from crashing / spamming logs
+      pubClient.on("error", () => {});
+      subClient.on("error", () => {});
       const { io: socketIo } = await import("./socket");
       Promise.all([
         new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
