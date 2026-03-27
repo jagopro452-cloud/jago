@@ -467,15 +467,24 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final res = await http.post(Uri.parse(ApiConfig.applyCoupon),
         headers: headers,
         body: jsonEncode({'code': code, 'fareAmount': (_fare?['estimatedFare'] ?? 0).toDouble()}));
-      final data = jsonDecode(res.body);
       if (res.statusCode == 200) {
-        setState(() {
-          _appliedPromo = code;
-          _promoDiscount = double.tryParse(data['discount']?.toString() ?? '0') ?? 0;
-          _promoLoading = false;
-        });
+        try {
+          final data = jsonDecode(res.body);
+          setState(() {
+            _appliedPromo = code;
+            _promoDiscount = double.tryParse(data['discount']?.toString() ?? '0') ?? 0;
+            _promoLoading = false;
+          });
+        } catch (_) {
+          setState(() { _promoError = 'Invalid response from server'; _promoLoading = false; });
+        }
       } else {
-        setState(() { _promoError = data['message'] ?? 'Invalid code'; _promoLoading = false; });
+        try {
+          final data = jsonDecode(res.body);
+          setState(() { _promoError = data['message'] ?? 'Invalid code'; _promoLoading = false; });
+        } catch (_) {
+          setState(() { _promoError = 'Invalid coupon code'; _promoLoading = false; });
+        }
       }
     } catch (_) {
       setState(() { _promoError = 'Network error'; _promoLoading = false; });
@@ -639,8 +648,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           builder: (_) => TrackingScreen(tripId: tripId)));
       } else {
         if (!mounted) return;
-        final err = jsonDecode(res.body);
-        _showSnack(err['message'] ?? 'Booking failed', error: true);
+        try {
+          final err = jsonDecode(res.body);
+          _showSnack(err['message'] ?? 'Booking failed', error: true);
+        } catch (_) {
+          _showSnack('Booking failed. Please try again.', error: true);
+        }
       }
     } catch (_) {
       if (!mounted) return;
@@ -773,8 +786,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         body: jsonEncode({'amount': fare}));
       if (res.statusCode != 200) {
         setState(() => _loading = false);
-        final err = jsonDecode(res.body);
-        _showSnack(err['message'] ?? 'Payment setup failed', error: true);
+        try {
+          final err = jsonDecode(res.body);
+          _showSnack(err['message'] ?? 'Payment setup failed', error: true);
+        } catch (_) {
+          _showSnack('Payment setup failed. Try again.', error: true);
+        }
         return;
       }
       final data = jsonDecode(res.body);
