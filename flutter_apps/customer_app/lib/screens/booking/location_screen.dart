@@ -23,6 +23,8 @@ class LocationScreen extends StatefulWidget {
   final String? pickupAddress;
   final double pickupLat;
   final double pickupLng;
+  final String? vehicleCategoryId;
+  final String? vehicleCategoryName;
 
   const LocationScreen({
     super.key,
@@ -30,6 +32,8 @@ class LocationScreen extends StatefulWidget {
     this.pickupAddress,
     this.pickupLat = 0.0,
     this.pickupLng = 0.0,
+    this.vehicleCategoryId,
+    this.vehicleCategoryName,
   });
 
   @override
@@ -477,6 +481,8 @@ class _LocationScreenState extends State<LocationScreen>
           destLat: _dropLat,
           destLng: _dropLng,
           category: widget.serviceType,
+          vehicleCategoryId: widget.vehicleCategoryId,
+          vehicleCategoryName: widget.vehicleCategoryName,
         ),
         transitionDuration: const Duration(milliseconds: 350),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(

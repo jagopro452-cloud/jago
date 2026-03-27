@@ -407,8 +407,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       );
       final r = await http.get(uri).timeout(const Duration(seconds: 5));
       if (r.statusCode == 200) {
-        final data = jsonDecode(r.body) as Map<String, dynamic>;
-        final list = (data['locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final data = jsonDecode(r.body);
+        if (data is! Map) return;
+        final rawList = data['locations'];
+        final list = rawList is List ? rawList.whereType<Map<String, dynamic>>().toList() : <Map<String, dynamic>>[];
         if (mounted && list.isNotEmpty) {
           setState(() => _popularLocations = list.map((l) => {
             'name': l['name']?.toString() ?? '',
@@ -496,11 +498,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         body: jsonEncode(body));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final fares = data['fares'] as List<dynamic>?;
+        final rawFares = data['fares'];
+        final fares = rawFares is List ? rawFares.whereType<Map<String, dynamic>>().toList() : null;
         if (fares != null && fares.isNotEmpty) {
           setState(() {
             // Rule 2: Strict service separation — filter by category, hide inactive
-            var filtered = fares.cast<Map<String, dynamic>>();
+            var filtered = fares.toList();
             final cat = widget.category ?? 'ride';
             if (cat == 'parcel') {
               filtered = filtered.where((f) {

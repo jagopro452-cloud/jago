@@ -1047,6 +1047,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             pickupAddress: _pickup.isNotEmpty ? _pickup : null,
             pickupLat: _pickupLat,
             pickupLng: _pickupLng,
+            vehicleCategoryId: cat['id']?.toString(),
+            vehicleCategoryName: cat['name']?.toString(),
           ),
         ));
   }

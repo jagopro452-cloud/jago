@@ -98,9 +98,9 @@ class FirebaseOtpService {
           _verificationId = verificationId;
         },
       );
-      watchdog = Timer(const Duration(seconds: 25), () {
+      watchdog = Timer(const Duration(seconds: 55), () {
         if (callbackHandled) return;
-        onError('OTP is taking longer than usual. Please wait a moment or resend OTP.');
+        onError('OTP request timed out. Please tap Resend OTP to try again.');
         finish();
       });
       await completer.future;

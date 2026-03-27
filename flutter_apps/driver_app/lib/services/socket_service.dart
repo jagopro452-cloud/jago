@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -243,15 +245,36 @@ class SocketService {
   }
 
   void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {
-    _wasOnline = isOnline; // remember for reconnect recovery
+    _wasOnline = isOnline;
     if (lat != null) _lastLat = lat;
     if (lng != null) _lastLng = lng;
-    if (!_isConnected) return;
-    _socket!.emit('driver:online', {
-      'isOnline': isOnline,
-      if (lat != null) 'lat': lat,
-      if (lng != null) 'lng': lng,
-    });
+    if (_isConnected) {
+      _socket!.emit('driver:online', {
+        'isOnline': isOnline,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+      });
+    } else {
+      // Socket not connected — use HTTP fallback so go-online always works
+      _setOnlineViaHttp(isOnline: isOnline, lat: lat, lng: lng);
+    }
+  }
+
+  Future<void> _setOnlineViaHttp({required bool isOnline, double? lat, double? lng}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) return;
+      await http.patch(
+        Uri.parse(ApiConfig.driverOnlineStatus),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'isOnline': isOnline,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        }),
+      ).timeout(const Duration(seconds: 10));
+    } catch (_) {}
   }
 
   Future<bool> acceptTrip(String tripId) async {

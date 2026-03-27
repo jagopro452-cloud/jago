@@ -31,7 +31,18 @@
       "Bash(ls \"c:\\\\Users\\\\kiran\\\\Downloads\\\\jago-main\\\\flutter_apps\\\\driver_app\\\\android\\\\app\"\" && echo \"---\" && ls \"c:UserskiranDownloadsjago-mainflutter_appscustomer_appandroidapp\"\")",
       "Bash(ls /c/Users/kiran/Downloads/*.jks)",
       "Bash(find /c/Users/kiran -name *.jks)",
-      "Bash(find /c/Users/kiran -name *.keystore)"
+      "Bash(find /c/Users/kiran -name *.keystore)",
+      "Bash(wc -l c:/Users/kiran/Downloads/jago-main/server/*.ts)",
+      "Bash(find c:UserskiranDownloadsjago-main -name schema.sql -o -name *migration* -o -name db.ts -o -name *db.sql)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(find /c/Users/kiran/Downloads/jago-main/client/public -name *city* -o -name *hyderabad* -o -name *bangalore* -o -name *banner*)",
+      "Bash(find /c/Users/kiran/Downloads/jago-main -maxdepth 2 -name tailwind.config.* -o -name tsconfig.json)",
+      "Bash(for wt:*)",
+      "Bash(do git:*)",
+      "Bash(echo \"Removed: $wt\")",
+      "Bash(echo \"Failed: $wt\")",
+      "Bash(cp \"c:/Users/kiran/Downloads/jago-main/flutter_apps/customer_app/build/app/outputs/flutter-apk/app-release.apk\" \"c:/Users/kiran/Downloads/jago-customer-v1.0.57.apk\")",
+      "Bash(cp \"c:/Users/kiran/Downloads/jago-main/flutter_apps/customer_app/build/app/outputs/flutter-apk/app-release.apk\" \"c:/Users/kiran/release-apks/jago-customer-v1.0.57.apk\")"
     ]
   }
 }
