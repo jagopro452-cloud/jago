@@ -1926,11 +1926,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Env vars diagnostic endpoint (shows what's configured, sanitized)
-  app.get("/api/diag/env", (_req, res) => {
+  app.get("/api/diag/env", requireAdminAuth, (_req, res) => {
     const envConfig = {
       NODE_ENV: process.env.NODE_ENV || "not-set",
       DATABASE_URL: process.env.DATABASE_URL ? "***configured***" : "NOT-SET",
-      ADMIN_EMAIL: process.env.ADMIN_EMAIL || "NOT-SET",
+      ADMIN_EMAIL: process.env.ADMIN_EMAIL ? "***set***" : "NOT-SET",
       ADMIN_NAME: process.env.ADMIN_NAME ? "***set***" : "NOT-SET",
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? "***set***" : "NOT-SET",
       ADMIN_PASSWORD_SYNC_ON_RESTART: process.env.ADMIN_PASSWORD_SYNC_ON_RESTART || "default-false",
@@ -1942,8 +1942,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ environments: envConfig, timestamp: new Date().toISOString() });
   });
 
-  // Diagnostic endpoint (unprotected)
-  app.get("/api/diag/admin-status", async (_req, res) => {
+  // Diagnostic endpoint (admin-only)
+  app.get("/api/diag/admin-status", requireAdminAuth, async (_req, res) => {
     try {
       const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
       const adminPassword = process.env.ADMIN_PASSWORD;
@@ -1969,7 +1969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({
         success: true,
         config: { adminEmail, passwordConfigured: !!adminPassword, syncOnRestart, passwordHashLength: (admin.password || "").length },
-        admin: { id: admin.id, email: admin.email, isActive: admin.is_active, passwordHash: (admin.password || "").substring(0, 30) + "..." }
+        admin: { id: admin.id, email: admin.email, isActive: admin.is_active, passwordConfigured: !!(admin.password) }
       });
     } catch (e: any) { res.status(500).json({ error: safeErrMsg(e) }); }
   });

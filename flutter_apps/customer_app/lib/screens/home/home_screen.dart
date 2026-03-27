@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,7 +67,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // New state: banners + feature flags
   List<Map<String, dynamic>> _banners = [];
-  Map<String, bool> _featureFlags = {};
   int _bannerIndex = 0;
   Timer? _bannerTimer;
   final PageController _bannerPageCtrl = PageController();
@@ -82,12 +80,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // Brand colors — mapped to JT design system
   static const Color _primary = JT.primary;
-  static const Color _secondary = JT.secondary;
-  static const Color _lightAccent = JT.secondary;
   static const Color _darkBg = JT.textPrimary;
   static const Color _darkCard = JT.surface;
-  static const Color _lightBg = JT.bg;
-  static const Color _lightCard = JT.surfaceAlt;
 
   @override
   void initState() {
@@ -203,10 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .get(Uri.parse('${ApiConfig.baseUrl}/api/app/feature-flags'))
           .timeout(const Duration(seconds: 6));
       if (r.statusCode == 200 && mounted) {
-        final data = jsonDecode(r.body) as Map<String, dynamic>;
-        final flags = (data['flags'] as Map<String, dynamic>?) ?? {};
-        setState(
-            () => _featureFlags = flags.map((k, v) => MapEntry(k, v == true)));
+        // feature flags loaded (unused by current UI)
       }
     } catch (_) {}
   }
@@ -275,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final picture = recorder.endRecording();
     final img = await picture.toImage(size.toInt(), size.toInt());
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
   }
 
   Future<void> _fetchNearbyDrivers() async {
@@ -2119,7 +2110,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final icon = item['icon'] as IconData;
             final color = item['color'] as Color;
             final type = item['type'] as String;
-            final vKey = item['vehicleKey'] as String?;
             return GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
@@ -3185,7 +3175,6 @@ class _AllServicesSheet extends StatelessWidget {
     required this.onServiceTap,
   });
 
-  static const Color _primary = JT.primary;
 
   @override
   Widget build(BuildContext context) {
