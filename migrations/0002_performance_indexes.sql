@@ -9,7 +9,6 @@ CREATE INDEX IF NOT EXISTS idx_trip_requests_current_status ON trip_requests(cur
 CREATE INDEX IF NOT EXISTS idx_trip_requests_status_created ON trip_requests(current_status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_trip_requests_driver_status ON trip_requests(driver_id, current_status);
 CREATE INDEX IF NOT EXISTS idx_trip_requests_customer_status ON trip_requests(customer_id, current_status);
-CREATE INDEX IF NOT EXISTS idx_trip_requests_coupon_code ON trip_requests(coupon_code) WHERE coupon_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_trip_requests_created_at ON trip_requests(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_trip_requests_ref_id ON trip_requests(ref_id);
 
