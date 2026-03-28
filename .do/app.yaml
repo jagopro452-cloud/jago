@@ -1,6 +1,11 @@
 name: jago-platform
 region: blr
 databases:
+  - name: jago-db
+    engine: PG
+    version: "16"
+    production: true
+    size: db-s-dev-database
   - name: jago-redis
     engine: REDIS
     version: "7"
@@ -31,7 +36,7 @@ services:
       - key: PORT
         value: "8080"
       - key: DATABASE_URL
-        value: "postgresql://neondb_owner:npg_oPQsCwRY7x8T@ep-little-hill-ahsezffk-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
+        value: ${jago-db.DATABASE_URL}
         type: SECRET
       - key: ADMIN_EMAIL
         value: "kiranatmakuri518@gmail.com"
