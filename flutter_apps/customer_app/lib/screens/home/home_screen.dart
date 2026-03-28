@@ -477,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('No pilot found nearby. Ride auto-cancelled.',
           style: GoogleFonts.poppins(
-              color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+              color: Colors.white, fontWeight: FontWeight.w400, fontSize: 13)),
       backgroundColor: JT.primaryDark,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -526,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             Text('Welcome!',
                                 style: GoogleFonts.poppins(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w400,
                                     fontSize: 18)),
                             Text('Here\'s a quick guide to get you started',
                                 style: GoogleFonts.poppins(
@@ -1472,7 +1472,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       color: JT.textPrimary),
                 ),
                 Text(
@@ -1560,7 +1560,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'Where to?',
                       style: GoogleFonts.poppins(
                           fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: JT.textPrimary),
                     ),
                     const SizedBox(height: 1),
@@ -1621,7 +1621,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.w600),
+                      fontWeight: FontWeight.w400),
                 ),
               ),
             ]),
@@ -1646,7 +1646,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Text('Our Services',
               style: GoogleFonts.poppins(
                   fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                   color: JT.textPrimary)),
           const SizedBox(height: 14),
           Container(
@@ -1688,7 +1688,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 },
                 icon: const Icon(Icons.refresh_rounded, size: 16),
                 label: Text('Retry',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w400)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: JT.primary,
                   foregroundColor: Colors.white,
@@ -1711,7 +1711,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Text('Our Services',
             style: GoogleFonts.poppins(
                 fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 color: JT.textPrimary)),
         const SizedBox(height: 14),
         Row(children: [
@@ -1838,7 +1838,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       subtitle,
                       style: GoogleFonts.poppins(
                         fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                         color: accent,
                       ),
                     ),
@@ -1872,7 +1872,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 11,
-                              fontWeight: FontWeight.w600)),
+                              fontWeight: FontWeight.w400)),
                       const SizedBox(width: 4),
                       const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
                     ]),
@@ -1972,7 +1972,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Text(title,
                 style: GoogleFonts.poppins(
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: JT.textPrimary),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
@@ -2035,7 +2035,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Text(title,
                 style: GoogleFonts.poppins(
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: JT.textPrimary),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
@@ -2096,7 +2096,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Text('Quick Book',
             style: GoogleFonts.poppins(
                 fontSize: 15,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 color: JT.textPrimary)),
       ),
       const SizedBox(height: 12),
@@ -2149,7 +2149,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Text(name,
                       style: GoogleFonts.poppins(
                           fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: JT.textPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2236,7 +2236,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 16,
-                    fontWeight: FontWeight.w600)),
+                    fontWeight: FontWeight.w400)),
             const SizedBox(height: 4),
             Text('Tap to learn more',
                 style:
@@ -2279,7 +2279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600)),
+                          fontWeight: FontWeight.w400)),
                 ),
               ),
             ])),
@@ -2375,7 +2375,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: JT.primary,
-                    fontWeight: FontWeight.w600)),
+                    fontWeight: FontWeight.w400)),
           ),
         ]),
         const SizedBox(height: 10),
@@ -2501,7 +2501,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(16)),
                   title: Text('Cancel Ride?',
                       style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: JT.textPrimary,
                           fontSize: 16)),
                   content: Text(
@@ -2547,7 +2547,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Text('Cancel',
                   style: GoogleFonts.poppins(
                       color: JT.primaryDark,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 12)),
             ),
           )
@@ -2569,7 +2569,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Text('Track →',
                   style: GoogleFonts.poppins(
                       color: JT.primary,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 12)),
             ),
           ),
@@ -2653,7 +2653,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           label,
           style: GoogleFonts.poppins(
             fontSize: 10,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: active ? FontWeight.w500 : FontWeight.w500,
             color: active ? JT.primary : JT.iconInactive,
           ),
         ),
@@ -3041,7 +3041,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                   Text('Pick on Map',
                       style: GoogleFonts.poppins(
                           fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: _primary)),
                   const Spacer(),
                   const Icon(Icons.chevron_right_rounded,
@@ -3062,7 +3062,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                       style: GoogleFonts.poppins(
                           fontSize: 12,
                           color: subColor,
-                          fontWeight: FontWeight.w600),
+                          fontWeight: FontWeight.w400),
                     ),
                     const SizedBox(height: 8),
                     SingleChildScrollView(
@@ -3098,7 +3098,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                                       p['name'] as String,
                                       style: GoogleFonts.poppins(
                                           fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w400,
                                           color: textColor),
                                     ),
                                   ]),
@@ -3131,7 +3131,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                         style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: subColor,
-                            fontWeight: FontWeight.w600),
+                            fontWeight: FontWeight.w400),
                       ),
                     );
                   }
@@ -3266,7 +3266,7 @@ class _AllServicesSheet extends StatelessWidget {
             Text('All Services',
                 style: GoogleFonts.poppins(
                     fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: JT.textPrimary)),
             GestureDetector(
               onTap: () => Navigator.pop(context),
@@ -3352,7 +3352,7 @@ class _AllServicesSheet extends StatelessWidget {
                 s['name'] as String,
                 style: GoogleFonts.poppins(
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: JT.textPrimary),
                 textAlign: TextAlign.center,
                 maxLines: 2,

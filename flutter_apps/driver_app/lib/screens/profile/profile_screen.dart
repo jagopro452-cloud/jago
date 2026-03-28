@@ -114,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 24),
             Text('Edit Display Name',
-              style: GoogleFonts.poppins(color: _primary, fontSize: 18, fontWeight: FontWeight.w600)),
+              style: GoogleFonts.poppins(color: _primary, fontSize: 18, fontWeight: FontWeight.w400)),
             const SizedBox(height: 20),
             TextField(
               controller: ctrl,
@@ -168,7 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           content: Row(children: [
                             const Icon(Icons.check_circle_rounded, color: Colors.black, size: 18),
                             const SizedBox(width: 10),
-                            Text('Name updated successfully', style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600)),
+                            Text('Name updated successfully', style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w400)),
                           ]),
                           backgroundColor: _green,
                           behavior: SnackBarBehavior.floating,
@@ -180,7 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (mounted) setState(() => _savingName = false);
                 },
                 child: Text('Save Changes',
-                  style: GoogleFonts.poppins(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.poppins(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w400)),
               ),
             ),
           ]),
@@ -250,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(width: 14),
             Text('Delete Account', style: GoogleFonts.poppins(
-                color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w600)),
+                color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w400)),
           ]),
           const SizedBox(height: 8),
           Text('Choose how you want to remove your account.',
@@ -269,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: BorderSide(color: _amber.withValues(alpha: 0.3)),
                   ),
                   title: Text('Deactivate Account?',
-                    style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w400)),
                   content: Text('Your account will be deactivated. Your data is kept. Contact support to reactivate.',
                     style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
                   actions: [
@@ -279,7 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: ElevatedButton.styleFrom(backgroundColor: _amber,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () { Navigator.pop(context); _deleteDriverAccount(false); },
-                      child: Text('Deactivate', style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w700))),
+                      child: Text('Deactivate', style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w500))),
                   ],
                 ),
               );
@@ -297,7 +297,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Deactivate Account', style: GoogleFonts.poppins(
-                      color: _amber, fontWeight: FontWeight.w700, fontSize: 14)),
+                      color: _amber, fontWeight: FontWeight.w500, fontSize: 14)),
                   const SizedBox(height: 2),
                   Text('Recoverable — contact support to reactivate',
                       style: GoogleFonts.poppins(color: _textSecondary, fontSize: 11)),
@@ -319,7 +319,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     side: BorderSide(color: _red.withValues(alpha: 0.3)),
                   ),
                   title: Text('Delete Permanently?',
-                    style: GoogleFonts.poppins(color: _red, fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(color: _red, fontWeight: FontWeight.w400)),
                   content: Text('This will permanently delete all your data including earnings history, KYC documents, and personal information. This cannot be undone.',
                     style: GoogleFonts.poppins(color: _textSecondary, fontSize: 13)),
                   actions: [
@@ -329,7 +329,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: ElevatedButton.styleFrom(backgroundColor: _red,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () { Navigator.pop(context); _deleteDriverAccount(true); },
-                      child: Text('Delete Forever', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700))),
+                      child: Text('Delete Forever', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500))),
                   ],
                 ),
               );
@@ -346,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Delete Account Permanently', style: GoogleFonts.poppins(
-                      color: _red, fontWeight: FontWeight.w700, fontSize: 14)),
+                      color: _red, fontWeight: FontWeight.w500, fontSize: 14)),
                   const SizedBox(height: 2),
                   Text('All data deleted forever — cannot be undone',
                       style: GoogleFonts.poppins(color: _textSecondary, fontSize: 11)),
@@ -390,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 14),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Support', style: GoogleFonts.poppins(
-                  color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w600)),
+                  color: const Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.w400)),
               Text('JAGO Pro Pilot support team always ready!',
                   style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
             ]),
@@ -447,7 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(width: 16),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: GoogleFonts.poppins(
-                color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14)),
+                color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w500, fontSize: 14)),
             const SizedBox(height: 3),
             Text(subtitle, style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
           ]),
@@ -565,7 +565,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(
                                 _name.isNotEmpty ? _name[0].toUpperCase() : 'P',
                                 style: GoogleFonts.poppins(
-                                    color: _primary, fontSize: 40, fontWeight: FontWeight.w700),
+                                    color: _primary, fontSize: 40, fontWeight: FontWeight.w500),
                               ),
                             ),
                           ),
@@ -593,7 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       else
                         Text(_name,
                           style: GoogleFonts.poppins(
-                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700,
+                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500,
                             letterSpacing: -0.5)),
                       const SizedBox(height: 4),
                       Text('+91-$_phone',
@@ -617,7 +617,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(width: 6),
                           Text(_statusLabel(),
                             style: GoogleFonts.poppins(
-                                color: sColor, fontSize: 12, fontWeight: FontWeight.w700)),
+                                color: sColor, fontSize: 12, fontWeight: FontWeight.w500)),
                         ]),
                       ),
                     ],
@@ -682,7 +682,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 const Icon(Icons.copy_rounded, color: Colors.black, size: 16),
                                 const SizedBox(width: 8),
                                 Text('Referral code copied!',
-                                    style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600)),
+                                    style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w400)),
                               ]),
                               backgroundColor: _primary,
                               behavior: SnackBarBehavior.floating,
@@ -735,7 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Color(0xFF8B5CF6), size: 20),
                     ),
                     title: Text('App Settings',
-                      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w400)),
                     subtitle: Text('Preferences',
                       style: GoogleFonts.poppins(color: _textSecondary, fontSize: 12)),
                     trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7FA8)),
@@ -760,7 +760,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           side: BorderSide(color: _red.withValues(alpha: 0.3)),
                         ),
                         title: Text('Logout', style: GoogleFonts.poppins(
-                            color: Colors.white, fontWeight: FontWeight.w600)),
+                            color: Colors.white, fontWeight: FontWeight.w400)),
                         content: Text('Are you sure you want to logout?',
                           style: GoogleFonts.poppins(color: _textSecondary, fontSize: 14)),
                         actions: [
@@ -773,7 +773,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             onPressed: () => Navigator.pop(context, true),
                             child: Text('Logout', style: GoogleFonts.poppins(
-                                color: Colors.white, fontWeight: FontWeight.w700))),
+                                color: Colors.white, fontWeight: FontWeight.w500))),
                         ],
                       ),
                     );
@@ -813,7 +813,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Icon(icon, color: color, size: 22),
           const SizedBox(height: 8),
           Text(value, style: GoogleFonts.poppins(
-              color: color, fontSize: 17, fontWeight: FontWeight.w700)),
+              color: color, fontSize: 17, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10),
             textAlign: TextAlign.center),
@@ -848,7 +848,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(width: 10),
               Text(title, style: GoogleFonts.poppins(
-                color: _textHint, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
+                color: _textHint, fontSize: 10, fontWeight: FontWeight.w400, letterSpacing: 1.5)),
             ]),
           ),
           Container(height: 1, color: _border),
@@ -869,7 +869,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(label, style: GoogleFonts.poppins(color: _textHint, fontSize: 10, letterSpacing: 0.3)),
           const SizedBox(height: 2),
           Text(value, style: GoogleFonts.poppins(
-              color: const Color(0xFF1A1A2E), fontSize: 13, fontWeight: FontWeight.w700)),
+              color: const Color(0xFF1A1A2E), fontSize: 13, fontWeight: FontWeight.w500)),
         ]),
         if (trailing != null) ...[const Spacer(), trailing],
       ]),
@@ -896,7 +896,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: const Icon(Icons.translate_rounded, color: _primary, size: 20),
       ),
       title: Text('Language / భాష', style: GoogleFonts.poppins(
-          fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+          fontSize: 14, fontWeight: FontWeight.w400, color: textColor)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -937,7 +937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(label, style: GoogleFonts.poppins(
-          fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1A1A2E))),
+          fontSize: 14, fontWeight: FontWeight.w400, color: const Color(0xFF1A1A2E))),
       trailing: Icon(Icons.chevron_right_rounded, color: _textHint, size: 20),
     );
   }

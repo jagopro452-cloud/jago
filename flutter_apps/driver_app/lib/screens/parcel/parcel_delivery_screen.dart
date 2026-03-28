@@ -210,7 +210,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: Colors.white)),
       backgroundColor: error ? JT.error : JT.success,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.all(16),
@@ -242,7 +242,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             context: context,
             builder: (_) => AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text('Leave Delivery?', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              title: Text('Leave Delivery?', style: GoogleFonts.poppins(fontWeight: FontWeight.w400)),
               content: Text('You can return to this delivery from your home screen.', style: GoogleFonts.poppins(fontSize: 14)),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Stay')),
@@ -257,7 +257,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         ),
         title: Text(
           _stage == _ParcelStage.completed ? 'Delivery Complete!' : 'Parcel Delivery',
-          style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16),
+          style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 16),
         ),
         actions: [
           Padding(
@@ -270,7 +270,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
               ),
               child: Text(
                 '₹${_order['total_fare'] ?? 0}',
-                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w400, fontSize: 14),
               ),
             ),
           ),
@@ -328,7 +328,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         })),
         const SizedBox(height: 4),
         Text(steps[currentStep],
-          style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: JT.primary)),
+          style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w500, color: JT.primary)),
       ]),
     );
   }
@@ -357,13 +357,13 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(vehicleName,
-              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, color: JT.textPrimary)),
             Text('$stops stop${stops != 1 ? 's' : ''}${weight.isNotEmpty ? ' · $weight kg' : ''}',
               style: GoogleFonts.poppins(fontSize: 12, color: JT.textSecondary)),
           ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text('₹${_order['total_fare'] ?? 0}',
-              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: JT.primary)),
+              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w500, color: JT.primary)),
             Text('Total Fare', style: GoogleFonts.poppins(fontSize: 10, color: JT.textSecondary)),
           ]),
         ]),
@@ -402,7 +402,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         child: ElevatedButton.icon(
           onPressed: () => setState(() => _stage = _ParcelStage.atPickup),
           icon: const Icon(Icons.check_circle_rounded),
-          label: Text('Arrived at Pickup', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
+          label: Text('Arrived at Pickup', style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 15)),
           style: ElevatedButton.styleFrom(
             backgroundColor: JT.success,
             foregroundColor: Colors.white,
@@ -445,7 +445,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             const SizedBox(width: 12),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Enter Pickup OTP', style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600, fontSize: 15, color: JT.textPrimary)),
+                fontWeight: FontWeight.w400, fontSize: 15, color: JT.textPrimary)),
               Text('Get OTP from sender', style: GoogleFonts.poppins(
                 fontSize: 12, color: JT.textSecondary)),
             ]),
@@ -457,7 +457,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             maxLength: 6,
             textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 28, fontWeight: FontWeight.w700,
+              fontSize: 28, fontWeight: FontWeight.w500,
               letterSpacing: 12, color: JT.textPrimary,
             ),
             decoration: InputDecoration(
@@ -486,7 +486,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
               ),
               child: _loading
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Text('Verify & Pickup Parcel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
+                : Text('Verify & Pickup Parcel', style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 15)),
             ),
           ),
         ]),
@@ -510,7 +510,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             ),
             child: Text(
               'Stop ${_dropIdx + 1} of ${_drops.length}',
-              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
             ),
           ),
         ),
@@ -531,7 +531,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         child: ElevatedButton.icon(
           onPressed: () => setState(() => _stage = _ParcelStage.atDrop),
           icon: const Icon(Icons.check_circle_rounded),
-          label: Text('Arrived at Drop', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
+          label: Text('Arrived at Drop', style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 15)),
           style: ElevatedButton.styleFrom(
             backgroundColor: JT.warning,
             foregroundColor: Colors.white,
@@ -579,7 +579,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             const SizedBox(width: 12),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Enter Delivery OTP', style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600, fontSize: 15, color: JT.textPrimary)),
+                fontWeight: FontWeight.w400, fontSize: 15, color: JT.textPrimary)),
               Text('Get OTP from receiver', style: GoogleFonts.poppins(
                 fontSize: 12, color: JT.textSecondary)),
             ]),
@@ -591,7 +591,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             maxLength: 6,
             textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 28, fontWeight: FontWeight.w700,
+              fontSize: 28, fontWeight: FontWeight.w500,
               letterSpacing: 12, color: JT.textPrimary,
             ),
             decoration: InputDecoration(
@@ -622,7 +622,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : Text(
                     _dropIdx + 1 < _drops.length ? 'Confirm Delivery → Next Stop' : 'Complete Delivery',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 15)),
             ),
           ),
         ]),
@@ -650,7 +650,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
           const SizedBox(height: 28),
           Text('Delivery Complete!',
             style: GoogleFonts.poppins(
-              fontSize: 26, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+              fontSize: 26, fontWeight: FontWeight.w500, color: JT.textPrimary)),
           const SizedBox(height: 8),
           Text('All ${_drops.length} stop${_drops.length != 1 ? 's' : ''} delivered successfully.',
             style: GoogleFonts.poppins(fontSize: 14, color: JT.textSecondary),
@@ -667,12 +667,12 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Your Earnings', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13)),
                 Text('₹${earnings.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
+                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w500)),
               ]),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('Order Fare', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13)),
                 Text('₹${fare.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w700)),
+                  style: GoogleFonts.poppins(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w500)),
               ]),
             ]),
           ),
@@ -687,7 +687,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: Text('Back to Home', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16)),
+              child: Text('Back to Home', style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 16)),
             ),
           ),
         ]),
@@ -722,9 +722,9 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         ),
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w400)),
           Text(address,
-            style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary),
+            style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textPrimary),
             maxLines: 2, overflow: TextOverflow.ellipsis),
           if (subtitle != null)
             Text(subtitle,
@@ -742,7 +742,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         onPressed: _openNavigation,
         icon: const Icon(Icons.navigation_rounded),
         label: Text('Navigate with Google Maps',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 14)),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 14)),
         style: OutlinedButton.styleFrom(
           foregroundColor: JT.primary,
           side: const BorderSide(color: JT.primary, width: 1.5),

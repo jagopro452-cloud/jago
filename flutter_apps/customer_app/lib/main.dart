@@ -166,25 +166,25 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
       scaffoldBackgroundColor: bg,
       cardColor: card,
       dividerColor: const Color(0xFFE5EDF7),
-      fontFamily: GoogleFonts.manrope().fontFamily,
-      textTheme: GoogleFonts.manropeTextTheme()
+      fontFamily: GoogleFonts.poppins().fontFamily,
+      textTheme: GoogleFonts.poppinsTextTheme()
           .copyWith(
-            headlineLarge: GoogleFonts.manrope(
-                fontSize: 32, fontWeight: FontWeight.w600, height: 1.08),
-            headlineMedium: GoogleFonts.manrope(
-                fontSize: 28, fontWeight: FontWeight.w600, height: 1.1),
-            titleLarge: GoogleFonts.manrope(
-                fontSize: 20, fontWeight: FontWeight.w700, height: 1.15),
-            titleMedium: GoogleFonts.manrope(
-                fontSize: 16, fontWeight: FontWeight.w700, height: 1.2),
-            bodyLarge: GoogleFonts.manrope(
-                fontSize: 15, fontWeight: FontWeight.w500, height: 1.35),
-            bodyMedium: GoogleFonts.manrope(
-                fontSize: 14, fontWeight: FontWeight.w500, height: 1.35),
-            bodySmall: GoogleFonts.manrope(
-                fontSize: 12, fontWeight: FontWeight.w500, height: 1.3),
-            labelLarge: GoogleFonts.manrope(
-                fontSize: 15, fontWeight: FontWeight.w700, height: 1.1),
+            headlineLarge: GoogleFonts.poppins(
+                fontSize: 32, fontWeight: FontWeight.w500, height: 1.08, letterSpacing: -0.3),
+            headlineMedium: GoogleFonts.poppins(
+                fontSize: 28, fontWeight: FontWeight.w500, height: 1.1, letterSpacing: -0.2),
+            titleLarge: GoogleFonts.poppins(
+                fontSize: 20, fontWeight: FontWeight.w500, height: 1.15),
+            titleMedium: GoogleFonts.poppins(
+                fontSize: 16, fontWeight: FontWeight.w500, height: 1.2),
+            bodyLarge: GoogleFonts.poppins(
+                fontSize: 15, fontWeight: FontWeight.w400, height: 1.4),
+            bodyMedium: GoogleFonts.poppins(
+                fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
+            bodySmall: GoogleFonts.poppins(
+                fontSize: 12, fontWeight: FontWeight.w400, height: 1.35),
+            labelLarge: GoogleFonts.poppins(
+                fontSize: 15, fontWeight: FontWeight.w500, height: 1.1),
           )
           .apply(
             bodyColor: const Color(0xFF111827),
@@ -195,9 +195,9 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         foregroundColor: const Color(0xFF111827),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.manrope(
+        titleTextStyle: GoogleFonts.poppins(
             fontSize: 18,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             color: const Color(0xFF111827)),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
@@ -220,7 +220,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
           minimumSize: const Size.fromHeight(54),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 22),
           textStyle:
-              GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700),
+              GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -232,7 +232,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
           minimumSize: const Size.fromHeight(54),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 22),
           textStyle:
-              GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700),
+              GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -249,10 +249,10 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
             borderSide: const BorderSide(color: primary, width: 1.6)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: GoogleFonts.manrope(
+        hintStyle: GoogleFonts.poppins(
             color: const Color(0xFF94A3B8),
             fontSize: 14,
-            fontWeight: FontWeight.w500),
+            fontWeight: FontWeight.w400),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Colors.white,

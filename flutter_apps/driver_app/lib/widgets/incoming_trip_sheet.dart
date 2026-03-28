@@ -214,7 +214,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 style: TextStyle(
                   color: const Color(0xFF111827),
                   fontSize: 22,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: -0.3,
                 ),
               ),
@@ -235,7 +235,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                   style: TextStyle(
                     color: typeColor,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     letterSpacing: 0.4,
                   ),
                 ),
@@ -267,7 +267,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               style: TextStyle(
                 color: const Color(0xFF111827),
                 fontSize: 28,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 height: 1.0,
               ),
             ),
@@ -276,7 +276,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               style: TextStyle(
                 color: const Color(0xFF94A3B8),
                 fontSize: 10,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ]),
@@ -422,14 +422,14 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                   style: TextStyle(
                       color: Color(0xFF60A5FA),
                       fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       letterSpacing: 0.8)),
               const SizedBox(height: 3),
               Text(pickup,
                   style: const TextStyle(
                       color: Color(0xFF111827),
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       height: 1.3),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
@@ -442,14 +442,14 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                   style: TextStyle(
                       color: Color(0xFF1A6FDB),
                       fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       letterSpacing: 0.8)),
               const SizedBox(height: 3),
               Text(dest,
                   style: const TextStyle(
                       color: Color(0xFF111827),
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       height: 1.3),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
@@ -504,7 +504,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
         Text(
           'Payment: ${method.toUpperCase()}',
           style: TextStyle(
-              color: color, fontSize: 12, fontWeight: FontWeight.w700),
+              color: color, fontSize: 12, fontWeight: FontWeight.w500),
         ),
       ]),
     );
@@ -531,14 +531,14 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             style: TextStyle(
                 color: color,
                 fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 height: 1.0)),
         const SizedBox(height: 3),
         Text(label,
             style: TextStyle(
                 color: const Color(0xFF94A3B8),
                 fontSize: 9,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 letterSpacing: 0.3)),
       ]),
     );
@@ -577,7 +577,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 'ACCEPT TRIP',
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 20,
                   letterSpacing: 0.5,
                 ),
@@ -606,7 +606,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 'Skip this trip',
                 style: TextStyle(
                   color: Color(0xFFF87171),
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                   fontSize: 15,
                 ),
               ),

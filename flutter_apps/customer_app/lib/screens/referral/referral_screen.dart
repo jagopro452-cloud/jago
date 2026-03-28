@@ -92,7 +92,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
       appBar: AppBar(
         backgroundColor: _blue,
         foregroundColor: Colors.white,
-        title: const Text('Refer & Earn', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Refer & Earn', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
       ),
       body: _loading
@@ -123,7 +123,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           const Icon(Icons.card_giftcard_rounded, color: Colors.white, size: 50),
                           const SizedBox(height: 12),
                           const Text('Friends కి JAGO Pro చెప్పండి!',
-                              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 6),
                           const Text(
                             'ప్రతి successful referral కి మీకు reward లభిస్తుంది',
@@ -147,7 +147,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w500,
                                     letterSpacing: 3,
                                   ),
                                 ),
@@ -205,7 +205,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     const SizedBox(height: 20),
 
                     // How it works
-                    Text('ఎలా పని చేస్తుంది?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                    Text('ఎలా పని చేస్తుంది?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: textColor)),
                     const SizedBox(height: 12),
                     Container(
                       decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16)),
@@ -224,7 +224,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
                     // History
                     if (_referrals.isNotEmpty) ...[
-                      Text('Referral History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                      Text('Referral History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: textColor)),
                       const SizedBox(height: 12),
                       Container(
                         decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16)),
@@ -245,11 +245,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 child: Icon(type == 'driver' ? Icons.drive_eta : Icons.person, color: type == 'driver' ? Colors.blue : Colors.purple, size: 20),
                               ),
                               title: Text(type == 'driver' ? 'Driver Referral' : 'Customer Referral',
-                                  style: TextStyle(fontWeight: FontWeight.w600, color: textColor, fontSize: 14)),
+                                  style: TextStyle(fontWeight: FontWeight.w400, color: textColor, fontSize: 14)),
                               subtitle: Text(status.toUpperCase(),
-                                  style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w500)),
                               trailing: Text('₹${amount.toStringAsFixed(0)}',
-                                  style: TextStyle(color: amount > 0 ? Colors.green : subColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                                  style: TextStyle(color: amount > 0 ? Colors.green : subColor, fontWeight: FontWeight.w500, fontSize: 15)),
                             );
                           },
                         ),
@@ -278,7 +278,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
+              Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: textColor)),
               Text(label, style: TextStyle(fontSize: 11, color: subColor)),
             ],
           ),
@@ -295,7 +295,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           Container(
             width: 32, height: 32,
             decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
-            child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14))),
+            child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.w500, fontSize: 14))),
           ),
           const SizedBox(width: 14),
           Icon(icon, color: color, size: 22),

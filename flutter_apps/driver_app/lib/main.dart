@@ -94,10 +94,21 @@ class JagoPilotApp extends StatelessWidget {
       cardColor: card,
       dividerColor: const Color(0xFFE5EDF7),
       fontFamily: GoogleFonts.poppins().fontFamily,
-      textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: const Color(0xFF111827),
-        displayColor: const Color(0xFF111827),
-      ),
+      textTheme: GoogleFonts.poppinsTextTheme()
+          .copyWith(
+            headlineLarge: GoogleFonts.poppins(fontSize: 32, fontWeight: FontWeight.w500, letterSpacing: -0.3),
+            headlineMedium: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w500, letterSpacing: -0.2),
+            titleLarge: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w500),
+            titleMedium: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500),
+            bodyLarge: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, height: 1.4),
+            bodyMedium: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
+            bodySmall: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w400, height: 1.35),
+            labelLarge: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
+          )
+          .apply(
+            bodyColor: const Color(0xFF111827),
+            displayColor: const Color(0xFF111827),
+          ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
         foregroundColor: const Color(0xFF111827),
@@ -105,7 +116,7 @@ class JagoPilotApp extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         titleTextStyle: GoogleFonts.poppins(
           fontSize: 18,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           color: const Color(0xFF111827),
         ),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
@@ -126,7 +137,7 @@ class JagoPilotApp extends StatelessWidget {
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -135,7 +146,7 @@ class JagoPilotApp extends StatelessWidget {
           side: const BorderSide(color: Color(0xFFD6E6FF)),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          textStyle: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

@@ -79,7 +79,7 @@ class _B2BLoginScreenState extends State<B2BLoginScreen> {
       appBar: AppBar(
         backgroundColor: JT.primary,
         foregroundColor: Colors.white,
-        title: const Text('B2B Business Login', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('B2B Business Login', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -111,7 +111,7 @@ class _B2BLoginScreenState extends State<B2BLoginScreen> {
                     const SizedBox(height: 16),
                     const Text(
                       'B2B Business Portal',
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 6),
                     const Text(
@@ -134,7 +134,7 @@ class _B2BLoginScreenState extends State<B2BLoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Sign In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+                    Text('Sign In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                     const SizedBox(height: 20),
                     TextFormField(
                       controller: _emailCtrl,

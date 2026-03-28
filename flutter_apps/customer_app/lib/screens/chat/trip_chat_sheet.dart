@@ -108,7 +108,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Trip Chat', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+            Text('Trip Chat', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500, color: JT.textPrimary)),
             GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Container(
@@ -197,7 +197,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           if (!isMe)
             Text(msg['senderName']?.toString() ?? 'Pilot',
-              style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w600,
+              style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w400,
                 color: const Color(0xFF64748B))),
           Text(msg['message']?.toString() ?? '',
             style: GoogleFonts.poppins(fontSize: 13,

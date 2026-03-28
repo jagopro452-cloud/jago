@@ -114,7 +114,7 @@ class _CallScreenState extends State<CallScreen> {
             const SizedBox(height: 20),
             Text(
               widget.contactName,
-              style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white),
+              style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w500, color: Colors.white),
             ),
             const SizedBox(height: 8),
             Text(_statusText, style: GoogleFonts.poppins(fontSize: 14, color: Colors.white70)),
@@ -122,7 +122,7 @@ class _CallScreenState extends State<CallScreen> {
               const SizedBox(height: 4),
               Text(
                 _formatDuration(_durationSec),
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: const Color(0xFF4ADE80)),
+                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: const Color(0xFF4ADE80)),
               ),
             ],
             const Spacer(flex: 3),

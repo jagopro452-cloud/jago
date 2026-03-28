@@ -69,7 +69,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Monthly Pass', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Monthly Pass', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
@@ -92,7 +92,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                           Row(children: [
                             const Icon(Icons.verified, color: Colors.amber),
                             const SizedBox(width: 8),
-                            Text(_activePlan!['planName'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                            Text(_activePlan!['planName'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 18)),
                           ]),
                           const SizedBox(height: 12),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
@@ -127,7 +127,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                     ]),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Choose Your Plan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('Choose Your Plan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 12),
                   ..._plans.asMap().entries.map((e) {
                     final p = e.value;
@@ -149,7 +149,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                               Row(children: [
                                 Icon(Icons.confirmation_number_outlined, color: color, size: 20),
                                 const SizedBox(width: 6),
-                                Text(p['name'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+                                Text(p['name'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: color)),
                               ]),
                               const SizedBox(height: 4),
                               Text('${p['rides']} rides for 30 days', style: const TextStyle(color: Colors.grey, fontSize: 13)),
@@ -157,14 +157,14 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(6)),
-                                child: Text('Save ${p['discount']}', style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.bold)),
+                                child: Text('Save ${p['discount']}', style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500)),
                               ),
                             ],
                           )),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text('₹${p['price']}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+                              Text('₹${p['price']}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: color)),
                               const SizedBox(height: 8),
                               ElevatedButton(
                                 onPressed: _buying ? null : () => _buy(p['name']),
@@ -189,7 +189,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
-                        Text('Pass Terms', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Pass Terms', style: TextStyle(fontWeight: FontWeight.w500)),
                         SizedBox(height: 8),
                         Text('• Payment via JAGO Pro Wallet balance\n• Pass valid for 30 days from purchase\n• Rides within city limits only\n• Non-refundable after first ride\n• Bonus JAGO Pro Coins credited instantly', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.8)),
                       ],
@@ -202,7 +202,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
   }
 
   Widget _statBox(String label, String val) => Column(children: [
-    Text(val, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+    Text(val, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)),
     Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
   ]);
 

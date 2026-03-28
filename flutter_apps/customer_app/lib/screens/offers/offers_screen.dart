@@ -76,7 +76,7 @@ class _OffersScreenState extends State<OffersScreen> {
           icon: const Icon(Icons.arrow_back_ios_rounded, color: JT.textPrimary, size: 20),
         ),
         title: const Text('Offers & Coupons',
-            style: TextStyle(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
+            style: TextStyle(color: JT.textPrimary, fontSize: 18, fontWeight: FontWeight.w400)),
         centerTitle: false,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -117,7 +117,7 @@ class _OffersScreenState extends State<OffersScreen> {
         const SizedBox(width: 12),
         const Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Exclusive Offers', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+            Text('Exclusive Offers', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w400)),
             SizedBox(height: 2),
             Text('Tap "Copy" and apply at booking', style: TextStyle(color: Colors.white70, fontSize: 12)),
           ]),
@@ -128,7 +128,7 @@ class _OffersScreenState extends State<OffersScreen> {
             color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Text('${_offers.length} Active', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+          child: Text('${_offers.length} Active', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
         ),
       ]),
     );
@@ -206,7 +206,7 @@ class _OffersScreenState extends State<OffersScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: JT.textPrimary)),
                 if (desc != null && desc.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
@@ -234,7 +234,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_discountLabel(offer),
-                style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
             ),
           ]),
         ),
@@ -262,7 +262,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 ),
                 child: Text(code,
                   style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700, color: color,
+                    fontSize: 15, fontWeight: FontWeight.w500, color: color,
                     letterSpacing: 2, fontFamily: 'monospace',
                   )),
               ),
@@ -271,7 +271,7 @@ class _OffersScreenState extends State<OffersScreen> {
             ElevatedButton.icon(
               onPressed: () => _copyCode(code),
               icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copy', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              label: const Text('Copy', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: color,
                 foregroundColor: Colors.white,
@@ -289,14 +289,14 @@ class _OffersScreenState extends State<OffersScreen> {
   Widget _tag(String label, Color bg, Color fg) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-    child: Text(label, style: TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w600)),
+    child: Text(label, style: TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w400)),
   );
 
   Widget _buildEmpty() => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(Icons.local_offer_outlined, size: 64, color: Colors.grey[300]),
       const SizedBox(height: 12),
-      const Text('No offers right now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+      const Text('No offers right now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400, color: Color(0xFF64748B))),
       const SizedBox(height: 6),
       const Text('Check back later for exciting deals!', style: TextStyle(fontSize: 13, color: Color(0xFFADB5BD))),
     ]),

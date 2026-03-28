@@ -49,7 +49,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
-        title: const Text('Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+        title: const Text('Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500)),
         actions: [
           IconButton(icon: const Icon(Icons.add_circle, color: Color(0xFF2563EB)), onPressed: _scheduleNew),
         ],
@@ -68,7 +68,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         onPressed: _scheduleNew,
         backgroundColor: const Color(0xFF2563EB),
         icon: const Icon(Icons.schedule, color: Colors.white),
-        label: const Text('Schedule Ride', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Schedule Ride', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
       ),
     );
   }
@@ -77,7 +77,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(width: 80, height: 80, decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle), child: const Icon(Icons.schedule, color: Color(0xFF2563EB), size: 40)),
       const SizedBox(height: 16),
-      const Text('No Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+      const Text('No Scheduled Rides', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500, fontSize: 18)),
       const SizedBox(height: 8),
       const Text('Schedule rides in advance for\nhassle-free travel', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
     ]));
@@ -94,10 +94,10 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       ),
       child: Column(children: [
         Row(children: [
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)), child: const Text('SCHEDULED', style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)), child: const Text('SCHEDULED', style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.w500))),
           const Spacer(),
           if (scheduledAt != null)
-            Text(DateFormat('dd MMM, hh:mm a').format(scheduledAt), style: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(DateFormat('dd MMM, hh:mm a').format(scheduledAt), style: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.w400)),
         ]),
         const SizedBox(height: 12),
         Row(children: [const Icon(Icons.my_location, color: Color(0xFF2563EB), size: 16), const SizedBox(width: 8), Expanded(child: Text(ride['pickupAddress'] ?? '', style: const TextStyle(color: JT.textPrimary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis))]),
@@ -106,7 +106,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         const Divider(height: 16, color: Color(0xFFE2E8F0)),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(ride['paymentMethod']?.toString().toUpperCase() ?? 'CASH', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-          Text('₹${double.tryParse(ride['estimatedFare']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 16)),
+          Text('₹${double.tryParse(ride['estimatedFare']?.toString() ?? '0')?.toStringAsFixed(0) ?? '0'}', style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w500, fontSize: 16)),
         ]),
       ]),
     );
@@ -187,7 +187,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       child: Padding(
         padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Schedule a Ride', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: JT.textPrimary)),
+          const Text('Schedule a Ride', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 20, color: JT.textPrimary)),
           const SizedBox(height: 16),
           _field(Icons.my_location, const Color(0xFF2563EB), _pickupCtrl, 'Pickup location', readOnly: true),
           const SizedBox(height: 10),
@@ -203,7 +203,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 const SizedBox(width: 12),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Pickup Time', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-                  Text(DateFormat('dd MMM yyyy, hh:mm a').format(_selectedDate), style: const TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(DateFormat('dd MMM yyyy, hh:mm a').format(_selectedDate), style: const TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500, fontSize: 15)),
                 ]),
                 const Spacer(),
                 const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
@@ -224,7 +224,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
             child: ElevatedButton(
               onPressed: _booking ? null : _book,
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-              child: _booking ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('Confirm Schedule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: _booking ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('Confirm Schedule', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
             ),
           ),
         ]),

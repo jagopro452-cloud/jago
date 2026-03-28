@@ -49,7 +49,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Tip Your Driver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Tip Your Driver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
       body: _done ? _doneScreen() : _tipScreen(),
     );
@@ -67,11 +67,11 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
           child: const Icon(Icons.person, size: 60, color: Color(0xFF2563EB)),
         ),
         const SizedBox(height: 16),
-        Text(widget.driverName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(widget.driverName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
         const Text('Great service? Show your appreciation!', style: TextStyle(color: Colors.grey)),
         const SizedBox(height: 32),
-        const Text('Select tip amount', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text('Select tip amount', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
         const SizedBox(height: 16),
         Row(
           children: _tips.map((t) => Expanded(
@@ -88,7 +88,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
                 ),
                 child: Column(
                   children: [
-                    Text('₹$t', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
+                    Text('₹$t', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500,
                         color: _selectedTip == t ? Colors.white : Colors.black)),
                   ],
                 ),
@@ -120,7 +120,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
               ),
               child: _sending
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text('Send ₹$_selectedTip Tip', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : Text('Send ₹$_selectedTip Tip', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
             ),
           ),
         const SizedBox(height: 12),
@@ -144,7 +144,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
             child: const Icon(Icons.favorite, color: Colors.green, size: 64),
           ),
           const SizedBox(height: 24),
-          const Text('Tip Sent!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.green)),
+          const Text('Tip Sent!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w500, color: Colors.green)),
           const SizedBox(height: 12),
           Text(_doneMsg, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 15, height: 1.5)),
           const SizedBox(height: 32),
@@ -156,7 +156,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
             ),
-            child: const Text('Done', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text('Done', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
           ),
         ],
       ),

@@ -25,14 +25,14 @@ class RejectionScreen extends StatelessWidget {
           children: [
             const Center(child: Icon(Icons.error_outline, size: 80, color: Color(0xFFEF4444))),
             const SizedBox(height: 24),
-            Text('Your application was not approved', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+            Text('Your application was not approved', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: JT.textPrimary)),
             const SizedBox(height: 8),
             Text(
               reason ?? 'Please review the comments below and re-upload the necessary documents.',
               style: TextStyle(color: JT.textSecondary, fontSize: 15),
             ),
             const SizedBox(height: 32),
-            Text('Rejected Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+            Text('Rejected Documents', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
             const SizedBox(height: 16),
             ...rejectedDocs.map((doc) => _buildRejectedDocCard(doc)).toList(),
             const SizedBox(height: 40),
@@ -42,7 +42,7 @@ class RejectionScreen extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: const Text('Re-upload Documents', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text('Re-upload Documents', style: TextStyle(fontWeight: FontWeight.w500)),
               ),
             ),
             const SizedBox(height: 16),
@@ -74,7 +74,7 @@ class RejectionScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(doc['docType']?.toString().toUpperCase() ?? 'DOCUMENT', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+          Text(doc['docType']?.toString().toUpperCase() ?? 'DOCUMENT', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           Text(doc['adminNote'] ?? 'No reason provided', style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13)),
         ],

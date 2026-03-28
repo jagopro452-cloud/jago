@@ -56,7 +56,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       backgroundColor: JT.textPrimary,
       appBar: AppBar(
         backgroundColor: JT.textPrimary,
-        title: const Text('My Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('My Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       body: _loading
@@ -105,7 +105,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                 ),
               ),
               Column(children: [
-                Text('$score', style: TextStyle(color: levelColor, fontSize: 22, fontWeight: FontWeight.bold)),
+                Text('$score', style: TextStyle(color: levelColor, fontSize: 22, fontWeight: FontWeight.w500)),
                 Text('Score', style: TextStyle(color: levelColor.withValues(alpha: 0.7), fontSize: 10)),
               ]),
             ],
@@ -118,12 +118,12 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                 Row(children: [
                   Icon(Icons.star, color: levelColor, size: 18),
                   const SizedBox(width: 6),
-                  Text(level, style: TextStyle(color: levelColor, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text(level, style: TextStyle(color: levelColor, fontWeight: FontWeight.w500, fontSize: 18)),
                   const SizedBox(width: 8),
                   const Text('Driver', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
                 ]),
                 const SizedBox(height: 8),
-                Text('Rating: ${_perf?['overallRating'] ?? 5.0} ⭐', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('Rating: ${_perf?['overallRating'] ?? 5.0} ⭐', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 16)),
                 const SizedBox(height: 4),
                 Text('Acceptance: ${_perf?['acceptanceRate'] ?? 100}%', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
               ],
@@ -152,8 +152,8 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('This Week Earnings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w700, fontSize: 16)),
+          const Text('This Week Earnings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
+          Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w500, fontSize: 16)),
         ]),
         const SizedBox(height: 16),
         SizedBox(
@@ -171,7 +171,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 3),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.center, mainAxisAlignment: MainAxisAlignment.end, children: [
                     if (gross > 0) Text('₹${gross.toInt()}',
-                      style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white60, fontSize: 8, fontWeight: FontWeight.w600)),
+                      style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white60, fontSize: 8, fontWeight: FontWeight.w400)),
                     const SizedBox(height: 2),
                     Container(
                       width: double.infinity,
@@ -185,7 +185,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(d['day']?.toString() ?? '', style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white38, fontSize: 9, fontWeight: FontWeight.w600)),
+                    Text(d['day']?.toString() ?? '', style: TextStyle(color: isToday ? const Color(0xFF3B82F6) : Colors.white38, fontSize: 9, fontWeight: FontWeight.w400)),
                     if (trips > 0)
                       Text('${trips}t', style: const TextStyle(color: Color(0xFF22C55E), fontSize: 8)),
                   ]),
@@ -209,7 +209,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Goals', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          const Text('Goals', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
           const SizedBox(height: 14),
           _goalBar('Daily Goal', todayTrips, dailyTarget, const Color(0xFF3B82F6)),
           const SizedBox(height: 12),
@@ -225,7 +225,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-          Text('$done / $target trips', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text('$done / $target trips', style: TextStyle(color: color, fontWeight: FontWeight.w500, fontSize: 13)),
         ]),
         const SizedBox(height: 6),
         ClipRRect(
@@ -264,7 +264,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
           Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 16)),
             Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
           ]),
         ]),
@@ -279,7 +279,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: const Color(0xFF091629), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E3A5F))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Recent Activity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+        const Text('Recent Activity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
         const SizedBox(height: 12),
         ...trips.take(3).map((t) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
@@ -287,7 +287,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
             Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1E3A5F), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.directions_car, color: Color(0xFF3B82F6), size: 18)),
             const SizedBox(width: 10),
             Expanded(child: Text(t['pickupAddress']?.toString().substring(0, (t['pickupAddress']?.toString().length ?? 0).clamp(0, 30)) ?? 'Trip', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12))),
-            Text('₹${double.tryParse(t['actualFare']?.toString() ?? t['estimatedFare']?.toString() ?? '0')?.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+            Text('₹${double.tryParse(t['actualFare']?.toString() ?? t['estimatedFare']?.toString() ?? '0')?.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w500)),
           ]),
         )),
       ]),
@@ -307,7 +307,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(children: [Icon(Icons.tips_and_updates, color: Color(0xFF3B82F6), size: 18), SizedBox(width: 8), Text('Tips for You', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))]),
+          const Row(children: [Icon(Icons.tips_and_updates, color: Color(0xFF3B82F6), size: 18), SizedBox(width: 8), Text('Tips for You', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14))]),
           const SizedBox(height: 10),
           ...tips.map((tip) => Padding(
             padding: const EdgeInsets.only(bottom: 6),

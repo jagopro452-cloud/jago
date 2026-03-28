@@ -68,7 +68,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Verification', style: TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
+        title: Text('Verification', style: TextStyle(fontWeight: FontWeight.w500, color: JT.textPrimary)),
         actions: [
           IconButton(
             icon: Icon(Icons.logout, color: JT.textPrimary),
@@ -91,7 +91,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
                 const SizedBox(height: 32),
                 Text(
                   status == 'approved' ? 'Account Approved!' : (status == 'rejected' ? 'Verification Rejected' : 'Account Under Review'),
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: JT.textPrimary),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: JT.textPrimary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -118,7 +118,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
                 const SizedBox(height: 32),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Document Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+                  child: Text('Document Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                 ),
                 const SizedBox(height: 16),
                 ...docs.map((doc) => _buildDocTile(doc)).toList(),
@@ -138,7 +138,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
       ),
       child: Column(
         children: [
-          Text(message, style: TextStyle(color: color, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          Text(message, style: TextStyle(color: color, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -178,14 +178,14 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
       decoration: BoxDecoration(color: JT.surfaceAlt, borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(Icons.description, color: statusColor),
-        title: Text(labels[type] ?? type, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w600)),
+        title: Text(labels[type] ?? type, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w400)),
         subtitle: note != null ? Text(note, style: TextStyle(color: Colors.red.shade300, fontSize: 12)) : null,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
           child: Text(
             status.toString().toUpperCase(),
-            style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+            style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w500),
           ),
         ),
       ),

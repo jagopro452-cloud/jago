@@ -51,7 +51,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
         backgroundColor: const Color(0xFF0d1b2e),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Fatigue Alert', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Fatigue Alert', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
@@ -74,7 +74,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
                         const SizedBox(height: 12),
                         Text(
                           level == 'high' ? 'High Fatigue Detected' : level == 'medium' ? 'Moderate Fatigue' : 'You\'re doing great!',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: levelColor),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: levelColor),
                         ),
                         const SizedBox(height: 8),
                         Text(rec, textAlign: TextAlign.center, style: TextStyle(color: levelColor.withValues(alpha: 0.8), height: 1.4)),
@@ -99,7 +99,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
                         const Row(children: [
                           Icon(Icons.lightbulb_outline, color: Colors.amber, size: 18),
                           SizedBox(width: 8),
-                          Text('Safety Tips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          Text('Safety Tips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                         ]),
                         const SizedBox(height: 12),
                         _tipRow('Drink water regularly during rides'),
@@ -116,7 +116,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
                       child: ElevatedButton.icon(
                         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen())),
                         icon: const Icon(Icons.coffee),
-                        label: const Text('Take a Break Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        label: const Text('Take a Break Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF2563EB),
                           foregroundColor: Colors.white,
@@ -153,7 +153,7 @@ class _FatigueAlertScreenState extends State<FatigueAlertScreen> {
       child: Column(children: [
         Icon(icon, color: color, size: 28),
         const SizedBox(height: 8),
-        Text(val, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(val, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)),
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
       ]),
     ),

@@ -259,7 +259,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                             children: [
                               Text(
                                 company['companyName']?.toString() ?? '—',
-                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w500),
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -283,7 +283,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                             style: TextStyle(
                               color: isPending ? JT.warning : Colors.greenAccent,
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -348,7 +348,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                         Text('Total Spent', style: TextStyle(fontSize: 12, color: JT.textSecondary)),
                         Text(
                           '₹${(double.tryParse(stats['totalSpent']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: JT.textPrimary),
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: JT.textPrimary),
                         ),
                       ],
                     ),
@@ -414,7 +414,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                                   ),
                                   child: Text(
                                     _statusLabel(status),
-                                    style: TextStyle(color: _statusColor(status), fontSize: 10, fontWeight: FontWeight.bold),
+                                    style: TextStyle(color: _statusColor(status), fontSize: 10, fontWeight: FontWeight.w500),
                                   ),
                                 ),
                                 if (driver != null) ...[
@@ -427,7 +427,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                         ),
                         trailing: fare > 0
                             ? Text('₹${fare.toStringAsFixed(0)}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JT.textPrimary))
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: JT.textPrimary))
                             : null,
                       );
                     },
@@ -464,14 +464,14 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
   AppBar _appBar({List<Widget>? actions}) => AppBar(
     backgroundColor: JT.primary,
     foregroundColor: Colors.white,
-    title: const Text('B2B Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
+    title: const Text('B2B Dashboard', style: TextStyle(fontWeight: FontWeight.w500)),
     elevation: 0,
     actions: actions,
   );
 
   Widget _sectionLabel(String label) => Text(
     label,
-    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JT.textPrimary),
+    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: JT.textPrimary),
   );
 
   Widget _walletChip(String label, String value, IconData icon) => Container(
@@ -490,7 +490,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
-              Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
             ],
           ),
         ),
@@ -520,7 +520,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
             Text(label, style: TextStyle(fontSize: 10, color: JT.textSecondary)),
           ],
         ),

@@ -228,7 +228,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             child: Text(
               isParcel ? 'DELIVERY' : 'RIDE',
               style: const TextStyle(color: Colors.white, fontSize: 7,
-                fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                fontWeight: FontWeight.w500, letterSpacing: 0.5),
             ),
           ),
         ),
@@ -277,14 +277,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(8)),
               child: Text('SELECTED', style: const TextStyle(
-                color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                color: Colors.white, fontSize: 9, fontWeight: FontWeight.w500, letterSpacing: 1.5)),
             ),
             const SizedBox(height: 8),
             Text(name, style: const TextStyle(
-              color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+              color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500, letterSpacing: -0.5)),
             const SizedBox(height: 4),
             Text('₹${displayMin.floor()} – ₹${displayMax.ceil()}',
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w400)),
             Text('estimated fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
           ])),
           // Real vehicle image — emoji fallback if network fails
@@ -694,14 +694,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           ),
           const SizedBox(height: 16),
           Text('Ride Booked! 🎉',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500,
               color: JT.textPrimary)),
           const SizedBox(height: 8),
           Text('Navigate to pickup location?',
             style: TextStyle(fontSize: 14, color: Colors.grey[600])),
           const SizedBox(height: 6),
           Text(pickupAddr,
-            style: const TextStyle(fontSize: 13, color: JT.primary, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 13, color: JT.primary, fontWeight: FontWeight.w400),
             maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
           const SizedBox(height: 20),
           Row(children: [
@@ -716,7 +716,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     border: Border.all(color: Colors.grey.shade200),
                   ),
                   child: Center(child: Text('Skip',
-                    style: TextStyle(fontWeight: FontWeight.w700,
+                    style: TextStyle(fontWeight: FontWeight.w500,
                       color: Colors.grey[700]))),
                 ),
               ),
@@ -749,7 +749,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
                     SizedBox(width: 8),
-                    Text('Navigate Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                    Text('Navigate Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14)),
                   ])),
                 ),
               ),
@@ -861,7 +861,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w400, color: Colors.white)),
       backgroundColor: error ? const Color(0xFFDC2626) : _green,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.all(16),
@@ -948,7 +948,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.55),
                     child: Text(
                       widget.pickup.split(',').first,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: JT.textPrimary),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -979,7 +979,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.55),
                     child: Text(
                       widget.destination.split(',').first,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: JT.textPrimary),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1057,7 +1057,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     const Text(
                       'Popular Locations',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: JT.textPrimary),
                     ),
                     const SizedBox(height: 8),
                     Row(children: [
@@ -1072,7 +1072,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                               border: Border.all(color: JT.border),
                             ),
                             child: Center(
-                              child: Text('Set Pickup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _popularForPickup ? Colors.white : JT.textPrimary)),
+                              child: Text('Set Pickup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: _popularForPickup ? Colors.white : JT.textPrimary)),
                             ),
                           ),
                         ),
@@ -1089,7 +1089,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                               border: Border.all(color: JT.border),
                             ),
                             child: Center(
-                              child: Text('Set Drop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: !_popularForPickup ? Colors.white : JT.textPrimary)),
+                              child: Text('Set Drop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: !_popularForPickup ? Colors.white : JT.textPrimary)),
                             ),
                           ),
                         ),
@@ -1109,7 +1109,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: JT.border),
                             ),
-                            child: Text(loc['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+                            child: Text(loc['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: JT.textPrimary)),
                           ),
                         )).toList(),
                       ),
@@ -1156,7 +1156,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             const Icon(Icons.account_balance_wallet_rounded, size: 16, color: JT.textSecondary),
                             const SizedBox(width: 6),
                             Text(_paymentMethod == 'cash' ? 'Cash' : _paymentMethod.toUpperCase(),
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                             const SizedBox(width: 4),
                             const Icon(Icons.chevron_right_rounded, size: 16, color: JT.textSecondary),
                           ]),
@@ -1173,7 +1173,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             const Icon(Icons.local_offer_rounded, size: 16, color: JT.textSecondary),
                             const SizedBox(width: 6),
                             Text(_appliedPromo != null ? _appliedPromo! : 'Offers',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                             const SizedBox(width: 4),
                             const Icon(Icons.chevron_right_rounded, size: 16, color: JT.textSecondary),
                           ]),
@@ -1208,7 +1208,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             _paymentMethod == 'upi'
                               ? 'PAY ₹${_finalFare.toStringAsFixed(0)} & BOOK'
                               : 'Book $_vehicleName',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
                           const SizedBox(width: 8),
                           const Icon(Icons.arrow_forward_rounded, size: 20),
                         ]),
@@ -1253,7 +1253,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_isParcel ? 'Book Parcel for Someone' : 'Book for Someone Else',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14,
+                  fontWeight: FontWeight.w500, fontSize: 14,
                   color: _bookForSomeone ? _blue : JT.textPrimary)),
               const SizedBox(height: 2),
               Text(_isParcel ? 'Set sender & receiver details' : 'Enter passenger contact details',
@@ -1280,7 +1280,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           child: Builder(builder: (ctx) {
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(_isParcel ? 'Sender Details' : 'Passenger Details',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
                 color: Color(0xFF374151), letterSpacing: 0.5)),
             const SizedBox(height: 10),
             _bookingInputField(
@@ -1299,7 +1299,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             if (_isParcel) ...[
               const SizedBox(height: 14),
               Text('Receiver Details',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
                   color: Color(0xFF374151), letterSpacing: 0.5)),
               const SizedBox(height: 10),
               _bookingInputField(
@@ -1377,7 +1377,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   Widget _buildPaymentSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Payment Method',
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF374151), letterSpacing: 0.2)),
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF374151), letterSpacing: 0.2)),
       const SizedBox(height: 10),
       Row(children: [
         Expanded(child: _payBtn('cash', Icons.payments_rounded, 'Cash', null)),
@@ -1413,7 +1413,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 ? 'Wallet balance ₹${_walletBalance.toStringAsFixed(0)} • Sufficient'
                 : 'Insufficient balance (₹${_walletBalance.toStringAsFixed(0)}). Please recharge.',
               style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600,
+                fontSize: 12, fontWeight: FontWeight.w400,
                 color: _walletBalance >= _finalFare ? _green : const Color(0xFFDC2626),
               ),
             )),
@@ -1467,7 +1467,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 22, color: selected ? Colors.white : Colors.grey[500]),
           const SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
             color: selected ? Colors.white : unselText)),
           if (subtitle != null) ...[
             const SizedBox(height: 2),
@@ -1498,10 +1498,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(isPickup ? 'PICKUP' : 'DROP',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color.withValues(alpha: 0.8), letterSpacing: 0.8)),
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: color.withValues(alpha: 0.8), letterSpacing: 0.8)),
           const SizedBox(height: 2),
           Text(text,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: tColor),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: tColor),
             maxLines: 1, overflow: TextOverflow.ellipsis),
         ])),
       ]),
@@ -1526,11 +1526,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           const Text('🌙', style: TextStyle(fontSize: 16)),
           const SizedBox(width: 8),
           Expanded(child: Text('Night charges apply (10PM - 6AM)',
-            style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w600))),
+            style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w400))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-            child: Text('1.25x', style: TextStyle(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+            child: Text('1.25x', style: TextStyle(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w400)),
           ),
         ]),
       ),
@@ -1588,7 +1588,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, color: color, size: 10),
         const SizedBox(width: 3),
-        Text(tag, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        Text(tag, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w500, letterSpacing: 0.5)),
       ]),
     );
   }
@@ -1637,7 +1637,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('No vehicles available',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: textMain)),
+                style: TextStyle(fontWeight: FontWeight.w400, fontSize: 15, color: textMain)),
               const SizedBox(height: 2),
               Text('No vehicles are available for this route right now. Try a different pickup point or check back soon.',
                 style: TextStyle(fontSize: 12, color: textSub)),
@@ -1683,7 +1683,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         const Icon(Icons.directions_rounded, color: _jagoPrimary, size: 18),
         const SizedBox(width: 6),
         Text(widget.category == 'parcel' ? 'Choose Parcel Vehicle' : 'Choose Your Ride',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textMain, letterSpacing: -0.3)),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textMain, letterSpacing: -0.3)),
         const Spacer(),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1692,7 +1692,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: _jagoPrimary.withValues(alpha: 0.25))),
           child: Text('${_allFares.length} options',
-            style: const TextStyle(color: _jagoPrimary, fontSize: 11, fontWeight: FontWeight.w600)),
+            style: const TextStyle(color: _jagoPrimary, fontSize: 11, fontWeight: FontWeight.w400)),
         ),
       ]),
       const SizedBox(height: 8),
@@ -1708,12 +1708,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           const Icon(Icons.route_rounded, size: 13, color: _jagoPrimary),
           const SizedBox(width: 6),
           Text('${_distanceKm.toStringAsFixed(1)} km',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMain)),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: textMain)),
           Text('  ·  ', style: TextStyle(color: textSub, fontSize: 12)),
           Icon(Icons.access_time_rounded, size: 12, color: Colors.grey[400]),
           const SizedBox(width: 4),
           Text('~${(_distanceKm / 25 * 60).ceil()} min',
-            style: TextStyle(fontSize: 12, color: textSub, fontWeight: FontWeight.w600)),
+            style: TextStyle(fontSize: 12, color: textSub, fontWeight: FontWeight.w400)),
           const SizedBox(width: 6),
           Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             Icon(Icons.location_on_rounded, size: 11, color: const Color(0xFF16A34A).withValues(alpha: 0.8)),
@@ -1792,7 +1792,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             Flexible(
                               child: Text(name,
                                 style: TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w400,
                                   fontSize: 15,
                                   color: isSelected ? accent : textMain,
                                   letterSpacing: -0.3,
@@ -1815,7 +1815,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                                 color: isParcel && name.toLowerCase().contains('parcel auto')
                                     ? const Color(0xFFD97706)  // Amber for goods auto
                                     : Colors.grey.shade500,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w400,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -1829,7 +1829,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             Icon(Icons.access_time_rounded, size: 12, color: Colors.grey.shade400),
                             const SizedBox(width: 3),
                             Text('$etaMins min',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w400)),
                             const SizedBox(width: 8),
                             Icon(Icons.circle, size: 3, color: Colors.grey.shade300),
                             const SizedBox(width: 8),
@@ -1844,7 +1844,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             Text('₹${displayFare.toStringAsFixed(0)}',
                               style: TextStyle(
                                 fontSize: 22,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                                 color: accent,
                                 letterSpacing: -0.5,
                               ),
@@ -1861,7 +1861,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: Color(0xFF16A34A),
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w400,
                                   )),
                               ),
                             ],
@@ -1941,7 +1941,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             const Icon(Icons.receipt_long_rounded, size: 16, color: _jagoPrimary),
             const SizedBox(width: 8),
             Text(_isParcel ? 'Delivery Fare Details' : 'Fare Breakdown',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _jagoPrimary)),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: _jagoPrimary)),
             const Spacer(),
             if (isMinFareApplied)
               Container(
@@ -1952,7 +1952,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   border: Border.all(color: JT.primary.withValues(alpha: 0.3)),
                 ),
                 child: const Text('Min fare', style: TextStyle(
-                  fontSize: 10, color: JT.primary, fontWeight: FontWeight.w600)),
+                  fontSize: 10, color: JT.primary, fontWeight: FontWeight.w400)),
               )
             else if (isNight)
               Container(
@@ -1963,7 +1963,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3)),
                 ),
                 child: const Text('Night fare', style: TextStyle(
-                  fontSize: 10, color: Color(0xFF8B5CF6), fontWeight: FontWeight.w600)),
+                  fontSize: 10, color: Color(0xFF8B5CF6), fontWeight: FontWeight.w400)),
               )
             else
               Text('Incl. GST', style: TextStyle(fontSize: 10, color: Colors.grey[400], fontWeight: FontWeight.w500)),
@@ -2004,7 +2004,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   Expanded(child: Text('Helper Charge (loading/unloading)',
                     style: TextStyle(fontSize: 11, color: textSub))),
                   Text('₹${helperCharge.toStringAsFixed(0)}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF10B981))),
                 ]),
               )
             else if (!_isParcel && helperCharge > 0)
@@ -2037,14 +2037,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             // Total row — bold, large, orange
             Row(children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Total Fare', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textMain)),
+                Text('Total Fare', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textMain)),
                 if (minFare > 0 && isMinFareApplied)
                   Text('Min fare applied', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
               ]),
               const Spacer(),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('₹${_finalFare.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _jagoPrimary)),
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w500, color: _jagoPrimary)),
                 Text('incl. GST', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
               ]),
             ]),
@@ -2061,7 +2061,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       child: Row(children: [
         Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: sub))),
         Text(value, style: TextStyle(fontSize: 12,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          fontWeight: bold ? FontWeight.w500 : FontWeight.w500,
           color: positive ? _green : sub)),
       ]),
     );
@@ -2083,7 +2083,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('$_appliedPromo applied!',
-              style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF16A34A), fontSize: 13)),
+              style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF16A34A), fontSize: 13)),
             Text('You save ₹${_promoDiscount.toInt()}',
               style: TextStyle(color: Colors.green[700], fontSize: 12)),
           ])),
@@ -2111,14 +2111,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 hintText: 'Promo code',
                 border: InputBorder.none, isDense: true,
                 hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFADB5BD))),
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: textColor),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 1.5, color: textColor),
             ),
           ),
           GestureDetector(
             onTap: _promoLoading ? null : _applyPromo,
             child: _promoLoading
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _jagoPrimary))
-              : const Text('APPLY', style: TextStyle(color: _jagoPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+              : const Text('APPLY', style: TextStyle(color: _jagoPrimary, fontSize: 13, fontWeight: FontWeight.w400)),
           ),
         ]),
         if (_promoError != null)

@@ -50,7 +50,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w400, color: Colors.white, fontSize: 13)),
       backgroundColor: error ? const Color(0xFFEF4444) : _blue,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -103,7 +103,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
             'Create Account',
             style: GoogleFonts.poppins(
               color: _navy,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               fontSize: 17,
             ),
           ),
@@ -122,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                   'Join JAGO Pro Today',
                   style: GoogleFonts.poppins(
                     fontSize: 26,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: _navy,
                   ),
                 ),
@@ -218,7 +218,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                             'Create Account',
                             style: GoogleFonts.poppins(
                               fontSize: 17,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w400,
                               color: Colors.white,
                               letterSpacing: 0.3,
                             ),
@@ -241,7 +241,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       'Login',
                       style: GoogleFonts.poppins(
                         color: _blue,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                         fontSize: 14,
                       ),
                     ),
@@ -260,7 +260,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       text,
       style: GoogleFonts.poppins(
         fontSize: 13,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w400,
         color: const Color(0xFF475569),
       ),
     );
@@ -283,7 +283,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         controller: controller,
         keyboardType: keyboard,
         textCapitalization: textCap,
-        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
+        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, color: _navy),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),
@@ -308,14 +308,14 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           decoration: const BoxDecoration(
             border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
           ),
-          child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _blue)),
+          child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500, color: _blue)),
         ),
         Expanded(
           child: TextField(
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, color: _navy),
             decoration: InputDecoration(
               hintText: '10-digit mobile number',
               hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),
@@ -343,7 +343,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       child: TextField(
         controller: ctrl,
         obscureText: !show,
-        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy),
+        style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, color: _navy),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF94A3B8)),

@@ -209,7 +209,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             child: Text('No pilots nearby. Try again!',
                 style: GoogleFonts.poppins(
                     color: Colors.white,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     fontSize: 13))),
       ]),
       backgroundColor: const Color(0xFFDC2626),
@@ -430,7 +430,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           const SizedBox(width: 12),
           Expanded(
             child: Text('Search is taking long',
-              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+              style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: JT.textPrimary)),
           ),
         ]),
         content: Text(
@@ -446,7 +446,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               _showCancelDialog();
             },
             child: Text('Cancel Trip',
-              style: GoogleFonts.poppins(color: const Color(0xFFDC2626), fontWeight: FontWeight.w600, fontSize: 13)),
+              style: GoogleFonts.poppins(color: const Color(0xFFDC2626), fontWeight: FontWeight.w400, fontSize: 13)),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -454,7 +454,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               _showBoostFareSheet();
             },
             icon: const Icon(Icons.bolt_rounded, size: 16),
-            label: Text('Boost Fare', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13)),
+            label: Text('Boost Fare', style: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 13)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2F7BFF),
               foregroundColor: Colors.white,
@@ -486,7 +486,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             const Icon(Icons.bolt_rounded, color: Colors.white, size: 16),
             const SizedBox(width: 8),
             Text('Fare boosted by ₹$amount! Searching for pilots...',
-              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w400, fontSize: 13)),
           ]),
           backgroundColor: const Color(0xFF2F7BFF),
           behavior: SnackBarBehavior.floating,
@@ -552,7 +552,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Boost Your Fare',
-                style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: JT.textPrimary)),
+                style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w500, color: JT.textPrimary)),
               Text('Add extra to attract more pilots',
                 style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF6B7280))),
             ])),
@@ -595,7 +595,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
             const SizedBox(height: 4),
             Text('₹$amount',
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
             Text('Boost', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 10)),
           ]),
         ),
@@ -687,7 +687,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         content: Text(
           '₹${walletRefund.toStringAsFixed(0)} refunded to your wallet',
           style:
-              const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              const TextStyle(fontWeight: FontWeight.w500, color: Colors.white),
         ),
         backgroundColor: JT.primary,
         behavior: SnackBarBehavior.floating,
@@ -752,7 +752,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             Text('Cancel Reason',
                 style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: JT.textPrimary)),
           ]),
           const SizedBox(height: 16),
@@ -896,7 +896,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                         Text('Cancel',
                                             style: TextStyle(
                                                 color: JT.primaryDark,
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight: FontWeight.w400,
                                                 fontSize: 13)),
                                       ]),
                                 ),
@@ -930,7 +930,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                         Text('Support',
                                             style: TextStyle(
                                                 color: JT.primary,
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight: FontWeight.w400,
                                                 fontSize: 13)),
                                       ]),
                                 ),
@@ -1037,7 +1037,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               'Finding your Pilot',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                  fontSize: 17, fontWeight: FontWeight.w600, color: color),
+                  fontSize: 17, fontWeight: FontWeight.w400, color: color),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1060,7 +1060,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                     style: GoogleFonts.poppins(
                         color: JT.primary,
                         fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w400)),
               ]),
             ),
             const SizedBox(height: 12),
@@ -1081,7 +1081,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                   const Icon(Icons.bolt_rounded, color: Colors.white, size: 15),
                   const SizedBox(width: 6),
                   Text(_boostLoading ? 'Boosting...' : 'Boost Fare',
-                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
                 ]),
               ),
             ),
@@ -1115,7 +1115,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 color: color,
                 height: 1.3),
           ),
@@ -1127,7 +1127,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.poppins(
-                  color: _green, fontSize: 11, fontWeight: FontWeight.w600),
+                  color: _green, fontSize: 11, fontWeight: FontWeight.w400),
             ),
         ])),
         if (_status != 'completed' && _status != 'cancelled')
@@ -1146,7 +1146,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                     style: GoogleFonts.poppins(
                         color: JT.primary,
                         fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                        fontWeight: FontWeight.w500)),
               ]),
             ),
           ),
@@ -1189,7 +1189,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                 name.isNotEmpty ? name[0].toUpperCase() : 'P',
                                 style: const TextStyle(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     fontSize: 22))),
                       ),
                     )
@@ -1197,7 +1197,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P',
                           style: const TextStyle(
                               color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 22))),
             ),
             const SizedBox(width: 12),
@@ -1210,7 +1210,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 15,
                       color: JT.textPrimary,
                       letterSpacing: -0.3,
@@ -1225,7 +1225,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                         style: TextStyle(
                             color: JT.textSecondary,
                             fontSize: 12,
-                            fontWeight: FontWeight.w700)),
+                            fontWeight: FontWeight.w500)),
                     if (vehicleName.isNotEmpty) ...[
                       const SizedBox(width: 8),
                       Flexible(
@@ -1242,7 +1242,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                             style: TextStyle(
                                 color: _blue,
                                 fontSize: 10,
-                                fontWeight: FontWeight.w600),
+                                fontWeight: FontWeight.w400),
                           ),
                         ),
                       ),
@@ -1325,7 +1325,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       style: TextStyle(
                           color: _blue,
                           fontSize: 11,
-                          fontWeight: FontWeight.w700))),
+                          fontWeight: FontWeight.w500))),
               if (_status != 'in_progress' && _status != 'completed') ...[
                 const SizedBox(width: 8),
                 Icon(Icons.access_time_rounded, color: _blue, size: 13),
@@ -1337,7 +1337,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                     style: TextStyle(
                         color: _blue,
                         fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                        fontWeight: FontWeight.w500)),
               ],
             ]),
           ),
@@ -1367,7 +1367,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('🚨 SOS Alert',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+            style: TextStyle(fontWeight: FontWeight.w500)),
         content: const Text(
             'Send an Emergency SOS? Our help team will contact you immediately.'),
         actions: [
@@ -1379,7 +1379,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Send SOS',
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold))),
+                      color: Colors.white, fontWeight: FontWeight.w500))),
         ],
       ),
     );
@@ -1397,7 +1397,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('🚨 SOS Alert sent! Help is on the way.',
-            style: TextStyle(fontWeight: FontWeight.w600)),
+            style: TextStyle(fontWeight: FontWeight.w400)),
         backgroundColor: JT.primary,
         behavior: SnackBarBehavior.floating,
       ));
@@ -1405,7 +1405,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('SOS failed. Call 100 immediately!',
-            style: TextStyle(fontWeight: FontWeight.w600)),
+            style: TextStyle(fontWeight: FontWeight.w400)),
         backgroundColor: JT.primaryDark,
         behavior: SnackBarBehavior.floating,
       ));
@@ -1435,13 +1435,13 @@ class _TrackingScreenState extends State<TrackingScreen>
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Share this OTP with Pilot',
               style: TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 11,
                   color: JT.primary)),
           Text(otp,
               style: TextStyle(
                   fontSize: 30,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: JT.primary,
                   letterSpacing: 10)),
         ])),
@@ -1450,7 +1450,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             Clipboard.setData(ClipboardData(text: otp));
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: const Text('OTP copied!',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontWeight: FontWeight.w400)),
               backgroundColor: JT.primary,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
@@ -1498,7 +1498,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         const SizedBox(width: 5),
         Text(label,
             style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+                fontSize: 12, fontWeight: FontWeight.w500, color: color)),
       ]),
     );
   }
@@ -1543,7 +1543,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           const SizedBox(height: 12),
           Text('Trip Completed!',
               style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                   fontSize: 18,
                   color: JT.textPrimary)),
           if (actualFare != null) ...[
@@ -1558,7 +1558,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                 child: Text('₹$actualFare',
                     style: GoogleFonts.poppins(
                         fontSize: 32,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: JT.primary))),
           ],
           // Wallet insufficient — show "pay remaining" banner
@@ -1582,7 +1582,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       const SizedBox(width: 8),
                       Text('Wallet Insufficient',
                           style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w400,
                               fontSize: 13,
                               color: JT.primaryDark)),
                     ]),
@@ -1611,7 +1611,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                   children: [
                     Text('Payment Receipt',
                         style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             fontSize: 12,
                             color: const Color(0xFF6B7280))),
                     const SizedBox(height: 8),
@@ -1675,7 +1675,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 13,
                             color: const Color(0xFF374151),
-                            fontWeight: FontWeight.w600),
+                            fontWeight: FontWeight.w400),
                         textAlign: TextAlign.center),
                     const SizedBox(height: 10),
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -1706,7 +1706,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                         style: GoogleFonts.poppins(
                             color: JT.primary,
                             fontSize: 13,
-                            fontWeight: FontWeight.w700)),
+                            fontWeight: FontWeight.w500)),
                   ]),
           ),
         ]),
@@ -1723,7 +1723,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             color: JT.primary, size: 18),
         label: Text('Tip your Pilot',
             style: GoogleFonts.poppins(
-                color: JT.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                color: JT.primary, fontWeight: FontWeight.w500, fontSize: 13)),
         style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 46),
             side: const BorderSide(color: JT.primary, width: 1.5),
@@ -1755,7 +1755,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           Text(value,
               style: GoogleFonts.poppins(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: valueColor ?? const Color(0xFF111827))),
         ],
       ),
@@ -1775,7 +1775,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         const SizedBox(width: 4),
         Text(label,
             style: GoogleFonts.poppins(
-                fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+                fontSize: 11, fontWeight: FontWeight.w500, color: color)),
       ]),
     );
   }
@@ -1821,7 +1821,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                   style: GoogleFonts.poppins(
                     color: noDriver ? JT.primaryDark : JT.textPrimary,
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1867,7 +1867,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                     style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w400)),
               ])),
             ),
           ),
@@ -1893,7 +1893,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       style: GoogleFonts.poppins(
                           color: JT.textSecondary,
                           fontSize: 13,
-                          fontWeight: FontWeight.w700))),
+                          fontWeight: FontWeight.w500))),
             ),
           ),
         ),
@@ -1921,7 +1921,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                 children: [
               Text('Pilot Found!',
                   style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 14,
                       color: Colors.white)),
               Text('Your pilot is on the way to you',
@@ -1957,7 +1957,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                 children: [
               Text('Pilot has arrived!',
                   style: TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 14,
                       color: Colors.white)),
               Text('Share your OTP to start the trip',

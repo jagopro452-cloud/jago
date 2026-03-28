@@ -40,7 +40,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w400)),
       backgroundColor: error ? const Color(0xFFE53935) : _blue,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -129,7 +129,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white, elevation: 0,
           leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1A1A2E)), onPressed: () => Navigator.pop(context)),
-          title: const Text('Forgot Password', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700)),
+          title: const Text('Forgot Password', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w500)),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -143,22 +143,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Icon(Icons.lock_reset_rounded, size: 56, color: JT.primary),
       const SizedBox(height: 16),
-      Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.grey[900])),
+      Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: Colors.grey[900])),
       const SizedBox(height: 8),
       Text('Enter your registered phone number. We\'ll send you a 6-digit OTP.', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
       const SizedBox(height: 32),
-      Text('Phone Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[700])),
+      Text('Phone Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[700])),
       const SizedBox(height: 8),
       Container(
         decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('+91', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('+91', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500))),
           Container(width: 1, height: 24, color: Colors.grey[300]),
           Expanded(child: TextField(
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
             decoration: const InputDecoration(hintText: 'Enter 10-digit number', border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
           )),
         ]),
@@ -169,7 +169,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         child: ElevatedButton(
           onPressed: _loading ? null : _sendOtp,
           style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Send Reset OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Send Reset OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
         ),
       ),
     ]);
@@ -179,11 +179,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Icon(Icons.sms_rounded, size: 56, color: JT.primary),
       const SizedBox(height: 16),
-      Text('Enter OTP', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.grey[900])),
+      Text('Enter OTP', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: Colors.grey[900])),
       const SizedBox(height: 8),
       Text('OTP sent to +91${_phoneCtrl.text}', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
       const SizedBox(height: 28),
-      Text('6-Digit OTP', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[700])),
+      Text('6-Digit OTP', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[700])),
       const SizedBox(height: 8),
       Container(
         decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
@@ -192,7 +192,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, letterSpacing: 8),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: 8),
           decoration: const InputDecoration(hintText: '------', border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 16)),
         ),
       ),
@@ -201,7 +201,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Center(child: Text('Resend in ${_seconds}s', style: TextStyle(color: Colors.grey[400], fontSize: 13))),
       ] else ...[
         const SizedBox(height: 8),
-        Center(child: GestureDetector(onTap: _sendOtp, child: Text('Resend OTP', style: TextStyle(color: _blue, fontWeight: FontWeight.w700, fontSize: 13)))),
+        Center(child: GestureDetector(onTap: _sendOtp, child: Text('Resend OTP', style: TextStyle(color: _blue, fontWeight: FontWeight.w500, fontSize: 13)))),
       ],
       const SizedBox(height: 32),
       SizedBox(
@@ -209,7 +209,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         child: ElevatedButton(
           onPressed: _loading ? null : _verifyOtpStep,
           style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Verify OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Verify OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
         ),
       ),
     ]);
@@ -219,18 +219,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Icon(Icons.lock_reset_rounded, size: 56, color: JT.primary),
       const SizedBox(height: 16),
-      Text('Set New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.grey[900])),
+      Text('Set New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: Colors.grey[900])),
       const SizedBox(height: 8),
       Text('Phone verified. Set your new password.', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
       const SizedBox(height: 28),
-      Text('New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[700])),
+      Text('New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[700])),
       const SizedBox(height: 8),
       Container(
         decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
         child: TextField(
           controller: _newPassCtrl,
           obscureText: !_showNewPass,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
           decoration: InputDecoration(
             hintText: 'Create new password',
             border: InputBorder.none,
@@ -241,14 +241,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
       ),
       const SizedBox(height: 16),
-      Text('Confirm Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[700])),
+      Text('Confirm Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[700])),
       const SizedBox(height: 8),
       Container(
         decoration: BoxDecoration(color: const Color(0xFFF5F7FA), borderRadius: BorderRadius.circular(14)),
         child: TextField(
           controller: _confirmCtrl,
           obscureText: !_showConfirm,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
           decoration: InputDecoration(
             hintText: 'Re-enter new password',
             border: InputBorder.none,
@@ -264,7 +264,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         child: ElevatedButton(
           onPressed: _loading ? null : _resetPassword,
           style: ElevatedButton.styleFrom(backgroundColor: _blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Reset Password', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Reset Password', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
         ),
       ),
     ]);

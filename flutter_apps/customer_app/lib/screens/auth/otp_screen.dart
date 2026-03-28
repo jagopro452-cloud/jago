@@ -100,7 +100,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w400, color: Colors.white, fontSize: 13)),
       backgroundColor: error ? const Color(0xFFEF4444) : _blue,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -178,7 +178,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 22,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -233,7 +233,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           'Enter 6-digit OTP',
                           style: GoogleFonts.poppins(
                             fontSize: 20,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w400,
                             color: _navy,
                           ),
                         ),
@@ -272,7 +272,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           enableActiveFill: true,
                           textStyle: GoogleFonts.poppins(
                             fontSize: 22,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w400,
                             color: _navy,
                           ),
                           onCompleted: (_) => _verify(),
@@ -295,7 +295,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                       text: '${_seconds}s',
                                       style: GoogleFonts.poppins(
                                         color: _blue,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                         fontSize: 13,
                                       ),
                                     ),
@@ -318,7 +318,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                   'Resend OTP',
                                   style: GoogleFonts.poppins(
                                     color: _blue,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -364,7 +364,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                     'Verify & Continue',
                                     style: GoogleFonts.poppins(
                                       fontSize: 15,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w400,
                                       color: Colors.white,
                                       letterSpacing: 0.1,
                                     ),
@@ -383,7 +383,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                               '← Change Phone Number',
                               style: GoogleFonts.poppins(
                                 color: const Color(0xFF94A3B8),
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w400,
                                 fontSize: 13,
                               ),
                             ),

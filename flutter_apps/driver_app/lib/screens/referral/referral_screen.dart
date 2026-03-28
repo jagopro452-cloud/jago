@@ -105,7 +105,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
       appBar: AppBar(
         backgroundColor: _surface,
         foregroundColor: Colors.white,
-        title: const Text('Refer & Earn', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Refer & Earn', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
       ),
       body: _loading
@@ -136,7 +136,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           const Icon(Icons.group_add_rounded, color: Colors.white, size: 50),
                           const SizedBox(height: 12),
                           const Text('Fellow Pilots ని Refer చేయండి!',
-                              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 6),
                           const Text(
                             'ప్రతి successful referral కి మీకు bonus లభిస్తుంది',
@@ -159,7 +159,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w500,
                                     letterSpacing: 3,
                                   ),
                                 ),
@@ -218,7 +218,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
                     // How it works
                     const Text('ఎలా పని చేస్తుంది?',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
                     const SizedBox(height: 12),
                     Container(
                       decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(16)),
@@ -238,7 +238,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     // History
                     if (_referrals.isNotEmpty) ...[
                       const Text('Referral History',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
                       const SizedBox(height: 12),
                       Container(
                         decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(16)),
@@ -258,16 +258,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 child: const Icon(Icons.drive_eta_rounded, color: Colors.blue, size: 20),
                               ),
                               title: const Text('Driver Referral',
-                                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
+                                  style: TextStyle(fontWeight: FontWeight.w400, color: Colors.white, fontSize: 14)),
                               subtitle: Text(status.toUpperCase(),
-                                  style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w500)),
                               trailing: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text('₹${amount.toStringAsFixed(0)}',
                                       style: TextStyle(color: amount > 0 ? Colors.green : Colors.white38,
-                                          fontWeight: FontWeight.bold, fontSize: 15)),
+                                          fontWeight: FontWeight.w500, fontSize: 15)),
                                   Text(_timeAgo(r['created_at']?.toString()),
                                       style: const TextStyle(color: Colors.white38, fontSize: 10)),
                                 ],
@@ -300,7 +300,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: Colors.white)),
               Text(label, style: const TextStyle(fontSize: 11, color: Colors.white38)),
             ],
           ),
@@ -317,7 +317,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           Container(
             width: 32, height: 32,
             decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
-            child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14))),
+            child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.w500, fontSize: 14))),
           ),
           const SizedBox(width: 14),
           Icon(icon, color: color, size: 22),

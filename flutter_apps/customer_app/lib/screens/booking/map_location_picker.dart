@@ -477,7 +477,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           Expanded(
             child: Text(
               widget.title,
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: JT.textPrimary),
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: JT.textPrimary),
             ),
           ),
           IconButton(

@@ -212,7 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Icon(icon, size: 20, color: selected ? Colors.white : JT.textSecondary),
             const SizedBox(height: 4),
             Text(label, style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w600,
+              fontSize: 12, fontWeight: FontWeight.w400,
               color: selected ? Colors.white : JT.textSecondary,
             )),
           ]),
@@ -230,7 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(children: [
           const Icon(Icons.warning_rounded, color: Colors.red, size: 22),
           const SizedBox(width: 8),
-          Text('Delete Account', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
+          Text('Delete Account', style: TextStyle(color: textColor, fontWeight: FontWeight.w400)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Choose how you want to delete your account:',
@@ -244,7 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 builder: (_) => AlertDialog(
                   backgroundColor: cardBg,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  title: Text('Deactivate Account?', style: TextStyle(color: textColor, fontWeight: FontWeight.w700)),
+                  title: Text('Deactivate Account?', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
                   content: Text('Your account will be deactivated. You can reactivate it by contacting support.',
                     style: TextStyle(color: subColor, fontSize: 13)),
                   actions: [
@@ -270,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 builder: (_) => AlertDialog(
                   backgroundColor: cardBg,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  title: const Text('Permanently Delete?', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
+                  title: const Text('Permanently Delete?', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
                   content: Text('This will permanently delete all your data including trip history, wallet balance, and personal information. This cannot be undone.',
                     style: TextStyle(color: subColor, fontSize: 13)),
                   actions: [
@@ -325,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: () => Navigator.pop(context)),
         title: Text('My Profile',
             style: TextStyle(
-                color: textColor, fontWeight: FontWeight.w700, fontSize: 17)),
+                color: textColor, fontWeight: FontWeight.w500, fontSize: 17)),
         actions: [
           if (!_editing)
             TextButton.icon(
@@ -334,7 +334,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: accentColor, size: 18),
               label: Text('Edit',
                   style: TextStyle(
-                      color: accentColor, fontWeight: FontWeight.w600)),
+                      color: accentColor, fontWeight: FontWeight.w400)),
             )
           else ...[
             TextButton(
@@ -357,7 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : Text('Save',
                       style: TextStyle(
                           color: accentColor,
-                          fontWeight: FontWeight.w700)),
+                          fontWeight: FontWeight.w500)),
             ),
           ],
         ],
@@ -385,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             style: TextStyle(
                                 color: accentColor,
                                 fontSize: 36,
-                                fontWeight: FontWeight.bold),
+                                fontWeight: FontWeight.w500),
                           ),
                         ),
                         if (_editing)
@@ -411,7 +411,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(_name,
                           style: TextStyle(
                               fontSize: 20,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w400,
                               color: textColor)),
                       const SizedBox(height: 4),
                       Text('+91 $_phone',
@@ -430,7 +430,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(width: 4),
                         Text(_rating.toStringAsFixed(1),
                             style: TextStyle(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w500,
                                 color: textColor,
                                 fontSize: 15)),
                         Text(' rating',
@@ -499,7 +499,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         } else {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text('Support: $phone', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            content: Text('Support: $phone', style: const TextStyle(fontWeight: FontWeight.w400)),
                             backgroundColor: Colors.green,
                             behavior: SnackBarBehavior.floating,
                           ));
@@ -588,7 +588,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Text(label,
           style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
               color: textColor.withValues(alpha: 0.5),
               letterSpacing: 0.8)),
       const SizedBox(height: 4),
@@ -625,7 +625,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 6),
         Text(value,
             style: const TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 fontSize: 13,
                 color: Color(0xFF111827))),
         Text(label,
@@ -689,7 +689,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const Icon(Icons.translate_rounded, color: JT.primary, size: 22),
                   const SizedBox(width: 10),
                   Text(L.tr('choose_language'),
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor)),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w400, color: textColor)),
                 ]),
                 const SizedBox(height: 6),
                 Text('App language will change immediately',
@@ -726,7 +726,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(width: 14),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(lang['name']!,
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
+                              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15,
                                 color: isSelected ? JT.primary : textColor)),
                             Text(lang['nativeName']!,
                               style: TextStyle(fontSize: 12, color: subColor)),

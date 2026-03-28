@@ -80,13 +80,13 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Ride Preferences', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Ride Preferences', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 16)),
+                : const Text('Save', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w500, fontSize: 16)),
           ),
         ],
       ),
@@ -99,18 +99,18 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
                 children: [
                   _banner(),
                   const SizedBox(height: 16),
-                  const Text('Comfort Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text('Comfort Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   _prefCard('Quiet Ride', 'No unnecessary conversation', Icons.volume_off, _quietRide, (v) => setState(() => _quietRide = v)),
                   _prefCard('AC Preferred', 'AC on during ride', Icons.ac_unit, _acPreferred, (v) => setState(() => _acPreferred = v)),
                   _prefCard('Music Off', 'Prefer silence during ride', Icons.music_off, _musicOff, (v) => setState(() => _musicOff = v)),
                   const SizedBox(height: 16),
-                  const Text('Special Requirements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text('Special Requirements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   _prefCard('Wheelchair Accessible', 'Need accessible vehicle', Icons.accessible, _wheelchairAccessible, (v) => setState(() => _wheelchairAccessible = v)),
                   _prefCard('Extra Luggage', 'Have large bags / extra luggage', Icons.luggage, _extraLuggage, (v) => setState(() => _extraLuggage = v)),
                   const SizedBox(height: 16),
-                  const Text('Driver Preference', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text('Driver Preference', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -118,7 +118,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Preferred Driver Gender', style: TextStyle(fontWeight: FontWeight.w600)),
+                        const Text('Preferred Driver Gender', style: TextStyle(fontWeight: FontWeight.w400)),
                         const SizedBox(height: 12),
                         Row(children: [
                           _genderChoice('any', 'No Preference', Icons.people),
@@ -155,7 +155,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
                       ),
                       child: _saving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('Save Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('Save Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                     ),
                   ),
                 ],
@@ -193,7 +193,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
       Expanded(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w400)),
           Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       )),
@@ -215,7 +215,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
           children: [
             Icon(icon, color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.grey, size: 20),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.grey, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+            Text(label, style: TextStyle(fontSize: 10, color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.grey, fontWeight: FontWeight.w400), textAlign: TextAlign.center),
           ],
         ),
       ),

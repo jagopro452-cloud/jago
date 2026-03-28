@@ -71,7 +71,7 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        title: const Text('Saved Places', style: TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
+        title: const Text('Saved Places', style: TextStyle(fontWeight: FontWeight.w500, color: JT.textPrimary)),
         actions: [IconButton(icon: const Icon(Icons.add, color: Color(0xFF2563EB)), onPressed: _addPlace)],
       ),
       body: _loading
@@ -104,7 +104,7 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
                         Container(width: 44, height: 44, decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: const Color(0xFF2563EB), size: 20)),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: JT.textPrimary)),
+                          Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: JT.textPrimary)),
                           Text(p['address'] ?? '', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                         ])),
                         IconButton(

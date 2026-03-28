@@ -98,7 +98,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 32,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -198,7 +198,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                               'Continue',
                               style: TextStyle(
                                 fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w500,
                                 color: Colors.white,
                               ),
                             ),
@@ -271,7 +271,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -287,7 +287,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                               style: TextStyle(
                                 color: badgeColor,
                                 fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),

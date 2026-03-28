@@ -554,7 +554,7 @@ class _LocationScreenState extends State<LocationScreen>
               _isParcel ? 'Send Parcel' : 'Book a Ride',
               style: GoogleFonts.poppins(
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 color: JT.textPrimary,
                 letterSpacing: -0.5,
               ),
@@ -593,7 +593,7 @@ class _LocationScreenState extends State<LocationScreen>
               style: GoogleFonts.poppins(
                 color: _accent,
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ]),
@@ -672,7 +672,7 @@ class _LocationScreenState extends State<LocationScreen>
                                 ? JT.textSecondary
                                 : JT.textPrimary,
                             fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w400,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -740,7 +740,7 @@ class _LocationScreenState extends State<LocationScreen>
                   style: GoogleFonts.poppins(
                     color: JT.textPrimary,
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                   ),
                   decoration: InputDecoration.collapsed(
                     hintText: _isParcel
@@ -847,7 +847,7 @@ class _LocationScreenState extends State<LocationScreen>
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -893,7 +893,7 @@ class _LocationScreenState extends State<LocationScreen>
             label,
             style: GoogleFonts.poppins(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: isDestructive
                   ? const Color(0xFFEF4444)
                   : JT.primary,
@@ -941,7 +941,7 @@ class _LocationScreenState extends State<LocationScreen>
             style: GoogleFonts.poppins(
               color: JT.textPrimary,
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
             ),
             decoration: InputDecoration.collapsed(
               hintText: 'Add a stop along the way',
@@ -1034,7 +1034,7 @@ class _LocationScreenState extends State<LocationScreen>
           style: GoogleFonts.poppins(
             color: JT.textSecondary,
             fontSize: 11,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             letterSpacing: 0.5,
           ),
         ),
@@ -1082,7 +1082,7 @@ class _LocationScreenState extends State<LocationScreen>
               style: GoogleFonts.poppins(
                 color: JT.textPrimary,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

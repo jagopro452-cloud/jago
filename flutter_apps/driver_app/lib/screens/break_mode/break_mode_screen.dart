@@ -115,7 +115,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
         backgroundColor: const Color(0xFF0d1b2e),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Break Mode', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Break Mode', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
@@ -141,18 +141,18 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
             children: [
               const Icon(Icons.coffee, color: Colors.amber, size: 40),
               const SizedBox(height: 8),
-              Text('$_minutesLeft', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.bold)),
+              Text('$_minutesLeft', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w500)),
               const Text('min left', style: TextStyle(color: Colors.grey, fontSize: 14)),
             ],
           ),
         ),
         const SizedBox(height: 32),
-        const Text('You\'re on break', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('You\'re on break', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         const Text('No new trips will be assigned.\nWe\'ll auto go-online after break.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
         if (_breakUntil != null) ...[
           const SizedBox(height: 12),
-          Text('Back at: ${_breakUntil!.substring(11, 16)}', style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold)),
+          Text('Back at: ${_breakUntil!.substring(11, 16)}', style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w500)),
         ],
         const SizedBox(height: 40),
         SizedBox(
@@ -162,7 +162,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
             icon: const Icon(Icons.play_arrow),
             label: _settingBreak
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('End Break Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                : const Text('End Break Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -190,7 +190,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Taking a break?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Taking a break?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
                 SizedBox(height: 4),
                 Text('Set your break time. No rides assigned during break.', style: TextStyle(color: Colors.grey, fontSize: 13)),
               ],
@@ -198,7 +198,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
           ]),
         ),
         const SizedBox(height: 32),
-        const Text('How long?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text('How long?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
         const SizedBox(height: 16),
         Wrap(
           spacing: 10,
@@ -214,7 +214,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
               ),
               child: Text('$m min', style: TextStyle(
                 color: _selectedMinutes == m ? Colors.white : Colors.grey,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w500,
               )),
             ),
           )).toList(),
@@ -242,7 +242,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
             icon: const Icon(Icons.coffee),
             label: _settingBreak
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text('Start $_selectedMinutes min Break', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                : Text('Start $_selectedMinutes min Break', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,

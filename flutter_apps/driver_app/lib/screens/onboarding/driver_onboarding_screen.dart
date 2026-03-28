@@ -165,7 +165,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
                           child: Text('Skip', style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600, fontSize: 14, color: _textSecondary,
+                            fontWeight: FontWeight.w400, fontSize: 14, color: _textSecondary,
                           )),
                         )
                       else
@@ -220,7 +220,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                             Text(
                               isLast ? 'Start Driving' : 'Continue',
                               style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w400,
                                 fontSize: 16,
                                 color: Colors.black,
                               ),
@@ -296,7 +296,7 @@ class _SlidePage extends StatelessWidget {
                 ),
                 child: Text(slide.label, style: GoogleFonts.poppins(
                   color: slide.neonColor,
-                  fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 2.5,
+                  fontSize: 11, fontWeight: FontWeight.w400, letterSpacing: 2.5,
                 )),
               ),
 
@@ -305,7 +305,7 @@ class _SlidePage extends StatelessWidget {
               // Title
               Text(slide.title, style: GoogleFonts.poppins(
                 color: Colors.white, fontSize: 34,
-                fontWeight: FontWeight.w700, height: 1.1, letterSpacing: -0.5,
+                fontWeight: FontWeight.w500, height: 1.1, letterSpacing: -0.5,
               )),
 
               const SizedBox(height: 16),
@@ -334,7 +334,7 @@ class _SlidePage extends StatelessWidget {
                   const SizedBox(width: 14),
                   Text(f, style: GoogleFonts.poppins(
                     color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: 14, fontWeight: FontWeight.w600,
+                    fontSize: 14, fontWeight: FontWeight.w400,
                   )),
                 ]),
               )),

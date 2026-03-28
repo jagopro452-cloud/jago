@@ -91,7 +91,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  const Text('Report Lost Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('Report Lost Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                 ]),
                 const SizedBox(height: 8),
@@ -105,7 +105,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
                   ]),
                 ),
                 const SizedBox(height: 16),
-                const Text('What did you lose?', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('What did you lose?', style: TextStyle(fontWeight: FontWeight.w400)),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _descCtrl,
@@ -118,7 +118,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
                   validator: (v) => v == null || v.isEmpty ? 'Please describe the item' : null,
                 ),
                 const SizedBox(height: 12),
-                const Text('Contact Phone', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('Contact Phone', style: TextStyle(fontWeight: FontWeight.w400)),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _phoneCtrl,
@@ -143,7 +143,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
                     ),
                     child: _submitting
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Submit Report', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        : const Text('Submit Report', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
                   ),
                 ),
               ],
@@ -162,7 +162,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Lost & Found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Lost & Found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showReportSheet,
@@ -178,7 +178,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    const Text('Your Reports', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('Your Reports', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 12),
                     ..._reports.map((r) => _reportCard(r)),
                   ],
@@ -194,7 +194,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
         child: const Icon(Icons.search, size: 64, color: Color(0xFF2563EB)),
       ),
       const SizedBox(height: 16),
-      const Text('Lost something?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      const Text('Lost something?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
       const SizedBox(height: 8),
       const Text('Report lost items from your recent\nrides and we\'ll help you find them.',
           textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
@@ -216,11 +216,11 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
           Row(children: [
             const Icon(Icons.inventory_2_outlined, color: Color(0xFF2563EB), size: 20),
             const SizedBox(width: 8),
-            Expanded(child: Text(r['description'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
+            Expanded(child: Text(r['description'] ?? '', style: const TextStyle(fontWeight: FontWeight.w400), maxLines: 2, overflow: TextOverflow.ellipsis)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-              child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+              child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w500)),
             ),
           ]),
           if (r['pickupAddress'] != null) ...[

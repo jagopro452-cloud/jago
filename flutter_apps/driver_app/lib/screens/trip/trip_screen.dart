@@ -263,7 +263,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           backgroundColor: JT.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text('Trip Cancelled',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400)),
           content: Text('Customer cancelled the trip.',
             style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 14)),
           actions: [
@@ -275,7 +275,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 Navigator.pushAndRemoveUntil(context,
                   MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
               },
-              child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w500)),
             ),
           ],
         ),
@@ -617,7 +617,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Enter Customer OTP',
-                  style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 18)),
+                  style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 18)),
                 Text('Ask customer for OTP shown in JAGO Pro app',
                   style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
               ])),
@@ -636,7 +636,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
                 autofocus: true,
-                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: 12),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 32, fontWeight: FontWeight.w500, letterSpacing: 12),
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: '——————',
@@ -656,7 +656,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 onPressed: () => Navigator.pop(ctx),
-                child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)))),
+                child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w400)))),
               const SizedBox(width: 12),
               Expanded(flex: 2, child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -670,7 +670,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   await _verifyOtpAndStart(otp);
                 },
                 child: Text('Verify & Start Trip →',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14)))),
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 14)))),
             ]),
           ]),
         ),
@@ -739,7 +739,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 child: const Icon(Icons.camera_alt_rounded, color: JT.primary, size: 26)),
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Pickup Photo', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 15)),
+                Text('Pickup Photo', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 15)),
                 Text('Capture for ride security', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
               ])),
             ]),
@@ -753,7 +753,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: () => Navigator.pop(context),
-              child: Text('Skip', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)))),
+              child: Text('Skip', style: GoogleFonts.poppins(fontWeight: FontWeight.w400)))),
             const SizedBox(width: 12),
             Expanded(flex: 2, child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
@@ -761,7 +761,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0),
               icon: const Icon(Icons.camera_alt_rounded, size: 18),
-              label: Text('Take Photo', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              label: Text('Take Photo', style: GoogleFonts.poppins(fontWeight: FontWeight.w400)),
               onPressed: () { Navigator.pop(context); _captureAndUploadPhoto(tripId); })),
           ]),
         ]),
@@ -828,7 +828,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               child: const Icon(Icons.check_rounded, color: JT.success, size: 44)),
             const SizedBox(height: 16),
             Text('Trip Complete!',
-              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 22, fontWeight: FontWeight.w700)),
+              style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 22, fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
             Text('Great job! Ride completed successfully.',
               style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
@@ -844,10 +844,10 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 boxShadow: JT.btnShadow,
               ),
               child: Column(children: [
-                Text('YOUR EARNINGS', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                Text('YOUR EARNINGS', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 1.5)),
                 const SizedBox(height: 6),
                 Text('₹${netEarnings.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w700, height: 1.1)),
+                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w500, height: 1.1)),
                 const SizedBox(height: 12),
                 Container(height: 1, color: Colors.white24),
                 const SizedBox(height: 12),
@@ -876,7 +876,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   const SizedBox(width: 14),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('Collect ₹${fullFare.toStringAsFixed(0)} Cash',
-                      style: GoogleFonts.poppins(color: JT.success, fontWeight: FontWeight.w600, fontSize: 15)),
+                      style: GoogleFonts.poppins(color: JT.success, fontWeight: FontWeight.w400, fontSize: 15)),
                     Text('Platform fee ₹${commissionAmt.toStringAsFixed(0)} deducted from your wallet',
                       style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
                   ])),
@@ -894,7 +894,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   const SizedBox(width: 14),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('₹${netEarnings.toStringAsFixed(0)} added to wallet',
-                      style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600, fontSize: 15)),
+                      style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w400, fontSize: 15)),
                     Text(pm == 'wallet' ? 'Customer wallet deducted' : 'Customer paid online',
                       style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
                   ])),
@@ -911,11 +911,11 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                     const Icon(Icons.star_rounded, color: Colors.amber, size: 22),
                     const SizedBox(width: 8),
                     Text('Thank you for rating!',
-                      style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w600)),
+                      style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w400)),
                   ])
                 : Column(children: [
                     Text('Rate this customer',
-                      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
+                      style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 10),
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       for (int i = 1; i <= 5; i++)
@@ -953,7 +953,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                     MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
                 },
                 child: Text('Back to Home →',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16))),
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 16))),
             ),
           ])),
         ),
@@ -963,8 +963,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
 
   Widget _completionStat(String label, String value) {
     return Column(children: [
-      Text(value, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-      Text(label, style: GoogleFonts.poppins(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w600)),
+      Text(value, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w400, fontSize: 15)),
+      Text(label, style: GoogleFonts.poppins(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400)),
     ]);
   }
 
@@ -990,7 +990,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(color: JT.error.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.cancel_rounded, color: JT.error, size: 20)),
             const SizedBox(width: 12),
-            Text('Cancel Reason', style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
+            Text('Cancel Reason', style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 17, fontWeight: FontWeight.w400)),
           ]),
           const SizedBox(height: 12),
           ...reasons.map((r) => ListTile(
@@ -1021,7 +1021,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(color: JT.warning.withValues(alpha: 0.10), shape: BoxShape.circle),
               child: const Icon(Icons.local_shipping_rounded, color: JT.warning, size: 32)),
             const SizedBox(height: 16),
-            Text('Delivery OTP', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 18)),
+            Text('Delivery OTP', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 18)),
             const SizedBox(height: 4),
             Text('Ask receiver for OTP to confirm delivery',
               style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13), textAlign: TextAlign.center),
@@ -1033,7 +1033,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 controller: ctrl, keyboardType: TextInputType.number, maxLength: 6,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: 10),
+                style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 28, fontWeight: FontWeight.w500, letterSpacing: 10),
                 decoration: InputDecoration(counterText: '',
                   hintText: '------', hintStyle: GoogleFonts.poppins(color: JT.iconInactive, letterSpacing: 10, fontSize: 24),
                   border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 16)),
@@ -1044,7 +1044,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 onPressed: () => Navigator.pop(ctx),
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                child: Text('Cancel', style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w600)))),
+                child: Text('Cancel', style: GoogleFonts.poppins(color: JT.textSecondary, fontWeight: FontWeight.w400)))),
               const SizedBox(width: 12),
               Expanded(child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -1057,7 +1057,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   Navigator.pop(ctx);
                   await _verifyDeliveryOtp(otp);
                 },
-                child: Text('Verify ✓', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)))),
+                child: Text('Verify ✓', style: GoogleFonts.poppins(fontWeight: FontWeight.w400)))),
             ]),
           ]),
         ),
@@ -1131,7 +1131,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       builder: (_) => AlertDialog(
         backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('SOS Alert', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text('SOS Alert', style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w500)),
         content: Text('Emergency SOS send చేయాలా? Help team contact అవుతారు.',
           style: GoogleFonts.poppins(color: JT.textSecondary)),
         actions: [
@@ -1140,7 +1140,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: JT.error),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            child: const Text('SOS పంపు', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
         ]));
     if (confirm != true) return;
     final h = await AuthService.getHeaders();
@@ -1160,7 +1160,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w400, color: Colors.white)),
       backgroundColor: error ? JT.error : JT.primary,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1290,7 +1290,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(stepInfo['label'] as String,
-            style: GoogleFonts.poppins(color: barColor, fontSize: 14, fontWeight: FontWeight.w600)),
+            style: GoogleFonts.poppins(color: barColor, fontSize: 14, fontWeight: FontWeight.w400)),
           const SizedBox(height: 2),
           Text(
             isOnTheWay ? dest : pickup,
@@ -1310,7 +1310,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               Container(width: 7, height: 7,
                 decoration: const BoxDecoration(color: JT.success, shape: BoxShape.circle)),
               const SizedBox(width: 4),
-              Text('LIVE', style: GoogleFonts.poppins(color: JT.success, fontSize: 9, fontWeight: FontWeight.w600)),
+              Text('LIVE', style: GoogleFonts.poppins(color: JT.success, fontSize: 9, fontWeight: FontWeight.w400)),
             ])),
         ),
       ]),
@@ -1335,13 +1335,13 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               width: 48, height: 48,
               decoration: BoxDecoration(gradient: JT.grad, borderRadius: BorderRadius.circular(15), boxShadow: JT.btnShadow),
               child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)))),
+                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)))),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
+              Text(name, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 16, fontWeight: FontWeight.w400),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 3),
-              Text(pmLabel, style: GoogleFonts.poppins(color: pmColor, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text(pmLabel, style: GoogleFonts.poppins(color: pmColor, fontSize: 12, fontWeight: FontWeight.w500)),
             ])),
             if (phone != null)
               GestureDetector(
@@ -1376,9 +1376,9 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       borderRadius: BorderRadius.circular(10),
       border: Border.all(color: color.withValues(alpha: 0.15))),
     child: Column(children: [
-      Text(value, style: GoogleFonts.poppins(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+      Text(value, style: GoogleFonts.poppins(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
       const SizedBox(height: 2),
-      Text(label, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 9, fontWeight: FontWeight.w600)),
+      Text(label, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 9, fontWeight: FontWeight.w400)),
     ]));
 
   // ── Live stats (distance/ETA/timer) ───────────────────────────────────────
@@ -1399,7 +1399,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           const Icon(Icons.location_on_rounded, color: JT.warning, size: 18),
           const SizedBox(width: 8),
           Text('At pickup — waiting for customer',
-            style: GoogleFonts.poppins(color: JT.warning, fontSize: 13, fontWeight: FontWeight.w700)),
+            style: GoogleFonts.poppins(color: JT.warning, fontSize: 13, fontWeight: FontWeight.w500)),
         ]));
     }
 
@@ -1419,28 +1419,28 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         Expanded(child: Row(children: [
           Text(
             _distanceToTargetM > 0 ? _formatDist(_distanceToTargetM) : '--',
-            style: GoogleFonts.poppins(color: isOnTheWay ? JT.success : JT.primary, fontSize: 15, fontWeight: FontWeight.w700)),
+            style: GoogleFonts.poppins(color: isOnTheWay ? JT.success : JT.primary, fontSize: 15, fontWeight: FontWeight.w500)),
           const SizedBox(width: 6),
           Text('away', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
           const SizedBox(width: 12),
           const Icon(Icons.access_time_rounded, size: 13, color: JT.iconInactive),
           const SizedBox(width: 4),
           Text(_etaSec > 0 ? _formatEta(_etaSec) : '--',
-            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w400)),
         ])),
         if (isOnTheWay && _tripElapsedSec > 0) Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: JT.success.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
           child: Text(_formatElapsed(_tripElapsedSec),
-            style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w600))),
+            style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w400))),
         if (_nearPickup && isNavigating) Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: JT.success.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20),
             border: Border.all(color: JT.success.withValues(alpha: 0.4))),
           child: Text('Near Pickup!',
-            style: GoogleFonts.poppins(color: JT.success, fontSize: 11, fontWeight: FontWeight.w600))),
+            style: GoogleFonts.poppins(color: JT.success, fontSize: 11, fontWeight: FontWeight.w400))),
       ]),
     );
   }
@@ -1465,7 +1465,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('COLLECT ₹${fare.toInt()} CASH',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5)),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w400, fontSize: 13, letterSpacing: 0.5)),
             const Text('Remind customer to have exact change',
               style: TextStyle(color: Colors.white70, fontSize: 11)),
           ])),
@@ -1483,7 +1483,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           Icon(Icons.payments_rounded, color: JT.success, size: 14),
           SizedBox(width: 7),
           Text('Cash Payment — Collect at trip end',
-            style: TextStyle(color: JT.success, fontSize: 11, fontWeight: FontWeight.w600)),
+            style: TextStyle(color: JT.success, fontSize: 11, fontWeight: FontWeight.w400)),
         ]));
     }
     return Container(
@@ -1497,7 +1497,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         const Icon(Icons.account_balance_wallet_rounded, color: JT.primary, size: 14),
         const SizedBox(width: 7),
         Text(pm == 'wallet' ? 'Wallet — Auto deducted' : 'Online — Already paid',
-          style: GoogleFonts.poppins(color: JT.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+          style: GoogleFonts.poppins(color: JT.primary, fontSize: 11, fontWeight: FontWeight.w400)),
       ]));
   }
 
@@ -1516,7 +1516,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         const Icon(Icons.lock_open_rounded, color: JT.warning, size: 17),
         const SizedBox(width: 7),
         Text('Verify Delivery OTP',
-          style: GoogleFonts.poppins(color: JT.warning, fontSize: 13, fontWeight: FontWeight.w600)),
+          style: GoogleFonts.poppins(color: JT.warning, fontSize: 13, fontWeight: FontWeight.w400)),
       ])));
 
   // ── Main action button ────────────────────────────────────────────────────
@@ -1552,7 +1552,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                 SizedBox(width: 22, height: 22,
                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
                 SizedBox(width: 12),
-                Text('Please wait...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                Text('Please wait...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14)),
               ])
             : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Container(
@@ -1561,7 +1561,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                   child: Icon(step['icon'] as IconData, color: Colors.white, size: 20)),
                 const SizedBox(width: 12),
                 Text(step['action'] as String,
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2)),
               ]),
         ),
       ),
@@ -1597,7 +1597,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, color: color, size: 15),
           const SizedBox(width: 5),
-          Text(label, style: GoogleFonts.poppins(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+          Text(label, style: GoogleFonts.poppins(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
         ])));
 
   // ── Parcel card ───────────────────────────────────────────────────────────
@@ -1621,11 +1621,11 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         Row(children: [
           const Text('📦', style: TextStyle(fontSize: 15)),
           const SizedBox(width: 7),
-          Text('PARCEL', style: GoogleFonts.poppins(color: JT.warning, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1)),
+          Text('PARCEL', style: GoogleFonts.poppins(color: JT.warning, fontSize: 10, fontWeight: FontWeight.w400, letterSpacing: 1)),
         ]),
         if (receiver.isNotEmpty) ...[const SizedBox(height: 6),
           Row(children: [const Icon(Icons.person_rounded, color: JT.warning, size: 14), const SizedBox(width: 5),
-            Expanded(child: Text(receiver, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)))]),
+            Expanded(child: Text(receiver, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w400)))]),
         ],
         if (category.isNotEmpty) ...[const SizedBox(height: 3),
           Text('$category  •  $weight', style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
@@ -1648,8 +1648,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           child: const Icon(Icons.person_pin_rounded, color: JT.primary, size: 17)),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('PASSENGER', style: GoogleFonts.poppins(color: JT.primary, fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 1)),
-          Text(passengerName, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w700)),
+          Text('PASSENGER', style: GoogleFonts.poppins(color: JT.primary, fontSize: 9, fontWeight: FontWeight.w400, letterSpacing: 1)),
+          Text(passengerName, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
           if (passengerPhone != null && passengerPhone.isNotEmpty)
             Text(passengerPhone, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
         ])),

@@ -204,7 +204,7 @@ class _WalletScreenState extends State<WalletScreen>
                   Text('Add Money',
                       style: GoogleFonts.poppins(
                           fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color: JT.textPrimary)),
                   IconButton(
                     icon: const Icon(Icons.close_rounded,
@@ -229,7 +229,7 @@ class _WalletScreenState extends State<WalletScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 11,
                             color: JT.primary,
-                            fontWeight: FontWeight.w600)),
+                            fontWeight: FontWeight.w400)),
                   ]),
                 ),
               ]),
@@ -237,7 +237,7 @@ class _WalletScreenState extends State<WalletScreen>
               Text('Quick Add',
                   style: GoogleFonts.poppins(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       color: const Color(0xFFA0A0A0),
                       letterSpacing: 0.5)),
               const SizedBox(height: 10),
@@ -263,7 +263,7 @@ class _WalletScreenState extends State<WalletScreen>
                       ),
                       child: Text('₹$amt',
                           style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 14,
                               color: sel
                                   ? Colors.white
@@ -276,7 +276,7 @@ class _WalletScreenState extends State<WalletScreen>
               Text('Custom Amount',
                   style: GoogleFonts.poppins(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       color: const Color(0xFFA0A0A0),
                       letterSpacing: 0.5)),
               const SizedBox(height: 8),
@@ -291,7 +291,7 @@ class _WalletScreenState extends State<WalletScreen>
                     child: Text('₹',
                         style: GoogleFonts.poppins(
                             fontSize: 20,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color: JT.textPrimary)),
                   ),
                   Expanded(
@@ -302,7 +302,7 @@ class _WalletScreenState extends State<WalletScreen>
                           setModalState(() => selectedPreset = null),
                       style: GoogleFonts.poppins(
                           fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: JT.textPrimary),
                       decoration: InputDecoration(
                         hintText: 'Enter amount (min ₹10)',
@@ -362,7 +362,7 @@ class _WalletScreenState extends State<WalletScreen>
                               Text('Pay via Razorpay',
                                   style: GoogleFonts.poppins(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w700)),
+                                      fontWeight: FontWeight.w500)),
                             ],
                           ),
                   ),
@@ -403,7 +403,7 @@ class _WalletScreenState extends State<WalletScreen>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             fontSize: 16,
                             color: JT.textPrimary,
                           ),
@@ -522,7 +522,7 @@ class _WalletScreenState extends State<WalletScreen>
                       style: GoogleFonts.poppins(
                           color: JT.textPrimary,
                           fontSize: 20,
-                          fontWeight: FontWeight.w700)),
+                          fontWeight: FontWeight.w500)),
                   const Spacer(),
                   GestureDetector(
                     onTap: () {
@@ -580,7 +580,7 @@ class _WalletScreenState extends State<WalletScreen>
                           style: GoogleFonts.poppins(
                               color: JT.textPrimary,
                               fontSize: 38,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w400,
                               height: 1.1)),
                       const SizedBox(height: 4),
                       Text('Available Balance',
@@ -615,7 +615,7 @@ class _WalletScreenState extends State<WalletScreen>
                               const SizedBox(width: 8),
                               Text('Add Money',
                                   style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                       fontSize: 15)),
                             ],
                           ),
@@ -672,7 +672,7 @@ class _WalletScreenState extends State<WalletScreen>
           Text('Payment Methods',
               style: GoogleFonts.poppins(
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: JT.textPrimary)),
           const SizedBox(height: 4),
           Text('Powered by Razorpay — all methods accepted',
@@ -713,7 +713,7 @@ class _WalletScreenState extends State<WalletScreen>
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
                           fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           color: const Color(0xFF374151),
                           height: 1.25,
                         ),
@@ -753,7 +753,7 @@ class _WalletScreenState extends State<WalletScreen>
                 style: GoogleFonts.poppins(
                     color: const Color(0xFF374151),
                     fontSize: 18,
-                    fontWeight: FontWeight.w700)),
+                    fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text('Add money to get started',
                 textAlign: TextAlign.center,
@@ -818,7 +818,7 @@ class _WalletScreenState extends State<WalletScreen>
             children: [
               Text(t['description'] ?? 'Transaction',
                   style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 14,
                       color: JT.textPrimary),
                   maxLines: 1,
@@ -836,7 +836,7 @@ class _WalletScreenState extends State<WalletScreen>
                         style: GoogleFonts.poppins(
                             fontSize: 9,
                             color: JT.primary,
-                            fontWeight: FontWeight.w700)),
+                            fontWeight: FontWeight.w500)),
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -854,7 +854,7 @@ class _WalletScreenState extends State<WalletScreen>
             child: Text(
               '${isCredit ? '+' : '-'}₹${t['amount']}',
               style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600, fontSize: 16, color: accent),
+                  fontWeight: FontWeight.w400, fontSize: 16, color: accent),
             ),
           ),
         ),

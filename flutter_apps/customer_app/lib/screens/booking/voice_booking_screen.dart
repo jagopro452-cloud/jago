@@ -233,7 +233,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Text('Choose Language', style: GoogleFonts.poppins(
-                color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
+                color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 16)),
           ),
           ..._supportedLangs.map((lang) {
             final available = _availableLocales.any(
@@ -242,7 +242,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               leading: Text(lang.flag, style: const TextStyle(fontSize: 24)),
               title: Text(lang.name, style: GoogleFonts.poppins(
                   color: available ? JT.textPrimary : JT.textSecondary,
-                  fontWeight: FontWeight.w600)),
+                  fontWeight: FontWeight.w400)),
               trailing: lang == _selectedLang
                   ? const Icon(Icons.check_circle, color: JT.primary)
                   : available ? null
@@ -628,7 +628,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
   void _showSnack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w400, color: Colors.white)),
       backgroundColor: JT.error,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -651,7 +651,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Voice Booking',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 16)),
         actions: [
           GestureDetector(
             onTap: _selectLanguage,
@@ -667,7 +667,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                 Text(_selectedLang.flag, style: const TextStyle(fontSize: 14)),
                 const SizedBox(width: 6),
                 Text(_selectedLang.name.split(' ')[0],
-                    style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 12, fontWeight: FontWeight.w400)),
                 const SizedBox(width: 4),
                 const Icon(Icons.expand_more, color: JT.primary, size: 14),
               ]),
@@ -788,7 +788,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         style: GoogleFonts.poppins(
           color: _awaitingConfirmation ? JT.success
               : _isListening ? JT.error : JT.primary,
-          fontSize: 13, fontWeight: FontWeight.w700,
+          fontSize: 13, fontWeight: FontWeight.w500,
         ),
       ),
       const SizedBox(height: 4),
@@ -836,7 +836,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Text(label, style: GoogleFonts.poppins(
-          color: color, fontWeight: FontWeight.w700, fontSize: 13)),
+          color: color, fontWeight: FontWeight.w500, fontSize: 13)),
     ));
   }
 
@@ -858,7 +858,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               color: _awaitingConfirmation ? JT.success : JT.primary, size: 16),
           const SizedBox(width: 8),
           Text(_awaitingConfirmation ? 'Awaiting Confirmation' : 'Status',
-              style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+              style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary, fontWeight: FontWeight.w400)),
         ]),
         const SizedBox(height: 8),
         if (_loading)
@@ -892,7 +892,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                 ),
                 const SizedBox(width: 8),
                 Text('Listening for voice confirmation…',
-                    style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: GoogleFonts.poppins(color: JT.success, fontSize: 12, fontWeight: FontWeight.w400)),
               ]),
             ),
           ),
@@ -909,11 +909,11 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         Container(width: 3, height: 16, decoration: BoxDecoration(gradient: JT.grad, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text('Available Vehicles', style: GoogleFonts.poppins(
-            fontSize: 14, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+            fontSize: 14, fontWeight: FontWeight.w400, color: JT.textPrimary)),
         if (_distanceKm > 0) ...[
           const Spacer(),
           Text('${_distanceKm.toStringAsFixed(1)} km',
-              style: GoogleFonts.poppins(fontSize: 12, color: JT.primary, fontWeight: FontWeight.w600)),
+              style: GoogleFonts.poppins(fontSize: 12, color: JT.primary, fontWeight: FontWeight.w400)),
         ],
       ]),
       const SizedBox(height: 12),
@@ -950,13 +950,13 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(name, style: GoogleFonts.poppins(
                     color: isSelected ? JT.primary : JT.textPrimary,
-                    fontWeight: FontWeight.w600, fontSize: 14)),
+                    fontWeight: FontWeight.w400, fontSize: 14)),
                 Text(time, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('₹$fareVal', style: GoogleFonts.poppins(
                     color: isSelected ? JT.primary : JT.textPrimary,
-                    fontSize: 22, fontWeight: FontWeight.w700)),
+                    fontSize: 22, fontWeight: FontWeight.w500)),
                 if (isSelected)
                   Container(
                     margin: const EdgeInsets.only(top: 2),
@@ -964,7 +964,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                     decoration: BoxDecoration(
                       color: JT.primary, borderRadius: BorderRadius.circular(6)),
                     child: Text('Selected', style: GoogleFonts.poppins(
-                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
+                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.w400)),
                   ),
               ]),
             ]),
@@ -982,7 +982,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         child: OutlinedButton.icon(
           onPressed: _startListening,
           icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: Text('Try Again', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+          label: Text('Try Again', style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
           style: OutlinedButton.styleFrom(
             foregroundColor: JT.textSecondary,
             side: BorderSide(color: JT.border),
@@ -1002,7 +1002,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           icon: Icon(_awaitingConfirmation ? Icons.check_rounded : Icons.flash_on_rounded, size: 20),
           label: Text(
             _awaitingConfirmation ? 'CONFIRM' : 'BOOK NOW',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400),
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: _awaitingConfirmation ? JT.success : JT.primary,
@@ -1028,7 +1028,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Example Commands', style: GoogleFonts.poppins(
-          fontSize: 12, fontWeight: FontWeight.w700, color: JT.textSecondary)),
+          fontSize: 12, fontWeight: FontWeight.w500, color: JT.textSecondary)),
       const SizedBox(height: 8),
       ...hints.map((h) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -1036,7 +1036,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           Text(h.$1, style: const TextStyle(fontSize: 16)),
           const SizedBox(width: 8),
           Text('${h.$2}: ', style: GoogleFonts.poppins(
-              fontSize: 11, fontWeight: FontWeight.w700, color: JT.primary)),
+              fontSize: 11, fontWeight: FontWeight.w500, color: JT.primary)),
           Expanded(child: Text(h.$3, style: GoogleFonts.poppins(
               fontSize: 11, color: JT.textSecondary))),
         ]),
@@ -1070,7 +1070,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           Icon(icon, color: iconColor, size: 15),
           const SizedBox(width: 7),
           Text(label, style: GoogleFonts.poppins(
-              color: JT.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
+              color: JT.textSecondary, fontSize: 11, fontWeight: FontWeight.w400)),
         ]),
         const SizedBox(height: 8),
         child,
@@ -1085,9 +1085,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         Icon(icon, color: JT.primary, size: 15),
         const SizedBox(width: 8),
         Text('$label: ', style: GoogleFonts.poppins(
-            color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+            color: JT.textSecondary, fontSize: 12, fontWeight: FontWeight.w400)),
         Expanded(child: Text(value, style: GoogleFonts.poppins(
-            color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+            color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
             maxLines: 2, overflow: TextOverflow.ellipsis)),
       ]),
     );

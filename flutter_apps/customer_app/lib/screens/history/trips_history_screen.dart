@@ -111,7 +111,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg,
           style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+              fontWeight: FontWeight.w400, color: Colors.white, fontSize: 13)),
       backgroundColor: error ? JT.primaryDark : _blue,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -173,7 +173,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                     Text('Trip Receipt',
                         style: GoogleFonts.poppins(
                             color: _navy,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w400,
                             fontSize: 18)),
                     Text(r['receiptNo'] ?? '',
                         style: GoogleFonts.poppins(
@@ -189,7 +189,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 child: Text('PAID',
                     style: GoogleFonts.poppins(
                         color: JT.primary,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                         fontSize: 12)),
               ),
             ]),
@@ -245,13 +245,13 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         style: GoogleFonts.poppins(
                                             color: JT.primary,
                                             fontSize: 10,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w500,
                                             letterSpacing: 0.8)),
                                     const SizedBox(height: 2),
                                     Text(r['pickup']?['address'] ?? '',
                                         style: GoogleFonts.poppins(
                                             fontSize: 13,
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w400,
                                             color: _navy),
                                         maxLines: 2),
                                     const SizedBox(height: 12),
@@ -259,13 +259,13 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         style: GoogleFonts.poppins(
                                             color: const Color(0xFF1A6FDB),
                                             fontSize: 10,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w500,
                                             letterSpacing: 0.8)),
                                     const SizedBox(height: 2),
                                     Text(r['destination']?['address'] ?? '',
                                         style: GoogleFonts.poppins(
                                             fontSize: 13,
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w400,
                                             color: _navy),
                                         maxLines: 2),
                                   ])),
@@ -300,7 +300,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                     Text('Fare Breakdown',
                         style: GoogleFonts.poppins(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color: _navy)),
                     const SizedBox(height: 10),
 
@@ -328,12 +328,12 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                             children: [
                               Text('Total Paid',
                                   style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w400,
                                       fontSize: 16,
                                       color: _navy)),
                               Text('₹${fare['payable'] ?? fare['total'] ?? 0}',
                                   style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                       fontSize: 20,
                                       color: _blue)),
                             ]),
@@ -378,7 +378,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                           child: Text('Close',
                               style: GoogleFonts.poppins(
                                   color: Colors.white,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 15)),
                         ),
                       ),
@@ -405,7 +405,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         Expanded(
             child: Text(text,
                 style: GoogleFonts.poppins(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                    fontSize: 12, fontWeight: FontWeight.w400, color: color),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis)),
       ]),
@@ -428,7 +428,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 fontSize: 13, color: const Color(0xFF64748B))),
         Text('$prefix₹$amount',
             style: GoogleFonts.poppins(
-                fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+                fontSize: 13, fontWeight: FontWeight.w400, color: color)),
       ]),
     );
   }
@@ -477,7 +477,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                               style: GoogleFonts.poppins(
                                   color: JT.textPrimary,
                                   fontSize: 20,
-                                  fontWeight: FontWeight.w600)),
+                                  fontWeight: FontWeight.w400)),
                         ]),
                         const SizedBox(height: 20),
                         // Stats row
@@ -560,7 +560,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.poppins(
                     color: JT.textPrimary,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 18,
                     height: 1),
               ),
@@ -596,7 +596,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           label,
           style: GoogleFonts.poppins(
             color: active ? Colors.white : const Color(0xFF64748B),
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: active ? FontWeight.w500 : FontWeight.w500,
             fontSize: 12,
           ),
         ),
@@ -668,7 +668,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             style: GoogleFonts.poppins(
                 color: const Color(0xFF475569),
                 fontSize: 18,
-                fontWeight: FontWeight.w700),
+                fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 8),
           Text(
@@ -757,7 +757,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 14,
                         color: const Color(0xFF0F172A)),
                   ),
@@ -789,7 +789,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   child: Text(
                     '₹${t['actualFare'] ?? t['estimatedFare'] ?? '0'}',
                     style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 17,
                         color: const Color(0xFF0F172A)),
                   ),
@@ -805,7 +805,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                   child: Text(statusLabel,
                       style: GoogleFonts.poppins(
                           fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color: statusColor)),
                 ),
               ]),
@@ -895,7 +895,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           Text(label,
               style: GoogleFonts.poppins(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: filled ? Colors.white : _blue)),
         ]),
       ),

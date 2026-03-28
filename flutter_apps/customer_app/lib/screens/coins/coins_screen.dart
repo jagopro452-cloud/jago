@@ -71,7 +71,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
             child: const Icon(Icons.monetization_on, color: Color(0xFF2563EB), size: 20),
           ),
           const SizedBox(width: 8),
-          const Text('JAGO Pro Coins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('JAGO Pro Coins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
         ]),
       ),
       body: _loading
@@ -97,13 +97,13 @@ class _CoinsScreenState extends State<CoinsScreen> {
                       children: [
                         const Icon(Icons.stars_rounded, color: Colors.amber, size: 48),
                         const SizedBox(height: 8),
-                        Text('$balance', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.bold)),
+                        Text('$balance', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w500)),
                         const Text('JAGO Pro Coins', style: TextStyle(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
-                          child: Text('= ₹$rupeeValue cashback', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          child: Text('= ₹$rupeeValue cashback', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                         ),
                       ],
                     ),
@@ -118,7 +118,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Redeem Coins', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          const Text('Redeem Coins', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 12),
                           Row(
                             children: [100, 200, 500].where((v) => v <= balance).map((v) => Expanded(
@@ -135,7 +135,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                                   child: Column(
                                     children: [
                                       Text('$v coins', style: const TextStyle(fontSize: 12)),
-                                      Text('= ₹${v ~/ 10}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                      Text('= ₹${v ~/ 10}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                                     ],
                                   ),
                                 ),
@@ -154,7 +154,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('How JAGO Pro Coins work', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const Text('How JAGO Pro Coins work', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 12),
                         ...tips.map((t) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
@@ -170,7 +170,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                   const SizedBox(height: 16),
                   // History
                   if (history.isNotEmpty) ...[
-                    const Text('Transaction History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('Transaction History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     ...history.take(20).map((h) {
                       final amt = (h['amount'] as num?) ?? 0;
@@ -202,7 +202,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                             '${isPositive ? '+' : ''}$amt coins',
                             style: TextStyle(
                               color: isPositive ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ]),

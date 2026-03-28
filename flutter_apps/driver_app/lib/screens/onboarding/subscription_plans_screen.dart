@@ -225,7 +225,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             const SizedBox(height: 20),
             const Text(
               'Payment Summary',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 4),
             Text(
@@ -248,10 +248,10 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Total', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('Total', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
                 Text(
                   '₹${total.toStringAsFixed(0)}',
-                  style: const TextStyle(color: JT.primary, fontSize: 22, fontWeight: FontWeight.w700),
+                  style: const TextStyle(color: JT.primary, fontSize: 22, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -287,7 +287,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       ),
                       child: Text(
                         'Pay ₹${total.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: JT.bg),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: JT.bg),
                       ),
                     ),
                   ),
@@ -305,7 +305,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(color: Colors.white60, fontSize: 14)),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w400)),
       ],
     );
   }
@@ -396,7 +396,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             const SizedBox(height: 16),
             const Text(
               'Subscription Active!',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             Text(
@@ -420,7 +420,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     if (daysLeft > 0)
                       Text(
                         '$daysLeft days remaining',
-                        style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w400),
                       ),
                   ],
                 ),
@@ -456,7 +456,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                   ),
                   child: const Text(
                     'Start Earning',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: JT.bg),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: JT.bg),
                   ),
                 ),
               ),
@@ -480,7 +480,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Choose Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Choose Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -498,7 +498,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                     children: [
                       const Text(
                         'Unlock Full Earnings',
-                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -577,7 +577,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                         ),
                         child: Text(
                           '$durationDays DAYS',
-                          style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w500),
                         ),
                       ),
                       if (isPopular || isBestValue)
@@ -589,19 +589,19 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                           ),
                           child: Text(
                             isBestValue ? 'BEST VALUE' : 'POPULAR',
-                            style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.w500),
                           ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('₹${price.toStringAsFixed(0)}',
-                          style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w700)),
+                          style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w500)),
                       const SizedBox(width: 4),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
@@ -665,7 +665,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
       children: [
         const Text(
           'Add Insurance (Optional)',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 4),
         Text(
@@ -764,7 +764,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w400)),
                   if (description.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(description,
@@ -783,7 +783,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
               ),
               child: Text(
                 '+₹${premium.toStringAsFixed(0)}',
-                style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: JT.primary, fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ),
           ],
@@ -876,7 +876,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       )
                     : const Text(
                         'Continue to Payment',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: JT.bg),
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: JT.bg),
                       ),
               ),
             ),

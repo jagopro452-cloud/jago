@@ -110,7 +110,7 @@ class JT {
   // ── TEXT STYLES (Typography Hierarchy) ──
   static TextStyle get h1 => GoogleFonts.poppins(
         fontSize: 28,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: textPrimary,
         letterSpacing: -0.3,
         height: 1.1,
@@ -118,7 +118,7 @@ class JT {
 
   static TextStyle get h2 => GoogleFonts.poppins(
         fontSize: 24,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: textPrimary,
         letterSpacing: -0.2,
         height: 1.15,
@@ -126,35 +126,35 @@ class JT {
 
   static TextStyle get h3 => GoogleFonts.poppins(
         fontSize: 20,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: textPrimary,
         height: 1.2,
       );
 
   static TextStyle get h4 => GoogleFonts.poppins(
         fontSize: 18,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: textPrimary,
         height: 1.2,
       );
 
   static TextStyle get h5 => GoogleFonts.poppins(
         fontSize: 16,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: textPrimary,
         height: 1.25,
       );
 
   static TextStyle get subtitle1 => GoogleFonts.poppins(
         fontSize: 15,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: textPrimary,
         height: 1.3,
       );
 
   static TextStyle get subtitle2 => GoogleFonts.poppins(
         fontSize: 14,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
         color: textSecondary,
         height: 1.3,
       );
@@ -168,7 +168,7 @@ class JT {
 
   static TextStyle get bodyPrimary => GoogleFonts.poppins(
         fontSize: 14,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
         color: textPrimary,
         height: 1.5,
       );
@@ -189,21 +189,21 @@ class JT {
 
   static TextStyle get captionBold => GoogleFonts.poppins(
         fontSize: 12,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
         color: textSecondary,
         height: 1.4,
       );
 
   static TextStyle get btnText => GoogleFonts.poppins(
         fontSize: 15,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: Colors.white,
-        letterSpacing: 0.1,
+        letterSpacing: 0.2,
       );
 
   static TextStyle get btnSmallText => GoogleFonts.poppins(
         fontSize: 13,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: Colors.white,
       );
 

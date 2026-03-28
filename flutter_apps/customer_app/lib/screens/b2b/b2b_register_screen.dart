@@ -127,7 +127,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
       appBar: AppBar(
         backgroundColor: JT.primary,
         foregroundColor: Colors.white,
-        title: const Text('B2B Business Registration', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('B2B Business Registration', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -160,7 +160,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          Text('Business Account', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text('Business Account', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
                           SizedBox(height: 4),
                           Text('Bulk deliveries at business rates', style: TextStyle(color: Colors.white70, fontSize: 12)),
                         ],
@@ -341,7 +341,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
 
   Widget _sectionLabel(String label) => Text(
     label,
-    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JT.textPrimary),
+    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: JT.textPrimary),
   );
 
   Widget _card({required Widget child}) => Container(
@@ -413,7 +413,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(plan['label']!, style: TextStyle(fontWeight: FontWeight.w600, color: JT.textPrimary, fontSize: 14)),
+                  Text(plan['label']!, style: TextStyle(fontWeight: FontWeight.w400, color: JT.textPrimary, fontSize: 14)),
                   Text(plan['desc']!, style: TextStyle(fontSize: 11, color: JT.textSecondary)),
                 ],
               ),

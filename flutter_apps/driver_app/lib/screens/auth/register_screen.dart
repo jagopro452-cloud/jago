@@ -557,9 +557,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final diff = expiryDate.difference(now);
     
     if (diff.inDays < 0) {
-      return TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JT.error);
+      return TextStyle(fontSize: 11, fontWeight: FontWeight.w400, color: JT.error);
     } else if (diff.inDays <= 30) {
-      return TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFF97316));
+      return TextStyle(fontSize: 11, fontWeight: FontWeight.w400, color: const Color(0xFFF97316));
     }
     return TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: const Color(0xFF059669));
   }

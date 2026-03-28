@@ -125,7 +125,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
             Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withValues(alpha: 0.2), shape: BoxShape.circle),
               child: const Icon(Icons.verified_user, color: Color(0xFF22C55E), size: 56)),
             const SizedBox(height: 20),
-            const Text('Verified! ✅', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            const Text('Verified! ✅', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             const Text('Identity confirmed. You can start riding!', style: TextStyle(color: Color(0xFF64748B), fontSize: 14)),
           ]),
@@ -137,7 +137,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
       backgroundColor: JT.textPrimary,
       appBar: AppBar(
         backgroundColor: JT.textPrimary,
-        title: const Text('Safety Verification', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Safety Verification', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
@@ -202,7 +202,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
         ),
         if (_countdown < 3 && _countdown > 0)
           Center(
-            child: Text('$_countdown', style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 80, fontWeight: FontWeight.bold)),
+            child: Text('$_countdown', style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 80, fontWeight: FontWeight.w500)),
           ),
         Positioned(
           bottom: 40,
@@ -277,7 +277,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
             child: ElevatedButton.icon(
               onPressed: _loading ? null : _submitSelfie,
               icon: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.verified_user, size: 18),
-              label: Text(_loading ? 'Verifying...' : 'Verify Identity', style: const TextStyle(fontWeight: FontWeight.bold)),
+              label: Text(_loading ? 'Verifying...' : 'Verify Identity', style: const TextStyle(fontWeight: FontWeight.w500)),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
             ),
           ),

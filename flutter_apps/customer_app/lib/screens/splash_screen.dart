@@ -193,7 +193,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       'Move Smarter.',
                       style: GoogleFonts.poppins(
                         fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: Colors.white,
                         letterSpacing: 0.3,
                       ),

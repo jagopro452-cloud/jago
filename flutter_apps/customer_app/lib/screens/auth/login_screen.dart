@@ -82,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w400, color: Colors.white, fontSize: 13)),
       backgroundColor: error ? JT.error : JT.success,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -100,13 +100,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         title: Row(children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 24),
           const SizedBox(width: 8),
-          Expanded(child: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16))),
+          Expanded(child: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 16))),
         ]),
         content: Text(message, style: GoogleFonts.poppins(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: JT.primary)),
+            child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: JT.primary)),
           ),
         ],
       ),
@@ -336,7 +336,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       Text(
                         _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
                         style: GoogleFonts.poppins(
-                          fontSize: 26, fontWeight: FontWeight.w600, color: JT.textPrimary,
+                          fontSize: 26, fontWeight: FontWeight.w400, color: JT.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -361,7 +361,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             child: GestureDetector(
                               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
                               child: Text('Forgot Password?', style: GoogleFonts.poppins(
-                                color: JT.primary, fontWeight: FontWeight.w600, fontSize: 13,
+                                color: JT.primary, fontWeight: FontWeight.w400, fontSize: 13,
                               )),
                             ),
                           ),
@@ -375,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             onTap: () => setState(() { _usePassword = !_usePassword; }),
                             child: Text(
                               _usePassword ? 'Use OTP instead' : 'Use Password instead',
-                              style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w400, fontSize: 13),
                             ),
                           ),
                         ),
@@ -389,7 +389,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             : GestureDetector(
                                 onTap: () { setState(() { _otpSent = false; _otpCtrl.clear(); }); _sendOtp(); },
                                 child: Text('Resend OTP', style: GoogleFonts.poppins(
-                                  color: JT.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                                  color: JT.primary, fontWeight: FontWeight.w500, fontSize: 13)),
                               ),
                         ),
                         const SizedBox(height: 28),
@@ -420,7 +420,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                           child: Text('Create Account', style: GoogleFonts.poppins(
-                            color: JT.primary, fontWeight: FontWeight.w600, fontSize: 14)),
+                            color: JT.primary, fontWeight: FontWeight.w400, fontSize: 14)),
                         ),
                       ]),
                     ]),
@@ -460,7 +460,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             border: const Border(right: BorderSide(color: Color(0xFFD8E6F8), width: 1.2)),
           ),
           child: Text('+91', style: GoogleFonts.poppins(
-            fontSize: 16, fontWeight: FontWeight.w600, color: JT.primary)),
+            fontSize: 16, fontWeight: FontWeight.w400, color: JT.primary)),
         ),
         Expanded(
           child: TextField(
@@ -468,7 +468,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             focusNode: _phoneFocus,
             keyboardType: TextInputType.phone,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: JT.textPrimary),
+            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: JT.textPrimary),
             decoration: InputDecoration(
               hintText: 'Mobile number',
               hintStyle: GoogleFonts.poppins(fontSize: 14, color: JT.iconInactive),
@@ -491,7 +491,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: TextField(
         controller: _passwordCtrl,
         obscureText: !_showPassword,
-        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: JT.textPrimary),
+        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: JT.textPrimary),
         decoration: InputDecoration(
           hintText: 'Password',
           hintStyle: GoogleFonts.poppins(fontSize: 14, color: JT.iconInactive),
@@ -527,7 +527,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           LengthLimitingTextInputFormatter(6),
         ],
         style: GoogleFonts.poppins(
-          fontSize: 28, fontWeight: FontWeight.w700,
+          fontSize: 28, fontWeight: FontWeight.w500,
           letterSpacing: 16, color: JT.textPrimary,
         ),
         decoration: InputDecoration(

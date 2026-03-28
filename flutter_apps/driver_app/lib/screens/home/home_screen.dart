@@ -249,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         setState(() => _incomingTrip = null);
         Navigator.of(context).popUntil((r) => r.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Another driver accepted this trip', style: TextStyle(fontWeight: FontWeight.w600)),
+          content: Text('Another driver accepted this trip', style: TextStyle(fontWeight: FontWeight.w400)),
           backgroundColor: JT.textSecondary,
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
@@ -266,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         setState(() => _incomingTrip = null);
         Navigator.of(context).popUntil((r) => r.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Trip request timed out', style: TextStyle(fontWeight: FontWeight.w600)),
+          content: Text('Trip request timed out', style: TextStyle(fontWeight: FontWeight.w400)),
           backgroundColor: JT.warning,
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 3),
@@ -668,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           ),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(sugg.message, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(sugg.message, style: GoogleFonts.poppins(color: JT.textPrimary, fontSize: 14, fontWeight: FontWeight.w400)),
           const SizedBox(height: 8),
           Text(sugg.detail, style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
           const SizedBox(height: 16),
@@ -748,7 +748,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             if (!accepted) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                 content: Text('Network issue — proceeding. Contact support if trip is missing.',
-                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+                  style: TextStyle(fontWeight: FontWeight.w400, color: Colors.white)),
                 backgroundColor: JT.warning,
                 behavior: SnackBarBehavior.floating,
                 duration: Duration(seconds: 4),
@@ -1172,7 +1172,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             if (zone.earningMin > 0)
               Text(
                 'Est. ₹${zone.earningMin}–₹${zone.earningMax} in 30 min',
-                style: GoogleFonts.poppins(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+                style: GoogleFonts.poppins(color: color, fontSize: 11, fontWeight: FontWeight.w400),
               ),
           ])),
           Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textTertiary, size: 14),
@@ -1250,7 +1250,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text(
                     '${_getTimeGreeting()}, ${_userName.split(' ').first}!',
-                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: JT.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w400, color: JT.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (_isOnline)
@@ -1268,7 +1268,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         style: GoogleFonts.poppins(
                           color: AppColors.success,
                           fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ])
@@ -1827,7 +1827,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               value,
               style: AppText.statMedium().copyWith(
                 color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
             ),
             const SizedBox(height: 3),
@@ -1835,7 +1835,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               label,
               style: AppText.caption(null).copyWith(
                 color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 letterSpacing: 0.2,
               ),
             ),
@@ -1973,7 +1973,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         Text(
           label,
           style: AppText.caption(null).copyWith(
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: active ? FontWeight.w500 : FontWeight.w500,
             color: active ? AppColors.primary : AppColors.textSecondary,
           ),
         ),
@@ -2003,7 +2003,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     _userName.isNotEmpty ? _userName[0].toUpperCase() : 'P',
                     style: AppText.h4(null).copyWith(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
@@ -2140,7 +2140,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         label,
         style: AppText.label(null).copyWith(
           color: AppColors.textPrimary,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w400,
         ),
       ),
       trailing: badge != null

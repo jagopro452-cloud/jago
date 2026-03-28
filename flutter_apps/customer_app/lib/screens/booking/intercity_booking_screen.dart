@@ -154,7 +154,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+      content: Text(msg, style: GoogleFonts.poppins(fontWeight: FontWeight.w400, color: Colors.white)),
       backgroundColor: JT.error,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -175,13 +175,13 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
             child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
           ),
           const SizedBox(height: 16),
-          const Text('Booking Confirmed!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('Booking Confirmed!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           Text('Ref: ${data['refId'] ?? ''}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
           const SizedBox(height: 8),
           Text(
             '₹${(data['estimatedFare'] as num?)?.toStringAsFixed(0) ?? '0'}',
-            style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700, color: JT.primary),
+            style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w500, color: JT.primary),
           ),
           const SizedBox(height: 4),
           const Text('Estimated Fare', style: TextStyle(color: Colors.grey, fontSize: 12)),
@@ -195,7 +195,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
         actions: [
           TextButton(
             onPressed: () { Navigator.pop(context); Navigator.pop(context); },
-            child: Text('OK', style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w600)),
+            child: Text('OK', style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w400)),
           ),
         ],
       ),
@@ -215,7 +215,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Intercity / Carpool',
-            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
+            style: GoogleFonts.poppins(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 16)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: JT.border),
@@ -239,7 +239,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
       ),
       const SizedBox(height: 20),
       Text('No routes available yet', style: GoogleFonts.poppins(
-          color: JT.textPrimary, fontWeight: FontWeight.w700, fontSize: 16)),
+          color: JT.textPrimary, fontWeight: FontWeight.w500, fontSize: 16)),
       const SizedBox(height: 8),
       Text('Routes will appear once admin adds intercity destinations.',
           style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13),
@@ -282,7 +282,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
                 value: r,
                 child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Text(_routeVal(r, 'toCity', 'to_city')),
-                  Text('₹${fare.toStringAsFixed(0)}', style: const TextStyle(color: _blue, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text('₹${fare.toStringAsFixed(0)}', style: const TextStyle(color: _blue, fontWeight: FontWeight.w500, fontSize: 12)),
                 ]),
               );
             }).toList(),
@@ -368,13 +368,13 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
         Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       ]),
       const SizedBox(height: 4),
-      Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      Text(val, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
     ],
   );
 
   Widget _miniStat(String label, String val) => Expanded(
     child: Column(children: [
-      Text(val, style: const TextStyle(fontWeight: FontWeight.bold, color: _blue, fontSize: 15)),
+      Text(val, style: const TextStyle(fontWeight: FontWeight.w500, color: _blue, fontSize: 15)),
       Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
     ]),
   );
@@ -394,7 +394,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text('$_passengers', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _blue)),
+        child: Text('$_passengers', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: _blue)),
       ),
       IconButton(
         onPressed: () { if (_passengers < 6) setState(() => _passengers++); },
@@ -427,7 +427,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
               const SizedBox(height: 4),
               Text(p['label'] as String,
                 style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w600,
+                  fontSize: 11, fontWeight: FontWeight.w400,
                   color: _paymentMethod == p['key'] ? Colors.white : Colors.grey,
                 )),
             ]),
@@ -449,7 +449,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
       child: Row(children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('₹${fare.toStringAsFixed(0)}',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _blue)),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: _blue)),
           Text('$_passengers passenger${_passengers > 1 ? 's' : ''} · ${_routeVal(_selectedRoute!, 'fromCity', 'from_city')} → ${_routeVal(_selectedRoute!, 'toCity', 'to_city')}',
             style: const TextStyle(fontSize: 11, color: Colors.grey)),
         ]),
@@ -466,7 +466,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
             ),
             child: _booking
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Book Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                : const Text('Book Now', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
           ),
         ),
       ]),
@@ -474,12 +474,12 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   }
 
   Widget _sectionTitle(String t) => Text(t,
-      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: JT.textPrimary));
+      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w400, color: JT.textPrimary));
 
   Widget _label(String t) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(t, style: GoogleFonts.poppins(
-        fontSize: 12, color: JT.textSecondary, fontWeight: FontWeight.w600)),
+        fontSize: 12, color: JT.textSecondary, fontWeight: FontWeight.w400)),
   );
 
   BoxDecoration _boxDecor() => BoxDecoration(

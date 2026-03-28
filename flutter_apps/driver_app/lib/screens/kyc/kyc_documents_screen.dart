@@ -86,7 +86,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       backgroundColor: JT.bg,
       appBar: AppBar(
         backgroundColor: JT.bg,
-        title: Text('KYC Documents', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text('KYC Documents', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500)),
         leading: IconButton(icon: Icon(Icons.arrow_back, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
       ),
       body: _loading
@@ -122,12 +122,12 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('KYC Progress', style: TextStyle(color: Colors.white70, fontSize: 12)),
-            Text('$approved/$total Approved', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+            Text('$approved/$total Approved', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 18)),
           ]),
           Container(
             width: 56, height: 56,
             decoration: const BoxDecoration(shape: BoxShape.circle, color: JT.border),
-            child: Center(child: Text('${((approved / total) * 100).round()}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))),
+            child: Center(child: Text('${((approved / total) * 100).round()}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14))),
           ),
         ]),
         const SizedBox(height: 10),
@@ -185,7 +185,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(doc['label'] as String, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(doc['label'] as String, style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w400, fontSize: 13)),
               const SizedBox(height: 2),
               Row(children: [
                 Icon(statusIcon, size: 13, color: statusColor),
@@ -206,7 +206,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
                 ),
                 child: isUploading
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text(status == 'rejected' ? 'Re-upload' : 'Upload', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    : Text(status == 'rejected' ? 'Re-upload' : 'Upload', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
               ),
             )
           else

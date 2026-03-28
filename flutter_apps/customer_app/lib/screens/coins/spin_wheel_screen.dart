@@ -145,10 +145,10 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           const Text('🎉', style: TextStyle(fontSize: 52)),
           const SizedBox(height: 8),
-          const Text('Congratulations!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const Text('Congratulations!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           Text(label,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _blue)),
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w500, color: _blue)),
           const SizedBox(height: 8),
           Text(
             rewardType == 'coins'
@@ -172,7 +172,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               ),
-              child: const Text('Awesome!', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Awesome!', style: TextStyle(fontWeight: FontWeight.w500)),
             ),
           ),
         ],
@@ -187,7 +187,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
       appBar: AppBar(
         backgroundColor: JT.textPrimary,
         foregroundColor: Colors.white,
-        title: const Text('Daily Spin', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Daily Spin', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
       ),
       body: _loading
@@ -203,7 +203,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
         const SizedBox(height: 16),
         // Stars header
         const Text('⭐ Daily Spin & Win ⭐',
-          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)),
         const SizedBox(height: 6),
         const Text('Coins, Wallet Cash win cheyyavachu!',
           style: TextStyle(color: Colors.grey, fontSize: 13)),
@@ -246,7 +246,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
               child: Center(
                 child: _spinning
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('SPIN NOW!', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                  : const Text('SPIN NOW!', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: 1.2)),
               ),
             ),
           )
@@ -261,7 +261,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
               child: const Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.timer_outlined, color: Colors.amber, size: 20),
                 SizedBox(width: 8),
-                Text('Today already played!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text('Today already played!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w400)),
               ]),
             ),
             const SizedBox(height: 8),
@@ -281,7 +281,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
             border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Ela Ga?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+            const Text('Ela Ga?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
             const SizedBox(height: 10),
             for (final tip in [
               '🎯 Roju okasari spin free ga available',
@@ -348,7 +348,7 @@ class _WheelPainter extends CustomPainter {
         style: TextStyle(
           color: Colors.white,
           fontSize: label.length > 8 ? 9 : 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
         ),
       );
       textPainter.layout(minWidth: 0, maxWidth: radius * 0.5);

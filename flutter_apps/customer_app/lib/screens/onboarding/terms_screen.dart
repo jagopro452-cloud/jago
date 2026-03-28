@@ -53,7 +53,7 @@ class _TermsScreenState extends State<TermsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 16),
-              Text('Before you begin', style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: textPrimary)),
+              Text('Before you begin', style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w500, color: textPrimary)),
               const SizedBox(height: 8),
               Text('Please review our terms to continue using JAGO Pro.',
                   style: GoogleFonts.poppins(fontSize: 14, color: textSecondary)),
@@ -126,7 +126,7 @@ class _TermsScreenState extends State<TermsScreen> {
                   onPressed: _saving ? null : _accept,
                   child: _saving
                       ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                      : Text('Accept & Continue', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700)),
+                      : Text('Accept & Continue', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500)),
                 ),
               ),
             ],
@@ -138,7 +138,7 @@ class _TermsScreenState extends State<TermsScreen> {
 
   Widget _sectionTitle(String text, Color color) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(text, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+    child: Text(text, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500, color: color)),
   );
 
   Widget _body(String text, Color color) => Text(text,

@@ -63,9 +63,9 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
       builder: (ctx) => AlertDialog(
         title: const Text('Confirm Booking'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Route: $from → $to', style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text('Route: $from → $to', style: const TextStyle(fontWeight: FontWeight.w400)),
           const SizedBox(height: 4),
-          Text('Fare: ₹${seatPrice.toStringAsFixed(0)} / seat', style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('Fare: ₹${seatPrice.toStringAsFixed(0)} / seat', style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           const Text('Amount will be deducted from your wallet.', style: TextStyle(color: Colors.grey, fontSize: 12)),
         ]),
@@ -116,7 +116,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
         backgroundColor: Colors.white,
         foregroundColor: _blue,
         elevation: 0.5,
-        title: const Text('Car Sharing', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: const Text('Car Sharing', style: TextStyle(fontWeight: FontWeight.w400, fontSize: 18)),
         centerTitle: true,
         bottom: TabBar(
           controller: _tabs,
@@ -183,12 +183,12 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
           const Text('📍', style: TextStyle(fontSize: 16)),
           const SizedBox(width: 6),
           Expanded(child: Text('$from → $to',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14),
             maxLines: 1, overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(color: _green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-            child: Text('₹${seatPrice.toStringAsFixed(0)}/seat', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600, fontSize: 12)),
+            child: Text('₹${seatPrice.toStringAsFixed(0)}/seat', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w400, fontSize: 12)),
           ),
         ]),
         const SizedBox(height: 10),
@@ -214,7 +214,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('$available seats left',
-              style: TextStyle(color: available > 0 ? _blue : Colors.red, fontSize: 11, fontWeight: FontWeight.w700)),
+              style: TextStyle(color: available > 0 ? _blue : Colors.red, fontSize: 11, fontWeight: FontWeight.w500)),
           ),
         ]),
         if (available > 0) ...[
@@ -230,7 +230,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
-              child: const Text('Book a Seat', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              child: const Text('Book a Seat', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
             ),
           ),
         ],
@@ -258,12 +258,12 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('$from → $to',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
             maxLines: 1, overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-            child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600)),
+            child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w400)),
           ),
         ]),
         const SizedBox(height: 6),
@@ -275,7 +275,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
           Text(depTime, style: const TextStyle(color: Colors.grey, fontSize: 11)),
           const Spacer(),
           Text('$seats seat(s) • ₹${total.toStringAsFixed(0)}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF2563EB))),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12, color: Color(0xFF2563EB))),
         ]),
       ]),
     );
@@ -285,7 +285,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(emoji, style: const TextStyle(fontSize: 52)),
       const SizedBox(height: 12),
-      Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Colors.black87)),
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16, color: Colors.black87)),
       const SizedBox(height: 6),
       Text(sub, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 13)),
     ]));

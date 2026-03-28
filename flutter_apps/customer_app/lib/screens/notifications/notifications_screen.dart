@@ -101,7 +101,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         backgroundColor: _blue,
         foregroundColor: Colors.white,
-        title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
         actions: [
           if (_notifications.isNotEmpty)
@@ -151,7 +151,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           title: Text(
                             n['title']?.toString() ?? '',
-                            style: TextStyle(fontWeight: isRead ? FontWeight.w500 : FontWeight.bold, color: textColor, fontSize: 14),
+                            style: TextStyle(fontWeight: isRead ? FontWeight.w500 : FontWeight.w500, color: textColor, fontSize: 14),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

@@ -105,7 +105,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Safety & Fatigue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18)),
+        title: const Text('Safety & Fatigue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w400, fontSize: 18)),
         centerTitle: false,
       ),
       body: _loading
@@ -144,11 +144,11 @@ class _FatigueScreenState extends State<FatigueScreen> {
       ),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Safety Score', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+          const Text('Safety Score', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w400)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(color: _scoreColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-            child: Text(_scoreLabel, style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w600, fontSize: 12)),
+            child: Text(_scoreLabel, style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w400, fontSize: 12)),
           ),
         ]),
         const SizedBox(height: 20),
@@ -163,7 +163,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
             ),
           ),
           Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('${_safetyScore.toInt()}', style: TextStyle(color: _scoreColor, fontSize: 36, fontWeight: FontWeight.w700)),
+            Text('${_safetyScore.toInt()}', style: TextStyle(color: _scoreColor, fontSize: 36, fontWeight: FontWeight.w500)),
             Text('/100', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
           ]),
         ]),
@@ -207,7 +207,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
 
   Widget _buildStatsGrid() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Today\'s Activity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+      const Text('Today\'s Activity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
       const SizedBox(height: 12),
       Row(children: [
         Expanded(child: _statCard('Hours Driven', '${_hoursToday.toStringAsFixed(1)}h', Icons.timer_rounded,
@@ -241,9 +241,9 @@ class _FatigueScreenState extends State<FatigueScreen> {
           const Spacer(),
         ]),
         const SizedBox(height: 12),
-        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w700)),
+        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w500)),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w400)),
         const SizedBox(height: 4),
         Text(sub, style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
       ]),
@@ -259,7 +259,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
       ('🚫', 'No Phone', 'Never use phone while driving'),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Safety Tips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+      const Text('Safety Tips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
       const SizedBox(height: 12),
       ...tips.map((t) => Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -270,7 +270,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
           Text(t.$1, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t.$2, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+            Text(t.$2, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
             const SizedBox(height: 2),
             Text(t.$3, style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11)),
           ])),
@@ -286,7 +286,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
       child: ElevatedButton.icon(
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BreakModeScreen())),
         icon: const Icon(Icons.free_breakfast_rounded),
-        label: Text(_onBreak ? 'Manage Break' : 'Take a Break', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        label: Text(_onBreak ? 'Manage Break' : 'Take a Break', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400)),
         style: ElevatedButton.styleFrom(
           backgroundColor: _onBreak ? _green : _blue,
           foregroundColor: Colors.white,

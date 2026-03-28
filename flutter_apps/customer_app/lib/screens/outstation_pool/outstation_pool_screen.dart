@@ -35,7 +35,7 @@ class _OutstationPoolScreenState extends State<OutstationPoolScreen>
       appBar: AppBar(
         backgroundColor: JT.primary,
         foregroundColor: Colors.white,
-        title: const Text('Intercity Pool', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Intercity Pool', style: TextStyle(fontWeight: FontWeight.w500)),
         elevation: 0,
         bottom: TabBar(
           controller: _tabs,
@@ -148,7 +148,7 @@ class _SearchTabState extends State<_SearchTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Find a Pool Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+              Text('Find a Pool Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: JT.textPrimary)),
               const SizedBox(height: 14),
               TextField(
                 controller: _fromCtrl,
@@ -287,7 +287,7 @@ class _RideCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '${ride['fromCity'] ?? ride['from_city'] ?? ''} → ${ride['toCity'] ?? ride['to_city'] ?? ''}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14),
                   ),
                 ),
                 Container(
@@ -297,7 +297,7 @@ class _RideCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text('₹${fare.toStringAsFixed(0)}/seat',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
                 ),
               ],
             ),
@@ -324,14 +324,14 @@ class _RideCard extends StatelessWidget {
                       radius: 16,
                       backgroundColor: JT.primary.withValues(alpha: 0.1),
                       child: Text(driverName.isNotEmpty ? driverName[0].toUpperCase() : 'D',
-                          style: TextStyle(color: JT.primary, fontWeight: FontWeight.bold, fontSize: 12)),
+                          style: TextStyle(color: JT.primary, fontWeight: FontWeight.w500, fontSize: 12)),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(driverName, style: TextStyle(fontWeight: FontWeight.w600, color: JT.textPrimary, fontSize: 13)),
+                          Text(driverName, style: TextStyle(fontWeight: FontWeight.w400, color: JT.textPrimary, fontSize: 13)),
                           if (vehicle.isNotEmpty || vehicleNo.isNotEmpty)
                             Text('${vehicle.isNotEmpty ? vehicle : ''}${vehicleNo.isNotEmpty ? ' · $vehicleNo' : ''}',
                                 style: TextStyle(fontSize: 11, color: JT.textSecondary)),
@@ -344,7 +344,7 @@ class _RideCard extends StatelessWidget {
                           const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
                           const SizedBox(width: 2),
                           Text(rating.toStringAsFixed(1),
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: JT.textPrimary)),
                         ],
                       ),
                   ],
@@ -363,7 +363,7 @@ class _RideCard extends StatelessWidget {
                         ? () => _showBookDialog(context, ride, fare, seats)
                         : null,
                     child: Text(seats > 0 ? 'Book Seat' : 'Fully Booked',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                        style: const TextStyle(fontWeight: FontWeight.w500)),
                   ),
                 ),
               ],
@@ -492,7 +492,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
                 decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            Text('Confirm Booking', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+            Text('Confirm Booking', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
             const SizedBox(height: 4),
             Text(
               '${widget.ride['fromCity'] ?? widget.ride['from_city'] ?? ''} → ${widget.ride['toCity'] ?? widget.ride['to_city'] ?? ''}',
@@ -501,7 +501,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
             const SizedBox(height: 20),
 
             // Seats selector
-            Text('Number of Seats', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+            Text('Number of Seats', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: JT.textPrimary)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -510,7 +510,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
                 }),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text('$_seats', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: JT.textPrimary)),
+                  child: Text('$_seats', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                 ),
                 _seatBtn(Icons.add_rounded, () {
                   if (_seats < widget.maxSeats) setState(() => _seats++);
@@ -518,7 +518,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
                 const Spacer(),
                 Text(
                   '₹${total.toStringAsFixed(0)} total',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JT.primary),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.primary),
                 ),
               ],
             ),
@@ -541,7 +541,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
             const SizedBox(height: 16),
 
             // Payment method
-            Text('Payment Method', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JT.textPrimary)),
+            Text('Payment Method', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: JT.textPrimary)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -595,7 +595,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
           children: [
             Icon(icon, size: 18, color: _paymentMethod == value ? Colors.white : JT.textSecondary),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w400,
                 color: _paymentMethod == value ? Colors.white : JT.textSecondary)),
           ],
         ),
@@ -719,7 +719,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                   children: [
                     Expanded(
                       child: Text('$from → $to',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JT.textPrimary)),
+                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: JT.textPrimary)),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -728,7 +728,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(status.toUpperCase(),
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _statusColor(status))),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: _statusColor(status))),
                     ),
                   ],
                 ),
