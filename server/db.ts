@@ -14,10 +14,9 @@ if (!process.env.DATABASE_URL) {
 const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Production deployment has 2+ instances, so scale connection pool accordingly
-// Each instance needs 25 connections (max 50 total if 2 instances)
+// Single-instance production: 25 connections max (Neon free tier allows ~100)
 // Development: 20 connections max
-const maxConnections = isProduction ? 50 : 20;
+const maxConnections = isProduction ? 25 : 20;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

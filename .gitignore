@@ -37,6 +37,9 @@ build_output.log
 # Environment
 .env
 
+# DigitalOcean spec exports (contain secrets)
+do-spec.yaml
+
 # Claude worktrees
 .claude/
 

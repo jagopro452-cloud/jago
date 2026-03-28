@@ -1,11 +1,6 @@
 name: jago-platform
 region: blr
 databases:
-  - name: jago-db
-    engine: PG
-    version: "16"
-    production: true
-    size: db-s-dev-database
   - name: jago-redis
     engine: REDIS
     version: "7"
@@ -21,7 +16,7 @@ services:
     build_command: npm ci && npm run build
     run_command: npm start
     http_port: 8080
-    instance_count: 2
+    instance_count: 1
     instance_size_slug: basic-s
     health_check:
       http_path: /api/health
@@ -35,56 +30,61 @@ services:
         value: "production"
       - key: PORT
         value: "8080"
+      # --- Secrets: set these ONLY in DigitalOcean dashboard, NOT here ---
+      # DATABASE_URL          → Neon PostgreSQL connection string
+      # FIREBASE_SERVICE_ACCOUNT_KEY → Firebase service account JSON
+      # FIREBASE_WEB_API_KEY  → Firebase web API key
+      # GOOGLE_MAPS_API_KEY   → Google Maps server key
+      # RAZORPAY_KEY_ID       → Razorpay live key
+      # RAZORPAY_KEY_SECRET   → Razorpay live secret
+      # RAZORPAY_WEBHOOK_SECRET → Razorpay webhook verification secret
+      # FAST2SMS_API_KEY      → Fast2SMS API key
+      # ANTHROPIC_API_KEY     → Claude API key
+      # OPS_API_KEY           → Internal ops endpoint auth
+      # ADMIN_PASSWORD        → Admin login password
+      # ADMIN_RESET_KEY       → Admin password reset key
       - key: DATABASE_URL
-        value: ${jago-db.DATABASE_URL}
         type: SECRET
+      - key: FIREBASE_SERVICE_ACCOUNT_KEY
+        type: SECRET
+      - key: FIREBASE_WEB_API_KEY
+        type: SECRET
+      - key: GOOGLE_MAPS_API_KEY
+        type: SECRET
+      - key: RAZORPAY_KEY_ID
+        type: SECRET
+      - key: RAZORPAY_KEY_SECRET
+        type: SECRET
+      - key: RAZORPAY_WEBHOOK_SECRET
+        type: SECRET
+      - key: FAST2SMS_API_KEY
+        type: SECRET
+      - key: ANTHROPIC_API_KEY
+        type: SECRET
+      - key: OPS_API_KEY
+        type: SECRET
+      - key: TWO_FACTOR_API_KEY
+        type: SECRET
+      - key: ADMIN_PASSWORD
+        type: SECRET
+      - key: ADMIN_RESET_KEY
+        type: SECRET
+      # --- Non-secret config ---
       - key: ADMIN_EMAIL
         value: "kiranatmakuri518@gmail.com"
       - key: ADMIN_NAME
         value: "Jago Admin"
-      - key: ADMIN_PASSWORD
-        value: "Greeshmant@2023"
-        type: SECRET
       - key: ADMIN_PASSWORD_SYNC_ON_RESTART
         value: "true"
-      - key: ADMIN_RESET_KEY
-        value: "JagoReset2026"
-        type: SECRET
       - key: ADMIN_SESSION_TTL_HOURS
         value: "24"
       - key: ADMIN_2FA_REQUIRED
         value: "false"
+      # To enable 2FA: set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE=+91XXXXXXXXXX in DO dashboard
       - key: ENABLE_DEV_OTP_RESPONSES
         value: "false"
-      - key: GOOGLE_MAPS_API_KEY
-        value: "AIzaSyBk3Lj0EIppvldBZue9Cmhff_oi9NeBlL0"
-        type: SECRET
-      - key: FIREBASE_WEB_API_KEY
-        value: "AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI"
-        type: SECRET
-      - key: FIREBASE_SERVICE_ACCOUNT_KEY
-        value: '{"type":"service_account","project_id":"jagopro-9aa9b","private_key_id":"98271fc313913a0e6b506b5678d258d8dd06e690","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDByrMPgllPWMvi\nMygQ5nLgZy6yXPz9M88w+9r0Hs/QSqCP5lD6BKA2n9FSqmNBynWBZxE3I0me/wYp\nV9sdOT0ly4X3S9CEeZcecIDda6gOWQ2ztO9Iv3zHQRYQy8emP+YO/84vj4ZUhdT6\n50KC7u3/e9KZKIFIsKtf3AxismoiecpVvSFMRNfOLkQnNNZyGn2kFapyk8z4HZKw\nLbE17BBcFkIzrxm9VNMR12aD9juT6y6+4SHiwtvlBXVCPaYkjfHi+io8ECTDYcsg\nLPeuP5xcH6GuqJu7cpDHnpHjVj+EWf7NGhNWrG+5wyleRqUm3MAur20dBhoThg/Y\nLD+NpvmrAgMBAAECggEASLWRu1bvxVqOnJ8PAFBGd7WfCqLi9OlUao+EViWdWQw2\n8+a5KSVFK1mJQxfUx+F7dwLBrctamwIaQLbK6ksIiz6yU9epM5sfPPd/EhSLaF63\nSl6vjL7zxRrBeanLja/Z1HTb2nJiNyJDh6PvC4sz1rCRko9k+m32zq+UIg/IzIf3\n1KUpTb3fu2X62Jf8hR6kWiTOdVKdAjt584Ro6MEaqLD0dDCvjoR9TONYdEF2EcHx\nrjSEHD1bDXAWeaIdki9GV7RZ0/aKOkWG23Up5agsnQk5RTDAmIWdPRQ9RCcgoE+m\nvKzopbg3pJrbW4fuKkGiK6lnKnIgSAehVW7/wnVrMQKBgQDxtvE1jDmHelUPz6VW\ntNBxXHn3SwIVyzUREZAqFWzFUXUvgtS6NqbSAQSlBvjO6yjFxyC4oVlmqRROwo2z\nU7imCuCS7zN/mSIWOiozDAAeOSAjrH+UqqcUC+2+dIkzhR1E/rrJiqdJrWbN/obG\nW9WaYNKXLe8D3PHnBDooFyAg+QKBgQDNPrOfLVa02texOnPjLN/WvMNpgTK4fSRZ\nBsvKZEi+qNoCl/qz0rjqvYGmOb7BnKwC1S88Etkv/d6D68e8YhIKNmBO+HxsWnHV\nxESdcAjE04gFXrnECSP2uVKJ8l+Dazqx8+XRYqZx5+VLmNoJZMLd6Xo7vwomBrA2\nueS7bG+8wwKBgHBsmJBBYlijC4FJISvM+c5gJtJgbt3YIByKQLVyNZ8pHgo1HeBm\nnvy6QIDJV1xWgCZNUejOExjut2VSlDm+TPndwUpWO2uzu+j+sLYBdOSZyVsOVmC9\nZuyqB7A338C4vz5iBFrNRLW+Ezzoj6Me/6DIO+rZEHyJfXHnw2z2JJlxAoGAS0F4\nXx8iscGkYMmMAHpNwNEJ3b+Pt3G7SCFjy9wliDMlbNoJBLJ5NykxRp/Zv+gQciF0\n5lQK6rvtQPXNENfswW3atloKVTh8kOMcPZX8wR7GuyFWf/jSBP9Csm36c5d3uBQz\n6ih/2zgqLSPonpUhlnirZwjPUc4WApr6sXY7Kj0CgYBVAt00DSSw10YzZpjpfIzO\njeZSHdXcBpAw7f6MleWxOrKTXOTdhjkG4lgMvRdL/UD+U5KnQKmEcjp3sBSCsvu/\n9O1dou0zjfQ9Qr08Lc1RtsQfInQOb2zuhLYpYqcJmSUR3VGaaz9jTC+uCRwN5wAq\nef3p7zbAze900NBQJY1gyQ==\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk-fbsvc@jagopro-9aa9b.iam.gserviceaccount.com","client_id":"108359246286818504595","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40jagopro-9aa9b.iam.gserviceaccount.com","universe_domain":"googleapis.com"}'
-        type: SECRET
-      - key: OPS_API_KEY
-        value: "JagoOps2026XkP9mN3qR7wZ1vB8cT5yL2hF6dS4"
-        type: SECRET
       - key: SOCKET_ALLOWED_ORIGINS
         value: "https://jagopro.org"
-      - key: FAST2SMS_API_KEY
-        value: "kXNtCTsAWh92LupzHQOZv7YxG4cn0riB6eMPoVIUS5y3gaJfmEkYlGuem7Tzq8KwMHRfvrtyahoUALWp"
-        type: SECRET
-      - key: RAZORPAY_KEY_ID
-        value: "rzp_live_RgM7ylDDU7moQj"
-        type: SECRET
-      - key: RAZORPAY_KEY_SECRET
-        value: "NoLQoxlCg8SPnKHSX0ciIDjJ"
-        type: SECRET
-      - key: RAZORPAY_WEBHOOK_SECRET
-        type: SECRET
-        # Set this in DigitalOcean dashboard — do NOT add value here or it will wipe the dashboard value on redeploy
       - key: REDIS_URL
         value: ${jago-redis.REDIS_URL}
-        type: SECRET
-      - key: ANTHROPIC_API_KEY
-        value: "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"
         type: SECRET
