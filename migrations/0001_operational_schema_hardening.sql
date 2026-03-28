@@ -310,3 +310,59 @@ SELECT 'Hyderabad', 'Vijayawada', 275, 300, 12, 80, true
 WHERE NOT EXISTS (
   SELECT 1 FROM intercity_routes WHERE is_active = true
 );
+
+-- driver_payments: wallet debit/credit ledger for drivers
+CREATE TABLE IF NOT EXISTS driver_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  driver_id UUID NOT NULL,
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  payment_type VARCHAR(60) NOT NULL DEFAULT 'commission_debit',
+  razorpay_order_id VARCHAR(120),
+  razorpay_payment_id VARCHAR(120),
+  trip_id UUID,
+  status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  description TEXT,
+  verified_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_driver_payments_driver ON driver_payments(driver_id);
+CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
+
+-- outstation_pool_rides: driver posts city-to-city rides
+CREATE TABLE IF NOT EXISTS outstation_pool_rides (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  driver_id UUID NOT NULL,
+  from_city VARCHAR(120) NOT NULL,
+  to_city VARCHAR(120) NOT NULL,
+  route_km NUMERIC(10,2) DEFAULT 0,
+  departure_date DATE,
+  departure_time VARCHAR(20),
+  total_seats INTEGER DEFAULT 4,
+  available_seats INTEGER DEFAULT 4,
+  vehicle_number VARCHAR(60),
+  vehicle_model VARCHAR(120),
+  fare_per_seat NUMERIC(10,2) DEFAULT 0,
+  note TEXT,
+  is_active BOOLEAN DEFAULT true,
+  status VARCHAR(30) DEFAULT 'scheduled',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- outstation_pool_bookings: customer seat bookings for pool rides
+CREATE TABLE IF NOT EXISTS outstation_pool_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ride_id UUID NOT NULL,
+  customer_id UUID,
+  seats_booked INTEGER DEFAULT 1,
+  total_fare NUMERIC(10,2) DEFAULT 0,
+  from_city VARCHAR(120),
+  to_city VARCHAR(120),
+  pickup_address TEXT,
+  dropoff_address TEXT,
+  status VARCHAR(30) DEFAULT 'confirmed',
+  payment_status VARCHAR(30) DEFAULT 'pending',
+  payment_method VARCHAR(40) DEFAULT 'cash',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
