@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class CoinsScreen extends StatefulWidget {
@@ -44,7 +45,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(body['message'] ?? (res.statusCode == 200 ? 'Success!' : 'Failed')),
-        backgroundColor: res.statusCode == 200 ? Colors.green : Colors.red,
+        backgroundColor: res.statusCode == 200 ? JT.success : JT.error,
       ));
       if (res.statusCode == 200) _load();
     } catch (_) {}
@@ -59,83 +60,78 @@ class _CoinsScreenState extends State<CoinsScreen> {
     final tips = (_data['howItWorks'] as List?) ?? [];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FF),
+      backgroundColor: JT.surfaceAlt,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: JT.bg,
+        foregroundColor: JT.textPrimary,
         elevation: 0,
         title: Row(children: [
           Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: const Color(0xFF2563EB).withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: const Icon(Icons.monetization_on, color: Color(0xFF2563EB), size: 20),
+            padding: EdgeInsets.all(JT.spacing6),
+            decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(Icons.monetization_on, color: JT.primary, size: 20),
           ),
-          const SizedBox(width: 8),
-          const Text('JAGO Pro Coins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+          SizedBox(width: JT.spacing8),
+          Text('JAGO Pro Coins', style: JT.h4),
         ]),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+          ? Center(child: CircularProgressIndicator(color: JT.primary))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(JT.spacing16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Balance card
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(JT.spacing24),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: JT.grad,
+                      borderRadius: BorderRadius.circular(JT.radiusXl),
                     ),
                     child: Column(
                       children: [
-                        const Icon(Icons.stars_rounded, color: Colors.amber, size: 48),
-                        const SizedBox(height: 8),
-                        Text('$balance', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w500)),
-                        const Text('JAGO Pro Coins', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                        const SizedBox(height: 8),
+                        Icon(Icons.stars_rounded, color: JT.warning, size: 48),
+                        SizedBox(height: JT.spacing8),
+                        Text('$balance', style: JT.h1.copyWith(color: Colors.white, fontSize: 52)),
+                        Text('JAGO Pro Coins', style: JT.h5.copyWith(color: Colors.white70)),
+                        SizedBox(height: JT.spacing8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
-                          child: Text('= ₹$rupeeValue cashback', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                          padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing6),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(JT.radiusXl)),
+                          child: Text('= ₹$rupeeValue cashback', style: JT.subtitle1.copyWith(color: Colors.white)),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: JT.spacing16),
                   // Redeem section
                   if (balance >= 100) ...[
                     Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)]),
+                      padding: EdgeInsets.all(JT.spacing16),
+                      decoration: JT.cardStyle,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Redeem Coins', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 12),
+                          Text('Redeem Coins', style: JT.h5),
+                          SizedBox(height: JT.spacing12),
                           Row(
                             children: [100, 200, 500].where((v) => v <= balance).map((v) => Expanded(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                padding: EdgeInsets.symmetric(horizontal: JT.spacing4),
                                 child: ElevatedButton(
                                   onPressed: _redeeming ? null : () => _redeem(v),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2563EB),
+                                    backgroundColor: JT.primary,
                                     foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusSm + 2)),
+                                    padding: EdgeInsets.symmetric(vertical: JT.spacing12),
                                   ),
                                   child: Column(
                                     children: [
-                                      Text('$v coins', style: const TextStyle(fontSize: 12)),
-                                      Text('= ₹${v ~/ 10}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                      Text('$v coins', style: JT.caption.copyWith(color: Colors.white)),
+                                      Text('= ₹${v ~/ 10}', style: JT.subtitle2.copyWith(color: Colors.white)),
                                     ],
                                   ),
                                 ),
@@ -145,64 +141,63 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: JT.spacing16),
                   ],
                   // How it works
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                    padding: EdgeInsets.all(JT.spacing16),
+                    decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusLg)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('How JAGO Pro Coins work', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 12),
+                        Text('How JAGO Pro Coins work', style: JT.h5),
+                        SizedBox(height: JT.spacing12),
                         ...tips.map((t) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: EdgeInsets.only(bottom: JT.spacing8),
                           child: Row(children: [
-                            const Icon(Icons.check_circle, color: Color(0xFF2563EB), size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(t.toString(), style: const TextStyle(fontSize: 13))),
+                            Icon(Icons.check_circle, color: JT.primary, size: 18),
+                            SizedBox(width: JT.spacing8),
+                            Expanded(child: Text(t.toString(), style: JT.smallText)),
                           ]),
                         )),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: JT.spacing16),
                   // History
                   if (history.isNotEmpty) ...[
-                    const Text('Transaction History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 8),
+                    Text('Transaction History', style: JT.h5),
+                    SizedBox(height: JT.spacing8),
                     ...history.take(20).map((h) {
                       final amt = (h['amount'] as num?) ?? 0;
                       final isPositive = amt > 0;
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                        margin: EdgeInsets.only(bottom: JT.spacing8),
+                        padding: EdgeInsets.all(JT.spacing12),
+                        decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusMd)),
                         child: Row(children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: EdgeInsets.all(JT.spacing8),
                             decoration: BoxDecoration(
-                              color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.1),
+                              color: (isPositive ? JT.success : JT.error).withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(isPositive ? Icons.add : Icons.remove,
-                                color: isPositive ? Colors.green : Colors.red, size: 16),
+                                color: isPositive ? JT.success : JT.error, size: 16),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: JT.spacing12),
                           Expanded(child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(h['description'] ?? h['type'] ?? '', style: const TextStyle(fontSize: 13)),
+                              Text(h['description'] ?? h['type'] ?? '', style: JT.smallText),
                               Text(h['createdAt']?.toString().substring(0, 10) ?? '',
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                  style: JT.caption),
                             ],
                           )),
                           Text(
                             '${isPositive ? '+' : ''}$amt coins',
-                            style: TextStyle(
-                              color: isPositive ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.w500,
+                            style: JT.subtitle1.copyWith(
+                              color: isPositive ? JT.success : JT.error,
                             ),
                           ),
                         ]),

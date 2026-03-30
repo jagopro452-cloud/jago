@@ -1,20 +1,20 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SOURCE_DIR = path.join(__dirname, '..', 'public', 'apks');
-const DEST_DIR_DIST = path.join(__dirname, '..', 'dist', 'public', 'apks');
+const SOURCE_DIR = path.join(__dirname, "..", "public", "apks");
+const DEST_DIR_DIST = path.join(__dirname, "..", "dist", "public", "apks");
 
 function copyFile(src, dest) {
   try {
     fs.copyFileSync(src, dest);
-    console.log(`✅ Synced: ${path.basename(src)}`);
+    console.log(`[sync-apks] synced ${path.basename(dest)}`);
     return true;
   } catch (err) {
-    console.error(`❌ Failed to sync ${path.basename(src)}:`, err.message);
+    console.error(`[sync-apks] failed to sync ${path.basename(src)}:`, err.message);
     return false;
   }
 }
@@ -22,84 +22,72 @@ function copyFile(src, dest) {
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
-    console.log(`📁 Created directory: ${dirPath}`);
+    console.log(`[sync-apks] created ${dirPath}`);
   }
+}
+
+function parseVersion(fileName) {
+  const match = fileName.match(/v(\d+)\.(\d+)\.(\d+)/i);
+  if (!match) return [0, 0, 0];
+  return match.slice(1).map(Number);
+}
+
+function compareVersions(a, b) {
+  const av = parseVersion(a);
+  const bv = parseVersion(b);
+  for (let i = 0; i < 3; i++) {
+    if (av[i] !== bv[i]) return bv[i] - av[i];
+  }
+  return 0;
+}
+
+function findLatest(files, prefix) {
+  return files
+    .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
+    .sort(compareVersions)[0] ?? null;
 }
 
 function syncAPKs() {
-  console.log('🔄 Starting APK Auto-Sync...\n');
+  console.log("[sync-apks] starting");
 
-  // Check if public/apks directory exists
   if (!fs.existsSync(SOURCE_DIR)) {
-    console.log('⚠️  public/apks/ directory not found - skipping APK sync');
-    console.log('   (This is normal in production - APKs are hosted separately)\n');
-    return true; // Don't fail the build
+    console.log("[sync-apks] public/apks not found, skipping");
+    return true;
   }
 
-  // Ensure destination directory exists
   ensureDir(DEST_DIR_DIST);
 
-  // Read all APK files from release-apks
-  const apkFiles = fs.readdirSync(SOURCE_DIR).filter(file => file.endsWith('.apk'));
-
+  const apkFiles = fs.readdirSync(SOURCE_DIR).filter((file) => file.endsWith(".apk"));
   if (apkFiles.length === 0) {
-    console.log('⚠️  No APK files found in public/apks/');
-    return true; // Don't fail the build
+    console.log("[sync-apks] no apk files found");
+    return true;
   }
 
-  console.log(`📦 Found ${apkFiles.length} APK files:\n`);
-
-  let syncCount = 0;
-  const filesToCopy = [
-    'jago-customer-v1.0.56-release.apk',
-    'jago-customer-final.apk',
-    'jago-driver-v1.0.58-release.apk',
-    'jago-driver-final.apk',
-    'jago-pilot-final.apk'
-  ];
-
-  // Copy specific latest versions to web server
-  filesToCopy.forEach(fileName => {
-    const srcPath = path.join(SOURCE_DIR, fileName);
-    if (fs.existsSync(srcPath)) {
-      // Copy to dist/public/apks/ (for web server)
-      const destPath = path.join(DEST_DIR_DIST, fileName);
-      if (copyFile(srcPath, destPath)) {
-        syncCount++;
-      }
-    }
+  apkFiles.forEach((fileName) => {
+    copyFile(path.join(SOURCE_DIR, fileName), path.join(DEST_DIR_DIST, fileName));
   });
 
-  console.log(`\n✨ Sync complete! Latest APKs ready for web server.\n`);
+  const customerLatest = findLatest(apkFiles, "jago-customer-");
+  const pilotLatest = findLatest(apkFiles, "jago-pilot-");
+  const aliases = [
+    { source: customerLatest, alias: "jago-customer-latest.apk" },
+    { source: pilotLatest, alias: "jago-driver-latest.apk" },
+    { source: pilotLatest, alias: "jago-pilot-latest.apk" },
+  ];
 
-  // Verify latest versions exist
-  const customerLatest = path.join(DEST_DIR_DIST, 'jago-customer-v1.0.56-release.apk');
-  const driverLatest = path.join(DEST_DIR_DIST, 'jago-driver-v1.0.58-release.apk');
-  const pilotLatest = path.join(DEST_DIR_DIST, 'jago-pilot-final.apk');
-  const customerFinal = path.join(DEST_DIR_DIST, 'jago-customer-final.apk');
-  const driverFinal = path.join(DEST_DIR_DIST, 'jago-driver-final.apk');
+  aliases.forEach(({ source, alias }) => {
+    if (!source) return;
+    copyFile(path.join(SOURCE_DIR, source), path.join(DEST_DIR_DIST, alias));
+  });
 
-  const customerOK = fs.existsSync(customerLatest);
-  const driverOK = fs.existsSync(driverLatest);
-  const pilotOK = fs.existsSync(pilotLatest);
-  const customerFinalOK = fs.existsSync(customerFinal);
-  const driverFinalOK = fs.existsSync(driverFinal);
+  const status = {
+    customer: fs.existsSync(path.join(DEST_DIR_DIST, "jago-customer-latest.apk")),
+    driver: fs.existsSync(path.join(DEST_DIR_DIST, "jago-driver-latest.apk")),
+    pilot: fs.existsSync(path.join(DEST_DIR_DIST, "jago-pilot-latest.apk")),
+  };
 
-  console.log('📋 Latest versions status:');
-  console.log(`   ${customerOK ? '✅' : '❌'} Customer v1.0.56 in dist/public/apks/ (WEB SERVER)`);
-  console.log(`   ${driverOK ? '✅' : '❌'} Driver v1.0.58 in dist/public/apks/ (WEB SERVER)`);
-  console.log(`   ${pilotOK ? '✅' : '❌'} Pilot v1.0.58 in dist/public/apks/ (WEB SERVER)`);
-  console.log(`   ${customerFinalOK ? '✅' : '❌'} Customer Download Link Ready`);
-  console.log(`   ${driverFinalOK ? '✅' : '❌'} Driver Download Link Ready\n`);
-
-  if (customerOK && driverOK && customerFinalOK && driverFinalOK) {
-    console.log('🎉 All APKs ready for download on web server!\n');
-    return true;
-  } else {
-    console.log('⚠️  Some APKs not found (this is OK in production)\n');
-    return true; // Don't fail the build
-  }
+  console.log("[sync-apks] latest aliases", status);
+  return true;
 }
 
-// Run the sync
 syncAPKs();

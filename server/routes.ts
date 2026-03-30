@@ -12932,7 +12932,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 
   // ========== APK DOWNLOADS ==========
-  app.use("/apks", express.static(path.join(process.cwd(), "public", "apks")));
+  const apkDir = path.join(process.cwd(), "public", "apks");
+  const apkLatestAliases: Record<string, string> = {
+    "jago-customer-latest.apk": "jago-customer-v1.0.58-release.apk",
+    "jago-driver-latest.apk": "jago-pilot-v1.0.60-release.apk",
+    "jago-pilot-latest.apk": "jago-pilot-v1.0.60-release.apk",
+  };
+
+  app.get("/apks/:fileName", (req, res, next) => {
+    const target = apkLatestAliases[req.params.fileName];
+    if (!target) return next();
+    return res.sendFile(path.join(apkDir, target));
+  });
+
+  app.use("/apks", express.static(apkDir));
 
   // Download page � jagopro.org/download
   app.get("/download", (_req, res) => {
@@ -12957,15 +12970,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="card">
   <div class="logo">JAGO Pro</div>
   <div class="sub">Ride. Deliver. Earn.</div>
-  <a class="btn btn-blue" href="/apks/jago-customer-v1.0.31.apk" download>
+  <a class="btn btn-blue" href="/apks/jago-customer-latest.apk" download>
     ?? Download Customer App
   </a>
-  <span class="badge">v1.0.31 � ARM64 � 24 MB</span>
+  <span class="badge">v1.0.58 | Universal APK | 60 MB</span>
   <br><br>
-  <a class="btn btn-green" href="/apks/jago-driver-v1.0.31.apk" download>
+  <a class="btn btn-green" href="/apks/jago-driver-latest.apk" download>
     ?? Download Driver / Pilot App
   </a>
-  <span class="badge">v1.0.31 � ARM64 � 25 MB</span>
+  <span class="badge">v1.0.60 | Universal APK | 60 MB</span>
   <div class="version">Android 6.0+ required � Free Download</div>
 </div>
 </body></html>`);

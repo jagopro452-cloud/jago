@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../config/jago_theme.dart';
 import '../../services/call_service.dart';
 
 /// Full-screen in-app voice call screen.
@@ -98,7 +98,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: JT.primaryDark,
       body: SafeArea(
         child: Column(
           children: [
@@ -108,35 +108,35 @@ class _CallScreenState extends State<CallScreen> {
               width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF2F7BFF).withValues(alpha: 0.2),
-                border: Border.all(color: const Color(0xFF2F7BFF), width: 3),
+                color: JT.primary.withValues(alpha: 0.2),
+                border: Border.all(color: JT.primary, width: 3),
               ),
-              child: const Icon(Icons.person, size: 50, color: Color(0xFF2F7BFF)),
+              child: Icon(Icons.person, size: 50, color: JT.primary),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: JT.spacing20),
             // Contact name
             Text(
               widget.contactName,
-              style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w500, color: Colors.white),
+              style: JT.h2.copyWith(color: Colors.white),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: JT.spacing8),
             // Call status
             Text(
               _statusText,
-              style: GoogleFonts.poppins(fontSize: 14, color: Colors.white70),
+              style: JT.body.copyWith(color: Colors.white70),
             ),
             if (_state == CallState.connected) ...[
-              const SizedBox(height: 4),
+              SizedBox(height: JT.spacing4),
               Text(
                 _formatDuration(_durationSec),
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: const Color(0xFF4ADE80)),
+                style: JT.h5.copyWith(color: JT.success),
               ),
             ],
             const Spacer(flex: 3),
             // Call controls
             if (_state == CallState.incoming) _buildIncomingControls()
             else _buildActiveControls(),
-            const SizedBox(height: 50),
+            SizedBox(height: JT.spacing40),
           ],
         ),
       ),
@@ -162,7 +162,7 @@ class _CallScreenState extends State<CallScreen> {
           onTap: _reject,
           child: Container(
             width: 70, height: 70,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEF4444)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: JT.error),
             child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 32),
           ),
         ),
@@ -171,7 +171,7 @@ class _CallScreenState extends State<CallScreen> {
           onTap: _accept,
           child: Container(
             width: 70, height: 70,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF22C55E)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: JT.success),
             child: const Icon(Icons.call_rounded, color: Colors.white, size: 32),
           ),
         ),
@@ -198,7 +198,7 @@ class _CallScreenState extends State<CallScreen> {
           onTap: _hangUp,
           child: Container(
             width: 70, height: 70,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEF4444)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: JT.error),
             child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 32),
           ),
         ),
@@ -232,8 +232,8 @@ class _CallScreenState extends State<CallScreen> {
             decoration: BoxDecoration(shape: BoxShape.circle, color: color),
             child: Icon(icon, color: Colors.white, size: 26),
           ),
-          const SizedBox(height: 8),
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: Colors.white70)),
+          SizedBox(height: JT.spacing8),
+          Text(label, style: JT.caption.copyWith(color: Colors.white70)),
         ],
       ),
     );

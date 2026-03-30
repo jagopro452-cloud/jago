@@ -3630,6 +3630,339 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 
 /* ═══════════════════════════════════════════════════
+   🎨 PREMIUM DASHBOARD COMPONENTS (v3)
+   ═══════════════════════════════════════════════════ */
+
+/* ── Unified Card ── */
+.jd-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(226,232,240,0.85);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.03);
+  overflow: hidden;
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
+}
+.jd-card:hover {
+  box-shadow: 0 4px 20px rgba(47,123,255,0.08), 0 1px 6px rgba(0,0,0,0.04);
+}
+.jd-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  gap: 12px;
+}
+.jd-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.jd-card-subtitle {
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* ── Clock Widget ── */
+.jd-clock-widget {
+  background: linear-gradient(145deg, #0f1b35 0%, #162244 50%, #1a2d5c 100%);
+  border-radius: 16px;
+  padding: 20px 18px;
+  color: white;
+  text-align: center;
+  margin-bottom: 12px;
+  border: 1px solid rgba(47,123,255,0.15);
+  box-shadow: 0 4px 20px rgba(15,27,53,0.35);
+}
+
+/* ── Service Card ── */
+.jd-svc-card {
+  background: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1.5px solid rgba(226,232,240,0.8);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.jd-svc-card:hover {
+  box-shadow: 0 6px 20px rgba(47,123,255,0.1);
+  transform: translateY(-2px);
+  border-color: rgba(47,123,255,0.2);
+}
+.jd-svc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.jd-svc-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.jd-svc-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+/* ── Live Badge ── */
+.jd-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #16a34a;
+  font-weight: 600;
+}
+.jd-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ── KPI Mini Card ── */
+.jd-kpi-mini-card {
+  border-radius: 12px;
+  padding: 10px 14px;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.15s ease;
+}
+.jd-kpi-mini-card:hover { transform: translateY(-1px); }
+.jd-kpi-mini-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Info Pill (badges) ── */
+.jd-info-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 3px 10px;
+  border: 1px solid;
+}
+
+/* ── View All Button ── */
+.jd-view-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #2F7BFF;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 5px 14px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.jd-view-all-btn:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+/* ── Table Styles ── */
+.jd-table-head {
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+}
+.jd-table-head th {
+  font-size: 10px !important;
+  color: #94a3b8 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  white-space: nowrap !important;
+  padding-top: 11px !important;
+  padding-bottom: 11px !important;
+}
+.jd-mini-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.jd-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* ── Skeleton ── */
+.jd-skeleton {
+  display: inline-block;
+  height: 12px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.4s infinite;
+}
+
+/* ── Empty States ── */
+.jd-empty-chart {
+  height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.jd-empty-table {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+}
+.jd-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+/* ── Quick Stats & Actions ── */
+.jd-quick-stat {
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.15s ease;
+}
+.jd-quick-stat:hover { transform: translateY(-1px); }
+.jd-quick-action {
+  border: 1.5px solid #e2e8f020;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: white;
+}
+.jd-quick-action:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  transform: translateY(-1px);
+}
+.jd-quick-action-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Notification Items ── */
+.jd-notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 16px;
+  transition: background 0.12s ease;
+}
+.jd-notif-item:hover { background: #f8fafc; }
+.jd-notif-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Dark Mode: Dashboard ── */
+html[data-theme="dark"] .jd-card {
+  background: rgba(15, 23, 42, 0.92) !important;
+  border-color: rgba(47,123,255,0.15) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35) !important;
+}
+html[data-theme="dark"] .jd-card:hover {
+  box-shadow: 0 8px 28px rgba(47,123,255,0.12) !important;
+}
+html[data-theme="dark"] .jd-card-title { color: #e2e8f0 !important; }
+html[data-theme="dark"] .jd-card-subtitle { color: #64748b !important; }
+html[data-theme="dark"] .jd-svc-card {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border-color: rgba(47,123,255,0.12) !important;
+}
+html[data-theme="dark"] .jd-svc-card:hover {
+  border-color: rgba(47,123,255,0.3) !important;
+  box-shadow: 0 6px 24px rgba(47,123,255,0.15) !important;
+}
+html[data-theme="dark"] .jd-svc-card div[style*="color: #0f172a"] { color: #e2e8f0 !important; }
+html[data-theme="dark"] .jd-clock-widget {
+  background: linear-gradient(145deg, #060d1e 0%, #0f1b35 50%, #1a2d5c 100%) !important;
+  border-color: rgba(47,123,255,0.2) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important;
+}
+html[data-theme="dark"] .jd-quick-action {
+  background: rgba(15, 23, 42, 0.7) !important;
+  border-color: rgba(47,123,255,0.12) !important;
+}
+html[data-theme="dark"] .jd-quick-action:hover {
+  background: rgba(30, 64, 175, 0.15) !important;
+  border-color: rgba(47,123,255,0.25) !important;
+}
+html[data-theme="dark"] .jd-quick-action span { color: #e2e8f0 !important; }
+html[data-theme="dark"] .jd-notif-item:hover { background: rgba(30, 64, 175, 0.1) !important; }
+html[data-theme="dark"] .jd-table-head { background: rgba(15,23,42,0.6) !important; }
+html[data-theme="dark"] .jd-table-head th { color: #64748b !important; }
+html[data-theme="dark"] .jd-view-all-btn {
+  background: rgba(47,123,255,0.12) !important;
+  color: #60a5fa !important;
+  border-color: rgba(47,123,255,0.25) !important;
+}
+html[data-theme="dark"] .jd-view-all-btn:hover {
+  background: rgba(47,123,255,0.2) !important;
+}
+
+/* ═══════════════════════════════════════════════════
    📱 RESPONSIVE — ADMIN PANEL
    ═══════════════════════════════════════════════════ */
 

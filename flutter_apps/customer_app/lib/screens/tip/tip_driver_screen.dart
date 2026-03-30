@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class TipDriverScreen extends StatefulWidget {
@@ -35,7 +36,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
       if (res.statusCode == 200) {
         setState(() { _done = true; _doneMsg = body['message'] ?? 'Tip sent!'; });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: JT.error));
       }
     } catch (_) {}
     if (mounted) setState(() => _sending = false);
@@ -44,66 +45,66 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FF),
+      backgroundColor: JT.surfaceAlt,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: JT.bg,
+        foregroundColor: JT.textPrimary,
         elevation: 0,
-        title: const Text('Tip Your Driver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+        title: Text('Tip Your Driver', style: JT.h4),
       ),
       body: _done ? _doneScreen() : _tipScreen(),
     );
   }
 
   Widget _tipScreen() => Padding(
-    padding: const EdgeInsets.all(24),
+    padding: EdgeInsets.all(JT.spacing24),
     child: Column(
       children: [
-        const SizedBox(height: 24),
+        SizedBox(height: JT.spacing24),
         Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20)]),
-          child: const Icon(Icons.person, size: 60, color: Color(0xFF2563EB)),
+          padding: EdgeInsets.all(JT.spacing20),
+          decoration: BoxDecoration(color: JT.bg, shape: BoxShape.circle,
+            boxShadow: JT.shadowMd),
+          child: Icon(Icons.person, size: 60, color: JT.primary),
         ),
-        const SizedBox(height: 16),
-        Text(widget.driverName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 4),
-        const Text('Great service? Show your appreciation!', style: TextStyle(color: Colors.grey)),
-        const SizedBox(height: 32),
-        const Text('Select tip amount', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 16),
+        SizedBox(height: JT.spacing16),
+        Text(widget.driverName, style: JT.h3),
+        SizedBox(height: JT.spacing4),
+        Text('Great service? Show your appreciation!', style: JT.body),
+        SizedBox(height: JT.spacing32),
+        Text('Select tip amount', style: JT.h5),
+        SizedBox(height: JT.spacing16),
         Row(
           children: _tips.map((t) => Expanded(
             child: GestureDetector(
               onTap: () => setState(() => _selectedTip = t),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                margin: EdgeInsets.symmetric(horizontal: JT.spacing4),
+                padding: EdgeInsets.symmetric(vertical: JT.spacing16),
                 decoration: BoxDecoration(
-                  color: _selectedTip == t ? const Color(0xFF2563EB) : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _selectedTip == t ? const Color(0xFF2563EB) : Colors.grey.shade200),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+                  color: _selectedTip == t ? JT.primary : JT.bg,
+                  borderRadius: BorderRadius.circular(JT.radiusMd + 2),
+                  border: Border.all(color: _selectedTip == t ? JT.primary : JT.border),
+                  boxShadow: JT.shadowXs,
                 ),
                 child: Column(
                   children: [
-                    Text('₹$t', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500,
-                        color: _selectedTip == t ? Colors.white : Colors.black)),
+                    Text('₹$t', style: JT.h4.copyWith(
+                        color: _selectedTip == t ? Colors.white : JT.textPrimary)),
                   ],
                 ),
               ),
             ),
           )).toList(),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: JT.spacing12),
         Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.amber.shade200)),
-          child: const Row(children: [
-            Icon(Icons.stars, color: Colors.amber, size: 18),
-            SizedBox(width: 8),
-            Expanded(child: Text('You earn 10x JAGO Pro Coins for every rupee tipped!', style: TextStyle(fontSize: 12, color: Colors.amber))),
+          padding: EdgeInsets.all(JT.spacing12 + 2),
+          decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusMd), border: Border.all(color: JT.warning.withValues(alpha: 0.3))),
+          child: Row(children: [
+            Icon(Icons.stars, color: JT.warning, size: 18),
+            SizedBox(width: JT.spacing8),
+            Expanded(child: Text('You earn 10x JAGO Pro Coins for every rupee tipped!', style: JT.caption.copyWith(color: JT.warning))),
           ]),
         ),
         const Spacer(),
@@ -113,20 +114,20 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
             child: ElevatedButton(
               onPressed: _sending ? null : () => _sendTip(_selectedTip!),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
+                backgroundColor: JT.primary,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusMd + 2)),
+                padding: EdgeInsets.symmetric(vertical: JT.spacing16),
               ),
               child: _sending
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text('Send ₹$_selectedTip Tip', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                  : Text('Send ₹$_selectedTip Tip', style: JT.btnText),
             ),
           ),
-        const SizedBox(height: 12),
+        SizedBox(height: JT.spacing12),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Skip', style: TextStyle(color: Colors.grey)),
+          child: Text('Skip', style: JT.body),
         ),
       ],
     ),
@@ -134,29 +135,29 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
 
   Widget _doneScreen() => Center(
     child: Padding(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.all(JT.spacing32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
-            child: const Icon(Icons.favorite, color: Colors.green, size: 64),
+            padding: EdgeInsets.all(JT.spacing24),
+            decoration: BoxDecoration(color: JT.successLight, shape: BoxShape.circle),
+            child: Icon(Icons.favorite, color: JT.success, size: 64),
           ),
-          const SizedBox(height: 24),
-          const Text('Tip Sent!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w500, color: Colors.green)),
-          const SizedBox(height: 12),
-          Text(_doneMsg, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 15, height: 1.5)),
-          const SizedBox(height: 32),
+          SizedBox(height: JT.spacing24),
+          Text('Tip Sent!', style: JT.h1.copyWith(color: JT.success)),
+          SizedBox(height: JT.spacing12),
+          Text(_doneMsg, textAlign: TextAlign.center, style: JT.subtitle2.copyWith(height: 1.5)),
+          SizedBox(height: JT.spacing32),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
+              backgroundColor: JT.primary,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusMd)),
+              padding: EdgeInsets.symmetric(horizontal: JT.spacing40, vertical: JT.spacing12 + 2),
             ),
-            child: const Text('Done', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            child: Text('Done', style: JT.btnText),
           ),
         ],
       ),

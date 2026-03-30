@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class LostFoundScreen extends StatefulWidget {
@@ -63,12 +64,12 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
         Navigator.pop(context);
         messenger.showSnackBar(SnackBar(
           content: Text(body['message'] ?? 'Report submitted!'),
-          backgroundColor: Colors.green,
+          backgroundColor: JT.success,
           duration: const Duration(seconds: 5),
         ));
         _load();
       } else {
-        messenger.showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: Colors.red));
+        messenger.showSnackBar(SnackBar(content: Text(body['message'] ?? 'Failed'), backgroundColor: JT.error));
       }
     } catch (_) {}
     if (mounted) setState(() => _submitting = false);
@@ -82,8 +83,8 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
       builder: (_) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: Container(
-          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(JT.radiusXl + 4))),
+          padding: EdgeInsets.all(JT.spacing24),
           child: Form(
             key: _formKey,
             child: Column(
@@ -91,59 +92,57 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  const Text('Report Lost Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+                  Text('Report Lost Item', style: JT.h4),
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                 ]),
-                const SizedBox(height: 8),
+                SizedBox(height: JT.spacing8),
                 Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
-                  child: const Row(children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('We will contact the driver and get back to you within 2 hours.', style: TextStyle(fontSize: 12, color: Colors.orange))),
+                  padding: EdgeInsets.all(JT.spacing12),
+                  decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusSm + 2)),
+                  child: Row(children: [
+                    Icon(Icons.info_outline, color: JT.warning, size: 18),
+                    SizedBox(width: JT.spacing8),
+                    Expanded(child: Text('We will contact the driver and get back to you within 2 hours.', style: JT.caption.copyWith(color: JT.warning))),
                   ]),
                 ),
-                const SizedBox(height: 16),
-                const Text('What did you lose?', style: TextStyle(fontWeight: FontWeight.w400)),
-                const SizedBox(height: 8),
+                SizedBox(height: JT.spacing16),
+                Text('What did you lose?', style: JT.bodyPrimary),
+                SizedBox(height: JT.spacing8),
                 TextFormField(
                   controller: _descCtrl,
                   maxLines: 3,
-                  decoration: InputDecoration(
+                  decoration: JT.modernInputDecoration(
+                    labelText: '',
                     hintText: 'e.g., Black leather wallet, iPhone 14 Pro, Laptop bag...',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2563EB))),
                   ),
                   validator: (v) => v == null || v.isEmpty ? 'Please describe the item' : null,
                 ),
-                const SizedBox(height: 12),
-                const Text('Contact Phone', style: TextStyle(fontWeight: FontWeight.w400)),
-                const SizedBox(height: 8),
+                SizedBox(height: JT.spacing12),
+                Text('Contact Phone', style: JT.bodyPrimary),
+                SizedBox(height: JT.spacing8),
                 TextFormField(
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
+                  decoration: JT.modernInputDecoration(
+                    labelText: '',
                     hintText: '9876543210',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2563EB))),
                     prefixIcon: const Icon(Icons.phone),
                   ),
                 ),
-                const SizedBox(height: 20),
+                SizedBox(height: JT.spacing20),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _submitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
+                      backgroundColor: JT.primary,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusMd)),
+                      padding: EdgeInsets.symmetric(vertical: JT.spacing16 - 2),
                     ),
                     child: _submitting
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Submit Report', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+                        : Text('Submit Report', style: JT.btnText),
                   ),
                 ),
               ],
@@ -157,29 +156,29 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FF),
+      backgroundColor: JT.surfaceAlt,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: JT.bg,
+        foregroundColor: JT.textPrimary,
         elevation: 0,
-        title: const Text('Lost & Found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+        title: Text('Lost & Found', style: JT.h4),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showReportSheet,
-        backgroundColor: const Color(0xFF2563EB),
+        backgroundColor: JT.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Report Lost Item'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+          ? Center(child: CircularProgressIndicator(color: JT.primary))
           : _reports.isEmpty
               ? _emptyState()
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(JT.spacing16),
                   children: [
-                    const Text('Your Reports', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 12),
+                    Text('Your Reports', style: JT.h5),
+                    SizedBox(height: JT.spacing12),
                     ..._reports.map((r) => _reportCard(r)),
                   ],
                 ),
@@ -189,51 +188,50 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   Widget _emptyState() => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: const Color(0xFF2563EB).withValues(alpha: 0.1), shape: BoxShape.circle),
-        child: const Icon(Icons.search, size: 64, color: Color(0xFF2563EB)),
+        padding: EdgeInsets.all(JT.spacing24),
+        decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+        child: Icon(Icons.search, size: 64, color: JT.primary),
       ),
-      const SizedBox(height: 16),
-      const Text('Lost something?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
-      const SizedBox(height: 8),
-      const Text('Report lost items from your recent\nrides and we\'ll help you find them.',
-          textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      SizedBox(height: JT.spacing16),
+      Text('Lost something?', style: JT.h3),
+      SizedBox(height: JT.spacing8),
+      Text('Report lost items from your recent\nrides and we\'ll help you find them.',
+          textAlign: TextAlign.center, style: JT.body),
       const SizedBox(height: 80),
     ]),
   );
 
   Widget _reportCard(Map<String, dynamic> r) {
     final status = r['status'] ?? 'open';
-    final statusColor = status == 'resolved' ? Colors.green : status == 'in_progress' ? Colors.blue : Colors.orange;
+    final statusColor = status == 'resolved' ? JT.success : status == 'in_progress' ? JT.primary : JT.warning;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)]),
+      margin: EdgeInsets.only(bottom: JT.spacing12),
+      padding: EdgeInsets.all(JT.spacing16),
+      decoration: JT.cardStyle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Icon(Icons.inventory_2_outlined, color: Color(0xFF2563EB), size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(r['description'] ?? '', style: const TextStyle(fontWeight: FontWeight.w400), maxLines: 2, overflow: TextOverflow.ellipsis)),
+            Icon(Icons.inventory_2_outlined, color: JT.primary, size: 20),
+            SizedBox(width: JT.spacing8),
+            Expanded(child: Text(r['description'] ?? '', style: JT.bodyPrimary, maxLines: 2, overflow: TextOverflow.ellipsis)),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-              child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w500)),
+              padding: EdgeInsets.symmetric(horizontal: JT.spacing8 + 2, vertical: JT.spacing4),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(JT.radiusXl)),
+              child: Text(status.toUpperCase(), style: JT.caption.copyWith(color: statusColor, fontWeight: FontWeight.w500, fontSize: 11)),
             ),
           ]),
           if (r['pickupAddress'] != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: JT.spacing8),
             Text('Trip: ${r['pickupAddress']} → ${r['destinationAddress'] ?? '...'}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
+                style: JT.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
           if (r['driverName'] != null) ...[
-            const SizedBox(height: 4),
-            Text('Driver: ${r['driverName']} • ${r['driverPhone'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            SizedBox(height: JT.spacing4),
+            Text('Driver: ${r['driverName']} • ${r['driverPhone'] ?? ''}', style: JT.caption),
           ],
-          const SizedBox(height: 4),
-          Text(r['createdAt']?.toString().substring(0, 10) ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          SizedBox(height: JT.spacing4),
+          Text(r['createdAt']?.toString().substring(0, 10) ?? '', style: JT.caption),
         ],
       ),
     );

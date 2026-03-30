@@ -92,6 +92,13 @@ class _SearchTabState extends State<_SearchTab> {
       ));
       return;
     }
+    if (from.toLowerCase() == to.toLowerCase()) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Pickup and drop cities cannot be the same'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     setState(() { _searching = true; _results = []; _searched = false; });
     try {
       final headers = await AuthService.getHeaders();
@@ -103,14 +110,34 @@ class _SearchTabState extends State<_SearchTab> {
       });
       final res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 15));
       if (!mounted) return;
+      if (res.statusCode == 401) {
+        await AuthService.handle401();
+        return;
+      }
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         setState(() { _results = data['data'] as List<dynamic>? ?? []; _searched = true; });
       } else {
+        String msg = 'Could not fetch rides. Please try again.';
+        try {
+          final body = jsonDecode(res.body);
+          msg = body['message']?.toString() ?? msg;
+        } catch (_) {}
         setState(() => _searched = true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: JT.error,
+        ));
       }
     } catch (_) {
-      if (mounted) setState(() => _searched = true);
+      if (mounted) {
+        setState(() => _searched = true);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Network error. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
     } finally {
       if (mounted) setState(() => _searching = false);
     }
@@ -427,13 +454,27 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
   }
 
   Future<void> _book() async {
+    if (_seats < 1 || _seats > widget.maxSeats) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Choose a valid number of seats'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    final rideId = widget.ride['id']?.toString() ?? '';
+    if (rideId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Ride unavailable. Please refresh and try again.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     setState(() => _booking = true);
     try {
-      final rideId = widget.ride['id']?.toString() ?? '';
       final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse(ApiConfig.outstationPoolBook),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
           'rideId': rideId,
           'seatsBooked': _seats,
@@ -444,6 +485,10 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
       ).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
+      if (res.statusCode == 401) {
+        await AuthService.handle401();
+        return;
+      }
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 && body['success'] == true) {
         Navigator.of(context).pop();
@@ -459,7 +504,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
           behavior: SnackBarBehavior.floating,
         ));
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Network error. Please try again.'),
@@ -642,11 +687,32 @@ class _BookingsTabState extends State<_BookingsTab> {
         headers: headers,
       ).timeout(const Duration(seconds: 15));
       if (!mounted) return;
+      if (res.statusCode == 401) {
+        await AuthService.handle401();
+        return;
+      }
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         setState(() { _bookings = data['data'] as List<dynamic>? ?? []; });
+      } else {
+        String msg = 'Unable to load bookings';
+        try {
+          msg = (jsonDecode(res.body) as Map<String, dynamic>)['message']?.toString() ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: JT.error,
+        ));
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Network error. Pull to retry.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
     if (mounted) setState(() => _loading = false);
   }
 

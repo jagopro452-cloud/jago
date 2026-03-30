@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class SupportChatScreen extends StatefulWidget {
@@ -11,7 +12,7 @@ class SupportChatScreen extends StatefulWidget {
 }
 
 class _SupportChatScreenState extends State<SupportChatScreen> {
-  static const _blue = Color(0xFF1565C0);
+  static final _blue = JT.primary;
 
   List<dynamic> _messages = [];
   bool _loading = true;
@@ -93,16 +94,16 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: JT.bgSoft,
       appBar: AppBar(
         backgroundColor: _blue,
         foregroundColor: Colors.white,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('JAGO Pro Support', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+          Text('JAGO Pro Support', style: JT.h5.copyWith(color: Colors.white)),
           Row(children: [
-            Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle)),
-            const SizedBox(width: 4),
-            const Text('Online', style: TextStyle(fontSize: 11)),
+            Container(width: 7, height: 7, decoration: BoxDecoration(color: JT.success, shape: BoxShape.circle)),
+            SizedBox(width: JT.spacing4),
+            Text('Online', style: JT.caption.copyWith(color: Colors.white, fontSize: 11)),
           ]),
         ]),
         elevation: 0,
@@ -114,25 +115,25 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
         // Welcome banner
         if (_messages.isEmpty && !_loading)
           Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
+            margin: EdgeInsets.all(JT.spacing16),
+            padding: EdgeInsets.all(JT.spacing16),
             decoration: BoxDecoration(
               color: _blue.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(JT.radiusLg),
               border: Border.all(color: _blue.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(JT.spacing8 + 2),
                 decoration: BoxDecoration(color: _blue.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.support_agent, color: _blue, size: 28),
+                child: Icon(Icons.support_agent, color: _blue, size: 28),
               ),
-              const SizedBox(width: 12),
-              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('JAGO Pro Support Team', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-                SizedBox(height: 4),
+              SizedBox(width: JT.spacing12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('JAGO Pro Support Team', style: JT.subtitle1),
+                SizedBox(height: JT.spacing4),
                 Text('Mee query ki meeru message cheyyandi. Meeru 24/7 available.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: JT.caption),
               ])),
             ]),
           ),
@@ -140,16 +141,16 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
         // Messages
         Expanded(
           child: _loading
-            ? const Center(child: CircularProgressIndicator(color: _blue))
+            ? Center(child: CircularProgressIndicator(color: _blue))
             : _messages.isEmpty
               ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-                  const Text('Meeru first message nadavachu!', style: TextStyle(color: Colors.grey)),
+                  Icon(Icons.chat_bubble_outline, size: 64, color: JT.iconInactive),
+                  SizedBox(height: JT.spacing12),
+                  Text('Meeru first message nadavachu!', style: JT.body),
                 ]))
               : ListView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing8),
                   itemCount: _messages.length,
                   itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
                 ),
@@ -157,30 +158,30 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
 
         // Input
         Container(
-          color: Colors.white,
-          padding: EdgeInsets.fromLTRB(16, 10, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+          color: JT.bg,
+          padding: EdgeInsets.fromLTRB(JT.spacing16, JT.spacing8 + 2, JT.spacing16, MediaQuery.of(context).viewInsets.bottom + JT.spacing16),
           child: Row(children: [
             Expanded(
               child: TextField(
                 controller: _ctrl,
                 decoration: InputDecoration(
                   hintText: 'Meeru ela help cheyyagalamu?',
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                  hintStyle: JT.body,
                   filled: true,
-                  fillColor: Colors.grey.shade100,
+                  fillColor: JT.borderLight,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  contentPadding: EdgeInsets.symmetric(horizontal: JT.spacing16 + 2, vertical: JT.spacing12),
                 ),
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: JT.spacing8 + 2),
             GestureDetector(
               onTap: _send,
               child: Container(
                 width: 46, height: 46,
-                decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: _blue, shape: BoxShape.circle),
                 child: _sending
                   ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
@@ -196,7 +197,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
     final isUser = msg['sender'] == 'user';
     final time = _fmtTime(msg['created_at']?.toString());
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: JT.spacing8 + 2),
       child: Row(
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -204,8 +205,8 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
           if (!isUser) ...[
             Container(
               width: 30, height: 30,
-              margin: const EdgeInsets.only(right: 8),
-              decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle),
+              margin: EdgeInsets.only(right: JT.spacing8),
+              decoration: BoxDecoration(color: _blue, shape: BoxShape.circle),
               child: const Icon(Icons.support_agent, color: Colors.white, size: 16),
             ),
           ],
@@ -214,24 +215,24 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
             children: [
               Container(
                 constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: EdgeInsets.symmetric(horizontal: JT.spacing12 + 2, vertical: JT.spacing8 + 2),
                 decoration: BoxDecoration(
-                  color: isUser ? _blue : Colors.white,
+                  color: isUser ? _blue : JT.bg,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
                     bottomLeft: Radius.circular(isUser ? 18 : 4),
                     bottomRight: Radius.circular(isUser ? 4 : 18),
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                  boxShadow: JT.shadowXs,
                 ),
                 child: Text(
                   msg['message'] ?? '',
-                  style: TextStyle(color: isUser ? Colors.white : Colors.black87, fontSize: 14),
+                  style: JT.body.copyWith(color: isUser ? Colors.white : JT.textPrimary),
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(time, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+              SizedBox(height: JT.spacing2 + 1),
+              Text(time, style: JT.caption.copyWith(fontSize: 10)),
             ],
           ),
         ],

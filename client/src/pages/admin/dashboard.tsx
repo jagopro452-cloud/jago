@@ -29,44 +29,52 @@ const NOTIF_ICONS: Record<string, { icon: string; color: string; bg: string }> =
   withdraw: { icon: "bi-wallet2",           color: "#0891b2", bg: "#ecfeff" },
 };
 
+/* ── Live Clock Widget ── */
 function LiveClock() {
   const [time, setTime] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
-  const h = time.getHours().toString().padStart(2, "0");
+  const h12 = time.getHours() % 12 || 12;
   const m = time.getMinutes().toString().padStart(2, "0");
   const s = time.getSeconds().toString().padStart(2, "0");
   const ampm = time.getHours() >= 12 ? "PM" : "AM";
   const date = time.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 
   return (
-    <div style={{
-      background: "linear-gradient(135deg, #1E5FCC 0%, #4FA9FF 50%, #2F7BFF 100%)",
-      borderRadius: 16, padding: "20px 18px", color: "white", textAlign: "center", marginBottom: 14,
-    }}>
-      <div style={{ fontSize: 10, letterSpacing: 3, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", marginBottom: 6 }}>Live Time</div>
-      <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: 2, fontFamily: "monospace", lineHeight: 1 }}>
-        {h}:{m}<span style={{ fontSize: 24, opacity: 0.7 }}>:{s}</span>
-        <span style={{ fontSize: 14, marginLeft: 6, fontWeight: 600, color: "#60a5fa" }}>{ampm}</span>
+    <div className="jd-clock-widget">
+      <div style={{ fontSize: 9.5, letterSpacing: 2.5, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", marginBottom: 8, fontWeight: 600 }}>Local Time</div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 2 }}>
+        <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: 1, fontFamily: "'Inter', monospace", lineHeight: 1, color: "#fff" }}>
+          {h12}:{m}
+        </span>
+        <span style={{ fontSize: 18, opacity: 0.5, fontWeight: 600, fontFamily: "'Inter', monospace" }}>:{s}</span>
+        <span style={{ fontSize: 12, marginLeft: 6, fontWeight: 700, color: "rgba(147,197,253,0.8)" }}>{ampm}</span>
       </div>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 6 }}>{date}</div>
-      <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 10 }}>
-        {[0,1,2,3,4,5,6,7].map(i => (
-          <div key={i} style={{ width: 3, height: i % 3 === 0 ? 18 : i % 2 === 0 ? 12 : 8, background: `rgba(96,165,250,${0.3 + (i % 4) * 0.15})`, borderRadius: 2 }} />
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 8, fontWeight: 500 }}>{date}</div>
+      <div style={{ display: "flex", justifyContent: "center", gap: 3, marginTop: 12 }}>
+        {[0,1,2,3,4,5,6,7,8,9].map(i => (
+          <div key={i} style={{
+            width: 2.5,
+            height: i % 3 === 0 ? 16 : i % 2 === 0 ? 10 : 6,
+            background: `rgba(147,197,253,${0.15 + (i % 4) * 0.08})`,
+            borderRadius: 2,
+            transition: "height 0.3s ease",
+          }} />
         ))}
       </div>
     </div>
   );
 }
 
+/* ── Stat Card ── */
 function StatCard({ label, val, icon, color, bg, link, trend, trendUp, isLoading }: any) {
   return (
     <Link href={link}>
-      <div className="jd-stat-card" data-testid={`stat-card-${label.toLowerCase().replace(/\s+/g,"-")}`}>
+      <div className="jd-stat-card" data-testid={`stat-card-${label.toLowerCase().replace(/\s+/g,"-")}`} style={{ color }}>
         <div className="jd-stat-icon-wrap" style={{ background: bg }}>
-          <i className={`bi ${icon}`} style={{ color, fontSize: "1.35rem" }}></i>
+          <i className={`bi ${icon}`} style={{ color, fontSize: "1.3rem" }}></i>
         </div>
         <div className="jd-stat-body">
           <div className="jd-stat-label">{label}</div>
@@ -86,7 +94,37 @@ function StatCard({ label, val, icon, color, bg, link, trend, trendUp, isLoading
   );
 }
 
-const CUSTOM_LABEL = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
+/* ── Service Card ── */
+function ServiceCard({ label, icon, color, bg, trips, revenue, model, modelColor, href, loaded }: any) {
+  return (
+    <Link href={href}>
+      <div className="jd-svc-card" style={{ "--accent": color, "--accent-bg": bg } as any}>
+        <div className="jd-svc-head">
+          <div className="jd-svc-icon" style={{ background: bg }}>
+            <i className={`bi ${icon}`} style={{ color, fontSize: 15 }}></i>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.2 }}>{label}</div>
+            <div style={{ fontSize: 10, color: modelColor ?? color, fontWeight: 600, textTransform: "capitalize", marginTop: 1 }}>{model}</div>
+          </div>
+        </div>
+        <div className="jd-svc-stats">
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color, lineHeight: 1 }}>{loaded ? trips.toLocaleString() : "—"}</div>
+            <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Trips</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>₹{loaded ? revenue.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+            <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Revenue</div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* ── Pie chart custom label ── */
+const CUSTOM_LABEL = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
   if (percent < 0.06) return null;
   const RADIAN = Math.PI / 180;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -99,6 +137,26 @@ const CUSTOM_LABEL = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, nam
   );
 };
 
+/* ── Section Header ── */
+function SectionHeader({ title, badge, badgeColor }: { title: string; badge?: string; badgeColor?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, marginTop: 2 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.2 }}>{title}</span>
+      {badge && (
+        <span style={{
+          fontSize: 10.5, background: `${badgeColor || "#dc2626"}10`, color: badgeColor || "#dc2626",
+          border: `1px solid ${badgeColor || "#dc2626"}30`, borderRadius: 8, padding: "3px 10px", fontWeight: 700,
+        }}>
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DASHBOARD COMPONENT
+   ═══════════════════════════════════════════════════════════════ */
 export default function Dashboard() {
   const { data: stats, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/stats"] });
   const { data: svcData } = useQuery<any>({ queryKey: ["/api/admin/dashboard"], staleTime: 30_000 });
@@ -112,6 +170,7 @@ export default function Dashboard() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
+  /* ── Top stat cards ── */
   const topStats = [
     { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#2F7BFF", bg: "#EBF4FF", link: "/admin/customers", trend: "+12%", trendUp: true },
     { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers", trend: "+5%", trendUp: true },
@@ -119,20 +178,33 @@ export default function Dashboard() {
     { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips", trend: "+8%", trendUp: true },
   ];
 
+  /* ── Pie data ── */
   const pieData = [
-    { name: "Completed", value: stats?.completedTrips || 0, color: "#2ECC71" },
+    { name: "Completed", value: stats?.completedTrips || 0, color: "#10b981" },
     { name: "Ongoing",   value: stats?.ongoingTrips || 0,   color: "#2F7BFF" },
-    { name: "Cancelled", value: stats?.cancelledTrips || 0, color: "#E74C3C" },
-    { name: "Other",     value: Math.max(0, (stats?.totalTrips || 0) - (stats?.completedTrips || 0) - (stats?.ongoingTrips || 0) - (stats?.cancelledTrips || 0)), color: "#94a3b8" },
+    { name: "Cancelled", value: stats?.cancelledTrips || 0, color: "#ef4444" },
+    { name: "Other",     value: Math.max(0, (stats?.totalTrips || 0) - (stats?.completedTrips || 0) - (stats?.ongoingTrips || 0) - (stats?.cancelledTrips || 0)), color: "#cbd5e1" },
   ].filter(d => d.value > 0);
 
+  /* ── Service cards ── */
+  const svc = svcData?.services;
+  const drv = svcData?.drivers;
+  const services = [
+    { label: "City Rides", icon: "bi-car-front-fill", color: "#2F7BFF", bg: "#eff6ff", trips: svc?.rides?.trips ?? 0, revenue: svc?.rides?.revenue ?? 0, model: svc?.rides?.model ?? "subscription", href: "/admin/trips" },
+    { label: "Parcels", icon: "bi-box-seam-fill", color: "#16a34a", bg: "#f0fdf4", trips: svc?.parcels?.trips ?? 0, revenue: svc?.parcels?.revenue ?? 0, model: svc?.parcels?.model ?? "commission", href: "/admin/parcel-trips" },
+    { label: "Intercity Carpool", icon: "bi-people-fill", color: "#7c3aed", bg: "#f5f3ff", trips: svc?.carpool?.trips ?? 0, revenue: svc?.carpool?.revenue ?? 0, model: svc?.carpool?.model ?? "commission", href: "/admin/intercity-carsharing" },
+    { label: "Outstation Pool", icon: "bi-signpost-2-fill", color: "#d97706", bg: "#fefce8", trips: svc?.outstationPool?.bookings ?? 0, revenue: svc?.outstationPool?.revenue ?? 0, model: svc?.outstationPool?.mode === "on" ? "active" : "inactive", modelColor: svc?.outstationPool?.mode === "on" ? "#16a34a" : "#94a3b8", href: "/admin/outstation-pool" },
+  ];
+  const pendingComm = drv?.totalPendingCommission ?? 0;
+
+  /* ── Quick links ── */
   const quickLinks = [
     { label: "All Trips", icon: "bi-car-front", href: "/admin/trips", color: "#2F7BFF" },
     { label: "Drivers", icon: "bi-person-badge", href: "/admin/drivers", color: "#16a34a" },
     { label: "Withdrawals", icon: "bi-cash-coin", href: "/admin/withdrawals", color: "#d97706" },
     { label: "Reports", icon: "bi-graph-up", href: "/admin/reports", color: "#7c3aed" },
-    { label: "Customer APK", icon: "bi-android2", href: "/apks/jago-customer-v1.0.31.apk", color: "#16a34a", external: true },
-    { label: "Driver APK", icon: "bi-android2", href: "/apks/jago-driver-v1.0.31.apk", color: "#0891b2", external: true },
+    { label: "Customer APK", icon: "bi-android2", href: "/apks/jago-customer-latest.apk", color: "#16a34a", external: true },
+    { label: "Driver APK", icon: "bi-android2", href: "/apks/jago-driver-latest.apk", color: "#0891b2", external: true },
   ];
 
   const recentNotifs = Array.isArray(notifs) ? notifs.slice(0, 12) : [];
@@ -145,43 +217,77 @@ export default function Dashboard() {
     return `${Math.floor(s/86400)}d ago`;
   };
 
+  /* ── Quick stats mini ── */
+  const quickStatsMini = [
+    { label: "Completed", val: stats?.completedTrips ?? 0, color: "#10b981", bg: "#f0fdf4", icon: "bi-check-circle-fill" },
+    { label: "Ongoing", val: stats?.ongoingTrips ?? 0, color: "#2F7BFF", bg: "#eff6ff", icon: "bi-broadcast-pin" },
+    { label: "Cancelled", val: stats?.cancelledTrips ?? 0, color: "#ef4444", bg: "#fef2f2", icon: "bi-x-circle-fill" },
+    { label: "Withdrawals", val: stats?.pendingWithdrawals ?? 0, color: "#f59e0b", bg: "#fefce8", icon: "bi-clock-history" },
+    { label: "Reviews", val: stats?.totalReviews ?? 0, color: "#f59e0b", bg: "#fffbeb", icon: "bi-star-fill" },
+    { label: "Zones", val: stats?.totalZones ?? 0, color: "#7c3aed", bg: "#f5f3ff", icon: "bi-map-fill" },
+  ];
+
+  /* ── Live KPI items ── */
+  const liveKpiItems = liveKpis ? [
+    { label: "Searching", val: liveKpis.live?.searching ?? 0, icon: "bi-search", color: "#f59e0b", bg: "#fffbeb" },
+    { label: "Dispatching", val: liveKpis.live?.dispatching ?? 0, icon: "bi-lightning-charge-fill", color: "#2563eb", bg: "#eff6ff" },
+    { label: "In Progress", val: liveKpis.live?.inProgress ?? 0, icon: "bi-car-front-fill", color: "#16a34a", bg: "#f0fdf4" },
+    { label: "Done (1h)", val: liveKpis.live?.completedLastHour ?? 0, icon: "bi-check-circle-fill", color: "#0891b2", bg: "#ecfeff" },
+    { label: "Cancelled (1h)", val: liveKpis.live?.cancelledLastHour ?? 0, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fef2f2" },
+    { label: "Avg Wait", val: `${liveKpis.live?.avgPickupWaitMin ?? 0}m`, icon: "bi-clock-fill", color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Ghost Pilots", val: liveKpis.quality?.ghostDriverCount ?? 0, icon: "bi-wifi-off", color: "#6b7280", bg: "#f9fafb" },
+    { label: "Surge Zones", val: liveKpis.surge?.activeSurgeZones?.length ?? 0, icon: "bi-arrow-up-circle-fill", color: "#ea580c", bg: "#fff7ed" },
+  ] : [];
+
   return (
     <div className="container-fluid admin-dashboard-page">
 
-      {/* ── FULL WIDTH BANNER ── */}
+      {/* ═══════════ BANNER ═══════════ */}
       <div className="jd-banner mb-3" data-testid="dashboard-banner">
         <div className="jd-banner-inner">
           <div className="d-flex align-items-center gap-3">
             <div className="jd-avatar">
-              <span style={{ fontSize: "1.6rem" }}>👋</span>
+              <span style={{ fontSize: "1.5rem" }}>👋</span>
             </div>
             <div>
-              <h3 className="mb-1">{greeting}, {adminName}!</h3>
-              <p className="mb-0">Here's your platform overview for today</p>
+              <h3 className="mb-1" style={{ fontSize: "1.25rem", fontWeight: 700 }}>{greeting}, {adminName}!</h3>
+              <p className="mb-0" style={{ fontSize: 13 }}>Here's your platform overview for today</p>
             </div>
           </div>
           <div className="d-flex align-items-center gap-2">
             <div className="jd-date-badge">
-              <i className="bi bi-calendar3"></i>
+              <i className="bi bi-calendar3" style={{ fontSize: 12 }}></i>
               <span>{today}</span>
             </div>
           </div>
         </div>
         <div className="jd-banner-kpis">
-          <div className="jd-kpi"><span className="jd-kpi-n">{liveKpis?.live?.inProgress ?? stats?.ongoingTrips ?? "—"}</span><span className="jd-kpi-l">Live Trips</span></div>
+          <div className="jd-kpi">
+            <span className="jd-kpi-n">{liveKpis?.live?.inProgress ?? stats?.ongoingTrips ?? "—"}</span>
+            <span className="jd-kpi-l">Live Trips</span>
+          </div>
           <div className="jd-kpi-sep"></div>
-          <div className="jd-kpi"><span className="jd-kpi-n">{svcData?.drivers?.online ?? Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span><span className="jd-kpi-l">Online Pilots</span></div>
+          <div className="jd-kpi">
+            <span className="jd-kpi-n">{svcData?.drivers?.online ?? Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span>
+            <span className="jd-kpi-l">Online Pilots</span>
+          </div>
           <div className="jd-kpi-sep"></div>
-          <div className="jd-kpi"><span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span><span className="jd-kpi-l">Total Revenue</span></div>
+          <div className="jd-kpi">
+            <span className="jd-kpi-n">₹{Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+            <span className="jd-kpi-l">Total Revenue</span>
+          </div>
           <div className="jd-kpi-sep"></div>
-          <div className="jd-kpi"><span className="jd-kpi-n">{stats?.totalZones ?? "—"}</span><span className="jd-kpi-l">Active Zones</span></div>
+          <div className="jd-kpi">
+            <span className="jd-kpi-n">{stats?.totalZones ?? "—"}</span>
+            <span className="jd-kpi-l">Active Zones</span>
+          </div>
         </div>
       </div>
 
-      {/* ── TWO COLUMN LAYOUT ── */}
+      {/* ═══════════ TWO-COLUMN LAYOUT ═══════════ */}
       <div className="row g-3">
 
-        {/* ── LEFT MAIN CONTENT ── */}
+        {/* ────── LEFT: Main Content ────── */}
         <div className="col-xl-8 col-lg-8">
 
           {/* 4 Stat Cards */}
@@ -194,151 +300,62 @@ export default function Dashboard() {
           </div>
 
           {/* Services Overview */}
-          {(() => {
-            const svc = svcData?.services;
-            const drv = svcData?.drivers;
-            const services = [
-              {
-                label: "City Rides", icon: "bi-car-front-fill", color: "#2F7BFF", bg: "#eff6ff",
-                trips: svc?.rides?.trips ?? 0,
-                revenue: svc?.rides?.revenue ?? 0,
-                model: svc?.rides?.model ?? "subscription",
-                href: "/admin/trips",
-              },
-              {
-                label: "Parcels", icon: "bi-box-seam-fill", color: "#16a34a", bg: "#f0fdf4",
-                trips: svc?.parcels?.trips ?? 0,
-                revenue: svc?.parcels?.revenue ?? 0,
-                model: svc?.parcels?.model ?? "commission",
-                href: "/admin/parcel-trips",
-              },
-              {
-                label: "Intercity Carpool", icon: "bi-people-fill", color: "#7c3aed", bg: "#f5f3ff",
-                trips: svc?.carpool?.trips ?? 0,
-                revenue: svc?.carpool?.revenue ?? 0,
-                model: svc?.carpool?.model ?? "commission",
-                href: "/admin/intercity-carsharing",
-              },
-              {
-                label: "Outstation Pool", icon: "bi-signpost-2-fill", color: "#d97706", bg: "#fefce8",
-                trips: svc?.outstationPool?.bookings ?? 0,
-                revenue: svc?.outstationPool?.revenue ?? 0,
-                model: svc?.outstationPool?.mode === "on" ? "active" : "inactive",
-                modelColor: svc?.outstationPool?.mode === "on" ? "#16a34a" : "#94a3b8",
-                href: "/admin/outstation-pool",
-              },
-            ];
-            const pendingComm = drv?.totalPendingCommission ?? 0;
-            return (
-              <>
-                <div className="mb-2 mt-1" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>Services Overview</span>
-                  {pendingComm > 0 && (
-                    <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
-                      ₹{pendingComm.toLocaleString("en-IN", { maximumFractionDigits: 0 })} pending commission
-                    </span>
-                  )}
-                </div>
-                <div className="row g-3 mb-3">
-                  {services.map((s, i) => (
-                    <div key={i} className="col-xl-3 col-sm-6">
-                      <Link href={s.href}>
-                        <div style={{
-                          background: "white", borderRadius: 14, padding: "14px 16px",
-                          boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-                          border: `1.5px solid ${s.color}18`,
-                          cursor: "pointer", transition: "box-shadow 0.18s",
-                        }}
-                          onMouseEnter={e => (e.currentTarget.style.boxShadow = `0 4px 16px ${s.color}22`)}
-                          onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.07)")}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: 16 }}></i>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{s.label}</div>
-                              <div style={{ fontSize: 10, color: (s as any).modelColor ?? s.color, fontWeight: 600, textTransform: "capitalize" }}>{s.model}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <div>
-                              <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{svcData ? s.trips.toLocaleString() : "—"}</div>
-                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>trips</div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>₹{svcData ? s.revenue.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
-                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>revenue</div>
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </>
-            );
-          })()}
+          <SectionHeader
+            title="Services Overview"
+            badge={pendingComm > 0 ? `₹${pendingComm.toLocaleString("en-IN", { maximumFractionDigits: 0 })} pending commission` : undefined}
+            badgeColor="#dc2626"
+          />
+          <div className="row g-3 mb-3">
+            {services.map((s, i) => (
+              <div key={i} className="col-xl-3 col-sm-6">
+                <ServiceCard {...s} loaded={!!svcData} />
+              </div>
+            ))}
+          </div>
 
-          {/* ── Live Production KPIs (auto-refresh every 15s) ── */}
+          {/* Live Operations KPIs */}
           {liveKpis && (
             <div className="mb-3">
               <div className="mb-2 d-flex align-items-center justify-content-between">
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.2 }}>
                   Live Operations
                 </span>
-                <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>
-                  <i className="bi bi-circle-fill me-1" style={{ fontSize: 7 }}></i>
+                <span className="jd-live-badge">
+                  <span className="jd-live-dot"></span>
                   Live · refreshes every 15s
                 </span>
               </div>
               <div className="row g-2">
-                {[
-                  { label: "Searching", val: liveKpis.live?.searching ?? 0, icon: "bi-search", color: "#f59e0b", bg: "#fffbeb" },
-                  { label: "Dispatching", val: liveKpis.live?.dispatching ?? 0, icon: "bi-lightning-charge-fill", color: "#2563eb", bg: "#eff6ff" },
-                  { label: "In Progress", val: liveKpis.live?.inProgress ?? 0, icon: "bi-car-front-fill", color: "#16a34a", bg: "#f0fdf4" },
-                  { label: "Done (1h)", val: liveKpis.live?.completedLastHour ?? 0, icon: "bi-check-circle-fill", color: "#0891b2", bg: "#ecfeff" },
-                  { label: "Cancelled (1h)", val: liveKpis.live?.cancelledLastHour ?? 0, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fef2f2" },
-                  { label: "Avg Wait (min)", val: `${liveKpis.live?.avgPickupWaitMin ?? 0}`, icon: "bi-clock-fill", color: "#7c3aed", bg: "#f5f3ff" },
-                  { label: "Ghost Pilots", val: liveKpis.quality?.ghostDriverCount ?? 0, icon: "bi-wifi-off", color: "#6b7280", bg: "#f9fafb" },
-                  { label: "Surge Zones", val: liveKpis.surge?.activeSurgeZones?.length ?? 0, icon: "bi-arrow-up-circle-fill", color: "#ea580c", bg: "#fff7ed" },
-                ].map((k, i) => (
+                {liveKpiItems.map((k, i) => (
                   <div key={i} className="col-xl-3 col-sm-6 col-6">
-                    <div style={{
-                      background: k.bg, borderRadius: 12, padding: "10px 14px",
-                      border: `1.5px solid ${k.color}20`,
-                      display: "flex", alignItems: "center", gap: 10,
-                    }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: 8, background: `${k.color}18`,
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                      }}>
-                        <i className={`bi ${k.icon}`} style={{ color: k.color, fontSize: 14 }}></i>
+                    <div className="jd-kpi-mini-card" style={{ background: k.bg, borderColor: `${k.color}20` }}>
+                      <div className="jd-kpi-mini-icon" style={{ background: `${k.color}15` }}>
+                        <i className={`bi ${k.icon}`} style={{ color: k.color, fontSize: 13 }}></i>
                       </div>
                       <div>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.val}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: k.color, lineHeight: 1.1 }}>{k.val}</div>
                         <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{k.label}</div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              {/* Cancel penalty row */}
+              {/* Cancellation & Surge badges */}
               {(liveKpis.cancellations?.penaltyCollectedToday > 0 || liveKpis.cancellations?.totalToday > 0) && (
                 <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                  <span className="jd-info-pill" style={{ background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
                     {liveKpis.cancellations?.driverCancelsToday ?? 0} driver cancels today
                   </span>
-                  <span style={{ fontSize: 11, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                  <span className="jd-info-pill" style={{ background: "#fff7ed", color: "#ea580c", borderColor: "#fed7aa" }}>
                     {liveKpis.cancellations?.customerCancelsToday ?? 0} customer cancels today
                   </span>
                   {liveKpis.cancellations?.penaltyCollectedToday > 0 && (
-                    <span style={{ fontSize: 11, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
-                      ₹{liveKpis.cancellations?.penaltyCollectedToday} penalty collected today
+                    <span className="jd-info-pill" style={{ background: "#f0fdf4", color: "#16a34a", borderColor: "#bbf7d0" }}>
+                      ₹{liveKpis.cancellations?.penaltyCollectedToday} penalty collected
                     </span>
                   )}
                   {liveKpis.surge?.activeSurgeZones?.length > 0 && (
-                    <span style={{ fontSize: 11, background: "#fff7ed", color: "#ea580c", border: "1px solid #fed7aa", borderRadius: 8, padding: "3px 10px", fontWeight: 700 }}>
+                    <span className="jd-info-pill" style={{ background: "#fff7ed", color: "#ea580c", borderColor: "#fed7aa" }}>
                       Surge: {liveKpis.surge.activeSurgeZones.map((z: any) => `${z.name} ${z.factor}x`).join(", ")}
                     </span>
                   )}
@@ -347,118 +364,91 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Charts Row */}
+          {/* ── Charts Row ── */}
           <div className="row g-3 mb-3">
             {/* Area Chart */}
             <div className="col-lg-7">
-              <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 16 }}>
-                <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between border-0">
+              <div className="jd-card h-100">
+                <div className="jd-card-header">
                   <div>
-                    <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Weekly Revenue Trend</h6>
-                    <div className="text-muted small">Revenue & trips over the last 7 days</div>
+                    <h6 className="jd-card-title">Weekly Revenue Trend</h6>
+                    <div className="jd-card-subtitle">Revenue & trips over the last 7 days</div>
                   </div>
                   <div className="d-flex gap-3 small">
-                    <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#2F7BFF" }}>
+                    <span className="d-flex align-items-center gap-1" style={{ color: "#2F7BFF", fontWeight: 600, fontSize: 11 }}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: "#2F7BFF", display: "inline-block" }}></span>Revenue
                     </span>
-                    <span className="d-flex align-items-center gap-1 fw-semibold" style={{ color: "#16a34a" }}>
+                    <span className="d-flex align-items-center gap-1" style={{ color: "#16a34a", fontWeight: 600, fontSize: 11 }}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a", display: "inline-block" }}></span>Trips
                     </span>
                   </div>
                 </div>
-                <div className="card-body pt-0 px-3 pb-3">
+                <div style={{ padding: "0 12px 16px" }}>
                   {chart.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart data={chart} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
+                    <ResponsiveContainer width="100%" height={210}>
+                      <AreaChart data={chart} margin={{ top: 8, right: 10, bottom: 0, left: 0 }}>
                         <defs>
                           <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#2F7BFF" stopOpacity={0.25} />
+                            <stop offset="0%" stopColor="#2F7BFF" stopOpacity={0.2} />
                             <stop offset="100%" stopColor="#2F7BFF" stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="gradTrips" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
+                            <stop offset="0%" stopColor="#16a34a" stopOpacity={0.18} />
                             <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={42} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="day" tick={{ fontSize: 10.5, fill: "#94a3b8", fontWeight: 500 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10.5, fill: "#94a3b8", fontWeight: 500 }} axisLine={false} tickLine={false} width={42} />
                         <Tooltip
-                          contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", fontSize: 12, padding: "10px 14px" }}
+                          contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 32px rgba(0,0,0,0.08)", fontSize: 12, padding: "10px 14px" }}
                           formatter={(val: any, name: string) => [name === "revenue" ? `₹${val}` : val, name === "revenue" ? "Revenue" : "Trips"]}
                         />
-                        <Area type="monotone" dataKey="revenue" stroke="#2F7BFF" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#2F7BFF" }} />
-                        <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2.5} fill="url(#gradTrips)" dot={false} activeDot={{ r: 5, fill: "#16a34a" }} />
+                        <Area type="monotone" dataKey="revenue" stroke="#2F7BFF" strokeWidth={2.5} fill="url(#gradRev)" dot={false} activeDot={{ r: 5, fill: "#2F7BFF", stroke: "#fff", strokeWidth: 2 }} />
+                        <Area type="monotone" dataKey="trips" stroke="#16a34a" strokeWidth={2} fill="url(#gradTrips)" dot={false} activeDot={{ r: 4, fill: "#16a34a", stroke: "#fff", strokeWidth: 2 }} />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div style={{ height: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                      {/* SVG empty state illustration */}
-                      <svg width="120" height="70" viewBox="0 0 120 70" fill="none" style={{ opacity: 0.18 }}>
+                    <div className="jd-empty-chart">
+                      <svg width="120" height="70" viewBox="0 0 120 70" fill="none" style={{ opacity: 0.15 }}>
                         <path d="M8 60 Q20 20 35 35 Q50 50 65 20 Q80 -10 95 30 Q105 55 112 40" stroke="#2F7BFF" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                        <path d="M8 62 Q20 22 35 37 Q50 52 65 22 Q80 -8 95 32 Q105 57 112 42 L112 65 L8 65Z" fill="#2F7BFF" fillOpacity="0.12"/>
+                        <path d="M8 62 Q20 22 35 37 Q50 52 65 22 Q80 -8 95 32 Q105 57 112 42 L112 65 L8 65Z" fill="#2F7BFF" fillOpacity="0.1"/>
                         <path d="M8 60 Q25 50 40 55 Q55 60 70 45 Q85 30 112 55" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" fill="none"/>
-                        {[15,40,65,90].map((x,i) => (
-                          <line key={i} x1={x} y1="10" x2={x} y2="62" stroke="#e2e8f0" strokeWidth="1"/>
-                        ))}
-                        {[20,40,60].map((y,i) => (
-                          <line key={i} x1="8" y1={y} x2="112" y2={y} stroke="#e2e8f0" strokeWidth="1"/>
-                        ))}
                       </svg>
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>No analytics yet</div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", maxWidth: 220, lineHeight: 1.5 }}>Data will appear here once trips are completed on the platform</div>
-                      </div>
-                      <div style={{ display: "flex", gap: 12 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", borderRadius: 8, padding: "6px 12px" }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#2F7BFF" }}></div>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: "#2F7BFF" }}>Revenue</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0fdf4", borderRadius: 8, padding: "6px 12px" }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#16a34a" }}></div>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>Trips</span>
-                        </div>
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>No analytics yet</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", maxWidth: 220, lineHeight: 1.5, textAlign: "center" }}>Data will appear once trips are completed on the platform</div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Pie Chart — Trip Status */}
+            {/* Pie Chart */}
             <div className="col-lg-5">
-              <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 16 }}>
-                <div className="card-header bg-white py-3 px-4 border-0">
-                  <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Trip Distribution</h6>
-                  <div className="text-muted small">Status breakdown</div>
+              <div className="jd-card h-100">
+                <div className="jd-card-header">
+                  <div>
+                    <h6 className="jd-card-title">Trip Distribution</h6>
+                    <div className="jd-card-subtitle">Status breakdown</div>
+                  </div>
                 </div>
-                <div className="card-body pt-0 px-3 pb-2 d-flex flex-column align-items-center">
+                <div style={{ padding: "0 12px 8px" }} className="d-flex flex-column align-items-center">
                   {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={200}>
+                    <ResponsiveContainer width="100%" height={210}>
                       <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="45%"
-                          innerRadius={50}
-                          outerRadius={78}
-                          paddingAngle={3}
-                          dataKey="value"
-                          labelLine={false}
-                          label={CUSTOM_LABEL}
-                        >
+                        <Pie data={pieData} cx="50%" cy="45%" innerRadius={52} outerRadius={80} paddingAngle={3} dataKey="value" labelLine={false} label={CUSTOM_LABEL}>
                           {pieData.map((entry, i) => (
                             <Cell key={i} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(val: any, name: string) => [`${val} trips`, name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+                        <Tooltip formatter={(val: any, name: string) => [`${val} trips`, name]} contentStyle={{ borderRadius: 10, fontSize: 12, border: "1px solid #e2e8f0" }} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4, fontWeight: 500 }} />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="d-flex flex-column align-items-center justify-content-center" style={{ height: 200, color: "#cbd5e1" }}>
-                      <i className="bi bi-pie-chart fs-1 mb-2"></i>
-                      <span style={{ fontSize: 12 }}>No trip data yet</span>
+                    <div className="d-flex flex-column align-items-center justify-content-center" style={{ height: 210, color: "#cbd5e1" }}>
+                      <i className="bi bi-pie-chart fs-1 mb-2" style={{ opacity: 0.3 }}></i>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>No trip data yet</span>
                     </div>
                   )}
                 </div>
@@ -466,36 +456,33 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Recent Trips Table */}
-          <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }} data-testid="recent-trips-card">
-            <div className="card-header bg-white py-3 px-4 d-flex justify-content-between align-items-center border-0">
+          {/* ── Recent Trips Table ── */}
+          <div className="jd-card mb-3" data-testid="recent-trips-card">
+            <div className="jd-card-header">
               <div>
-                <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Recent Trips</h6>
-                <div className="text-muted small">Latest platform activity</div>
+                <h6 className="jd-card-title">Recent Trips</h6>
+                <div className="jd-card-subtitle">Latest platform activity</div>
               </div>
-              <Link href="/admin/trips" className="btn btn-sm btn-outline-primary rounded-pill px-3" style={{ fontSize: 12 }}>
+              <Link href="/admin/trips" className="jd-view-all-btn">
                 View All <i className="bi bi-arrow-right ms-1"></i>
               </Link>
             </div>
-            <div className="card-body p-0">
+            <div style={{ padding: 0 }}>
               <div className="table-responsive">
                 <table className="table table-borderless align-middle table-hover mb-0">
-                  <thead style={{ background: "#f8fafc", borderTop: "1px solid #f1f5f9" }}>
-                    <tr>
+                  <thead>
+                    <tr className="jd-table-head">
                       {["Trip ID","Customer","Vehicle","Type","Fare","Payment","Status","Date"].map((h, i) => (
-                        <th key={i} className={i === 0 ? "ps-4" : ""}
-                          style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", whiteSpace: "nowrap", paddingTop: 12, paddingBottom: 12 }}>
-                          {h}
-                        </th>
+                        <th key={i} className={i === 0 ? "ps-4" : ""}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      Array(6).fill(0).map((_, i) => (
+                      Array(5).fill(0).map((_, i) => (
                         <tr key={i}>
                           {Array(8).fill(0).map((_, j) => (
-                            <td key={j}><div className="skeleton" style={{ height: 13, borderRadius: 4 }} /></td>
+                            <td key={j}><div className="jd-skeleton" style={{ width: j === 0 ? 70 : "80%", height: 12 }} /></td>
                           ))}
                         </tr>
                       ))
@@ -507,52 +494,49 @@ export default function Dashboard() {
                         return (
                           <tr key={item.trip?.id} data-testid={`trip-row-${item.trip?.id}`}>
                             <td className="ps-4">
-                              <span className="fw-bold" style={{ fontSize: 12, color: "#2F7BFF", fontFamily: "monospace" }}>{item.trip?.refId || "—"}</span>
+                              <span style={{ fontSize: 12, color: "#2F7BFF", fontFamily: "'Inter', monospace", fontWeight: 700 }}>{item.trip?.refId || "—"}</span>
                             </td>
                             <td>
                               <div className="d-flex align-items-center gap-2">
-                                <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
-                                  style={{ width: 30, height: 30, background: avatarBg(name), color: "white", fontSize: 11, fontWeight: 700 }}>
+                                <div className="jd-mini-avatar" style={{ background: avatarBg(name) }}>
                                   {initials(name)}
                                 </div>
-                                <span style={{ fontSize: 13 }}>{name}</span>
+                                <span style={{ fontSize: 12.5, fontWeight: 500 }}>{name}</span>
                               </div>
                             </td>
-                            <td className="text-muted" style={{ fontSize: 12 }}>{item.vehicleCategory?.name || "—"}</td>
+                            <td style={{ fontSize: 12, color: "#64748b" }}>{item.vehicleCategory?.name || "—"}</td>
                             <td>
-                              <span className="badge rounded-pill"
-                                style={{ background: item.trip?.type === "parcel" ? "#f0fdf4" : "#eff6ff", color: item.trip?.type === "parcel" ? "#16a34a" : "#1E5FCC", fontSize: 10, padding: "4px 8px" }}>
-                                {item.trip?.type === "parcel" ? "📦 Parcel" : "🚗 Ride"}
+                              <span className="jd-type-badge" style={{
+                                background: item.trip?.type === "parcel" ? "#f0fdf4" : "#eff6ff",
+                                color: item.trip?.type === "parcel" ? "#16a34a" : "#1E5FCC",
+                              }}>
+                                {item.trip?.type === "parcel" ? "Parcel" : "Ride"}
                               </span>
                             </td>
-                            <td className="fw-semibold" style={{ fontSize: 13 }}>₹{Number(item.trip?.actualFare || item.trip?.estimatedFare || 0).toFixed(0)}</td>
+                            <td style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>₹{Number(item.trip?.actualFare || item.trip?.estimatedFare || 0).toFixed(0)}</td>
                             <td>
-                              <span className={`badge ${item.trip?.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10 }}>
-                                {item.trip?.paymentStatus === "paid" ? "✓ Paid" : "Unpaid"}
+                              <span className={`badge ${item.trip?.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 10, fontWeight: 600 }}>
+                                {item.trip?.paymentStatus === "paid" ? "Paid" : "Unpaid"}
                               </span>
                             </td>
-                            <td><span className={badge.cls} style={{ fontSize: 10 }}>{badge.label}</span></td>
-                            <td className="text-muted" style={{ fontSize: 12 }}>{item.trip?.createdAt ? new Date(item.trip.createdAt).toLocaleDateString("en-IN") : "—"}</td>
+                            <td><span className={badge.cls} style={{ fontSize: 10, fontWeight: 600 }}>{badge.label}</span></td>
+                            <td style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 500 }}>{item.trip?.createdAt ? new Date(item.trip.createdAt).toLocaleDateString("en-IN") : "—"}</td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr><td colSpan={8}>
-                        <div className="d-flex flex-column align-items-center justify-content-center py-5">
-                          <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg,#eff6ff,#dbeafe)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-                            <i className="bi bi-car-front" style={{ fontSize: 32, color: "#93c5fd" }}></i>
+                        <div className="jd-empty-table">
+                          <div className="jd-empty-icon">
+                            <i className="bi bi-car-front" style={{ fontSize: 28, color: "#93c5fd" }}></i>
                           </div>
-                          <h6 className="fw-bold mb-1" style={{ color: "#0f172a" }}>No Trips Yet</h6>
-                          <p className="text-muted mb-3" style={{ fontSize: 13, maxWidth: 260, textAlign: "center", lineHeight: 1.5 }}>
+                          <h6 style={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>No Trips Yet</h6>
+                          <p style={{ fontSize: 12.5, color: "#94a3b8", maxWidth: 260, textAlign: "center", lineHeight: 1.5, margin: "0 0 12px" }}>
                             Trips will appear here once customers book rides through the JAGO app
                           </p>
                           <div style={{ display: "flex", gap: 8 }}>
-                            <span style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
-                              ✓ Platform Ready
-                            </span>
-                            <span style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1E5FCC", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
-                              Waiting for First Trip
-                            </span>
+                            <span className="jd-info-pill" style={{ background: "#f0fdf4", color: "#16a34a", borderColor: "#bbf7d0" }}>Platform Ready</span>
+                            <span className="jd-info-pill" style={{ background: "#eff6ff", color: "#1E5FCC", borderColor: "#bfdbfe" }}>Awaiting First Trip</span>
                           </div>
                         </div>
                       </td></tr>
@@ -564,33 +548,24 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── RIGHT PANEL — Notifications + Time ── */}
+        {/* ────── RIGHT PANEL ────── */}
         <div className="col-xl-4 col-lg-4">
 
           {/* Live Clock */}
           <LiveClock />
 
           {/* Quick Stats Mini */}
-          <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }}>
-            <div className="card-body p-3">
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
-                Quick Stats
-              </div>
+          <div className="jd-card mb-3">
+            <div style={{ padding: "16px 16px 12px" }}>
+              <SectionHeader title="Quick Stats" />
               <div className="row g-2">
-                {[
-                  { label: "Completed", val: stats?.completedTrips ?? 0, color: "#2ECC71", bg: "#f0fdf4", icon: "bi-check-circle-fill" },
-                  { label: "Ongoing", val: stats?.ongoingTrips ?? 0, color: "#2F7BFF", bg: "#eff6ff", icon: "bi-broadcast-pin" },
-                  { label: "Cancelled", val: stats?.cancelledTrips ?? 0, color: "#E74C3C", bg: "#fef2f2", icon: "bi-x-circle-fill" },
-                  { label: "Withdrawals", val: stats?.pendingWithdrawals ?? 0, color: "#F39C12", bg: "#fefce8", icon: "bi-clock-history" },
-                  { label: "Reviews", val: stats?.totalReviews ?? 0, color: "#f59e0b", bg: "#fffbeb", icon: "bi-star-fill" },
-                  { label: "Zones", val: stats?.totalZones ?? 0, color: "#7c3aed", bg: "#f5f3ff", icon: "bi-map-fill" },
-                ].map((s, i) => (
+                {quickStatsMini.map((s, i) => (
                   <div key={i} className="col-6">
-                    <div style={{ background: s.bg, borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: 16 }}></i>
+                    <div className="jd-quick-stat" style={{ background: s.bg }}>
+                      <i className={`bi ${s.icon}`} style={{ color: s.color, fontSize: 15 }}></i>
                       <div>
                         <div style={{ fontSize: 17, fontWeight: 800, color: s.color, lineHeight: 1 }}>{isLoading ? "—" : s.val}</div>
-                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{s.label}</div>
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 1, fontWeight: 500 }}>{s.label}</div>
                       </div>
                     </div>
                   </div>
@@ -599,51 +574,31 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }}>
-            <div className="card-body p-3">
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
-                Quick Actions
-              </div>
+          {/* Quick Actions */}
+          <div className="jd-card mb-3">
+            <div style={{ padding: "16px 16px 12px" }}>
+              <SectionHeader title="Quick Actions" />
               <div className="row g-2">
                 {quickLinks.map((l, i) => (
                   <div key={i} className="col-6">
                     {l.external ? (
                       <a href={l.href} download style={{ textDecoration: "none" }}>
-                        <div style={{
-                          border: `1.5px solid ${l.color}22`,
-                          borderRadius: 10, padding: "10px 12px",
-                          display: "flex", alignItems: "center", gap: 8,
-                          cursor: "pointer", transition: "all 0.18s",
-                          background: "white",
-                        }}
-                          onMouseEnter={e => (e.currentTarget.style.background = `${l.color}10`)}
-                          onMouseLeave={e => (e.currentTarget.style.background = "white")}
-                        >
-                          <div style={{ width: 30, height: 30, borderRadius: 8, background: `${l.color}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <i className={`bi ${l.icon}`} style={{ color: l.color, fontSize: 14 }}></i>
+                        <div className="jd-quick-action" style={{ "--accent": l.color } as any}>
+                          <div className="jd-quick-action-icon" style={{ background: `${l.color}12` }}>
+                            <i className={`bi ${l.icon}`} style={{ color: l.color, fontSize: 13 }}></i>
                           </div>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{l.label}</span>
                         </div>
                       </a>
                     ) : (
-                    <Link href={l.href}>
-                      <div style={{
-                        border: `1.5px solid ${l.color}22`,
-                        borderRadius: 10, padding: "10px 12px",
-                        display: "flex", alignItems: "center", gap: 8,
-                        cursor: "pointer", transition: "all 0.18s",
-                        background: "white",
-                      }}
-                        onMouseEnter={e => (e.currentTarget.style.background = `${l.color}10`)}
-                        onMouseLeave={e => (e.currentTarget.style.background = "white")}
-                      >
-                        <div style={{ width: 30, height: 30, borderRadius: 8, background: `${l.color}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <i className={`bi ${l.icon}`} style={{ color: l.color, fontSize: 14 }}></i>
+                      <Link href={l.href}>
+                        <div className="jd-quick-action" style={{ "--accent": l.color } as any}>
+                          <div className="jd-quick-action-icon" style={{ background: `${l.color}12` }}>
+                            <i className={`bi ${l.icon}`} style={{ color: l.color, fontSize: 13 }}></i>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{l.label}</span>
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{l.label}</span>
-                      </div>
-                    </Link>
+                      </Link>
                     )}
                   </div>
                 ))}
@@ -652,43 +607,39 @@ export default function Dashboard() {
           </div>
 
           {/* Notifications Feed */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: 16 }}>
-            <div className="card-header bg-white py-3 px-3 border-0 d-flex align-items-center justify-content-between">
-              <div>
-                <h6 className="mb-0 fw-bold" style={{ color: "#0f172a", fontSize: 14 }}>
-                  <i className="bi bi-bell-fill me-2" style={{ color: "#2F7BFF" }}></i>
-                  Notifications
-                </h6>
-              </div>
+          <div className="jd-card">
+            <div className="jd-card-header" style={{ paddingBottom: 0 }}>
+              <h6 className="jd-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <i className="bi bi-bell-fill" style={{ color: "#2F7BFF", fontSize: 14 }}></i>
+                Notifications
+              </h6>
               <Link href="/admin/notifications">
                 <span style={{ fontSize: 11, color: "#2F7BFF", cursor: "pointer", fontWeight: 600 }}>View all</span>
               </Link>
             </div>
-            <div className="card-body p-0" style={{ maxHeight: 420, overflowY: "auto" }}>
+            <div style={{ maxHeight: 420, overflowY: "auto", padding: 0 }}>
               {recentNotifs.length === 0 ? (
-                <div className="text-center py-5 text-muted">
-                  <i className="bi bi-bell-slash fs-2 d-block mb-2" style={{ opacity: 0.3 }}></i>
-                  <span style={{ fontSize: 12 }}>No notifications yet</span>
+                <div className="text-center py-5" style={{ color: "#94a3b8" }}>
+                  <i className="bi bi-bell-slash fs-2 d-block mb-2" style={{ opacity: 0.25 }}></i>
+                  <span style={{ fontSize: 12, fontWeight: 500 }}>No notifications yet</span>
                 </div>
               ) : (
                 recentNotifs.map((n: any, i: number) => {
                   const type = n.type || "trip";
                   const style = NOTIF_ICONS[type] || NOTIF_ICONS.trip;
                   return (
-                    <div key={n.id || i} style={{
-                      display: "flex", alignItems: "flex-start", gap: 10,
-                      padding: "12px 14px",
+                    <div key={n.id || i} className="jd-notif-item" style={{
+                      background: n.isRead === false ? "#f8fbff" : "transparent",
                       borderBottom: i < recentNotifs.length - 1 ? "1px solid #f8fafc" : "none",
-                      background: n.isRead === false ? "#f8fbff" : "white",
                     }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: style.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <i className={`bi ${style.icon}`} style={{ color: style.color, fontSize: 14 }}></i>
+                      <div className="jd-notif-icon" style={{ background: style.bg }}>
+                        <i className={`bi ${style.icon}`} style={{ color: style.color, fontSize: 13 }}></i>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", lineHeight: 1.3, marginBottom: 2 }}>{n.title || "Notification"}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", lineHeight: 1.3, marginBottom: 1 }}>{n.title || "Notification"}</div>
                         <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.message || n.body || ""}</div>
                       </div>
-                      <div style={{ fontSize: 10, color: "#94a3b8", whiteSpace: "nowrap", marginTop: 2 }}>
+                      <div style={{ fontSize: 9.5, color: "#94a3b8", whiteSpace: "nowrap", marginTop: 2, fontWeight: 500 }}>
                         {n.createdAt ? timeAgo(n.createdAt) : ""}
                       </div>
                     </div>

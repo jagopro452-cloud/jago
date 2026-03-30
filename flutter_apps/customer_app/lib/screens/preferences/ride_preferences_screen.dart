@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 
 class RidePreferencesScreen extends StatefulWidget {
@@ -66,7 +67,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
       final body = jsonDecode(res.body);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(body['message'] ?? 'Saved!'),
-        backgroundColor: res.statusCode == 200 ? Colors.green : Colors.red,
+        backgroundColor: res.statusCode == 200 ? JT.success : JT.error,
       ));
     } catch (_) {}
     if (mounted) setState(() => _saving = false);
@@ -75,87 +76,87 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FF),
+      backgroundColor: JT.surfaceAlt,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: JT.bg,
+        foregroundColor: JT.textPrimary,
         elevation: 0,
-        title: const Text('Ride Preferences', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+        title: Text('Ride Preferences', style: JT.h4),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w500, fontSize: 16)),
+                : Text('Save', style: JT.h5.copyWith(color: JT.primary)),
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+          ? Center(child: CircularProgressIndicator(color: JT.primary))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(JT.spacing16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _banner(),
-                  const SizedBox(height: 16),
-                  const Text('Comfort Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 8),
+                  SizedBox(height: JT.spacing16),
+                  Text('Comfort Preferences', style: JT.h5),
+                  SizedBox(height: JT.spacing8),
                   _prefCard('Quiet Ride', 'No unnecessary conversation', Icons.volume_off, _quietRide, (v) => setState(() => _quietRide = v)),
                   _prefCard('AC Preferred', 'AC on during ride', Icons.ac_unit, _acPreferred, (v) => setState(() => _acPreferred = v)),
                   _prefCard('Music Off', 'Prefer silence during ride', Icons.music_off, _musicOff, (v) => setState(() => _musicOff = v)),
-                  const SizedBox(height: 16),
-                  const Text('Special Requirements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 8),
+                  SizedBox(height: JT.spacing16),
+                  Text('Special Requirements', style: JT.h5),
+                  SizedBox(height: JT.spacing8),
                   _prefCard('Wheelchair Accessible', 'Need accessible vehicle', Icons.accessible, _wheelchairAccessible, (v) => setState(() => _wheelchairAccessible = v)),
                   _prefCard('Extra Luggage', 'Have large bags / extra luggage', Icons.luggage, _extraLuggage, (v) => setState(() => _extraLuggage = v)),
-                  const SizedBox(height: 16),
-                  const Text('Driver Preference', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 8),
+                  SizedBox(height: JT.spacing16),
+                  Text('Driver Preference', style: JT.h5),
+                  SizedBox(height: JT.spacing8),
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                    padding: EdgeInsets.all(JT.spacing16),
+                    decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusLg)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Preferred Driver Gender', style: TextStyle(fontWeight: FontWeight.w400)),
-                        const SizedBox(height: 12),
+                        Text('Preferred Driver Gender', style: JT.bodyPrimary),
+                        SizedBox(height: JT.spacing12),
                         Row(children: [
                           _genderChoice('any', 'No Preference', Icons.people),
-                          const SizedBox(width: 8),
+                          SizedBox(width: JT.spacing8),
                           _genderChoice('female', 'Women Driver', Icons.female),
-                          const SizedBox(width: 8),
+                          SizedBox(width: JT.spacing8),
                           _genderChoice('male', 'Male Driver', Icons.male),
                         ]),
                         if (_preferredGender == 'female') ...[
-                          const SizedBox(height: 8),
+                          SizedBox(height: JT.spacing8),
                           Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.pink.shade50, borderRadius: BorderRadius.circular(8)),
-                            child: const Row(children: [
-                              Icon(Icons.shield, color: Colors.pink, size: 16),
-                              SizedBox(width: 6),
-                              Expanded(child: Text('Best effort to assign women driver.\nAvailability may vary.', style: TextStyle(fontSize: 12, color: Colors.pink))),
+                            padding: EdgeInsets.all(JT.spacing8 + 2),
+                            decoration: BoxDecoration(color: Colors.pink.shade50, borderRadius: BorderRadius.circular(JT.radiusSm)),
+                            child: Row(children: [
+                              const Icon(Icons.shield, color: Colors.pink, size: 16),
+                              SizedBox(width: JT.spacing6),
+                              Expanded(child: Text('Best effort to assign women driver.\nAvailability may vary.', style: JT.caption.copyWith(color: Colors.pink))),
                             ]),
                           ),
                         ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: JT.spacing24),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _saving ? null : _save,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
+                        backgroundColor: JT.primary,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusMd + 2)),
+                        padding: EdgeInsets.symmetric(vertical: JT.spacing16),
                       ),
                       child: _saving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('Save Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                          : Text('Save Preferences', style: JT.btnText),
                     ),
                   ),
                 ],
@@ -165,39 +166,39 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
   }
 
   Widget _banner() => Container(
-    padding: const EdgeInsets.all(14),
+    padding: EdgeInsets.all(JT.spacing12 + 2),
     decoration: BoxDecoration(
-      gradient: LinearGradient(colors: [const Color(0xFF2563EB).withValues(alpha: 0.1), const Color(0xFF7C3AED).withValues(alpha: 0.1)]),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.2)),
+      color: JT.primaryLight,
+      borderRadius: BorderRadius.circular(JT.radiusMd),
+      border: Border.all(color: JT.primary.withValues(alpha: 0.2)),
     ),
-    child: const Row(children: [
-      Icon(Icons.tune, color: Color(0xFF2563EB)),
-      SizedBox(width: 10),
+    child: Row(children: [
+      Icon(Icons.tune, color: JT.primary),
+      SizedBox(width: JT.spacing8 + 2),
       Expanded(child: Text('Your preferences are shared with the driver before every ride. We\'ll match your preferences as much as possible.',
-          style: TextStyle(fontSize: 12, height: 1.4))),
+          style: JT.caption.copyWith(height: 1.4))),
     ]),
   );
 
   Widget _prefCard(String title, String subtitle, IconData icon, bool val, Function(bool) onChanged) => Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+    margin: EdgeInsets.only(bottom: JT.spacing8),
+    padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing12),
+    decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusLg)),
     child: Row(children: [
       Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: val ? const Color(0xFF2563EB).withValues(alpha: 0.1) : Colors.grey.shade100, shape: BoxShape.circle),
-        child: Icon(icon, color: val ? const Color(0xFF2563EB) : Colors.grey, size: 20),
+        padding: EdgeInsets.all(JT.spacing8),
+        decoration: BoxDecoration(color: val ? JT.primary.withValues(alpha: 0.1) : JT.borderLight, shape: BoxShape.circle),
+        child: Icon(icon, color: val ? JT.primary : JT.textTertiary, size: 20),
       ),
-      const SizedBox(width: 12),
+      SizedBox(width: JT.spacing12),
       Expanded(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w400)),
-          Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(title, style: JT.bodyPrimary),
+          Text(subtitle, style: JT.caption),
         ],
       )),
-      Switch(value: val, onChanged: onChanged, activeThumbColor: const Color(0xFF2563EB)),
+      Switch(value: val, onChanged: onChanged, activeThumbColor: JT.primary),
     ]),
   );
 
@@ -205,17 +206,17 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     child: GestureDetector(
       onTap: () => setState(() => _preferredGender = value),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: EdgeInsets.all(JT.spacing8 + 2),
         decoration: BoxDecoration(
-          color: _preferredGender == value ? const Color(0xFF2563EB).withValues(alpha: 0.1) : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.transparent),
+          color: _preferredGender == value ? JT.primary.withValues(alpha: 0.1) : JT.borderLight,
+          borderRadius: BorderRadius.circular(JT.radiusSm + 2),
+          border: Border.all(color: _preferredGender == value ? JT.primary : Colors.transparent),
         ),
         child: Column(
           children: [
-            Icon(icon, color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.grey, size: 20),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, color: _preferredGender == value ? const Color(0xFF2563EB) : Colors.grey, fontWeight: FontWeight.w400), textAlign: TextAlign.center),
+            Icon(icon, color: _preferredGender == value ? JT.primary : JT.textTertiary, size: 20),
+            SizedBox(height: JT.spacing4),
+            Text(label, style: JT.caption.copyWith(fontSize: 10, color: _preferredGender == value ? JT.primary : JT.textTertiary), textAlign: TextAlign.center),
           ],
         ),
       ),
