@@ -37,9 +37,7 @@
 - `sendNotificationWithFailsafe()` - Multi-channel notification system:
   - Channel 1: FCM with 3 exponential backoff retries
   - Channel 2: Socket.IO fallback for web drivers
-  - Channel 3: SMS fallback for critical notifications
 - Logging of all notification attempts in DB
-- Automatic fallback when primary channel fails
 
 #### **FIX #3: Auto-Timeout System**
 - `autoTimeoutStuckTrips()` - Runs every 30 seconds:

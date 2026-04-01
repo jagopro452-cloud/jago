@@ -106,8 +106,12 @@ class _TrackingScreenState extends State<TrackingScreen>
           }
           // Capture wallet pending amount when trip completes
           if (newStatus == 'completed') {
-            _walletPendingAmount =
-                (data['walletPendingAmount'] as num?)?.toDouble() ?? 0.0;
+            _walletPendingAmount = double.tryParse(
+                  data['walletPendingAmount']?.toString() ??
+                      data['pendingPaymentAmount']?.toString() ??
+                      '0',
+                ) ??
+                0.0;
           }
         });
         _announceStatus(newStatus);
@@ -135,12 +139,14 @@ class _TrackingScreenState extends State<TrackingScreen>
         // Extract driver details from socket event so UI updates instantly (no wait for HTTP poll)
         final driverData = data['driver'];
         final driverMap = driverData is Map ? Map<String, dynamic>.from(driverData as Map) : null;
+        final pickupOtp = data['pickupOtp']?.toString();
         setState(() {
           _status = 'driver_assigned';
           if (driverMap != null) {
             // Seed _trip with driver info so _buildDriverCard renders immediately
             _trip = {
               ...(_trip ?? {}),
+              if (pickupOtp != null && pickupOtp.isNotEmpty) 'pickupOtp': pickupOtp,
               'driverName': driverMap['fullName'] ?? driverMap['full_name'] ?? '',
               'driverPhone': driverMap['phone'] ?? '',
               'driverRating': driverMap['rating'],
@@ -156,6 +162,8 @@ class _TrackingScreenState extends State<TrackingScreen>
               _driverLatLng = LatLng(dLat, dLng);
               _updateDriverMarker(_driverLatLng!);
             }
+          } else if (pickupOtp != null && pickupOtp.isNotEmpty && _trip != null) {
+            _trip!['pickupOtp'] = pickupOtp;
           }
         });
         AlarmService().playChime();
@@ -639,6 +647,14 @@ class _TrackingScreenState extends State<TrackingScreen>
           setState(() {
             _trip = trip;
             _status = resolvedStatus;
+            if (resolvedStatus == 'completed') {
+              _walletPendingAmount = double.tryParse(
+                    trip['walletPendingAmount']?.toString() ??
+                        trip['pendingPaymentAmount']?.toString() ??
+                        '0',
+                  ) ??
+                  _walletPendingAmount;
+            }
             if (dLat != null && dLng != null && dLat != 0) {
               _driverLatLng = LatLng(dLat, dLng);
               _updateDriverMarker(_driverLatLng!);
@@ -678,7 +694,8 @@ class _TrackingScreenState extends State<TrackingScreen>
               {'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        walletRefund = (data['walletRefund'] as num?)?.toDouble();
+        walletRefund =
+            double.tryParse(data['walletRefund']?.toString() ?? '');
       }
     } catch (_) {}
     if (!mounted) return;
@@ -1626,11 +1643,14 @@ class _TrackingScreenState extends State<TrackingScreen>
                     _receiptRow(
                       'Payment',
                       () {
-                        final pm = _trip?['paymentMethod'] ??
-                            _trip?['payment_method'] ??
-                            'cash';
+                        final pm = (_trip?['paymentMethod'] ??
+                                    _trip?['payment_method'] ??
+                                    'cash')
+                                .toString()
+                                .toLowerCase();
                         if (pm == 'wallet') return 'Wallet';
-                        if (pm == 'online') return 'Online Paid';
+                        if (pm == 'online' || pm == 'upi' || pm == 'razorpay')
+                          return 'Online Paid';
                         return 'Cash to Pilot';
                       }(),
                       valueColor: const Color(0xFF2563EB),

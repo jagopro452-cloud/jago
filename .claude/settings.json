@@ -112,7 +112,22 @@
       "Bash(magick --version)",
       "Bash(convert --version)",
       "Bash(pip install:*)",
-      "Bash(python -c \"from PIL import Image; print\\(''PIL installed ok''\\)\")"
+      "Bash(python -c \"from PIL import Image; print\\(''PIL installed ok''\\)\")",
+      "mcp__Neon__create_project",
+      "mcp__Neon__describe_project",
+      "mcp__Neon__run_sql",
+      "Bash(grep -n \"coupon_code\" c:/Users/kiran/Downloads/jago-main/migrations/*.sql)",
+      "Bash(grep -n \"referral_code\" c:/Users/kiran/Downloads/jago-main/migrations/*.sql)",
+      "Bash(tr -d '\\(')",
+      "Bash(for table:*)",
+      "Bash(grep -c \"\"\"$table\"\"\" c:/Users/kiran/Downloads/jago-main/shared/schema.ts)",
+      "Bash(curl -s -X POST \"https://oyster-app-9e9cd.ondigitalocean.app/api/admin/login\" -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"kiranatmakuri518@gmail.com\"\",\"\"password\"\":\"\"Greeshmant@2023\"\"}')",
+      "Bash(ls \"C:\\\\Users\\\\kiran\\\\release-apks\"\" 2>/dev/null && ls \"C:UserskiranDownloads\"\"*.apk)",
+      "Bash(find C:/Users/kiran/release-apks C:/Users/kiran/Downloads -name *.apk)",
+      "Bash(grep -v \"//.*route\")",
+      "WebFetch(domain:oyster-app-9e9cd.ondigitalocean.app)",
+      "Bash(ls -la /c/Users/kiran/Downloads/jago-main/.env*)",
+      "Bash(find . -name *.sql -o -name migration*)"
     ],
     "additionalDirectories": [
       "c:\\Users\\kiran\\Downloads"

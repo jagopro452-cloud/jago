@@ -38,7 +38,6 @@ services:
       # RAZORPAY_KEY_ID       → Razorpay live key
       # RAZORPAY_KEY_SECRET   → Razorpay live secret
       # RAZORPAY_WEBHOOK_SECRET → Razorpay webhook verification secret
-      # FAST2SMS_API_KEY      → Fast2SMS API key
       # ANTHROPIC_API_KEY     → Claude API key
       # OPS_API_KEY           → Internal ops endpoint auth
       # ADMIN_PASSWORD        → Admin login password
@@ -56,8 +55,6 @@ services:
       - key: RAZORPAY_KEY_SECRET
         type: SECRET
       - key: RAZORPAY_WEBHOOK_SECRET
-        type: SECRET
-      - key: FAST2SMS_API_KEY
         type: SECRET
       - key: ANTHROPIC_API_KEY
         type: SECRET

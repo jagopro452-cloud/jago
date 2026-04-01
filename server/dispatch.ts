@@ -13,7 +13,7 @@ import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
-import { findParcelCapableDrivers } from "./parcel-advanced";
+import { findParcelCapableDrivers } from "./parcel-advanced";`nimport { getMatchingDriverCategoryIds } from "./vehicle-matching";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -973,3 +973,7 @@ export function startDispatchCleanup(): void {
 
   console.log("[DISPATCH] Stale session cleanup started (60s interval)");
 }
+
+
+
+

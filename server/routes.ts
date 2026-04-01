@@ -52,6 +52,7 @@ import {
   resolveServiceType,
   type TripMeta,
 } from "./dispatch";
+import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
 import {
   computeDemandHeatmap,
   calculateSurgeMultiplier,
@@ -3471,8 +3472,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const typeFilter = req.query.type?.toString() || '';
       const q = typeFilter
-        ? rawSql`SELECT * FROM vehicle_categories WHERE is_active=true AND type=${typeFilter} ORDER BY name`
-        : rawSql`SELECT * FROM vehicle_categories WHERE is_active=true ORDER BY CASE type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 ELSE 3 END, name`;
+        ? rawSql`
+            SELECT *
+            FROM vehicle_categories
+            WHERE is_active = true
+              AND (
+                LOWER(COALESCE(service_type, '')) = LOWER(${typeFilter})
+                OR LOWER(type) = LOWER(${typeFilter})
+                OR (
+                  LOWER(${typeFilter}) IN ('pool', 'carpool')
+                  AND (COALESCE(is_carpool, false) = true OR LOWER(COALESCE(service_type, '')) IN ('pool', 'carpool'))
+                )
+                OR (
+                  LOWER(${typeFilter}) = 'ride'
+                  AND COALESCE(service_type, 'ride') = 'ride'
+                  AND COALESCE(is_carpool, false) = false
+                )
+              )
+            ORDER BY COALESCE(service_type, 'ride'), name
+          `
+        : rawSql`
+            SELECT *
+            FROM vehicle_categories
+            WHERE is_active = true
+            ORDER BY
+              CASE COALESCE(service_type, CASE WHEN type='parcel' THEN 'parcel' ELSE 'ride' END)
+                WHEN 'ride' THEN 1
+                WHEN 'pool' THEN 2
+                WHEN 'carpool' THEN 2
+                WHEN 'parcel' THEN 3
+                ELSE 4
+              END,
+              name
+          `;
       const r = await rawDb.execute(q);
       res.json(camelize(r.rows));
     } catch (e: any) {
@@ -7198,8 +7230,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -----------------------------------------------------------------------
 
   // -- OTP SEND (Firebase Only) ----------------------------------------------
-  // All OTP verification uses Firebase Phone Auth. The Flutter app handles
-  // Firebase SMS on-device; the server just tells the client to use Firebase.
+  // Mobile apps use Firebase Phone Auth on-device. The server keeps only a
+  // lightweight request marker for rate limiting / telemetry and never sends SMS.
   app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
@@ -7215,28 +7247,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
-      // Generate a real 6-digit OTP and send it via SMS
-      // This serves as a fallback when Firebase Phone Auth is blocked or unavailable
-      const { sendOtpSms } = await import("./sms.js");
-      const smsResult = await sendOtpSms(phoneStr);
-
-      if (smsResult.success) {
-        // Store the real OTP for server-side verification fallback
-        await rawDb.execute(rawSql`
-          INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
-          VALUES (${phoneStr}, ${smsResult.otp}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
-        `).catch(dbCatch("db"));
-        console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? SMS (${smsResult.provider})`);
-        return res.json({ success: true, provider: 'sms', message: 'OTP sent via SMS.' });
-      }
-
-      // SMS delivery failed � record firebase marker so verify-firebase-token still works
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `).catch(dbCatch("db"));
-      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? Firebase (SMS unavailable)`);
+      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} -> Firebase`);
       return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7384,24 +7400,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         } catch (_) {}
 
-        // Final fallback: Firebase verified on-device � trust the phone number the app sent
-        // Safe because: (1) send-otp was called recently (rate-limited), (2) Firebase SDK verified OTP on-device
+        // Final fallback: Firebase verified on-device — trust the phone number the app sent.
+        // We no longer require a server SMS or send-otp marker for Firebase-only auth.
         if (!restVerified) {
           const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
           if (!clientPhone || clientPhone.length < 10) {
             return res.status(400).json({ message: "Phone number required for login. Please try again." });
           }
-          // Verify that send-otp was called for this phone recently (within 10 min)
-          const otpReq = await rawDb.execute(rawSql`
-            SELECT id FROM otp_logs WHERE phone=${clientPhone} AND expires_at > NOW()
-            ORDER BY created_at DESC LIMIT 1
-          `).catch(() => ({ rows: [] as any[] }));
-          if (!otpReq.rows.length) {
-            console.warn(`[AUTH] Firebase fallback denied � no recent send-otp for ${clientPhone}`);
-            return res.status(401).json({ message: "Session expired. Please tap Resend OTP and try again." });
-          }
           phoneStr = clientPhone;
-          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10,'*')} � Firebase Admin not configured`);
+          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10,'*')} - Firebase Admin not configured`);
         }
       }
 
@@ -8026,6 +8033,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       onDriverAccepted(tripId, driver.id);
 
       const tripData = camelize(r.rows[0]) as any;
+      const driverVehicleR = await rawDb.execute(rawSql`
+        SELECT dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category
+        FROM driver_details dd
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        WHERE dd.user_id = ${driver.id}::uuid
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const driverVehicle = (driverVehicleR.rows[0] as any) || {};
 
       // -- HARDENING: Notify customer with driver details + setup timeouts --
       try {
@@ -8058,9 +8073,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           driverName: driver.fullName || "Pilot",
           driverPhone: driver.phone || "",
           driverPhoto: driver.profilePhoto || null,
+          driverRating: driver.avgRating || driver.rating || 0,
+          driverVehicleNumber: driverVehicle.vehicle_number || '',
+          driverVehicleModel: driverVehicle.vehicle_model || '',
+          vehicleName: driverVehicle.vehicle_category || '',
           pickupOtp: otp,
           driverId: driver.id,
           uiState: 'driver_assigned',
+          status: 'accepted',
+          currentStatus: 'accepted',
+          driver: {
+            id: driver.id,
+            fullName: driver.fullName || "Pilot",
+            phone: driver.phone || "",
+            rating: driver.avgRating || driver.rating || 0,
+            photo: driver.profilePhoto || null,
+            vehicleNumber: driverVehicle.vehicle_number || '',
+            vehicleModel: driverVehicle.vehicle_model || '',
+            vehicleCategory: driverVehicle.vehicle_category || '',
+          },
         });
         // Notify other nearby drivers that this trip is taken
         io.emit("trip:taken", { tripId: tripData.id });
@@ -9712,9 +9743,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
-          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
+          COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
+          COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
           vc.name as vehicle_name,
-          dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading
+          COALESCE(dl.lat, d.current_lat) as driver_lat,
+          COALESCE(dl.lng, d.current_lng) as driver_lng,
+          dl.heading as driver_heading
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
@@ -9765,8 +9799,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
           d.profile_photo as driver_photo,
-          d.vehicle_number as driver_vehicle_number, d.vehicle_model as driver_vehicle_model,
-          dl.lat as driver_lat, dl.lng as driver_lng, dl.heading as driver_heading,
+          COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
+          COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+          COALESCE(dl.lat, d.current_lat) as driver_lat,
+          COALESCE(dl.lng, d.current_lng) as driver_lng,
+          dl.heading as driver_heading,
           vc.name as vehicle_name
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id

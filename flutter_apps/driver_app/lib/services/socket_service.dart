@@ -235,13 +235,49 @@ class SocketService {
     _lastLat = lat;
     _lastLng = lng;
     _lastLocationSentAt = DateTime.now();
-    if (!_isConnected) return;
-    _socket!.emit('driver:location', {
-      'lat': lat,
-      'lng': lng,
-      'heading': heading,
-      'speed': speed,
-    });
+    if (_isConnected) {
+      _socket!.emit('driver:location', {
+        'lat': lat,
+        'lng': lng,
+        'heading': heading,
+        'speed': speed,
+      });
+      return;
+    }
+    _postLocationViaHttp(
+      lat: lat,
+      lng: lng,
+      heading: heading,
+      speed: speed,
+    );
+  }
+
+  Future<void> _postLocationViaHttp({
+    required double lat,
+    required double lng,
+    double heading = 0,
+    double speed = 0,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null || token.isEmpty) return;
+      await http.post(
+        Uri.parse(ApiConfig.driverLocation),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'lat': lat,
+          'lng': lng,
+          'heading': heading,
+          'speed': speed,
+          'isOnline': _wasOnline,
+        }),
+      ).timeout(const Duration(seconds: 10));
+    } catch (_) {}
   }
 
   void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {

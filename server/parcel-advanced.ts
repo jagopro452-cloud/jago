@@ -17,7 +17,7 @@
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { sendFcmNotification } from "./fcm";
-import { sendCustomSms } from "./sms";
+// Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 import { io } from "./socket";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -221,11 +221,7 @@ export async function notifyReceiver(opts: {
 
   const smsBody = messages[eventType];
   if (!smsBody) return;
-
-  // SMS notification
-  try {
-    await sendCustomSms(receiverPhone, smsBody);
-  } catch {}
+  // SMS notification removed. Only FCM and socket notifications are supported.
 
   // FCM push if receiver is a registered user
   try {

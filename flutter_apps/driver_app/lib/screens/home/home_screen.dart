@@ -62,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   String _vehicleNumber = '';
   String _vehicleModel = '';
   String _zone = '';
+  bool _hasValidLocationFix = false;
+  bool _hasLiveLocationAccess = false;
   Timer? _locationTimer;
   StreamSubscription<Position>? _posStream; // live GPS stream — battery-efficient
   Position? _lastPosition; // cached position for server updates
@@ -337,10 +339,60 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _locationTimer = null;
       _posStream?.cancel();
       _posStream = null;
-    } else if (state == AppLifecycleState.resumed && _isOnline) {
-      // Came back to foreground — restart location streaming
-      _startLocationStreaming();
+    } else if (state == AppLifecycleState.resumed) {
+      // Came back to foreground — refresh GPS fix and resume live updates if needed
+      _refreshLocationAfterResume();
     }
+  }
+
+  Future<void> _refreshLocationAfterResume() async {
+    await _getLocation();
+    if (!mounted || !_isOnline || !_hasValidLocationFix || !_hasLiveLocationAccess) return;
+    _startLocationStreaming();
+    _socket.setOnlineStatus(
+      isOnline: true,
+      lat: _center.latitude,
+      lng: _center.longitude,
+    );
+  }
+
+  void _applyLocationFix(Position pos, {bool animate = true}) {
+    _lastPosition = pos;
+    _hasValidLocationFix = true;
+    if (!mounted) return;
+    setState(() => _center = LatLng(pos.latitude, pos.longitude));
+    if (animate) {
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
+    }
+  }
+
+  Future<void> _showLocationRequiredDialog({
+    required String title,
+    required String message,
+    required Future<bool> Function() openSettings,
+  }) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await openSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadUser() async {
@@ -354,37 +406,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   Future<void> _getLocation() async {
     try {
+      final fallbackPosition = await Geolocator.getLastKnownPosition();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _hasLiveLocationAccess = false;
+        if (fallbackPosition != null) {
+          _applyLocationFix(fallbackPosition);
+        } else {
+          _hasValidLocationFix = false;
+          if (mounted) {
+            _showSnack('Turn on device location to get live trips.', error: true);
+            await _showLocationRequiredDialog(
+              title: 'Location Services Off',
+              message: 'Turn on device location so we can detect your live position and assign rides nearby.',
+              openSettings: Geolocator.openLocationSettings,
+            );
+          }
+        }
+        return;
+      }
+
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            title: const Text('Location Required'),
-            content: const Text('Location access is required to request rides. Please enable it in your device settings.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: () { Navigator.pop(context); Geolocator.openAppSettings(); },
-                child: const Text('Open Settings'),
-              ),
-            ],
-          ),
-        );
+        _hasLiveLocationAccess = false;
+        if (fallbackPosition != null) {
+          _applyLocationFix(fallbackPosition);
+        } else {
+          _hasValidLocationFix = false;
+          if (!mounted) return;
+          await _showLocationRequiredDialog(
+            title: 'Location Required',
+            message: 'Location access is required to request rides. Please enable it in your device settings.',
+            openSettings: Geolocator.openAppSettings,
+          );
+        }
         return;
       }
+      _hasLiveLocationAccess = true;
       // Fast path: last known position is instant, no cold-start GPS delay
-      try {
-        final last = await Geolocator.getLastKnownPosition();
-        if (last != null && mounted) {
-          setState(() => _center = LatLng(last.latitude, last.longitude));
-          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
-        }
-      } catch (_) {}
+      if (fallbackPosition != null) {
+        _applyLocationFix(fallbackPosition);
+      }
       // Accurate position with timeout to avoid indefinite hang
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -392,10 +457,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           timeLimit: Duration(seconds: 10),
         ),
       );
-      if (!mounted) return;
-      setState(() => _center = LatLng(pos.latitude, pos.longitude));
-      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
-    } catch (_) {}
+      _applyLocationFix(pos);
+    } catch (_) {
+      if (_lastPosition == null) {
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) {
+            _applyLocationFix(last);
+            return;
+          }
+        } catch (_) {}
+        _hasValidLocationFix = false;
+        _hasLiveLocationAccess = false;
+      }
+    }
   }
 
   void _handleSessionExpired() {
@@ -436,15 +511,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _driverRating = double.tryParse(data['rating']?.toString() ?? '') ?? _driverRating;
         });
         if (_isOnline) {
-          _startLocationStreaming();
+          if (!_hasValidLocationFix) {
+            await _getLocation();
+          }
+          if (_hasValidLocationFix && _hasLiveLocationAccess) {
+            _startLocationStreaming();
+          }
           // Re-announce online status via socket — restores driver_locations.is_online=true
           // after app restart/crash where socket disconnect handler had set it false.
           // Without this, dispatch won't find driver until first GPS update arrives (3s delay).
-          _socket.setOnlineStatus(
-            isOnline: true,
-            lat: _center.latitude,
-            lng: _center.longitude,
-          );
+          if (_hasValidLocationFix && _hasLiveLocationAccess) {
+            _socket.setOnlineStatus(
+              isOnline: true,
+              lat: _center.latitude,
+              lng: _center.longitude,
+            );
+          }
         }
       } else if (res.statusCode == 401) {
         _handleSessionExpired();
@@ -510,6 +592,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   void _startLocationStreaming() {
+    if (!_hasValidLocationFix || !_hasLiveLocationAccess) return;
     _locationTimer?.cancel();
     _posStream?.cancel();
 
@@ -745,30 +828,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               } catch (_) {}
             }
             if (!mounted) return;
-            if (!accepted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Network issue — proceeding. Contact support if trip is missing.',
-                  style: TextStyle(fontWeight: FontWeight.w400, color: Colors.white)),
-                backgroundColor: JT.warning,
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 4),
-              ));
-            }
-            // Fetch full trip data from server (includes destinationLat/Lng, customerId, customerPhone)
-            Map<String, dynamic> fullTrip = trip;
+            // Always verify against the server before opening TripScreen.
+            Map<String, dynamic>? fullTrip;
             try {
               final hdrs = await AuthService.getHeaders();
-              final res = await http.get(Uri.parse(ApiConfig.driverIncomingTrip), headers: hdrs)
+              final res = await http.get(Uri.parse(ApiConfig.driverActiveTrip), headers: hdrs)
                 .timeout(const Duration(seconds: 6));
               if (res.statusCode == 200) {
                 final data = jsonDecode(res.body) as Map<String, dynamic>;
-                if (data['trip'] != null) {
-                  fullTrip = Map<String, dynamic>.from(trip)
-                    ..addAll(Map<String, dynamic>.from(data['trip'] as Map));
+                final activeTrip = data['trip'];
+                if (activeTrip is Map) {
+                  final serverTrip = Map<String, dynamic>.from(activeTrip as Map);
+                  final serverTripId = (serverTrip['id'] ?? serverTrip['tripId'] ?? '').toString();
+                  if (serverTripId == tripId) {
+                    fullTrip = Map<String, dynamic>.from(trip)..addAll(serverTrip);
+                  }
                 }
               }
             } catch (_) {}
             if (!mounted) return;
+            if (fullTrip == null) {
+              _showSnack(
+                accepted
+                    ? 'Trip accepted but server did not confirm full trip data yet. Please wait for refresh.'
+                    : 'Could not accept this trip. Please try the next request.',
+                error: true,
+              );
+              return;
+            }
             Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
           },
           onReject: () async {
@@ -950,6 +1037,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     setState(() => _toggling = true);
     final newStatus = !_isOnline;
     try {
+      if (newStatus) {
+        await _getLocation();
+        if (!_hasValidLocationFix || !_hasLiveLocationAccess) {
+          if (mounted) setState(() => _toggling = false);
+          _showSnack('Live location is required to go online. Turn on GPS and try again.', error: true);
+          return;
+        }
+      }
+
       _socket.setOnlineStatus(
         isOnline: newStatus,
         lat: _center.latitude,

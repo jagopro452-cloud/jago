@@ -146,12 +146,11 @@ class HeatmapService {
 
   /// One-shot refresh with updated driver position.
   void updatePosition(double lat, double lng, {VoidCallback? onUpdate}) {
-    _refreshTimer?.cancel();
-    _fetchZones(lat, lng, onUpdate: onUpdate);
-    _refreshTimer = Timer.periodic(
-      Duration(seconds: _refreshIntervalSeconds),
-      (_) => _fetchZones(lat, lng, onUpdate: onUpdate),
-    );
+    if (_refreshTimer == null) {
+      startRefresh(lat, lng, onUpdate: onUpdate);
+    } else {
+      _fetchZones(lat, lng, onUpdate: onUpdate);
+    }
   }
 
   Future<void> _fetchZones(double lat, double lng, {VoidCallback? onUpdate}) async {

@@ -650,7 +650,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _nearbyDriversTimer?.cancel();
       _nearbyDriversTimer = null;
     } else if (state == AppLifecycleState.resumed) {
-      // App came back to foreground — restart polling
+      // App came back to foreground — refresh pickup location and restart polling
+      _getLocation();
       if (_nearbyDriversTimer == null) {
         _nearbyDriversTimer = Timer.periodic(
             const Duration(seconds: 10), (_) => _fetchNearbyDrivers());
@@ -666,6 +667,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _userName = prefs.getString('user_name') ?? 'there';
       _userPhone = prefs.getString('user_phone') ?? '';
     });
+  }
+
+  Future<void> _showLocationPrompt({
+    required String title,
+    required String message,
+    required Future<bool> Function() openSettings,
+  }) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await openSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _getLocation() async {
@@ -690,8 +720,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
           _fetchNearbyDrivers();
         } else if (mounted) {
-          setState(
-              () => _pickup = 'Turn on location services to detect pickup');
+          setState(() {
+            _pickup = 'Turn on location services to detect pickup';
+            _locationReady = false;
+          });
+          await _showLocationPrompt(
+            title: 'Location Services Off',
+            message:
+                'Turn on device location so we can detect your live pickup point accurately.',
+            openSettings: Geolocator.openLocationSettings,
+          );
         }
         return;
       }
@@ -702,15 +740,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       if (perm == LocationPermission.denied) {
         if (mounted) {
-          setState(
-              () => _pickup = 'Location permission is needed to detect pickup');
+          setState(() {
+            _pickup = 'Location permission is needed to detect pickup';
+            _locationReady = false;
+          });
         }
         return;
       }
       if (perm == LocationPermission.deniedForever) {
         if (!mounted) return;
-        setState(() => _pickup =
-            'Location permission is blocked. Open settings to enable it.');
+        setState(() {
+          _pickup = 'Location permission is blocked. Open settings to enable it.';
+          _locationReady = false;
+        });
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -749,8 +791,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (pos == null) {
         if (mounted) {
-          setState(
-              () => _pickup = 'Could not detect your location. Tap to retry.');
+          setState(() {
+            _pickup = 'Could not detect your location. Tap to retry.';
+            _locationReady = false;
+          });
         }
         return;
       }
@@ -787,7 +831,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return;
         }
       } catch (_) {}
-      if (mounted) setState(() => _pickup = 'Tap to detect your location');
+      if (mounted) {
+        setState(() {
+          _pickup = 'Tap to detect your location';
+          _locationReady = false;
+        });
+      }
     }
   }
 

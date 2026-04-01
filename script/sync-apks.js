@@ -7,11 +7,12 @@ const __dirname = path.dirname(__filename);
 
 const SOURCE_DIR = path.join(__dirname, "..", "public", "apks");
 const DEST_DIR_DIST = path.join(__dirname, "..", "dist", "public", "apks");
+const DOWNLOADS_DIR = path.join(process.env.USERPROFILE || "C:\\Users\\kiran", "Downloads");
 
 function copyFile(src, dest) {
   try {
     fs.copyFileSync(src, dest);
-    console.log(`[sync-apks] synced ${path.basename(dest)}`);
+    console.log(`[sync-apks] Success: ${path.basename(dest)} is now in ${path.dirname(dest)}`);
     return true;
   } catch (err) {
     console.error(`[sync-apks] failed to sync ${path.basename(src)}:`, err.message);
@@ -56,6 +57,7 @@ function syncAPKs() {
   }
 
   ensureDir(DEST_DIR_DIST);
+  ensureDir(DOWNLOADS_DIR);
 
   const apkFiles = fs.readdirSync(SOURCE_DIR).filter((file) => file.endsWith(".apk"));
   if (apkFiles.length === 0) {
@@ -65,6 +67,7 @@ function syncAPKs() {
 
   apkFiles.forEach((fileName) => {
     copyFile(path.join(SOURCE_DIR, fileName), path.join(DEST_DIR_DIST, fileName));
+    copyFile(path.join(SOURCE_DIR, fileName), path.join(DOWNLOADS_DIR, fileName));
   });
 
   const customerLatest = findLatest(apkFiles, "jago-customer-");
@@ -78,6 +81,7 @@ function syncAPKs() {
   aliases.forEach(({ source, alias }) => {
     if (!source) return;
     copyFile(path.join(SOURCE_DIR, source), path.join(DEST_DIR_DIST, alias));
+    copyFile(path.join(SOURCE_DIR, source), path.join(DOWNLOADS_DIR, alias));
   });
 
   const status = {

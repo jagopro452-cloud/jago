@@ -31,6 +31,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    FirebaseOtpService.resetVerification();
     _phoneCtrl.dispose();
     _otpCtrl.dispose();
     _newPassCtrl.dispose();
@@ -60,6 +61,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
+    _firebaseVerificationId = null;
+    _firebaseIdToken = null;
+    await FirebaseOtpService.resetVerification();
+    final precheck = await AuthService.forgotPassword(phone);
+    if (!mounted) return;
+    if (precheck['success'] != true) {
+      setState(() => _loading = false);
+      _showSnack(precheck['message'] ?? 'Unable to start password reset.', error: true);
+      return;
+    }
     await FirebaseOtpService.sendOtp(
       phoneNumber: '+91$phone',
       onCodeSent: (vId) {
@@ -85,6 +96,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _verifyOtpStep() async {
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
+    if (_firebaseVerificationId == null) {
+      _showSnack('OTP session expired. Please resend OTP.', error: true);
+      return;
+    }
     setState(() => _loading = true);
     try {
       final idToken = await FirebaseOtpService.verifyOtp(

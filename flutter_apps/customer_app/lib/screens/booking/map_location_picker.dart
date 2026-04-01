@@ -62,8 +62,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   // null until GPS is confirmed — avoids biasing search toward a hardcoded city
   double? _gpsLat;
   double? _gpsLng;
-  double _lat = 20.5937; // India center — neutral fallback (not a specific city)
-  double _lng = 78.9629;
+  double? _lat; // null until GPS is fetched
+  double? _lng;
   String _address = 'Move the map to select location';
   bool _geocoding = false;
   bool _locationLoading = true;
@@ -81,6 +81,47 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   // API calls are proxied through server — no client-side key needed
 
+  // ─── Reverse Geocode ─────────────────────────────────────────────
+  Future<void> _reverseGeocode(double? lat, double? lng) async {
+    if (lat == null || lng == null) return;
+    setState(() => _geocoding = true);
+    // Try server proxy first for consistency with the main home screen logic
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200 && mounted && lat == _lat && lng == _lng) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr = data['formattedAddress']?.toString() ?? '';
+        if (addr.isNotEmpty) {
+          setState(() { _address = addr; _geocoding = false; });
+          return;
+        }
+      }
+    } catch (_) {}
+    // Nominatim fallback
+    try {
+      final res = await http.get(
+        Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng'),
+        headers: const {'User-Agent': 'JagoPro/1.0'},
+      ).timeout(const Duration(seconds: 5));
+      // Defensive check: ensure results match current map center to avoid stale address updates
+      if (res.statusCode == 200 && mounted && lat == _lat && lng == _lng) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr = data['display_name']?.toString() ?? '';
+        if (addr.isNotEmpty) {
+          setState(() { _address = addr; _geocoding = false; });
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('[MAP] Geocode error: $e');
+    }
+    if (mounted) setState(() { _address = _address == 'Move the map to select location' ? 'Unknown Location' : _address; _geocoding = false; });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -88,7 +129,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       _lat = widget.initialLat!;
       _lng = widget.initialLng!;
       _locationLoading = false;
-      _reverseGeocode(_lat, _lng);
+      _reverseGeocode(_lat!, _lng!);
     } else {
       _getCurrentLocation();
     }
@@ -112,14 +153,15 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (!serviceEnabled) {
         if (lastPos != null && mounted) {
           setState(() {
-            _lat = lastPos.latitude;
-            _lng = lastPos.longitude;
+            // Use last known if valid, otherwise fallback to a default city center
+            _lat = (lastPos.latitude != 0 && lastPos.latitude != 0.0) ? lastPos.latitude : 16.5062;
+            _lng = (lastPos.longitude != 0 && lastPos.longitude != 0.0) ? lastPos.longitude : 80.6480;
             _gpsLat = lastPos.latitude;
             _gpsLng = lastPos.longitude;
             _locationLoading = false;
             _address = 'Using last known location';
           });
-          final target = LatLng(_lat, _lng);
+          final target = LatLng(_lat!, _lng!);
           if (_mapController != null) {
             _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
           } else {
@@ -128,7 +170,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _reverseGeocode(_lat, _lng);
           return;
         }
-        setState(() => _locationLoading = false);
+        // Ensure loading is stopped even if no location is found
+        setState(() {
+          _lat = 16.5062; // Default (e.g., Vijayawada)
+          _lng = 80.6480;
+          _locationLoading = false;
+          _address = 'Location services disabled. Showing default.';
+        });
         return;
       }
       var perm = await Geolocator.checkPermission();
@@ -138,6 +186,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.denied) {
         setState(() {
           _locationLoading = false;
+          _lat = 16.5062;
+          _lng = 80.6480;
           _address = 'Location permission is needed to detect your current location.';
         });
         return;
@@ -145,6 +195,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.deniedForever) {
         setState(() {
           _locationLoading = false;
+          _lat = 16.5062;
+          _lng = 80.6480;
           _address = 'Location permission is blocked. Enable it from settings.';
         });
         return;
@@ -152,12 +204,14 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
       if (lastPos != null && mounted) {
         setState(() {
-          _lat = lastPos.latitude;
-          _lng = lastPos.longitude;
+          // Ensure we have non-zero coordinates, otherwise fallback to default
+          final isValid = lastPos.latitude != 0 && lastPos.longitude != 0;
+          _lat = isValid ? lastPos.latitude : (_lat ?? 16.5062);
+          _lng = isValid ? lastPos.longitude : (_lng ?? 80.6480);
           _gpsLat = lastPos.latitude;
           _gpsLng = lastPos.longitude;
         });
-        final target = LatLng(_lat, _lng);
+        final target = LatLng(_lat!, _lng!);
         if (_mapController != null) {
           _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
         } else {
@@ -174,83 +228,23 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       );
       if (!mounted) return;
       setState(() {
-        _lat = pos.latitude;
-        _lng = pos.longitude;
+        _lat = pos.latitude != 0 ? pos.latitude : (_lat ?? 16.5062);
+        _lng = pos.longitude != 0 ? pos.longitude : (_lng ?? 80.6480);
         _gpsLat = pos.latitude;
         _gpsLng = pos.longitude;
         _locationLoading = false;
+        _address = 'Current location';
       });
-      final target = LatLng(_lat, _lng);
+      final target = LatLng(_lat!, _lng!);
       if (_mapController != null) {
-        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
       } else {
         _pendingCamera = target;
       }
       _reverseGeocode(_lat, _lng);
-    } catch (_) {
-      final lastPos = await Geolocator.getLastKnownPosition();
-      if (!mounted) return;
-      if (lastPos != null) {
-        setState(() {
-          _lat = lastPos.latitude;
-          _lng = lastPos.longitude;
-          _gpsLat = lastPos.latitude;
-          _gpsLng = lastPos.longitude;
-          _locationLoading = false;
-        });
-        final target = LatLng(_lat, _lng);
-        if (_mapController != null) {
-          _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 14));
-        } else {
-          _pendingCamera = target;
-        }
-        _reverseGeocode(_lat, _lng);
-      } else {
-        setState(() {
-          _locationLoading = false;
-          _address = 'Could not detect your location. Please try again.';
-        });
-      }
+    } catch (e) {
+      setState(() => _locationLoading = false);
     }
-  }
-
-  // ─── Reverse geocode ────────────────────────────────────────────────────
-
-  Future<void> _reverseGeocode(double lat, double lng) async {
-    setState(() => _geocoding = true);
-    // Try server proxy first
-    try {
-      final headers = await AuthService.getHeaders();
-      final res = await http.get(
-        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 6));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final addr = data['formattedAddress']?.toString() ?? '';
-        if (mounted && addr.isNotEmpty) {
-          setState(() { _address = addr; _geocoding = false; });
-          return;
-        }
-      }
-    } catch (_) {}
-    // Nominatim fallback
-    try {
-      final res = await http.get(
-        Uri.parse(
-            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng'),
-        headers: const {'User-Agent': 'JagoPro/1.0'},
-      ).timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final addr = data['display_name']?.toString() ?? '';
-        if (mounted && addr.isNotEmpty) {
-          setState(() { _address = addr; _geocoding = false; });
-          return;
-        }
-      }
-    } catch (_) {}
-    if (mounted) setState(() { _address = 'Current Location'; _geocoding = false; });
   }
 
   // ─── Places Autocomplete Search ─────────────────────────────────────────
@@ -309,7 +303,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _address = pred.description;
           _geocoding = false;
         });
-        final target = LatLng(_lat, _lng);
+        final target = LatLng(_lat!, _lng!);
         if (_mapController != null) {
           _mapController!.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
         } else {
@@ -367,10 +361,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   }
 
   void _confirmLocation() {
-    Navigator.pop(
-      context,
-      PickedLocation(lat: _lat, lng: _lng, address: _address),
-    );
+    if (_lat != null && _lng != null) {
+      Navigator.pop(
+        context,
+        PickedLocation(lat: _lat!, lng: _lng!, address: _address),
+      );
+    }
   }
 
   // ─── Build ──────────────────────────────────────────────────────────────
@@ -378,58 +374,64 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-
     return Scaffold(
+      backgroundColor: JT.bg,
       body: Stack(
         children: [
-          // ── Google Map ──────────────────────────────────────────────────
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: LatLng(_lat, _lng),
-              zoom: 16,
-            ),
-            onMapCreated: (c) {
-              _mapController = c;
-              if (_pendingCamera != null) {
-                c.animateCamera(CameraUpdate.newLatLngZoom(_pendingCamera!, 16));
-                _pendingCamera = null;
-              }
+          // ── Google Map ────────────────────────────────────────────────
+          if (!_locationLoading && _lat != null && _lng != null)
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(_lat!, _lng!),
+                zoom: 15,
+              ),
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              padding: const EdgeInsets.only(bottom: 240),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (_pendingCamera != null) {
+                  _mapController!.animateCamera(CameraUpdate.newLatLngZoom(_pendingCamera!, 15));
+                  _pendingCamera = null;
+                }
+              },
+            onCameraMove: (pos) {
+              // High performance: update values without setState
+              _lat = pos.target.latitude;
+              _lng = pos.target.longitude;
             },
-            onCameraMove: _onCameraMove,
-            onCameraIdle: _onCameraIdle,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: false,
-          ),
+            onCameraIdle: () {
+              // Only update UI and geocode when map stops moving
+              if (mounted) setState(() {});
+              _reverseGeocode(_lat, _lng);
+            },
+            ),
+          if (_locationLoading)
+            const Center(child: CircularProgressIndicator()),
 
-          // ── Fixed center pin ────────────────────────────────────────────
-          const Center(
+        // ── Top layer (Search or Title) ──────────────────────────────
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
             child: Padding(
-              padding: EdgeInsets.only(bottom: 36), // offset for pin tip
-              child: Icon(Icons.location_on, size: 48, color: Color(0xFFE53935)),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _showSearch
+                  ? Column(
+                      children: [
+                        _buildSearchBar(),
+                        const SizedBox(height: 8),
+                        _buildSearchResults(),
+                      ],
+                    )
+                  : _buildTopBar(),
             ),
           ),
+        ),
 
-          // ── Top bar (back + search) ─────────────────────────────────────
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 16,
-            right: 16,
-            child: _showSearch ? _buildSearchBar() : _buildTopBar(),
-          ),
-
-          // ── Search results overlay ──────────────────────────────────────
-          if (_showSearch && _predictions.isNotEmpty)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 68,
-              left: 16,
-              right: 16,
-              child: _buildSearchResults(),
-            ),
-
-          // ── Bottom card (address + confirm) ─────────────────────────────
+          // ── Bottom card (address + confirm) ─────────────────────────
           Positioned(
             bottom: 0,
             left: 0,
@@ -437,7 +439,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
             child: _buildBottomCard(bottomPadding),
           ),
 
-          // ── My location FAB ─────────────────────────────────────────────
+          // ── My location FAB ─────────────────────────────────────────
           Positioned(
             bottom: 200 + bottomPadding,
             right: 16,
@@ -661,7 +663,9 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           Padding(
             padding: const EdgeInsets.only(left: 52),
             child: Text(
-              '${_lat.toStringAsFixed(6)}, ${_lng.toStringAsFixed(6)}',
+              (_lat != null && _lng != null)
+                  ? '${_lat!.toStringAsFixed(6)}, ${_lng!.toStringAsFixed(6)}'
+                  : 'Location not set',
               style: GoogleFonts.poppins(fontSize: 11, color: JT.textSecondary),
             ),
           ),

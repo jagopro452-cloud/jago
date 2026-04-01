@@ -125,6 +125,20 @@ class SocketService {
     // Driver accepted my trip (HTTP acceptance path)
     _socket!.on('trip:accepted', (data) {
       final payload = Map<String, dynamic>.from(data);
+      payload['driver'] = payload['driver'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(payload['driver'])
+          : {
+              'id': payload['driverId'],
+              'fullName': payload['driverName'],
+              'phone': payload['driverPhone'],
+              'rating': payload['driverRating'],
+              'photo': payload['driverPhoto'],
+              'vehicleNumber': payload['driverVehicleNumber'],
+              'vehicleModel': payload['driverVehicleModel'],
+              'vehicleCategory': payload['vehicleName'],
+              'lat': payload['lat'],
+              'lng': payload['lng'],
+            };
       payload['eventType'] = 'trip_accepted';
       _driverAssignedController.add(payload);
       // Keep status stream in sync for tracking UI updates

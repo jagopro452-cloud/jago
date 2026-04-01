@@ -22,11 +22,7 @@ const EnvSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 
-  FAST2SMS_API_KEY: z.string().optional(),
-  TWO_FACTOR_API_KEY: z.string().optional(),
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_PHONE_NUMBER: z.string().optional(),
+  // Removed legacy SMS/Twilio/2FA keys. Only Firebase OTP is supported.
 
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
   FIREBASE_WEB_API_KEY: z.string().optional(),

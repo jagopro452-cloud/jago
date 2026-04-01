@@ -7,17 +7,15 @@ const rawSql = sql;
 let admin: any = null;
 let fcmInitialized = false;
 
-// ── Initialize Firebase Admin (env var OR database) ──────────────────────────
+// ── Initialize Firebase Admin (env var only, no SMS fallback) ────────────────
 async function initFirebaseAsync() {
   if (fcmInitialized) return;
   fcmInitialized = true;
 
-  // 1. Try env var first
+  // Only use env var for service account
   let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-
-  // 2. Fallback: read from business_settings (admin panel saves it here)
   if (!serviceAccountJson) {
-    try {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is required for FCM.");
       const r = await rawDb.execute(rawSql`SELECT value FROM business_settings WHERE key_name='firebase_service_account' LIMIT 1`);
       const val = (r.rows[0] as any)?.value?.trim();
       if (val && val.startsWith("{")) serviceAccountJson = val;

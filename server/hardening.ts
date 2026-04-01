@@ -16,7 +16,7 @@ import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { sendFcmNotification } from "./fcm";
-import { sendCustomSms } from "./sms";
+// Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🔧 HARDENING SETTINGS LOADER
@@ -304,29 +304,7 @@ export async function sendNotificationWithFailsafe(opts: {
   }
   
   // ════════════════════════════════════════════════════════════════════════════
-  // CHANNEL 3: SMS (Last resort for critical notifications)
-  // ════════════════════════════════════════════════════════════════════════════
-  
-  if (opts.phoneNumber) {
-    try {
-      const smsResult = await sendCustomSms(
-        opts.phoneNumber,
-        `${opts.title}: ${opts.body}. Check your Jago app.`
-      );
-      
-      if (smsResult.success) {
-        await logInfo('NOTIFICATION-SMS', 'SMS sent as fallback', {
-          recipientId: opts.recipientId,
-          phoneNumber: opts.phoneNumber.slice(-4),  // Last 4 digits only
-          provider: smsResult.provider,
-        });
-        
-        return { success: true, channel: 'sms' };
-      }
-    } catch (e: any) {
-      await logError('NOTIFICATION-SMS', 'SMS fallback failed', { error: e.message });
-    }
-  }
+  // SMS fallback removed. Only FCM and socket notifications are supported.
   
   // ════════════════════════════════════════════════════════════════════════════
   // ALL CHANNELS FAILED
@@ -335,10 +313,9 @@ export async function sendNotificationWithFailsafe(opts: {
   await logCritical('NOTIFICATION-FAILURE', 'ALL notification channels failed', {
     recipientId: opts.recipientId,
     tripId: opts.tripId,
-    attempted: ['fcm', 'socket', 'sms'].filter(c => {
+    attempted: ['fcm', 'socket'].filter(c => {
       if (c === 'fcm') return !!opts.fcmToken;
       if (c === 'socket') return true;
-      if (c === 'sms') return !!opts.phoneNumber;
       return false;
     }),
   });

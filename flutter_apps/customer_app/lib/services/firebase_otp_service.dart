@@ -22,6 +22,8 @@ class FirebaseOtpService {
         return 'Too many attempts. Please wait a bit before trying again.';
       case 'quota-exceeded':
         return 'OTP quota exceeded. Please try again later.';
+      case 'operation-not-allowed':
+        return 'ERROR: Phone Auth is disabled in Firebase OR Identity Toolkit API is restricted in Google Cloud Console. Please check your API Key settings.';
       case 'app-not-authorized':
         return 'Firebase phone auth is not authorized for this app build.';
       case 'session-expired':

@@ -14,7 +14,7 @@ import {
   checkAbnormalStop,
   checkSpeedAnomaly,
 } from "./ai";
-import { parseEnv } from "./config/env";
+import { parseEnv } from "./config/env";`nimport { getMatchingDriverCategoryIds } from "./vehicle-matching";
 
 export let io: SocketIOServer;
 
@@ -288,6 +288,7 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("driver:accept_trip", async (data: { tripId: string }) => {
         try {
           const { tripId } = data;
+          const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
           // Gate driver state before trip claim to prevent bypassing HTTP checks.
           const driverStateR = await rawDb.execute(rawSql`
             SELECT id, user_type, is_locked, current_trip_id, launch_free_active, free_period_end
@@ -337,7 +338,13 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Atomically claim the trip — only if still available (prevents race condition)
           const claimed = await rawDb.execute(rawSql`
-            UPDATE trip_requests SET driver_id=${userId}::uuid, current_status='accepted', driver_accepted_at=NOW(), updated_at=NOW()
+            UPDATE trip_requests
+            SET driver_id=${userId}::uuid,
+                current_status='accepted',
+                driver_accepted_at=NOW(),
+                driver_arriving_at=NOW(),
+                pickup_otp=${pickupOtp},
+                updated_at=NOW()
             WHERE id=${tripId}::uuid
               AND current_status IN ('searching','driver_assigned')
               AND (driver_id IS NULL OR driver_id=${userId}::uuid)
@@ -373,6 +380,9 @@ export function setupSocket(httpServer: HttpServer) {
           // Notify customer via socket (with full driver + vehicle info)
           io.to(`user:${trip.customerId}`).emit("trip:driver_assigned", {
             tripId,
+            pickupOtp,
+            status: "accepted",
+            currentStatus: "accepted",
             driver: {
               id: userId,
               fullName: driver.fullName,
@@ -385,6 +395,38 @@ export function setupSocket(httpServer: HttpServer) {
               lat: trip.driverLat,
               lng: trip.driverLng,
             },
+          });
+          io.to(`user:${trip.customerId}`).emit("trip:accepted", {
+            tripId,
+            pickupOtp,
+            status: "accepted",
+            currentStatus: "accepted",
+            driverId: userId,
+            driverName: driver.fullName,
+            driverPhone: driver.phone,
+            driverPhoto: driver.profilePhoto,
+            driverRating: driver.rating,
+            driverVehicleNumber: vehicle.vehicle_number || '',
+            driverVehicleModel: vehicle.vehicle_model || '',
+            vehicleName: vehicle.vehicle_category || '',
+            driver: {
+              id: userId,
+              fullName: driver.fullName,
+              phone: driver.phone,
+              rating: driver.rating,
+              photo: driver.profilePhoto,
+              vehicleNumber: vehicle.vehicle_number || '',
+              vehicleModel: vehicle.vehicle_model || '',
+              vehicleCategory: vehicle.vehicle_category || '',
+              lat: trip.driverLat,
+              lng: trip.driverLng,
+            },
+          });
+          io.to(`trip:${tripId}`).emit("trip:status_update", {
+            tripId,
+            status: "accepted",
+            currentStatus: "accepted",
+            otp: pickupOtp,
           });
 
           // Notify all other nearby drivers that the trip has been taken
@@ -975,6 +1017,7 @@ export async function notifyNearbyDriversNewTrip(
     const excludeClause = safeIds.length > 0
       ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
       : rawSql``;
+    const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
 
     const drivers = await rawDb.execute(rawSql`
       SELECT u.id, dl.lat, dl.lng
@@ -984,7 +1027,11 @@ export async function notifyNearbyDriversNewTrip(
       WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
         AND dl.is_online=true AND u.current_trip_id IS NULL
         AND u.verification_status IN ('approved', 'verified', 'pending')
-        ${vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+        ${matchingCategoryIds?.length
+          ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+          : vehicleCategoryId
+          ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+          : rawSql``}
         ${excludeClause}
         AND ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) < 0.06
       ORDER BY ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) ASC
@@ -992,8 +1039,15 @@ export async function notifyNearbyDriversNewTrip(
     `);
 
     const tripR = await rawDb.execute(rawSql`
-      SELECT t.*, u.full_name as customer_name
-      FROM trip_requests t JOIN users u ON u.id=t.customer_id
+      SELECT
+        t.*,
+        u.full_name as customer_name,
+        vc.name as vehicle_name,
+        vc.icon as vehicle_icon,
+        COALESCE(vc.vehicle_type, '') as vehicle_type_field
+      FROM trip_requests t
+      JOIN users u ON u.id=t.customer_id
+      LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
       WHERE t.id=${tripId}::uuid
     `);
     if (!tripR.rows.length) return;
@@ -1026,6 +1080,9 @@ export async function notifyNearbyDriversNewTrip(
         estimatedDistance: trip.estimatedDistance,
         paymentMethod: trip.paymentMethod,
         tripType: trip.tripType,
+        vehicleCategoryName: trip.vehicleName || trip.vehicleTypeName || null,
+        vehicleIcon: trip.vehicleIcon || null,
+        vehicleType: trip.vehicleTypeField || null,
       };
       // Socket (foreground) + FCM (background)
       io.to(`user:${driverId}`).emit("trip:new_request", payload);
@@ -1058,15 +1115,25 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
       LIMIT 1
     `);
     const driverVehicleCategoryId = (driverProfile.rows[0] as any)?.vehicle_category_id || null;
+    const matchingCategoryIds = await getMatchingDriverCategoryIds(driverVehicleCategoryId);
 
     const trips = await rawDb.execute(rawSql`
-      SELECT t.*, u.full_name as customer_name
-      FROM trip_requests t JOIN users u ON u.id=t.customer_id
+      SELECT
+        t.*,
+        u.full_name as customer_name,
+        vc.name as vehicle_name,
+        vc.icon as vehicle_icon,
+        COALESCE(vc.vehicle_type, '') as vehicle_type_field
+      FROM trip_requests t
+      JOIN users u ON u.id=t.customer_id
+      LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
       WHERE t.current_status='searching'
         AND t.driver_id IS NULL
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
-        ${driverVehicleCategoryId
-          ? rawSql`AND (t.vehicle_category_id = ${driverVehicleCategoryId}::uuid OR t.vehicle_category_id IS NULL)`
+        ${matchingCategoryIds?.length
+          ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+          : driverVehicleCategoryId
+          ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`
           : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06
       LIMIT 3
@@ -1084,9 +1151,13 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         estimatedFare: trip.estimatedFare,
         estimatedDistance: trip.estimatedDistance,
         paymentMethod: trip.paymentMethod,
+        vehicleCategoryName: trip.vehicleName || trip.vehicleTypeName || null,
+        vehicleIcon: trip.vehicleIcon || null,
+        vehicleType: trip.vehicleTypeField || null,
       });
     }
   } catch (e: any) {
     console.error("[SOCKET] notifyDriverNearbyTrips error:", e.message);
   }
 }
+

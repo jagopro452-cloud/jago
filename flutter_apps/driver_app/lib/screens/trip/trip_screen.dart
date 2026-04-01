@@ -18,17 +18,6 @@ import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Haversine distance in metres
-double _haversineM(double lat1, double lng1, double lat2, double lng2) {
-  const r = 6371000.0;
-  final dLat = (lat2 - lat1) * pi / 180;
-  final dLng = (lng2 - lng1) * pi / 180;
-  final a = pow(sin(dLat / 2), 2) +
-      cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * pow(sin(dLng / 2), 2);
-  return r * 2 * 2 * (asin(sqrt(a)) / 2); // same as 2*R*asin(sqrt(a))
-}
-
 // Quick polyline decoder (no extra package needed)
 List<LatLng> _decodePolyline(String encoded) {
   final List<LatLng> pts = [];
@@ -82,6 +71,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
+  bool _locationWarningShown = false;
+  bool _hasLiveLocationAccess = false;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
@@ -191,7 +182,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           }
           return;
         }
-        final serverStatus = serverTrip['currentStatus']?.toString() ?? serverTrip['current_status']?.toString() ?? '';
+        final serverStatus = (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '').toString();
         if (serverStatus == 'completed' || serverStatus == 'cancelled') {
           _stopStatePoll();
           if (mounted) {
@@ -363,6 +354,83 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     });
   }
 
+  Future<void> _showLocationPrompt({
+    required String title,
+    required String message,
+    required Future<bool> Function() openSettings,
+  }) async {
+    if (!mounted || _locationWarningShown) return;
+    _locationWarningShown = true;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await openSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<Position?> _resolveTripLocation() async {
+    Position? fallback;
+    try {
+      fallback = await Geolocator.getLastKnownPosition();
+    } catch (_) {}
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _hasLiveLocationAccess = false;
+      if (fallback != null) return fallback;
+      await _showLocationPrompt(
+        title: 'Location Services Off',
+        message: 'Turn on device location so the customer can see your live trip movement.',
+        openSettings: Geolocator.openLocationSettings,
+      );
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      _hasLiveLocationAccess = false;
+      if (fallback != null) return fallback;
+      await _showLocationPrompt(
+        title: 'Location Required',
+        message: 'Location access is required during trips so the customer can track you live.',
+        openSettings: Geolocator.openAppSettings,
+      );
+      return null;
+    }
+    _hasLiveLocationAccess = true;
+
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   Future<void> _fetchRouteForCurrentStatus() async {
     final t = _trip;
     if (t == null) return;
@@ -421,15 +489,37 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
 
   // ── Location updates ──────────────────────────────────────────────────────
 
-  void _startLocationUpdates() {
+  Future<void> _startLocationUpdates() async {
     _locationTimer?.cancel();
     _posStream?.cancel();
 
+    final initialPos = await _resolveTripLocation();
+    if (initialPos == null) {
+      _showSnack('Live location is unavailable. Enable GPS to continue trip tracking.', error: true);
+      return;
+    }
+    _lastTripPosition = initialPos;
+    if (mounted) {
+      setState(() => _center = LatLng(initialPos.latitude, initialPos.longitude));
+      _updateSelfMarker(initialPos.latitude, initialPos.longitude);
+    }
+    if (!_hasLiveLocationAccess) {
+      _showSnack('Enable GPS permission to resume live customer tracking.', error: true);
+      return;
+    }
+
     // GPS stream: high-accuracy (active trip), but emits only on movement ≥ 5 m
     _posStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // update every 5 m — fine-grained for routing
+        distanceFilter: 5,
+        intervalDuration: Duration(seconds: 3),
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationText: 'JAGO Pro Pilot is sharing your live trip location',
+          notificationTitle: 'Trip tracking active',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       ),
     ).listen((pos) {
       _lastTripPosition = pos;
@@ -438,7 +528,9 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
       _updateSelfMarker(pos.latitude, pos.longitude);
       _computeDistanceAndEta(pos.latitude, pos.longitude);
-    }, onError: (_) {});
+    }, onError: (_) {
+      _showSnack('Could not read live location. Check GPS permissions.', error: true);
+    });
 
     // Server-update timer: every 3 s — uses cached position from stream
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
@@ -456,6 +548,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   void _computeDistanceAndEta(double lat, double lng) {
     if (_trip == null) return;
     final toPickup = _status == 'accepted' || _status == 'driver_assigned';
+    if (lat == 0 && lng == 0) return; // Ignore invalid coordinates
     final tLat = toPickup
       ? double.tryParse(_trip!['pickupLat']?.toString() ?? '') ?? 0.0
       : double.tryParse(_trip!['destinationLat']?.toString() ?? '') ?? 0.0;
@@ -507,7 +600,6 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           body: jsonEncode({'tripId': tripId}));
         if (!mounted) return;
         if (res.statusCode == 200) {
-          _socket.updateTripStatus(tripId, 'arrived');
           setState(() { _status = 'arrived'; _loading = false; });
           print('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
           _showSnack('Arrived! Ask customer for OTP ');
@@ -543,7 +635,6 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         final rideFare = pricing['rideFare'] ?? data['trip']?['actualFare'] ?? data['trip']?['actual_fare'] ?? estFare;
         final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
         final commission = pricing['platformDeduction'] ?? 0;
-        _socket.updateTripStatus(tripId, 'completed');
         _socket.setActiveTrip(null); // clear trip room tracking
         _locationTimer?.cancel(); _posStream?.cancel();
         _stopTripTimer();
@@ -578,7 +669,6 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         headers: {...cancelHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'reason': reason}));
     } catch (_) {}
-    _socket.updateTripStatus(tripId, 'cancelled');
     _socket.setActiveTrip(null); // clear trip room tracking
     _locationTimer?.cancel();
     _stopTripTimer();
@@ -687,14 +777,13 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         headers: {...h, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
-        _socket.updateTripStatus(tripId, 'on_the_way', otp: otp);
         print('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
         if (!mounted) return;
         setState(() { _status = 'in_progress'; _loading = false; });
         _startTripTimer();
         // Navigate map to destination
-        final dLat = (_trip?['destinationLat'] as num?)?.toDouble() ?? 0;
-        final dLng = (_trip?['destinationLng'] as num?)?.toDouble() ?? 0;
+        final dLat = double.tryParse(_trip?['destinationLat']?.toString() ?? _trip?['destination_lat']?.toString() ?? '') ?? 0;
+        final dLng = double.tryParse(_trip?['destinationLng']?.toString() ?? _trip?['destination_lng']?.toString() ?? '') ?? 0;
         if (dLat != 0 && dLng != 0) {
           _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(dLat, dLng), 15));
           await _fetchRoute(_center.latitude, _center.longitude, dLat, dLng);

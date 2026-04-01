@@ -19,7 +19,7 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace "com.mindwhile.jago_pilot"
-    compileSdk 36
+    compileSdk 35
     ndkVersion "27.0.12077973"
 
     compileOptions {

@@ -40,12 +40,12 @@ Required for startup in production:
 
 ## 3) Credential rotation
 
+
 Rotate and replace immediately in cloud consoles:
 
 - Firebase service account key
 - Google Maps API key
 - Payment gateway keys (Razorpay)
-- SMS provider keys (Fast2SMS/Twilio)
 - Any admin/API tokens used during testing
 
 After rotation:
