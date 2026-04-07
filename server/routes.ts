@@ -1991,6 +1991,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ pong: true });
   });
 
+  // Login diagnostic — temporary debug endpoint (no auth, safe: no secrets exposed)
+  app.get("/api/diag/login-check", async (_req, res) => {
+    const checks: Record<string, any> = { ts: new Date().toISOString() };
+    try {
+      // 1. DB connectivity
+      try {
+        await rawDb.execute(rawSql`SELECT 1`);
+        checks.db = "connected";
+      } catch (e: any) {
+        checks.db = `FAIL: ${e.message}`;
+        return res.json(checks);
+      }
+      // 2. Admins table exists?
+      try {
+        const tableCheck = await rawDb.execute(rawSql`SELECT COUNT(*) as cnt FROM admins`);
+        checks.adminsTable = "exists";
+        checks.adminCount = parseInt((tableCheck.rows[0] as any)?.cnt || '0', 10);
+      } catch (e: any) {
+        checks.adminsTable = `FAIL: ${e.message}`;
+        return res.json(checks);
+      }
+      // 3. Admin email configured?
+      const configEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+      checks.adminEmailConfigured = configEmail ? configEmail.replace(/(.{3}).*(@.*)/, '$1***$2') : "NOT-SET";
+      checks.adminPasswordConfigured = process.env.ADMIN_PASSWORD ? "YES" : "NOT-SET";
+      // 4. Admin row exists with that email?
+      if (configEmail) {
+        try {
+          const adminRow = await rawDb.execute(rawSql`
+            SELECT id, email, is_active, role,
+              LENGTH(password) as pwd_len,
+              LEFT(password, 7) as pwd_prefix,
+              auth_token IS NOT NULL as has_token,
+              auth_token_expires_at
+            FROM admins WHERE LOWER(email) = ${configEmail} LIMIT 1
+          `);
+          if (adminRow.rows.length) {
+            const a: any = adminRow.rows[0];
+            checks.adminRow = {
+              exists: true,
+              isActive: a.is_active,
+              role: a.role,
+              passwordLength: parseInt(a.pwd_len || '0', 10),
+              passwordPrefix: a.pwd_prefix,  // shows $2a$12 (bcrypt header) — not a secret
+              hasToken: a.has_token,
+            };
+          } else {
+            checks.adminRow = { exists: false, note: "No admin found with configured email" };
+          }
+        } catch (e: any) {
+          checks.adminRow = `FAIL: ${e.message}`;
+        }
+      }
+      // 5. Required columns check
+      try {
+        await rawDb.execute(rawSql`SELECT id, name, email, password, role, is_active, auth_token, auth_token_expires_at, last_login_at FROM admins LIMIT 0`);
+        checks.allColumnsExist = true;
+      } catch (e: any) {
+        checks.allColumnsExist = `FAIL: ${e.message}`;
+      }
+      // 6. 2FA config
+      checks.twoFaRequired = process.env.ADMIN_2FA_REQUIRED || "not-set";
+      checks.nodeEnv = process.env.NODE_ENV || "not-set";
+      res.json(checks);
+    } catch (e: any) {
+      checks.error = e.message;
+      res.json(checks);
+    }
+  });
+
   // Env vars diagnostic endpoint (shows what's configured, sanitized)
   app.get("/api/diag/env", requireAdminAuth, (_req, res) => {
     const envConfig = {
@@ -3283,7 +3353,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) {
       console.error("[admin-login] LOGIN FAILED:", e.message);
       console.error("[admin-login] Stack:", e.stack);
-      res.status(500).json({ message: safeErrMsg(e) });
+      // Temporary: include error detail for debugging (remove after fixing)
+      const detail = process.env.NODE_ENV === "production" ? e.message?.substring(0, 200) : e.message;
+      res.status(500).json({ message: "Login failed: " + (detail || "Unknown error") });
     }
   });
 
