@@ -45,7 +45,7 @@ const API_SECTIONS: ApiSection[] = [
         desc: "Send OTP to phone number (works for both driver & customer)",
         body: `{ "phone": "9876543210", "userType": "customer" | "driver" }`,
         response: `{ "success": true, "message": "OTP sent", "otp": "123456" }`,
-        notes: "In development mode, OTP is returned in response. In production, send via SMS (Twilio/MSG91). OTP expires in 5 minutes.",
+        notes: "In development mode, OTP is returned in response. In production, OTP is sent via Firebase Phone Auth. OTP expires in 5 minutes.",
       },
       {
         method: "POST",

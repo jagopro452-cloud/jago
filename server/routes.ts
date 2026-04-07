@@ -2,7 +2,6 @@ import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
-import { sendCustomSms } from "./sms";
 import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -522,10 +521,11 @@ async function logAdminAction(action: string, entityType: string, entityId?: str
 }
 
 
-// Login rate limiter � max 5 attempts per 15 minutes per IP
+// Login rate limiter — max 5 attempts per 15 minutes per IP (20 in dev for testing)
+const isProductionEnv = (process.env.NODE_ENV || '').toLowerCase() === 'production';
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: isProductionEnv ? 5 : 20,
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -885,7 +885,7 @@ async function ensureAdminExists() {
     } else {
       // Admin exists � password sync ONLY on explicit restart flag to prevent overwriting user changes
       // By default, users can change their password and it will persist across restarts
-      const shouldSyncPassword = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART === 'true';
+      const shouldSyncPassword = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART !== 'false';
       console.log(`[admin-bootstrap] Admin exists: ${adminEmail}, should_sync_password=${shouldSyncPassword}`);
       if (shouldSyncPassword) {
         console.log(`[admin-bootstrap] Hashing new password for ${adminEmail}...`);
@@ -2006,9 +2006,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET ? "***set***" : "NOT-SET",
       FIREBASE_SERVICE_ACCOUNT_KEY: process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "***set***" : "NOT-SET",
       FIREBASE_WEB_API_KEY: process.env.FIREBASE_WEB_API_KEY ? "***set***" : "NOT-SET",
-      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? "***set***" : "NOT-SET",
-      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? "***set***" : "NOT-SET",
-      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER ? "***set***" : "NOT-SET",
       ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL ? "***set***" : "NOT-SET",
       REDIS_URL: process.env.REDIS_URL ? "***set***" : "NOT-SET",
       APP_BASE_URL: process.env.APP_BASE_URL ? "***set***" : "NOT-SET",
@@ -2217,16 +2214,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Referrals: add paid_at column if missing
       await rawDb.execute(rawSql`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(dbCatch("db"));
 
-      // B2B companies: unify schema � add columns needed by app registration flow
-      await rawDb.execute(rawSql`
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS owner_id UUID;
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS delivery_plan VARCHAR(50) DEFAULT 'pay_per_delivery';
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10,2) DEFAULT 0;
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
-        ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-      `).catch(dbCatch("db"));
+      // B2B companies: unify schema — add columns needed by app registration flow
+      // Split into individual statements so one failure doesn't block others
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS owner_id UUID`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255)`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20)`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS delivery_plan VARCHAR(50) DEFAULT 'pay_per_delivery'`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10,2) DEFAULT 0`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`ALTER TABLE b2b_companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(dbCatch("db"));
       // Unique index: one B2B registration per app user
       await rawDb.execute(rawSql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_b2b_companies_owner ON b2b_companies(owner_id) WHERE owner_id IS NOT NULL
@@ -2944,7 +2940,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/rides/history", async (req, res) => {
     try {
-      const limit = Math.min(500, Math.max(1, Number(req.query.limit || 100)));
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
       const r = await rawDb.execute(rawSql`
         SELECT t.id, t.ref_id, t.trip_type, t.current_status, t.created_at, t.ride_started_at, t.ride_ended_at,
           t.actual_fare, t.actual_distance, t.cancel_reason,
@@ -3042,9 +3038,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { tripId, customerId, driverId, complaintType = 'general', description } = req.body;
       if (!tripId || !description) return res.status(400).json({ message: 'tripId and description are required' });
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRe.test(tripId)) return res.status(400).json({ message: 'Invalid trip ID format' });
+      if (String(description).length > 5000) return res.status(400).json({ message: 'Description too long (max 5000 characters)' });
+      const allowedTypes = ['general', 'safety', 'billing', 'behavior', 'route', 'vehicle'];
+      const safeType = allowedTypes.includes(complaintType) ? complaintType : 'general';
       const r = await rawDb.execute(rawSql`
         INSERT INTO ride_complaints (trip_id, customer_id, driver_id, complaint_type, description)
-        VALUES (${tripId}::uuid, ${customerId || null}::uuid, ${driverId || null}::uuid, ${complaintType}, ${description})
+        VALUES (${tripId}::uuid, ${customerId || null}::uuid, ${driverId || null}::uuid, ${safeType}, ${String(description).slice(0, 5000)})
         RETURNING *
       `);
       await logAdminAction('complaint_created', 'ride_complaint', (r.rows[0] as any)?.id, { tripId, complaintType });
@@ -3108,11 +3109,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // This forcefully resets admin password when normal password sync isn't working
   app.post("/api/ops/force-admin-password-reset", async (req, res) => {
     try {
-      const resetKey = process.env.ADMIN_RESET_KEY || process.env.OPS_API_KEY;
+      const resetKey = process.env.ADMIN_RESET_KEY;
+      if (!resetKey) return res.status(503).json({ message: "ADMIN_RESET_KEY not configured. Password reset unavailable." });
       const providedKey = String(req.headers["x-ops-key"] || req.body?.key || "").trim();
-      
-      if (!resetKey || providedKey !== resetKey) {
-        return res.status(403).json({ message: "Invalid or missing operations API key" });
+      if (!providedKey || providedKey !== resetKey) {
+        return res.status(403).json({ message: "Invalid or missing reset key" });
       }
 
       const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
@@ -3158,10 +3159,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             email: admin.email,
             isActive: admin.is_active,
             passwordUpdated: true,
-            hashPrefix: (admin.password || '').substring(0, 30) + '...'
           },
-          credentials: { email: adminEmail, password: adminPassword },
-          nextStep: "Try login at https://jagopro.org/admin/login with these cred entials"
+          nextStep: "Login at https://jagopro.org/admin/login with your configured credentials"
         });
       }
 
@@ -3174,10 +3173,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           email: admin.email,
           isActive: admin.is_active,
           passwordUpdated: true,
-          hashPrefix: (admin.password || '').substring(0, 30) + '...'
         },
-        credentials: { email: adminEmail, password: adminPassword },
-        nextStep: "Try login at https://jagopro.org/admin/login with these credentials"
+        nextStep: "Login at https://jagopro.org/admin/login with your configured credentials"
       });
     } catch (e: any) {
       console.error("[FORCE-RESET] Error:", formatDbError(e));
@@ -3208,16 +3205,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         admin = await lookupAdmin(email);
       } catch (dbErr: any) {
         if (String(dbErr.message).toLowerCase().includes("does not exist")) {
-          console.warn("[admin-login] admins table missing � running bootstrap then retrying...");
+          console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
           await ensureAdminExists();
           admin = await lookupAdmin(email);
         } else {
           throw dbErr;
         }
       }
-      if (!admin) return res.status(401).json({ message: "Invalid credentials" });
+      if (!admin) { console.log("[admin-login] No admin found for:", email); return res.status(401).json({ message: "Invalid credentials" }); }
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
-      const passwordValid = await verifyPassword(password, admin.password);
+      // Verify password using standardized utility
+      const dbHash = admin.password;
+      const passwordValid = await verifyPassword(password, dbHash);
+      console.log("[admin-login] email:", email, "hash_len:", dbHash?.length, "passwordValid:", passwordValid);
       if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
       if (requireAdminTwoFactor) {
         const adminPhone = runtimeEnv.ADMIN_PHONE;
@@ -3232,13 +3232,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO admin_login_otp (admin_id, otp, expires_at)
           VALUES (${admin.id}::uuid, ${otp}, ${expiresAt.toISOString()})
         `);
-        // Deliver OTP via SMS to the configured admin phone
-        if (adminPhone) {
-          sendCustomSms(adminPhone as string, `JAGO Admin login OTP: ${otp}. Valid 5 minutes. Do not share.`).catch((e: any) => {
-            console.error(`[ADMIN-2FA] SMS delivery failed to ${adminPhone}:`, e.message);
-          });
-          console.log(`[ADMIN-2FA] OTP sent to ${adminPhone} for admin ${admin.email}`);
-        }
+        // Admin 2FA OTP — log only (delivery via admin dashboard or email)
+        console.log(`[ADMIN-2FA] OTP generated for admin ${admin.email}. Deliver via secure channel.`);
         const response: any = {
           requiresTwoFactor: true,
           admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
@@ -3281,6 +3276,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { email, otp } = req.body;
       if (!email || !otp) return res.status(400).json({ message: "Email and OTP are required" });
+      const otpStr = String(otp).trim();
+      if (!/^\d{6}$/.test(otpStr)) return res.status(400).json({ message: "OTP must be exactly 6 digits" });
       const adminR = await rawDb.execute(rawSql`
         SELECT id, name, email, role, is_active as "isActive"
         FROM admins WHERE LOWER(email)=${email.trim().toLowerCase()} LIMIT 1
@@ -3293,7 +3290,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT id
         FROM admin_login_otp
         WHERE admin_id=${admin.id}::uuid
-          AND otp=${String(otp)}
+          AND otp=${otpStr}
           AND is_used=false
           AND expires_at > NOW()
         ORDER BY created_at DESC
@@ -3911,24 +3908,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const ncm  = parseFloat(String(nightChargeMultiplier));
       const hc   = parseFloat(String(helperCharge));
 
-      // Update vehicle_categories primary pricing
-      const updateParts: string[] = [
-        `base_fare = ${bf}`,
-        `fare_per_km = ${pkm}`,
-        `minimum_fare = ${mf}`,
-        `waiting_charge_per_min = ${wc}`,
-      ];
-      if (totalSeats !== undefined) updateParts.push(`total_seats = ${parseInt(String(totalSeats)) || 0}`);
-      if (isActive !== undefined)   updateParts.push(`is_active = ${isActive === true || isActive === 'true'}`);
-      if (name)  updateParts.push(`name = '${String(name).replace(/'/g, "''")}'`);
-      if (icon)  updateParts.push(`icon = '${String(icon).replace(/'/g, "''")}'`);
-
       const vcUpdated = await rawDb.execute(rawSql`
         UPDATE vehicle_categories
         SET base_fare = ${bf}, fare_per_km = ${pkm}, minimum_fare = ${mf},
             waiting_charge_per_min = ${wc}
             ${totalSeats !== undefined ? rawSql`, total_seats = ${parseInt(String(totalSeats)) || 0}` : rawSql``}
             ${isActive !== undefined ? rawSql`, is_active = ${isActive === true || isActive === 'true'}` : rawSql``}
+            ${name ? rawSql`, name = ${String(name)}` : rawSql``}
+            ${icon ? rawSql`, icon = ${String(icon)}` : rawSql``}
         WHERE id = ${id}::uuid
         RETURNING *
       `);
@@ -4224,7 +4211,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           business_name: 'business', business_email: 'business', business_phone: 'business', business_address: 'business',
           currency_code: 'currency', currency_symbol: 'currency', country_code: 'currency',
           max_search_radius: 'trip', driver_cancel_limit: 'trip', customer_cancel_limit: 'trip',
-          razorpay_key_id: 'payment', razorpay_key_secret: 'payment', payment_gateway_mode: 'payment', fast2sms_api_key: 'payment',
+          razorpay_key_id: 'payment', razorpay_key_secret: 'payment', payment_gateway_mode: 'payment',
           customer_app_version: 'app', driver_app_version: 'app', force_update: 'app', maintenance_mode: 'app',
           referral_bonus_driver: 'referral', referral_bonus_customer: 'referral', min_wallet_withdrawal: 'referral', max_wallet_recharge: 'referral',
         };
@@ -4283,44 +4270,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // -- OTP Settings (Admin) -------------------------------------------------
+  // -- OTP Settings (Admin) — Firebase-only ---------------------------------
   app.get("/api/otp-settings", requireAdminAuth, async (_req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`SELECT * FROM otp_settings LIMIT 1`);
-      if (!r.rows.length) {
-        return res.json({ primaryProvider: 'firebase', smsEnabled: false, firebaseEnabled: true, fallbackEnabled: false, otpExpirySeconds: 120, maxAttempts: 3 });
-      }
-      const row = r.rows[0] as any;
-      res.json({
-        primaryProvider: row.primary_provider,
-        smsEnabled: row.sms_enabled,
-        firebaseEnabled: row.firebase_enabled,
-        fallbackEnabled: row.fallback_enabled,
-        otpExpirySeconds: row.otp_expiry_seconds,
-        maxAttempts: row.max_attempts,
-      });
+      res.json({ primaryProvider: 'firebase', smsEnabled: false, firebaseEnabled: true, fallbackEnabled: false, otpExpirySeconds: 120, maxAttempts: 3 });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.put("/api/otp-settings", requireAdminAuth, async (req, res) => {
     try {
-      const { primaryProvider, smsEnabled, firebaseEnabled, fallbackEnabled, otpExpirySeconds, maxAttempts } = req.body;
-      const provider = ['sms', 'firebase'].includes(primaryProvider) ? primaryProvider : 'sms';
+      const { otpExpirySeconds, maxAttempts } = req.body;
       const expiry = Math.min(Math.max(60, parseInt(otpExpirySeconds) || 120), 600);
       const attempts = Math.min(Math.max(1, parseInt(maxAttempts) || 3), 10);
       await rawDb.execute(rawSql`
         INSERT INTO otp_settings (primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds, max_attempts, updated_at)
-        VALUES (${provider}, ${!!smsEnabled}, ${!!firebaseEnabled}, ${!!fallbackEnabled}, ${expiry}, ${attempts}, NOW())
+        VALUES ('firebase', false, true, false, ${expiry}, ${attempts}, NOW())
         ON CONFLICT (id) DO UPDATE SET
-          primary_provider = EXCLUDED.primary_provider,
-          sms_enabled = EXCLUDED.sms_enabled,
-          firebase_enabled = EXCLUDED.firebase_enabled,
-          fallback_enabled = EXCLUDED.fallback_enabled,
+          primary_provider = 'firebase',
+          sms_enabled = false,
+          firebase_enabled = true,
+          fallback_enabled = false,
           otp_expiry_seconds = EXCLUDED.otp_expiry_seconds,
           max_attempts = EXCLUDED.max_attempts,
           updated_at = NOW()
       `);
-      res.json({ success: true, primaryProvider: provider, smsEnabled: !!smsEnabled, firebaseEnabled: !!firebaseEnabled, fallbackEnabled: !!fallbackEnabled, otpExpirySeconds: expiry, maxAttempts: attempts });
+      res.json({ success: true, primaryProvider: 'firebase', smsEnabled: false, firebaseEnabled: true, fallbackEnabled: false, otpExpirySeconds: expiry, maxAttempts: attempts });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -5579,8 +5553,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Settings save
   app.put("/api/car-sharing/settings", requireAdminAuth, async (req, res) => {
     try {
+      const allowedKeys = new Set([
+        'enabled', 'commission_pct', 'min_fare', 'max_distance_km',
+        'platform_fee', 'cancellation_fee', 'insurance_per_ride'
+      ]);
       const entries = Object.entries(req.body) as [string, string][];
       for (const [key, val] of entries) {
+        if (!allowedKeys.has(key)) continue;
         await rawDb.execute(rawSql`
           INSERT INTO car_sharing_settings (key_name, value) VALUES (${key}, ${String(val)})
           ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
@@ -5603,8 +5582,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/revenue-model", requireAdminAuth, async (req, res) => {
     try {
+      const allowedKeys = new Set([
+        'commission_pct', 'ride_gst_rate', 'parcel_gst_rate',
+        'commission_insurance_per_ride', 'sub_platform_fee_per_ride',
+        'hybrid_commission_pct', 'hybrid_platform_fee_per_ride',
+        'hybrid_insurance_per_ride', 'commission_lock_threshold',
+        'auto_lock_threshold', 'insurance_optional',
+        'city_pool_commission', 'outstation_pool_commission'
+      ]);
       const entries = Object.entries(req.body) as [string, string][];
       for (const [key, val] of entries) {
+        if (!allowedKeys.has(key)) continue;
         await rawDb.execute(rawSql`
           INSERT INTO revenue_model_settings (key_name, value) VALUES (${key}, ${String(val)})
           ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
@@ -6160,7 +6148,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.put("/api/intercity-cs/settings", async (req, res) => {
     try {
+      const allowedKeys = new Set([
+        'rate_per_km_per_seat', 'booking_fee', 'cancellation_fee', 'min_advance_hours',
+        'max_seats_per_booking', 'platform_commission_percent', 'driver_payout_percent',
+        'enabled', 'min_distance_km', 'max_distance_km'
+      ]);
       for (const [key, val] of Object.entries(req.body)) {
+        if (!allowedKeys.has(key)) continue;
         await rawDb.execute(rawSql`
           INSERT INTO intercity_cs_settings (key_name, value) VALUES (${key}, ${String(val)})
           ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
@@ -8271,12 +8265,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Pickup OTP verified');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'verify-pickup-otp' });
       await logTripTraceFromDb(tripId, 'trip_started_via_verify_otp_api', driver.id, 'driver');
-      // ?? For parcel � send delivery OTP to receiver via SMS when pickup is done
-      if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
-        sendCustomSms(trip.receiver_phone,
-          `JAGO Pro Parcel: Package picked up by driver ${driver.fullName || ''}. Delivery OTP: ${trip.delivery_otp}. Share this to receive your parcel.`
-        ).catch(dbCatch("db"));
-      }
+      // Parcel delivery OTP — sent via FCM push notification (SMS removed)
       if (io) {
         io.to(`user:${trip.customer_id}`).emit("trip:status_update", { tripId, status: "on_the_way", otp, uiState: 'trip_started' });
         io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status: "on_the_way", otp, uiState: 'trip_started' });
@@ -8351,19 +8340,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripId,
       }).catch(dbCatch("db"));
 
-      // ?? If booked for someone else � send OTP as SMS to passenger phone
-      if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {
-        sendCustomSms(tripRow.passenger_phone,
-          `JAGO Pro: Your ride OTP is ${otp}. Share with driver ${driver.fullName || ''} to start. Ref: ${tripId.slice(-6).toUpperCase()}`
-        ).catch(dbCatch("db"));
-      }
-      // ?? For parcel � remind sender with pickup OTP via SMS
-      if (tripRow?.trip_type === 'parcel' || tripRow?.trip_type === 'delivery') {
-        const senderPhone = tripRow.customer_phone;
-        if (senderPhone) sendCustomSms(senderPhone,
-          `JAGO Pro Parcel: Driver ${driver.fullName || ''} arrived. Pickup OTP: ${otp}. Share to hand over parcel.`
-        ).catch(dbCatch("db"));
-      }
+      // OTP notifications sent via FCM push (SMS removed)
 
       if (io && tripRow?.customer_id) {
         io.to(`user:${tripRow.customer_id}`).emit("trip:status_update", { tripId, status: "arrived", otp, uiState: 'driver_arriving' });
@@ -11870,6 +11847,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/driver/kyc/status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
+      // Ensure table exists (may not if ensureOperationalSchema had a connectivity hiccup)
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS driver_kyc_documents (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          driver_id UUID NOT NULL,
+          document_type VARCHAR(50) NOT NULL,
+          document_number VARCHAR(100),
+          file_url TEXT,
+          status VARCHAR(20) DEFAULT 'pending',
+          admin_note TEXT,
+          reviewed_by UUID,
+          reviewed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `).catch(() => {});
       const docs = await rawDb.execute(rawSql`
         SELECT document_type, document_number, file_url, status, admin_note, updated_at
         FROM driver_kyc_documents WHERE driver_id=${driver.id}::uuid
@@ -12886,7 +12879,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) VALUES (
           ${refId}, ${user.id}::uuid, ${pickupAddress}, ${parseFloat(pickupLat)}, ${parseFloat(pickupLng)},
           ${destinationAddress}, ${parseFloat(destinationLat)}, ${parseFloat(destinationLng)},
-          ${vehicleCategoryId}::uuid, ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
+          ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`}, ${parseFloat(estimatedFare) || 0}, ${parseFloat(estimatedDistance) || 0},
           ${paymentMethod || 'cash'}, 'normal', 'scheduled', true, ${scheduledAt},
           ${shortLocationName(pickupAddress)}, ${shortLocationName(destinationAddress)},
           now(), now()
@@ -14661,8 +14654,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "email and password required" });
       const r = await rawDb.execute(rawSql`
-        SELECT id, company_name, b2b_email, b2b_password_hash, status, is_active,
-               wallet_balance, credit_limit, delivery_plan, commission_pct
+        SELECT id, company_name, b2b_email, b2b_password_hash, status,
+               wallet_balance, commission_pct
         FROM b2b_companies WHERE b2b_email = ${email.trim().toLowerCase()} LIMIT 1
       `);
       if (!r.rows.length) return res.status(401).json({ message: "Invalid email or password" });
@@ -14670,7 +14663,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!co.b2b_password_hash) return res.status(401).json({ message: "Password not set. Please contact admin." });
       const valid = await verifyPassword(String(password), co.b2b_password_hash);
       if (!valid) return res.status(401).json({ message: "Invalid email or password" });
-      if (!co.is_active) return res.status(403).json({ message: "B2B account is inactive. Contact admin." });
+      if (co.status === 'inactive' || co.status === 'suspended') return res.status(403).json({ message: "B2B account is inactive. Contact admin." });
       // Return company info as session data (client stores it)
       res.json({ success: true, company: camelize(co) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }

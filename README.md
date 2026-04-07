@@ -41,7 +41,7 @@ Do not make changes to the file `Y`.
 
 ## External Dependencies
 - **Payments**: Razorpay (for wallet recharge and ride payments).
-- **OTP Service**: Fast2SMS API (for sending one-time passwords).
+- **OTP Service**: Firebase Phone Authentication (for sending one-time passwords).
 - **Maps**: Google Maps API Key (for location services and navigation).
 - **Real-time Communication**: Socket.IO (for live updates and WebRTC signaling).
 - **Push Notifications**: Firebase (placeholder integrated; requires user's Firebase project for full functionality).

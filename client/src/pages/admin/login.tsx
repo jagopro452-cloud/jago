@@ -86,7 +86,6 @@ export default function AdminLogin() {
       const data = await res.json();
       if (res.ok) {
         setForgotMsg(data.message);
-        if (data.otp) setForgotMsg(`${data.message} OTP: ${data.otp}`);
         setForgotMode("reset");
       } else {
         setForgotError(data.message || "Failed to send OTP");
@@ -129,8 +128,11 @@ export default function AdminLogin() {
       if (res.ok && data?.token) {
         localStorage.setItem("jago-admin", JSON.stringify({ ...(data.admin || data), token: data.token, expiresAt: data.expiresAt }));
         setLocation("/admin/dashboard");
+      } else if (res.status === 202 && data?.requiresTwoFactor) {
+        // 2FA enabled - switch to OTP verification mode
+        setLoginMode("otp");
+        setTwoFaHint(data.message || "OTP sent to admin phone. Enter it below.");
       } else {
-        // 2FA disabled - just show error message
         setError(data.message || "Invalid credentials. Please try again.");
       }
     } catch {

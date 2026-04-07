@@ -283,8 +283,17 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         headers: headers);
       if (!mounted) return;
       if (res.statusCode == 200) {
-        final receipt = jsonDecode(res.body)['receipt'] as Map<String, dynamic>;
-        _showReceiptSheet(receipt);
+        final body = jsonDecode(res.body);
+        final receipt = body['receipt'] as Map<String, dynamic>?;
+        if (receipt != null) {
+          _showReceiptSheet(receipt);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Receipt data not available', style: GoogleFonts.poppins()),
+              backgroundColor: _red,
+            ));
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

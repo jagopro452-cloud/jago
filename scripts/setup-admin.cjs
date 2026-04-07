@@ -72,9 +72,9 @@ if (!databaseUrl) {
     console.log('✅ admin_login_otp table ready\n');
 
     // Step 4: Get credentials from environment
-    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@jagopro.com').trim().toLowerCase();
+    const adminEmail = (process.env.ADMIN_EMAIL || 'kiranatmakuri518@gmail.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'JagoAdmin@2026!';
-    const adminName = (process.env.ADMIN_NAME || 'Admin').trim() || 'Admin';
+    const adminName = (process.env.ADMIN_NAME || 'Jago Admin').trim() || 'Jago Admin';
 
     console.log('👤 Admin Credentials:');
     console.log(`   Email: ${adminEmail}`);

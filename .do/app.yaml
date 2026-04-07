@@ -60,8 +60,6 @@ services:
         type: SECRET
       - key: OPS_API_KEY
         type: SECRET
-      - key: TWO_FACTOR_API_KEY
-        type: SECRET
       - key: ADMIN_PASSWORD
         type: SECRET
       - key: ADMIN_RESET_KEY

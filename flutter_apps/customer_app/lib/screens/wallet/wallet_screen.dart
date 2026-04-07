@@ -87,9 +87,14 @@ class _WalletScreenState extends State<WalletScreen>
         return;
       }
       final order = body['order'];
-      final keyId = body['keyId'] as String;
+      final keyId = body['keyId'] as String? ?? '';
+      if (keyId.isEmpty || order == null) {
+        if (mounted) setState(() => _paying = false);
+        if (mounted) _showSnack('Payment configuration error. Please try again.', JT.primaryDark);
+        return;
+      }
       final phone = profileData?['phone'] ?? '';
-      final email = profileData?['email'] ?? 'customer@jago.com';
+      final email = profileData?['email'] ?? '';
 
       final options = {
         'key': keyId,

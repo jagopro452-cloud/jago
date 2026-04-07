@@ -4,7 +4,7 @@
  * Features:
  * 1. Parcel dimensions & volumetric weight (L×W×H / 5000)
  * 2. Vehicle-based dispatch filtering (vehicle_type match)
- * 3. Receiver notifications (SMS + FCM + tracking link)
+ * 3. Receiver notifications (FCM push + tracking link)
  * 4. Proof of delivery (photo upload + digital signature)
  * 5. B2B CSV bulk upload with validation
  * 6. B2B webhook callbacks (order lifecycle events)

@@ -260,6 +260,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
       final data = jsonDecode(res.body);
       final order = data['order'];
       final keyId = data['keyId'] ?? '';
+      if (keyId.isEmpty || order == null) {
+        _showSnack('Payment configuration error. Try again.', error: true);
+        return;
+      }
 
       String driverPhone = '';
       try {
@@ -304,10 +308,13 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         }),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode == 200 || res.statusCode == 409) {
+      if (res.statusCode == 200) {
         final newBal = data['newBalance']?.toStringAsFixed(2) ?? _pendingAmount.toStringAsFixed(2);
         final autoUnlocked = data['autoUnlocked'] == true;
         _showSuccessDialog(_pendingAmount, double.tryParse(newBal) ?? 0, autoUnlocked);
+        _fetchWallet();
+      } else if (res.statusCode == 409) {
+        _showSnack('Payment already processed (duplicate detected)', error: false);
         _fetchWallet();
       } else {
         _showSnack(data['message'] ?? 'Verification failed. Contact support.', error: true);

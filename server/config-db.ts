@@ -3,8 +3,7 @@
  * This lets admin panel changes take effect without redeployment.
  *
  * Admin panel saves keys with these DB key names:
- *   fast2sms_api_key, razorpay_key_id, razorpay_key_secret, google_maps_key,
- *   twilio_account_sid, twilio_auth_token, twilio_phone_number
+ *   razorpay_key_id, razorpay_key_secret, google_maps_key
  */
 import { pool } from "./db";
 

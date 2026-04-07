@@ -493,41 +493,12 @@ export default function ConfigurationsPage() {
                 type="password" placeholder='{"type":"service_account","project_id":"..."}' />
 
               <div style={{ height: 24 }} />
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 12 }}>
-                SMS Gateway
-              </div>
-
-              <div style={{ padding: "14px 0", borderBottom: "1px solid #f1f5f9" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", marginBottom: 8 }}>SMS Provider</div>
-                <div className="d-flex gap-2">
-                  {["msg91", "twilio", "nexmo"].map(p => (
-                    <button key={p}
-                      onClick={() => set("sms_provider")(p)}
-                      style={{
-                        borderRadius: 8, fontSize: 12, fontWeight: 700,
-                        background: get("sms_provider") === p ? "#1a73e8" : "#f8fafc",
-                        color: get("sms_provider") === p ? "#fff" : "#64748b",
-                        border: `1.5px solid ${get("sms_provider") === p ? "#1a73e8" : "#e2e8f0"}`,
-                        padding: "7px 18px", cursor: "pointer",
-                      }}
-                      data-testid={`btn-sms-${p}`}>
-                      {p.toUpperCase()}
-                    </button>
-                  ))}
+              <div className="p-3 rounded-3" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#15803d", marginBottom: 4 }}>
+                  <i className="bi bi-phone-vibrate-fill me-1"></i>OTP via Firebase Phone Authentication
                 </div>
-              </div>
-
-              <Field label="SMS API Key" id="sms_api_key"
-                desc={`API key for ${(get("sms_provider") || "MSG91").toUpperCase()} SMS gateway`}
-                value={get("sms_api_key")} onChange={set("sms_api_key")}
-                type="password" placeholder="Enter SMS API key" />
-
-              <div className="mt-3 p-3 rounded-3" style={{ background: "#f0f9ff", border: "1px solid #bae6fd" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", marginBottom: 4 }}>
-                  <i className="bi bi-phone-fill me-1"></i>SMS is used for OTP delivery
-                </div>
-                <div style={{ fontSize: 11.5, color: "#0c4a6e" }}>
-                  Make sure SMS gateway is configured before enabling OTP verification. Without it, customers won't receive OTP codes.
+                <div style={{ fontSize: 11.5, color: "#166534" }}>
+                  All OTP delivery is handled by Firebase Phone Auth. No SMS gateway configuration needed.
                 </div>
               </div>
             </div>

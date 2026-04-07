@@ -6,9 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 type Setting = { keyName: string; value: string; settingsType: string };
 type OtpSettings = {
   primaryProvider: string;
-  smsEnabled: boolean;
   firebaseEnabled: boolean;
-  fallbackEnabled: boolean;
   otpExpirySeconds: number;
   maxAttempts: number;
 };
@@ -163,7 +161,6 @@ const settingGroups = [
       { key: "razorpay_key_id", label: "Razorpay Key ID" },
       { key: "razorpay_key_secret", label: "Razorpay Key Secret" },
       { key: "payment_gateway_mode", label: "Mode (test / live)" },
-      { key: "fast2sms_api_key", label: "Fast2SMS API Key (OTP)" },
     ],
   },
   {
@@ -206,10 +203,8 @@ function OtpSettingsPanel() {
   });
 
   const [form, setForm] = useState<OtpSettings>({
-    primaryProvider: "sms",
-    smsEnabled: true,
+    primaryProvider: "firebase",
     firebaseEnabled: true,
-    fallbackEnabled: true,
     otpExpirySeconds: 120,
     maxAttempts: 3,
   });
@@ -227,61 +222,19 @@ function OtpSettingsPanel() {
 
   if (isLoading) return <div className="d-flex justify-content-center py-4"><div className="spinner-border text-primary" role="status"></div></div>;
 
-  const Toggle = ({ label, desc, field }: { label: string; desc: string; field: keyof OtpSettings }) => (
-    <div className="d-flex align-items-center justify-content-between p-3 rounded border mb-2" style={{ background: "var(--bs-body-bg)" }}>
-      <div>
-        <div className="fw-semibold fs-14">{label}</div>
-        <div className="text-muted" style={{ fontSize: 12 }}>{desc}</div>
-      </div>
-      <div className="form-check form-switch mb-0">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          role="switch"
-          style={{ width: 44, height: 22, cursor: "pointer" }}
-          checked={!!form[field]}
-          onChange={e => setForm(prev => ({ ...prev, [field]: e.target.checked }))}
-          data-testid={`otp-toggle-${String(field)}`}
-        />
-      </div>
-    </div>
-  );
-
   return (
     <div>
-      {/* Provider Selection */}
+      {/* Firebase-only OTP provider */}
       <div className="mb-4">
-        <label className="form-label fw-semibold fs-14">Primary OTP Provider</label>
-        <div className="row g-3">
-          {[
-            { val: "sms", icon: "bi-chat-dots-fill", label: "SMS OTP", desc: "Send OTP via Fast2SMS / Twilio" },
-            { val: "firebase", icon: "bi-phone-vibrate-fill", label: "Firebase OTP", desc: "Use Firebase Phone Authentication" },
-          ].map(opt => (
-            <div key={opt.val} className="col-md-6">
-              <div
-                className={`p-3 rounded border-2 border d-flex align-items-center gap-3 cursor-pointer ${form.primaryProvider === opt.val ? "border-primary bg-primary bg-opacity-10" : "border-secondary"}`}
-                style={{ cursor: "pointer" }}
-                onClick={() => setForm(prev => ({ ...prev, primaryProvider: opt.val }))}
-                data-testid={`otp-provider-${opt.val}`}
-              >
-                <i className={`bi ${opt.icon} fs-4 ${form.primaryProvider === opt.val ? "text-primary" : "text-muted"}`}></i>
-                <div>
-                  <div className={`fw-bold fs-14 ${form.primaryProvider === opt.val ? "text-primary" : ""}`}>{opt.label}</div>
-                  <div className="text-muted" style={{ fontSize: 12 }}>{opt.desc}</div>
-                </div>
-                {form.primaryProvider === opt.val && <i className="bi bi-check-circle-fill text-primary ms-auto"></i>}
-              </div>
-            </div>
-          ))}
+        <label className="form-label fw-semibold fs-14">OTP Provider</label>
+        <div className="p-3 rounded border-2 border border-primary bg-primary bg-opacity-10 d-flex align-items-center gap-3">
+          <i className="bi bi-phone-vibrate-fill fs-4 text-primary"></i>
+          <div>
+            <div className="fw-bold fs-14 text-primary">Firebase Phone Authentication</div>
+            <div className="text-muted" style={{ fontSize: 12 }}>OTP is delivered via Firebase Phone Auth (SMS managed by Firebase)</div>
+          </div>
+          <i className="bi bi-check-circle-fill text-primary ms-auto"></i>
         </div>
-      </div>
-
-      {/* Enable/Disable toggles */}
-      <div className="mb-4">
-        <label className="form-label fw-semibold fs-14">Provider Controls</label>
-        <Toggle label="SMS OTP Enabled" desc="Allow OTP delivery via SMS providers (Fast2SMS / Twilio)" field="smsEnabled" />
-        <Toggle label="Firebase OTP Enabled" desc="Allow Firebase Phone Authentication as OTP method" field="firebaseEnabled" />
-        <Toggle label="Auto-Fallback Enabled" desc="If primary provider fails, automatically switch to the other provider" field="fallbackEnabled" />
       </div>
 
       {/* Security Settings */}
@@ -320,11 +273,7 @@ function OtpSettingsPanel() {
         <i className="bi bi-info-circle-fill mt-1"></i>
         <div className="fs-13">
           <strong>Current Flow: </strong>
-          {form.primaryProvider === "sms" ? (
-            <>SMS OTP is primary. {form.fallbackEnabled && form.firebaseEnabled ? "If SMS fails, app will automatically switch to Firebase Phone Auth." : "No fallback configured."}</>
-          ) : (
-            <>Firebase Phone Auth is primary. {form.fallbackEnabled && form.smsEnabled ? "If Firebase fails, SMS OTP will be used." : "No fallback configured."}</>
-          )}
+          Firebase Phone Auth handles all OTP delivery.
           {" "}OTP expires in <strong>{form.otpExpirySeconds}s</strong>. Max <strong>{form.maxAttempts}</strong> wrong attempts allowed.
         </div>
       </div>

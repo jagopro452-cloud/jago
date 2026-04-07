@@ -16,7 +16,7 @@ Current-code alignment anchors:
 - Monolith API + trip lifecycle: `server/routes.ts`
 - AI intelligence layer: `server/ai.ts`
 - Real-time sockets: `server/socket.ts`
-- Push + SMS: `server/fcm.ts`, `server/sms.ts`
+- Push notifications: `server/fcm.ts`
 - Data model baseline: `shared/schema.ts`
 - Existing mobile channels: `flutter_apps/customer_app`, `flutter_apps/driver_app`
 

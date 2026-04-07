@@ -72,7 +72,10 @@ class SocketService {
       }
     }
 
-    if (userId.isEmpty) return;
+    if (userId.isEmpty) {
+      debugPrint('[SOCKET] Cannot connect: userId is empty. User may not be logged in.');
+      return;
+    }
 
     _socket = IO.io(
       baseUrl,

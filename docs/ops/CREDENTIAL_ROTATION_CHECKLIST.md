@@ -10,8 +10,6 @@ Rotate all credentials previously used in development, backups, or leaked config
 - Firebase web API key
 - Google Maps API key
 - Razorpay key ID/secret/webhook secret
-- Fast2SMS API key
-- Twilio account SID/auth token/phone number
 - Admin password and active admin session tokens
 - OPS API key
 

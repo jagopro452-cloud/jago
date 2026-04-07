@@ -59,7 +59,7 @@ class LocationService {
           'speed': speed,
           'isOnline': isOnline,
         }),
-      );
+      ).timeout(const Duration(seconds: 5));
     } catch (_) {}
   }
 
