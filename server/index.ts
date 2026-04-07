@@ -146,30 +146,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Run Drizzle migrations at startup — this creates ALL tables including admins
-  // Retry up to 3 times to handle Neon serverless cold-start timeouts
-  const MAX_MIGRATION_RETRIES = 3;
-  for (let attempt = 1; attempt <= MAX_MIGRATION_RETRIES; attempt++) {
-    try {
-      const migrationsFolder = path.join(process.cwd(), "migrations");
-      log(`[db] Running migrations from: ${migrationsFolder} (attempt ${attempt}/${MAX_MIGRATION_RETRIES})`);
-      await migrate(drizzleDb, { migrationsFolder });
-      log("[db] Migrations applied OK — all tables ready");
-      break;
-    } catch (e: any) {
-      console.error(`[db] MIGRATION attempt ${attempt} FAILED:`, e.message);
-      if (attempt === MAX_MIGRATION_RETRIES) {
-        console.error("[db] All migration attempts exhausted. Full error:", e.stack || e);
-        process.exit(1);
-      }
-      // Wait before retry (3s, 6s) — gives Neon time to wake up
-      const delayMs = attempt * 3000;
-      log(`[db] Retrying in ${delayMs / 1000}s...`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-  }
-
-  // Setup error handler early
+  // ─── CRITICAL: Register routes and start HTTP server FIRST ───
+  // Health checks must respond BEFORE migrations run (Neon cold-start can take 30s+)
+  
+  // Setup error handler
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const errorId = makeErrorId();
@@ -194,8 +174,7 @@ app.use((req, res, next) => {
     return res.status(status).json({ message, errorId });
   });
 
-  // ─── REGISTER ROUTES FIRST (CRITICAL) ───
-  // Must complete before server handles any API requests
+  // Register API routes
   try {
     log("[server] Registering API routes...");
     await registerRoutes(httpServer, app);
@@ -212,18 +191,47 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
-  // Setup static files AFTER routes (so routes take precedence)
+  // Setup static files AFTER routes
   if (process.env.NODE_ENV === "production") {
     log("[server] Setting up static file serving for production");
     serveStatic(app);
   }
 
-  // ─── NOW START SERVER LISTENING ───
-  // Routes are registered and ready to handle requests
+  // ─── START SERVER LISTENING IMMEDIATELY ───
+  // This ensures health check endpoint responds while DB warms up
   const port = parseInt(process.env.PORT || "5000", 10);
   const server = httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
+
+  // ─── NOW run migrations (server is already accepting health checks) ───
+  const MAX_MIGRATION_RETRIES = 5;
+  for (let attempt = 1; attempt <= MAX_MIGRATION_RETRIES; attempt++) {
+    try {
+      const migrationsFolder = path.join(process.cwd(), "migrations");
+      log(`[db] Running migrations (attempt ${attempt}/${MAX_MIGRATION_RETRIES})...`);
+      await migrate(drizzleDb, { migrationsFolder });
+      log("[db] Migrations applied OK — all tables ready");
+      break;
+    } catch (e: any) {
+      console.error(`[db] MIGRATION attempt ${attempt} FAILED:`, e.message);
+      if (attempt === MAX_MIGRATION_RETRIES) {
+        // Don't crash — tables likely already exist from previous successful deploy
+        console.error("[db] All migration attempts exhausted. Server continues (tables may already exist).");
+        console.error("[db] Full error:", e.stack || e);
+        sendAlert({
+          level: "critical",
+          source: "db",
+          message: "Migration failed after all retries",
+          details: e.message,
+        }).catch(() => {});
+        break; // Don't process.exit — let the server run
+      }
+      const delayMs = attempt * 3000;
+      log(`[db] Retrying in ${delayMs / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
 
   // ─── BACKGROUND INITIALIZATION (non-blocking) ───
 

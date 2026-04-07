@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 const SOURCE_DIR = path.join(__dirname, "..", "public", "apks");
 const DEST_DIR_DIST = path.join(__dirname, "..", "dist", "public", "apks");
-const DOWNLOADS_DIR = path.join(process.env.USERPROFILE || "C:\\Users\\kiran", "Downloads");
+const DOWNLOADS_DIR = path.join(process.env.USERPROFILE || process.env.HOME || "/tmp", "Downloads");
 
 function copyFile(src, dest) {
   try {
