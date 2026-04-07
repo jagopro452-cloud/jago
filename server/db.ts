@@ -47,7 +47,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Single-instance production: keep conservative.
 // Development: allow more parallel initializers without connection timeout noise.
 const maxConnections = isProduction ? 25 : 35;
-const connectTimeoutMs = isProduction ? 5000 : 15000;
+// Neon serverless DBs have cold starts (5-10s) — give enough headroom
+const connectTimeoutMs = isProduction ? 15000 : 15000;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

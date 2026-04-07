@@ -147,15 +147,26 @@ app.use((req, res, next) => {
 
 (async () => {
   // Run Drizzle migrations at startup — this creates ALL tables including admins
-  try {
-    const migrationsFolder = path.join(process.cwd(), "migrations");
-    log(`[db] Running migrations from: ${migrationsFolder}`);
-    await migrate(drizzleDb, { migrationsFolder });
-    log("[db] Migrations applied OK — all tables ready");
-  } catch (e: any) {
-    console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
-    console.error("[db] Full error:", e.stack || e);
-    process.exit(1);
+  // Retry up to 3 times to handle Neon serverless cold-start timeouts
+  const MAX_MIGRATION_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_MIGRATION_RETRIES; attempt++) {
+    try {
+      const migrationsFolder = path.join(process.cwd(), "migrations");
+      log(`[db] Running migrations from: ${migrationsFolder} (attempt ${attempt}/${MAX_MIGRATION_RETRIES})`);
+      await migrate(drizzleDb, { migrationsFolder });
+      log("[db] Migrations applied OK — all tables ready");
+      break;
+    } catch (e: any) {
+      console.error(`[db] MIGRATION attempt ${attempt} FAILED:`, e.message);
+      if (attempt === MAX_MIGRATION_RETRIES) {
+        console.error("[db] All migration attempts exhausted. Full error:", e.stack || e);
+        process.exit(1);
+      }
+      // Wait before retry (3s, 6s) — gives Neon time to wake up
+      const delayMs = attempt * 3000;
+      log(`[db] Retrying in ${delayMs / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
 
   // Setup error handler early
