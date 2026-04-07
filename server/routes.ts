@@ -2053,7 +2053,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       // 6. 2FA config
       checks.twoFaRequired = process.env.ADMIN_2FA_REQUIRED || "not-set";
+      checks.requireAdminTwoFactorComputed = requireAdminTwoFactor;
       checks.nodeEnv = process.env.NODE_ENV || "not-set";
+      checks.adminPasswordSyncOnRestart = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART || "not-set";
+      // Test password verification if env password is set
+      if (process.env.ADMIN_PASSWORD && checks.adminRow?.exists) {
+        try {
+          const testR = await rawDb.execute(rawSql`
+            SELECT password FROM admins WHERE LOWER(email) = ${(process.env.ADMIN_EMAIL || "").trim().toLowerCase()} LIMIT 1
+          `);
+          if (testR.rows.length) {
+            const hash = (testR.rows[0] as any).password;
+            const match = await verifyPassword(process.env.ADMIN_PASSWORD, hash);
+            checks.envPasswordMatchesDbHash = match;
+          }
+        } catch (e: any) {
+          checks.envPasswordMatchesDbHash = `FAIL: ${e.message}`;
+        }
+      }
       res.json(checks);
     } catch (e: any) {
       checks.error = e.message;
@@ -3259,63 +3276,123 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Auth � with rate limiting and bcrypt password verification
+  // Auth — with rate limiting and bcrypt password verification
   app.post("/api/admin/login", loginLimiter, async (req, res) => {
+    const step = { current: "init" };
     try {
-      const { email, password } = req.body;
+      step.current = "parse-body";
+      const { email, password } = req.body || {};
       if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
 
-      // Self-healing: ensure admins table & seed exist before querying.
-      // Uses rawDb directly so it works regardless of Drizzle ORM table state.
-      const lookupAdmin = async (lookupEmail: string) => {
-        const r = await rawDb.execute(rawSql`
-          SELECT id, name, email, password, role, is_active as "isActive"
-          FROM admins WHERE LOWER(email) = ${lookupEmail.trim().toLowerCase()} LIMIT 1
-        `);
-        if (!r.rows.length) return null;
-        const row: any = r.rows[0];
-        return { id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, isActive: row.isActive ?? row.is_active };
-      };
-
-      let admin: any;
+      // Step 1: Ensure DB connectivity (handles Neon cold starts)
+      step.current = "db-connect";
       try {
-        admin = await lookupAdmin(email);
-      } catch (dbErr: any) {
-        const msg = String(dbErr.message).toLowerCase();
-        if (msg.includes("does not exist")) {
-          console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
+        await rawDb.execute(rawSql`SELECT 1`);
+      } catch (connErr: any) {
+        console.warn("[admin-login] DB cold, retrying in 3s:", connErr.message);
+        await new Promise(r => setTimeout(r, 3000));
+        await rawDb.execute(rawSql`SELECT 1`);
+      }
+
+      // Step 2: Ensure admins table exists with all columns
+      step.current = "schema-check";
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS admins (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL,
+          email VARCHAR(191) NOT NULL UNIQUE,
+          password VARCHAR(191) NOT NULL,
+          role VARCHAR(50) NOT NULL DEFAULT 'admin',
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          auth_token TEXT,
+          auth_token_expires_at TIMESTAMP,
+          last_login_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token TEXT`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'admin'`).catch(() => {});
+      await rawDb.execute(rawSql`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`).catch(() => {});
+
+      // Step 3: Look up admin
+      step.current = "lookup-admin";
+      const r = await rawDb.execute(rawSql`
+        SELECT id, name, email, password, role, is_active
+        FROM admins WHERE LOWER(email) = ${String(email).trim().toLowerCase()} LIMIT 1
+      `);
+
+      if (!r.rows.length) {
+        // No admin found — try to bootstrap one if env is configured
+        step.current = "bootstrap-admin";
+        const envEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+        const envPassword = process.env.ADMIN_PASSWORD;
+        if (envEmail && envPassword) {
+          console.log("[admin-login] No admin found, running ensureAdminExists...");
           await ensureAdminExists();
-          admin = await lookupAdmin(email);
-        } else if (msg.includes("timeout") || msg.includes("etimedout") || msg.includes("econnrefused") || msg.includes("connection terminated")) {
-          // Neon cold-start — wait and retry once
-          console.warn("[admin-login] DB connection issue, retrying in 3s:", dbErr.message);
-          await new Promise(r => setTimeout(r, 3000));
-          admin = await lookupAdmin(email);
+          // Retry lookup after bootstrap
+          const r2 = await rawDb.execute(rawSql`
+            SELECT id, name, email, password, role, is_active
+            FROM admins WHERE LOWER(email) = ${String(email).trim().toLowerCase()} LIMIT 1
+          `);
+          if (!r2.rows.length) {
+            console.log("[admin-login] Still no admin after bootstrap for:", email);
+            return res.status(401).json({ message: "Invalid credentials" });
+          }
+          r.rows = r2.rows;
         } else {
-          throw dbErr;
+          console.log("[admin-login] No admin found for:", email, "ADMIN_PASSWORD env:", envPassword ? "set" : "NOT SET");
+          return res.status(401).json({ message: "Invalid credentials" });
         }
       }
-      if (!admin) { console.log("[admin-login] No admin found for:", email); return res.status(401).json({ message: "Invalid credentials" }); }
+
+      const row: any = r.rows[0];
+      const admin = {
+        id: String(row.id),
+        name: String(row.name || ""),
+        email: String(row.email || ""),
+        password: String(row.password || ""),
+        role: String(row.role || "admin"),
+        isActive: row.is_active !== false && row.is_active !== "false",
+      };
+
       if (!admin.isActive) return res.status(403).json({ message: "Account is disabled. Contact administrator." });
-      // Verify password using standardized utility
-      const dbHash = admin.password;
-      const passwordValid = await verifyPassword(password, dbHash);
-      console.log("[admin-login] email:", email, "hash_len:", dbHash?.length, "passwordValid:", passwordValid);
+
+      // Step 4: Verify password
+      step.current = "verify-password";
+      if (!admin.password || admin.password.length < 10) {
+        console.error("[admin-login] Admin has no/invalid password hash. Length:", admin.password?.length);
+        return res.status(500).json({ message: "Admin account has no password configured. Set ADMIN_PASSWORD env var and restart." });
+      }
+      const passwordValid = await verifyPassword(password, admin.password);
+      console.log("[admin-login] email:", email, "hash_len:", admin.password.length, "hash_prefix:", admin.password.substring(0, 7), "valid:", passwordValid);
       if (!passwordValid) return res.status(401).json({ message: "Invalid credentials" });
+
+      // Step 5: Check 2FA
+      step.current = "check-2fa";
       if (requireAdminTwoFactor) {
         const adminPhone = runtimeEnv.ADMIN_PHONE;
         if (!adminPhone) {
-          // 2FA is required but no delivery target — block login with clear message
           return res.status(503).json({ message: "Admin 2FA is enabled but ADMIN_PHONE is not configured. Contact system administrator." });
         }
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        await rawDb.execute(rawSql`
+          CREATE TABLE IF NOT EXISTS admin_login_otp (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            admin_id UUID NOT NULL,
+            otp VARCHAR(10) NOT NULL,
+            is_used BOOLEAN NOT NULL DEFAULT false,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          )
+        `);
         await rawDb.execute(rawSql`UPDATE admin_login_otp SET is_used=true WHERE admin_id=${admin.id}::uuid AND is_used=false`);
         await rawDb.execute(rawSql`
           INSERT INTO admin_login_otp (admin_id, otp, expires_at)
           VALUES (${admin.id}::uuid, ${otp}, ${expiresAt.toISOString()})
         `);
-        // Admin 2FA OTP — log only (delivery via admin dashboard or email)
         console.log(`[ADMIN-2FA] OTP generated for admin ${admin.email}. Deliver via secure channel.`);
         const response: any = {
           requiresTwoFactor: true,
@@ -3329,33 +3406,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(202).json(response);
       }
 
-      let session: { sessionToken: string; expiresAt: Date };
-      try {
-        session = await issueAdminSession(admin.id);
-      } catch (sessionErr: any) {
-        // Self-heal if auth_token_expires_at or other columns were added after table was first created
-        if (String(sessionErr.message).toLowerCase().includes("does not exist")) {
-          console.warn("[admin-login] Missing column � running schema self-heal then retrying...");
-          await ensureAdminExists();
-          // Re-query admin after self-heal
-          const requeriedAdmin = await lookupAdmin(email);
-          if (!requeriedAdmin) throw sessionErr;
-          session = await issueAdminSession(requeriedAdmin.id);
-        } else {
-          throw sessionErr;
-        }
-      }
+      // Step 6: Issue session token
+      step.current = "issue-session";
+      const sessionToken = `${admin.id}:${crypto.randomBytes(32).toString("hex")}`;
+      const expiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_HOURS * 60 * 60 * 1000);
+      await rawDb.execute(rawSql`
+        UPDATE admins
+        SET auth_token=${sessionToken}, auth_token_expires_at=${expiresAt.toISOString()}, last_login_at=NOW()
+        WHERE id=${admin.id}::uuid
+      `);
+
+      step.current = "done";
       res.json({
         admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
-        token: session.sessionToken,
-        expiresAt: session.expiresAt.toISOString(),
+        token: sessionToken,
+        expiresAt: expiresAt.toISOString(),
       });
     } catch (e: any) {
-      console.error("[admin-login] LOGIN FAILED:", e.message);
-      console.error("[admin-login] Stack:", e.stack);
-      // Temporary: include error detail for debugging (remove after fixing)
-      const detail = process.env.NODE_ENV === "production" ? e.message?.substring(0, 200) : e.message;
-      res.status(500).json({ message: "Login failed: " + (detail || "Unknown error") });
+      const errMsg = e instanceof Error ? e.message : (typeof e === "string" ? e : JSON.stringify(e));
+      const errStack = e instanceof Error ? e.stack : "";
+      console.error(`[admin-login] FAILED at step="${step.current}":`, errMsg);
+      if (errStack) console.error("[admin-login] Stack:", errStack);
+      res.status(500).json({ message: `Login failed at ${step.current}: ${errMsg || "no details"}` });
     }
   });
 

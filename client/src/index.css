@@ -3083,8 +3083,8 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 2.5rem;
+  gap: 10px;
+  margin-bottom: 2.75rem;
 }
 .jl-logo {
   max-width: 140px;
@@ -3101,15 +3101,15 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 }
 .jl-logo-img-card {
   background: #ffffff;
-  border-radius: 16px;
-  padding: 12px 24px;
+  border-radius: 18px;
+  padding: 16px 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
 }
 .jl-logo-img {
-  height: 52px;
+  height: 44px;
   width: auto;
   display: block;
   object-fit: contain;
@@ -3239,7 +3239,7 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
 /* ── Right Form Panel ── */
 .jl-form-panel {
   flex: 1;
-  background: #FFFFFF;
+  background: #F7F9FC;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3252,10 +3252,10 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   width: 100%;
   max-width: 430px;
   background: #fff;
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
-  padding: 2.25rem 2.5rem;
+  border-radius: 22px;
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  padding: 2.5rem 2.75rem;
   animation: pageFadeIn 0.35s ease;
 }
 
@@ -3277,8 +3277,24 @@ html[data-theme="dark"] .admin-dashboard-page .jd-banner {
   box-shadow: 0 4px 16px rgba(37,99,235,0.35);
   flex-shrink: 0;
 }
-.jl-form-logo-title { font-size: 0.9rem; font-weight: 800; color: #0f172a; }
-.jl-form-logo-sub { font-size: 0.72rem; color: #94a3b8; }
+.jl-form-logo-mark {
+  width: 46px; height: 46px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #EBF2FF, #DBEAFE);
+  border: 1px solid rgba(47,123,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 6px;
+}
+.jl-form-logo-mark-img {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+.jl-form-logo-title { font-size: 0.95rem; font-weight: 800; color: #0f172a; letter-spacing: -0.01em; }
+.jl-form-logo-sub { font-size: 0.72rem; color: #94a3b8; font-weight: 500; }
 
 .jl-form-title {
   font-size: 1.6rem;
