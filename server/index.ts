@@ -148,31 +148,6 @@ app.use((req, res, next) => {
 (async () => {
   // ─── CRITICAL: Register routes and start HTTP server FIRST ───
   // Health checks must respond BEFORE migrations run (Neon cold-start can take 30s+)
-  
-  // Setup error handler
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const errorId = makeErrorId();
-
-    console.error(`Internal Server Error [${errorId}]:`, err);
-    sendAlert({
-      level: status >= 500 ? "critical" : "error",
-      source: "express",
-      message: `Request failed with status ${status} (${errorId})`,
-      details: typeof err?.stack === "string" ? err.stack : String(err?.message || err),
-    }).catch(() => {});
-
-    if (res.headersSent) {
-      return next(err);
-    }
-
-    const isProd = process.env.NODE_ENV === "production";
-    const message = isProd && status >= 500
-      ? `An internal error occurred. Reference: ${errorId}`
-      : (err.message || "Internal Server Error");
-
-    return res.status(status).json({ message, errorId });
-  });
 
   // Register API routes
   try {
@@ -197,12 +172,48 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
+  // Express error handler MUST be registered AFTER all routes
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const errorId = makeErrorId();
+
+    console.error(`Internal Server Error [${errorId}]:`, err);
+    sendAlert({
+      level: status >= 500 ? "critical" : "error",
+      source: "express",
+      message: `Request failed with status ${status} (${errorId})`,
+      details: typeof err?.stack === "string" ? err.stack : String(err?.message || err),
+    }).catch(() => {});
+
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    const isProd = process.env.NODE_ENV === "production";
+    const message = isProd && status >= 500
+      ? `An internal error occurred. Reference: ${errorId}`
+      : (err.message || "Internal Server Error");
+
+    return res.status(status).json({ message, errorId });
+  });
+
   // ─── START SERVER LISTENING IMMEDIATELY ───
   // This ensures health check endpoint responds while DB warms up
   const port = parseInt(process.env.PORT || "5000", 10);
   const server = httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
+
+  // ─── Warm up DB pool (ensures Neon is awake before user requests hit) ───
+  (async () => {
+    try {
+      const { pool: dbPool } = await import("./db");
+      await dbPool.query("SELECT 1");
+      log("[db] Pool warm-up OK — Neon is awake");
+    } catch (e: any) {
+      console.error("[db] Pool warm-up failed (will retry on first request):", e.message);
+    }
+  })();
 
   // ─── NOW run migrations (server is already accepting health checks) ───
   const MAX_MIGRATION_RETRIES = 5;

@@ -3199,16 +3199,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
         if (!r.rows.length) return null;
         const row: any = r.rows[0];
-        return { id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, isActive: row.isActive };
+        return { id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, isActive: row.isActive ?? row.is_active };
       };
 
       let admin: any;
       try {
         admin = await lookupAdmin(email);
       } catch (dbErr: any) {
-        if (String(dbErr.message).toLowerCase().includes("does not exist")) {
+        const msg = String(dbErr.message).toLowerCase();
+        if (msg.includes("does not exist")) {
           console.warn("[admin-login] admins table missing — running bootstrap then retrying...");
           await ensureAdminExists();
+          admin = await lookupAdmin(email);
+        } else if (msg.includes("timeout") || msg.includes("etimedout") || msg.includes("econnrefused") || msg.includes("connection terminated")) {
+          // Neon cold-start — wait and retry once
+          console.warn("[admin-login] DB connection issue, retrying in 3s:", dbErr.message);
+          await new Promise(r => setTimeout(r, 3000));
           admin = await lookupAdmin(email);
         } else {
           throw dbErr;
@@ -3224,7 +3230,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (requireAdminTwoFactor) {
         const adminPhone = runtimeEnv.ADMIN_PHONE;
         if (!adminPhone) {
-          // 2FA is required but no delivery target � block login with clear message
+          // 2FA is required but no delivery target — block login with clear message
           return res.status(503).json({ message: "Admin 2FA is enabled but ADMIN_PHONE is not configured. Contact system administrator." });
         }
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -3270,6 +3276,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         expiresAt: session.expiresAt.toISOString(),
       });
     } catch (e: any) {
+      console.error("[admin-login] LOGIN FAILED:", e.message);
+      console.error("[admin-login] Stack:", e.stack);
       res.status(500).json({ message: safeErrMsg(e) });
     }
   });
