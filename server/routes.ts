@@ -983,6 +983,11 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_color VARCHAR(60);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_year INTEGER;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp_expiry TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(120);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS selfie_image TEXT;
@@ -7582,7 +7587,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch (_) {}
       }
       res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      console.error("[register] REGISTER FAILED:", e.message, e.stack);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // -- PASSWORD-BASED LOGIN --------------------------------------------------
@@ -12424,7 +12432,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(dbCatch("db"));
       }
       res.json({ success: true, message: "Profile updated" });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      console.error("[driver-update-reg] UPDATE FAILED:", e.message, e.stack);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // -- DRIVER: Get verification status (full detail) --------------------------
