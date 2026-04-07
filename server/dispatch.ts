@@ -13,7 +13,8 @@ import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
-import { findParcelCapableDrivers } from "./parcel-advanced";`nimport { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { findParcelCapableDrivers } from "./parcel-advanced";
+import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -696,10 +697,14 @@ async function findDriversInRadius(
     ? rawSql.raw(`AND NOT (u.id = ANY(ARRAY[${safeIds.map(id => `'${id}'::uuid`).join(',')}]))`)
     : rawSql``;
 
-  // LEFT JOIN driver_details so pilots without a details row are still found
-  // vehicle_category filter: match OR driver has no category set (new/incomplete profile)
+  // Strict vehicle matching to prevent wrong vehicle assignments (bike->bike, auto->auto, parcel type specific)
+  const matchingCategoryIds = vehicleCategoryId
+    ? (await getMatchingDriverCategoryIds(vehicleCategoryId).catch(() => [vehicleCategoryId]))
+    : null;
   const vcFilter = vehicleCategoryId
-    ? rawSql`AND (dd.vehicle_category_id = ${vehicleCategoryId}::uuid OR dd.vehicle_category_id IS NULL OR dd.user_id IS NULL)`
+    ? (matchingCategoryIds && matchingCategoryIds.length > 0
+      ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+      : rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`)
     : rawSql``;
 
   const drivers = await rawDb.execute(rawSql`
@@ -778,8 +783,14 @@ async function findDriversInRadius(
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
         if (isStale)                               reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
-        if (vehicleCategoryId && r.vehicle_category_id !== vehicleCategoryId)
-          reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${vehicleCategoryId})`);
+        if (
+          vehicleCategoryId &&
+          matchingCategoryIds &&
+          matchingCategoryIds.length > 0 &&
+          !matchingCategoryIds.includes(String(r.vehicle_category_id || ""))
+        ) {
+          reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need one-of=${matchingCategoryIds.join(',')})`);
+        }
         const distKm = Number(r.distance_km).toFixed(1);
         if (Number(distKm) > radiusKm)            reasons.push(`outside radius (${distKm}km > ${radiusKm}km)`);
         console.log(`[DISPATCH] ⚠ Nearby driver ${r.id} (${r.full_name || "?"}, ${distKm}km away) EXCLUDED — ${reasons.length ? reasons.join(", ") : "in exclude list or already notified"}`);

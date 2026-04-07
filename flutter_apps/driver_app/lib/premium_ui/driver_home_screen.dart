@@ -17,7 +17,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   LatLng? _currentLatLng;
   StreamSubscription<Position>? _positionStream;
   Marker? _userMarker;
-  late AnimationController _pulseController;
   bool _locationLoading = true;
   String _locationStatus = 'Detecting location...';
   double _mapPadding = 0;
@@ -175,12 +174,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               child: GlassCard(
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 30),
                 borderRadius: 40,
-                color: _isOnline ? JagoTheme.success.withOpacity(0.2) : null,
+                color: _isOnline ? JagoTheme.success.withValues(alpha: 0.2) : null,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isOnline ? Icons.Check_circle_rounded : Icons.power_settings_new_rounded,
+                      _isOnline ? Icons.check_circle_rounded : Icons.power_settings_new_rounded,
                       color: _isOnline ? JagoTheme.success : JagoTheme.success,
                       size: 48,
                     ),
@@ -195,6 +194,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+          ),
+          if (_locationLoading)
+            const Positioned(
+              bottom: 110,
+              left: 20,
+              right: 20,
+              child: LinearProgressIndicator(minHeight: 3),
+            ),
+          Positioned(
+            bottom: 74,
+            left: 20,
+            right: 20,
+            child: IgnorePointer(
+              child: GlassCard(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                borderRadius: 18,
+                child: Text(
+                  _locationStatus,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: JagoTheme.textDark,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ),

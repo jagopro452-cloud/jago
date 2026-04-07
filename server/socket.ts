@@ -14,7 +14,8 @@ import {
   checkAbnormalStop,
   checkSpeedAnomaly,
 } from "./ai";
-import { parseEnv } from "./config/env";`nimport { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { parseEnv } from "./config/env";
+import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 
 export let io: SocketIOServer;
 
@@ -37,6 +38,29 @@ function camelize(obj: any): any {
       v,
     ])
   );
+}
+
+async function logSocketTripTrace(tripId: string, stage: string, actorId?: string | null, actorType?: string) {
+  try {
+    if (!tripId) return;
+    const tR = await rawDb.execute(rawSql`
+      SELECT id, current_status, driver_id, customer_id,
+             created_at, driver_accepted_at, driver_arrived_at, ride_started_at, ride_ended_at
+      FROM trip_requests
+      WHERE id=${tripId}::uuid
+      LIMIT 1
+    `);
+    if (!tR.rows.length) {
+      console.log(`[SOCKET-TRACE] stage=${stage} tripId=${tripId} not-found actorType=${actorType || '-'} actorId=${actorId || '-'}`);
+      return;
+    }
+    const t = tR.rows[0] as any;
+    console.log(
+      `[SOCKET-TRACE] stage=${stage} tripId=${t.id} status=${t.current_status} driverId=${t.driver_id || '-'} customerId=${t.customer_id || '-'} createdAt=${t.created_at || '-'} acceptedAt=${t.driver_accepted_at || '-'} arrivedAt=${t.driver_arrived_at || '-'} startedAt=${t.ride_started_at || '-'} completedAt=${t.ride_ended_at || '-'} actorType=${actorType || '-'} actorId=${actorId || '-'}`,
+    );
+  } catch (e: any) {
+    console.log(`[SOCKET-TRACE] stage=${stage} tripId=${tripId} trace-error=${e?.message || e}`);
+  }
 }
 
 async function persistSafetyAlert(alert: any, driverId: string) {
@@ -460,6 +484,7 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Driver joins the trip room so they receive real-time events (cancellation, status changes)
           socket.join(`trip:${tripId}`);
+          await logSocketTripTrace(tripId, "driver_accept_socket", userId, "driver");
           socket.emit("driver:accept_trip_ok", { tripId, trip });
           console.log(`[SOCKET] Driver ${userId} accepted trip ${tripId}`);
         } catch (e: any) {
@@ -558,6 +583,8 @@ export function setupSocket(httpServer: HttpServer) {
           if (status === "completed" || status === "cancelled") {
             await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${userId}::uuid`);
           }
+
+          await logSocketTripTrace(tripId, `driver_trip_status_socket:${status}`, userId, "driver");
 
           // Get customer id + fare for FCM
           const tripR = await rawDb.execute(rawSql`SELECT customer_id, estimated_fare, actual_fare FROM trip_requests WHERE id=${tripId}::uuid`);

@@ -1,4 +1,34 @@
 import { z } from "zod";
+import fs from "fs";
+import path from "path";
+
+function loadEnvFile(fileName: string): void {
+  const filePath = path.resolve(process.cwd(), fileName);
+  if (!fs.existsSync(filePath)) return;
+
+  const raw = fs.readFileSync(filePath, "utf8");
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const idx = line.indexOf("=");
+    if (idx <= 0) continue;
+
+    const key = line.slice(0, idx).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    let value = line.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile(".env");
+loadEnvFile(`.env.${process.env.NODE_ENV || "development"}`);
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),

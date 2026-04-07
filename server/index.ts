@@ -49,6 +49,24 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+function pickTripTraceFields(payload: any) {
+  if (!payload || typeof payload !== "object") return undefined;
+  const p = payload as Record<string, any>;
+  const trace = {
+    tripId: p.tripId || p.trip_id || p.id || p.trip?.id || p.data?.tripId,
+    status: p.status || p.currentStatus || p.current_status || p.tripStatus || p.trip?.currentStatus,
+    driverId: p.driverId || p.driver_id || p.driver?.id,
+    customerId: p.customerId || p.customer_id || p.customer?.id,
+    createdAt: p.createdAt || p.created_at || p.trip?.createdAt,
+    acceptedAt: p.acceptedAt || p.driverAcceptedAt || p.driver_accepted_at || p.trip?.driverAcceptedAt,
+    arrivedAt: p.arrivedAt || p.driverArrivedAt || p.driver_arrived_at || p.trip?.driverArrivedAt,
+    startedAt: p.startedAt || p.rideStartedAt || p.ride_started_at || p.trip?.rideStartedAt,
+    completedAt: p.completedAt || p.rideEndedAt || p.ride_ended_at || p.trip?.rideEndedAt,
+  };
+  const hasAny = Object.values(trace).some((v) => v !== undefined && v !== null && v !== "");
+  return hasAny ? trace : undefined;
+}
+
 // Security headers
 app.use((_req, res, next) => {
   // CORS headers — allow requests from frontend domain(s)
@@ -92,6 +110,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  const requestTrace = pickTripTraceFields(req.body);
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -103,12 +122,19 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (requestTrace) {
+        logLine += ` :: reqTrace=${JSON.stringify(requestTrace)}`;
+      }
       if (capturedJsonResponse) {
         const sanitized = { ...capturedJsonResponse };
         if (sanitized.otp !== undefined) sanitized.otp = "[REDACTED]";
         if (sanitized.password !== undefined) sanitized.password = "[REDACTED]";
         if (sanitized.token !== undefined) sanitized.token = "[REDACTED]";
         if (sanitized.sessionToken !== undefined) sanitized.sessionToken = "[REDACTED]";
+        const responseTrace = pickTripTraceFields(sanitized);
+        if (responseTrace) {
+          logLine += ` :: resTrace=${JSON.stringify(responseTrace)}`;
+        }
         logLine += ` :: ${JSON.stringify(sanitized)}`;
       }
 
@@ -195,7 +221,7 @@ app.use((req, res, next) => {
     try {
       const { pool: dbPool } = await import("./db");
       const settingsRes = await dbPool.query(
-        "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         ["razorpay_key_id","razorpay_key_secret","razorpay_webhook_secret","fast2sms_api_key","two_factor_api_key","google_maps_key","twilio_account_sid","twilio_auth_token","twilio_phone_number","anthropic_api_key"]
       );
       const ENV_MAP: Record<string, string> = {

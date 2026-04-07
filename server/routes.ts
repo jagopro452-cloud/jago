@@ -52,7 +52,7 @@ import {
   resolveServiceType,
   type TripMeta,
 } from "./dispatch";
-import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
+import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta, getMatchingDriverCategoryIds, normalizeVehicleKey } from "./vehicle-matching";
 import {
   computeDemandHeatmap,
   calculateSurgeMultiplier,
@@ -406,6 +406,15 @@ function validateEnumValue(value: any, allowed: string[]): string {
   }
   return s;
 }
+function validateStrongPassword(value: any): string | null {
+  const password = String(value || "");
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "Password must include at least one letter and one number";
+  }
+  if (/\s/.test(password)) return "Password must not contain spaces";
+  return null;
+}
 
 /** Returns a safe error message: generic in production, detailed in development. */
 function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
@@ -417,6 +426,30 @@ function shortLocationName(value: any): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
   return raw.split(",")[0].trim();
+}
+
+async function logTripTraceFromDb(tripId: string, stage: string, actorId?: string | null, actorType?: string) {
+  try {
+    if (!tripId) return;
+    const tR = await rawDb.execute(rawSql`
+      SELECT id, current_status, driver_id, customer_id,
+             created_at, driver_accepted_at, driver_arrived_at, ride_started_at, ride_ended_at
+      FROM trip_requests
+      WHERE id=${tripId}::uuid
+      LIMIT 1
+    `);
+    if (!tR.rows.length) {
+      log(`[TRIP-TRACE] stage=${stage} tripId=${tripId} not-found`, "trip-trace");
+      return;
+    }
+    const t = tR.rows[0] as any;
+    log(
+      `[TRIP-TRACE] stage=${stage} tripId=${t.id} status=${t.current_status} driverId=${t.driver_id || '-'} customerId=${t.customer_id || '-'} createdAt=${t.created_at || '-'} acceptedAt=${t.driver_accepted_at || '-'} arrivedAt=${t.driver_arrived_at || '-'} startedAt=${t.ride_started_at || '-'} completedAt=${t.ride_ended_at || '-'} actorType=${actorType || '-'} actorId=${actorId || '-'}`,
+      "trip-trace",
+    );
+  } catch (e: any) {
+    log(`[TRIP-TRACE] stage=${stage} tripId=${tripId} trace-error=${e?.message || e}`, "trip-trace");
+  }
 }
 
 type GeocodeHit = { lat: number; lng: number; address: string };
@@ -913,6 +946,20 @@ async function ensureOperationalSchema() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS trip_status_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        trip_id UUID NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        changed_by VARCHAR(30) NOT NULL DEFAULT 'system',
+        note TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await rawDb.execute(rawSql`
+      CREATE INDEX IF NOT EXISTS idx_trip_status_log_trip_status
+      ON trip_status_log(trip_id, status)
+    `);
 
     await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
@@ -959,6 +1006,8 @@ async function ensureOperationalSchema() {
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS pending_payment_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seats_booked INTEGER DEFAULT 1;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS seat_price NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_arrived_at TIMESTAMP;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS waiting_charge NUMERIC(10,2) DEFAULT 0;
 
       ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(50);
       ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS base_fare NUMERIC(10,2) DEFAULT 0;
@@ -1930,15 +1979,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/diag/env", requireAdminAuth, (_req, res) => {
     const envConfig = {
       NODE_ENV: process.env.NODE_ENV || "not-set",
+      PORT: process.env.PORT || "default-5000",
       DATABASE_URL: process.env.DATABASE_URL ? "***configured***" : "NOT-SET",
       ADMIN_EMAIL: process.env.ADMIN_EMAIL ? "***set***" : "NOT-SET",
       ADMIN_NAME: process.env.ADMIN_NAME ? "***set***" : "NOT-SET",
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? "***set***" : "NOT-SET",
+      ADMIN_PHONE: process.env.ADMIN_PHONE ? "***set***" : "NOT-SET",
       ADMIN_PASSWORD_SYNC_ON_RESTART: process.env.ADMIN_PASSWORD_SYNC_ON_RESTART || "default-false",
       ADMIN_SESSION_TTL_HOURS: process.env.ADMIN_SESSION_TTL_HOURS || "24",
       ADMIN_2FA_REQUIRED: process.env.ADMIN_2FA_REQUIRED || "false",
       ADMIN_RESET_KEY: process.env.ADMIN_RESET_KEY ? "***set***" : "NOT-SET",
       OPS_API_KEY: process.env.OPS_API_KEY ? "***set***" : "NOT-SET",
+      SOCKET_ALLOWED_ORIGINS: process.env.SOCKET_ALLOWED_ORIGINS ? "***set***" : "NOT-SET",
+      GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ? "***set***" : "NOT-SET",
+      RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID ? "***set***" : "NOT-SET",
+      RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET ? "***set***" : "NOT-SET",
+      RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET ? "***set***" : "NOT-SET",
+      FIREBASE_SERVICE_ACCOUNT_KEY: process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "***set***" : "NOT-SET",
+      FIREBASE_WEB_API_KEY: process.env.FIREBASE_WEB_API_KEY ? "***set***" : "NOT-SET",
+      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? "***set***" : "NOT-SET",
+      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? "***set***" : "NOT-SET",
+      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER ? "***set***" : "NOT-SET",
+      ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL ? "***set***" : "NOT-SET",
+      REDIS_URL: process.env.REDIS_URL ? "***set***" : "NOT-SET",
+      APP_BASE_URL: process.env.APP_BASE_URL ? "***set***" : "NOT-SET",
+      AI_ASSISTANT_SERVICE_URL: process.env.AI_ASSISTANT_SERVICE_URL ? "***set***" : "NOT-SET",
     };
     res.json({ environments: envConfig, timestamp: new Date().toISOString() });
   });
@@ -3274,7 +3339,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { email, otp, newPassword } = req.body;
       if (!email || !otp || !newPassword) return res.status(400).json({ message: "Email, OTP and new password are required" });
-      if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const resetPasswordError = validateStrongPassword(newPassword);
+      if (resetPasswordError) return res.status(400).json({ message: resetPasswordError });
       const otpRow = await rawDb.execute(rawSql`
         SELECT * FROM admin_otp_resets WHERE email=${email} AND otp=${otp} AND is_used=false AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1
@@ -7476,7 +7542,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
       if (fullName.length > 100) return res.status(400).json({ message: "Name too long (max 100 chars)" });
       if (email && email.length > 200) return res.status(400).json({ message: "Email too long" });
-      if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const passwordError = validateStrongPassword(password);
+      if (passwordError) return res.status(400).json({ message: passwordError });
       const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
       const passwordHash = await hashPassword(password);
@@ -7551,7 +7618,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!phone || !otp || !newPassword) return res.status(400).json({ message: "Phone, OTP and new password are required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
-      if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const firebaseResetPasswordError = validateStrongPassword(newPassword);
+      if (firebaseResetPasswordError) return res.status(400).json({ message: firebaseResetPasswordError });
       const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
       if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
       const passwordHash = await hashPassword(newPassword);
@@ -8065,6 +8133,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       await appendTripStatus(tripData.id, 'driver_assigned', 'driver', 'Driver accepted trip');
       await logRideLifecycleEvent(tripData.id, 'driver_assigned', driver.id, 'driver', { pickupOtp: otp });
+      await logTripTraceFromDb(tripData.id, 'driver_accept_api', driver.id, 'driver');
 
       // ?? Socket: notify customer � driver accepted, show pilot details
       if (io) {
@@ -8194,6 +8263,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Pickup OTP verified');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'verify-pickup-otp' });
+      await logTripTraceFromDb(tripId, 'trip_started_via_verify_otp_api', driver.id, 'driver');
       // ?? For parcel � send delivery OTP to receiver via SMS when pickup is done
       if ((trip.trip_type === 'parcel' || trip.trip_type === 'delivery') && trip.delivery_otp && trip.receiver_phone) {
         sendCustomSms(trip.receiver_phone,
@@ -8238,7 +8308,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { tripId } = req.body;
       if (!tripId) return res.status(400).json({ message: "tripId required" });
       const updR = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='arrived'
+        UPDATE trip_requests
+        SET current_status='arrived', driver_arrived_at=COALESCE(driver_arrived_at, NOW())
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status IN ('accepted','driver_assigned')
         RETURNING id, pickup_otp, customer_id
@@ -8261,6 +8332,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const otp = tripRow?.pickup_otp;
       await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');
       await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver');
+      await logTripTraceFromDb(tripId, 'driver_arrived_api', driver.id, 'driver');
 
       // ?? Notify customer � driver arrived, show OTP
       const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
@@ -8325,6 +8397,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed � driver mismatch or trip already moved" });
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Trip started from driver app');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'start-trip' });
+      await logTripTraceFromDb(tripId, 'trip_started_via_start_api', driver.id, 'driver');
       // ?? Heatmap: confirmed pickup demand signal � fetch pickup coords from trip
       rawDb.execute(rawSql`SELECT pickup_lat, pickup_lng, trip_type FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1`)
         .then(r2 => {
@@ -8349,8 +8422,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const tipsVal = Math.min(Math.max(0, parseFloat(tips) || 0), 500); // Cap tips at ?500
       // Get trip details to use estimated_fare as fallback
       const tripInfo = await rawDb.execute(rawSql`
-        SELECT tr.estimated_fare, tr.estimated_distance, tr.current_status, tr.payment_method,
+         SELECT tr.estimated_fare, tr.estimated_distance, tr.current_status, tr.payment_method,
                tr.customer_id, tr.trip_type, tr.type, tr.delivery_otp, tr.seats_booked,
+           tr.driver_arrived_at, tr.ride_started_at,
                vc.name as vehicle_name, vc.vehicle_type as vehicle_type_field,
                vc.is_carpool, vc.total_seats
         FROM trip_requests tr
@@ -8380,6 +8454,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (estimatedFareVal > 0 && fare > estimatedFareVal * 1.5) fare = Math.round(estimatedFareVal * 1.5 * 100) / 100;
       // Absolute cap at ?10,000 per ride
       if (fare > 10000) fare = 10000;
+
+      // Waiting charge rule: first 1 minute free after driver arrives; then Rs 2/min (or business setting override)
+      let waitingMinutes = 0;
+      let waitingChargePerMin = 2;
+      let waitingCharge = 0;
+      try {
+        const arrivedAtMs = tripRow.driver_arrived_at ? new Date(tripRow.driver_arrived_at).getTime() : 0;
+        const startedAtMs = tripRow.ride_started_at ? new Date(tripRow.ride_started_at).getTime() : 0;
+        if (arrivedAtMs > 0 && startedAtMs > arrivedAtMs) {
+          const waitSec = Math.floor((startedAtMs - arrivedAtMs) / 1000);
+          const billableSec = Math.max(0, waitSec - 60);
+          waitingMinutes = billableSec > 0 ? Math.ceil(billableSec / 60) : 0;
+          waitingMinutes = Math.min(waitingMinutes, 180); // hard cap for safety
+        }
+        if (waitingMinutes > 0) {
+          const waitCfgR = await rawDb.execute(rawSql`
+            SELECT value FROM business_settings WHERE key_name='ride_waiting_charge_per_min' LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          waitingChargePerMin = Math.max(0, parseFloat((waitCfgR.rows[0] as any)?.value || '2') || 2);
+          waitingCharge = Math.round(waitingMinutes * waitingChargePerMin * 100) / 100;
+          fare = Math.min(10000, Math.round((fare + waitingCharge) * 100) / 100);
+        }
+      } catch (_) {}
+
       // SECURITY: All money math in integer paise to avoid floating-point drift
       const farePaise = Math.round(fare * 100);
 
@@ -8414,7 +8512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
             user_payable=${userPayable}, gst_amount=${gstAmount},
             vehicle_type_name=${vehicleTypeName},
-            seats_booked=${seatsBooked}, seat_price=${seatPrice}
+            seats_booked=${seatsBooked}, seat_price=${seatPrice}, waiting_charge=${waitingCharge}
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status = 'on_the_way'
         RETURNING *
@@ -8425,6 +8523,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!s) return res.status(404).json({ message: "Trip not found" });
         return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
       }
+      await logTripTraceFromDb(tripId, 'trip_completed_api', driver.id, 'driver');
 
       // -- Revenue: Calculate breakdown + settle (unified engine) --------------
       const tripServiceType = (tripRow.trip_type || tripRow.type || 'normal');
@@ -8591,6 +8690,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
           paymentMethod: tripRow.payment_method || 'cash',
           platformDeduction: deductAmount,
+          waitingCharge,
+          waitingMinutes,
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
           walletPaidAmount,
@@ -8627,6 +8728,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
           paymentMethod: tripRow.payment_method || 'cash',
           platformDeduction: deductAmount,
+          waitingCharge,
+          waitingMinutes,
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
           // Wallet partial/insufficient info � app shows "Pay remaining by cash/UPI" when pendingAmount > 0
@@ -8646,6 +8749,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
           paymentMethod: tripRow.payment_method || 'cash',
           platformDeduction: deductAmount,
+          waitingCharge,
+          waitingMinutes,
           launchOfferApplied: userDiscount > 0,
           uiState: 'trip_completed',
           walletPaidAmount,
@@ -8667,6 +8772,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           userDiscount,
           userPayable,
           gstAmount,
+          waitingCharge,
+          waitingMinutes,
+          waitingChargePerMin,
           driverWalletCredit,
           platformDeduction: deductAmount,
           launchOfferApplied: userDiscount > 0,
@@ -8697,6 +8805,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       await appendTripStatus(tripId, 'requested', 'driver', reason || 'Driver cancelled, reassigned');
       await logRideLifecycleEvent(tripId, 'driver_reassigned', driver.id, 'driver', { reason: reason || 'Driver cancelled' });
+      await logTripTraceFromDb(tripId, 'driver_cancel_api', driver.id, 'driver');
       // Free the driver
       await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
 
@@ -8739,45 +8848,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // AI-scored reassignment after driver cancellation
-      const cancelNextBest = await findBestDrivers(
-        Number(trip.pickupLat), Number(trip.pickupLng),
-        trip.vehicleCategoryId || undefined,
-        [driver.id],
-        3
-      );
+      // Re-dispatch via smart engine (sequential, timeout-aware, expanding-radius)
+      const serviceType = resolveServiceType(trip.tripType || 'ride', trip.vehicleName || '');
+      const vcMeta = trip.vehicleCategoryId
+        ? await getVehicleCategoryMeta(String(trip.vehicleCategoryId)).catch(() => null)
+        : null;
+      const parcelVehicleCategory = (serviceType === 'parcel' || serviceType === 'b2b_parcel')
+        ? (vcMeta?.vehicleType || normalizeVehicleKey(String(trip.vehicleName || '')))
+        : undefined;
+      const dispatchMeta: TripMeta = {
+        refId: String(trip.refId || ''),
+        customerName: String(trip.passengerName || trip.customerName || 'Customer'),
+        pickupAddress: String(trip.pickupAddress || ''),
+        destinationAddress: String(trip.destinationAddress || ''),
+        pickupShortName: trip.pickupShortName || undefined,
+        destinationShortName: trip.destinationShortName || undefined,
+        pickupLat: Number(trip.pickupLat || 0),
+        pickupLng: Number(trip.pickupLng || 0),
+        estimatedFare: Number(trip.estimatedFare || 0),
+        estimatedDistance: Number(trip.estimatedDistance || 0),
+        paymentMethod: String(trip.paymentMethod || 'cash'),
+        tripType: String(trip.tripType || 'ride'),
+      };
 
-      if (cancelNextBest.length) {
-        for (const nd of cancelNextBest) {
-          if (io) io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-            tripId,
-            pickupAddress: trip.pickupAddress,
-            destinationAddress: trip.destinationAddress,
-            pickupLat: trip.pickupLat,
-            pickupLng: trip.pickupLng,
-            estimatedFare: trip.estimatedFare || 0,
-            tripType: trip.tripType || 'ride',
-          });
-          const dDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nd.driverId}::uuid`);
-          const dFcm = (dDevRes.rows[0] as any)?.fcm_token;
-          if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(dbCatch("db"));
-        }
-      } else {
-        // No drivers available � cancel trip and notify customer via both socket + FCM
-        await rawDb.execute(rawSql`
-          UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
-          WHERE id=${tripId}::uuid AND current_status='searching'
-        `).catch(dbCatch("db"));
-        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
-        const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(dbCatch("db"));
-        if (io && trip.customerId) {
-          io.to(`user:${trip.customerId}`).emit("trip:no_drivers", {
-            tripId, message: "Sorry, no pilots available in your area right now. Please try again.",
-          });
-        }
-      }
-      res.json({ success: true, reassigned: cancelNextBest.length > 0 });
+      startDispatch(
+        String(trip.id),
+        String(trip.customerId),
+        Number(trip.pickupLat || 0),
+        Number(trip.pickupLng || 0),
+        trip.vehicleCategoryId ? String(trip.vehicleCategoryId) : undefined,
+        serviceType,
+        dispatchMeta,
+        parcelVehicleCategory || undefined
+      ).catch((err: any) => {
+        console.error('[DRIVER-CANCEL] Re-dispatch failed:', err?.message || err);
+      });
+
+      res.json({ success: true, reassigned: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -9547,11 +9654,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         } catch (_) {}
       }
-      // Also accept pre-validated discount from Flutter (as fallback)
-      if (discountAmount === 0 && promoDiscount && Number(promoDiscount) > 0) {
-        discountAmount = Math.min(Number(promoDiscount), computedFare * 0.5); // cap at 50%
-      }
-      const finalFareAfterDiscount = Math.max(0, computedFare - discountAmount);
+        // SECURITY: do not trust client-side discount amount; only server-validated coupon rules apply.
+        const finalFareAfterDiscount = Math.max(0, computedFare - discountAmount);
 
       // Auto-cancel any previous 'searching' trips � user is explicitly requesting a new ride
       await rawDb.execute(rawSql`
@@ -9680,7 +9784,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // ?? Heatmap event: booking demand signal
       logHeatmapEvent(
         'booking',
-        Number(pickupLat), Number(pickupLng),
+        validPickupCoords.lat, validPickupCoords.lng,
         (tripType === 'parcel' || tripType === 'delivery') ? 'parcel'
           : (tripType === 'carpool' || tripType === 'pool') ? 'pool'
           : (tripType === 'cargo') ? 'cargo' : 'ride'
@@ -9694,6 +9798,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         vcName = (vcR.rows[0] as any)?.name || '';
       }
       const serviceType = resolveServiceType(tripType, vcName);
+      const vcMeta = vehicleCategoryId ? await getVehicleCategoryMeta(vehicleCategoryId).catch(() => null) : null;
+      const parcelVehicleCategory = (serviceType === 'parcel' || serviceType === 'b2b_parcel')
+        ? (vcMeta?.vehicleType || normalizeVehicleKey(vcName || '')) || undefined
+        : undefined;
 
       const dispatchMeta: TripMeta = {
         refId: tripRow.refId,
@@ -9702,8 +9810,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destinationAddress: finalDestAddress,
         pickupShortName: finalPickupShort,
         destinationShortName: finalDestShort,
-        pickupLat: Number(pickupLat),
-        pickupLng: Number(pickupLng),
+        pickupLat: validPickupCoords.lat,
+        pickupLng: validPickupCoords.lng,
         estimatedFare: tripRow.estimatedFare || estimatedFare || 0,
         estimatedDistance: tripRow.estimatedDistance || finalDistance || 0,
         paymentMethod: finalPayment,
@@ -9714,11 +9822,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       startDispatch(
         tripRow.id,
         customer.id,
-        Number(pickupLat),
-        Number(pickupLng),
+        validPickupCoords.lat,
+        validPickupCoords.lng,
         vehicleCategoryId || undefined,
         serviceType,
-        dispatchMeta
+        dispatchMeta,
+        parcelVehicleCategory
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
         // Fallback to legacy broadcast if dispatch engine fails
@@ -9913,6 +10022,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       await appendTripStatus(effectiveTripId, 'trip_cancelled', 'customer', reason || 'Customer cancelled');
       await logRideLifecycleEvent(effectiveTripId, 'trip_cancelled', customer.id, 'customer', { reason: reason || 'Customer cancelled' });
+      await logTripTraceFromDb(effectiveTripId, 'customer_cancel_api', customer.id, 'customer');
       clearTripWaypoints(effectiveTripId);
       // ?? Heatmap: log cancellation demand signal (location still valuable for supply/demand)
       if (trip.pickup_lat && trip.pickup_lng) {
@@ -10723,10 +10833,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // -- SHARED: Nearby drivers (for customer map) ------------------------------
-  app.get("/api/app/nearby-drivers", nearbyDriversLimiter, async (req, res) => {
+  app.get("/api/app/nearby-drivers", authApp, nearbyDriversLimiter, async (req, res) => {
     try {
       const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
       const latNum = Number(lat); const lngNum = Number(lng);
+      const radiusKm = Math.min(10, Math.max(0.5, Number(radius) || 5));
       if (!lat || !lng || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
         return res.status(400).json({ message: "Valid lat and lng required" });
       }
@@ -10744,7 +10855,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND u.current_trip_id IS NULL
           AND u.verification_status = 'approved'
           ${vcFilter}
-          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${Number(radius) * Number(radius) / 10000}
+          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${radiusKm * radiusKm / 10000}
         LIMIT 20
       `);
       res.json({ drivers: camelize(r.rows) });
@@ -11964,7 +12075,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = (req as any).currentUser;
       const { newPin, newPassword, currentPassword } = req.body;
       const newPass = newPassword || newPin;
-      if (!newPass || String(newPass).length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (!newPass) return res.status(400).json({ message: "Password is required" });
+      const changePasswordError = validateStrongPassword(newPass);
+      if (changePasswordError) return res.status(400).json({ message: changePasswordError });
       // Verify current password � required
       {
         const userRow = await rawDb.execute(rawSql`SELECT password_hash FROM users WHERE id=${user.id}::uuid`);
@@ -14075,22 +14188,73 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Driver: get pending parcel requests nearby
-  app.get("/api/app/driver/parcel/pending", authApp, async (req, res) => {
+  app.get("/api/app/driver/parcel/pending", authApp, requireDriver, async (req, res) => {
     try {
+      const driverId = (req as any).currentUser?.id;
+      const dd = await rawDb.execute(rawSql`
+        SELECT vehicle_category_id FROM driver_details WHERE user_id=${driverId}::uuid LIMIT 1
+      `);
+      const driverCategoryId = (dd.rows[0] as any)?.vehicle_category_id as string | undefined;
+      const matchingIds = await getMatchingDriverCategoryIds(driverCategoryId || null).catch(() => null);
+      const vcRows = matchingIds && matchingIds.length
+        ? await rawDb.execute(rawSql`
+            SELECT vehicle_type, name FROM vehicle_categories
+            WHERE id = ANY(${matchingIds}::uuid[])
+          `)
+        : { rows: [] as any[] };
+      const allowedKeys = new Set(
+        (vcRows.rows as any[])
+          .map((v: any) => normalizeVehicleKey(v.vehicle_type || v.name))
+          .filter(Boolean)
+      );
+
       const r = await rawDb.execute(rawSql`
         SELECT * FROM parcel_orders
         WHERE current_status = 'searching'
         ORDER BY created_at ASC
-        LIMIT 20
+        LIMIT 100
       `);
-      res.json({ orders: r.rows });
+      const filtered = (r.rows as any[]).filter((row: any) => {
+        if (!allowedKeys.size) return false;
+        const orderKey = normalizeVehicleKey(row.vehicle_category);
+        return allowedKeys.has(orderKey);
+      });
+      res.json({ orders: filtered.slice(0, 20) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // Driver: accept a parcel order
-  app.post("/api/app/driver/parcel/:id/accept", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/accept", authApp, requireDriver, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
+      const dd = await rawDb.execute(rawSql`
+        SELECT vehicle_category_id FROM driver_details WHERE user_id=${driverId}::uuid LIMIT 1
+      `);
+      const driverCategoryId = (dd.rows[0] as any)?.vehicle_category_id as string | undefined;
+      const matchingIds = await getMatchingDriverCategoryIds(driverCategoryId || null).catch(() => null);
+      const vcRows = matchingIds && matchingIds.length
+        ? await rawDb.execute(rawSql`
+            SELECT vehicle_type, name FROM vehicle_categories
+            WHERE id = ANY(${matchingIds}::uuid[])
+          `)
+        : { rows: [] as any[] };
+      const allowedKeys = new Set(
+        (vcRows.rows as any[])
+          .map((v: any) => normalizeVehicleKey(v.vehicle_type || v.name))
+          .filter(Boolean)
+      );
+
+      const orderPre = await rawDb.execute(rawSql`
+        SELECT id, vehicle_category FROM parcel_orders
+        WHERE id=${req.params.id}::uuid AND current_status='searching' AND driver_id IS NULL
+        LIMIT 1
+      `);
+      if (!(orderPre.rows as any[]).length) return res.status(409).json({ message: 'Already assigned' });
+      const orderKey = normalizeVehicleKey((orderPre.rows[0] as any).vehicle_category);
+      if (!allowedKeys.size || !allowedKeys.has(orderKey)) {
+        return res.status(403).json({ message: 'This parcel is not eligible for your vehicle type' });
+      }
+
       const r = await rawDb.execute(rawSql`
         UPDATE parcel_orders
         SET driver_id=${driverId}::uuid, current_status='driver_assigned', updated_at=NOW()
@@ -14117,13 +14281,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Driver: verify pickup OTP ? start delivery
-  app.post("/api/app/driver/parcel/:id/pickup-otp", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/pickup-otp", authApp, requireDriver, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
       const { otp } = req.body;
       const r = await rawDb.execute(rawSql`
         SELECT id, pickup_otp, current_status, customer_id, drop_locations, is_b2b, b2b_company_id
-        FROM parcel_orders WHERE id=${req.params.id}::uuid
+        FROM parcel_orders WHERE id=${req.params.id}::uuid AND driver_id=${driverId}::uuid
       `);
       const order = (r.rows as any[])[0];
       if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -14158,13 +14322,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Driver: verify delivery OTP for a specific drop stop
-  app.post("/api/app/driver/parcel/:id/drop-otp", authApp, async (req, res) => {
+  app.post("/api/app/driver/parcel/:id/drop-otp", authApp, requireDriver, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
       const { dropIndex, otp } = req.body;
       const r = await rawDb.execute(rawSql`
         SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id, is_b2b, b2b_company_id
-        FROM parcel_orders WHERE id=${req.params.id}::uuid
+        FROM parcel_orders WHERE id=${req.params.id}::uuid AND driver_id=${driverId}::uuid
       `);
       const order = (r.rows as any[])[0];
       if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -14419,7 +14583,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const userId = (req as any).currentUser?.id;
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "email and password required" });
-      if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      const b2bPasswordError = validateStrongPassword(password);
+      if (b2bPasswordError) return res.status(400).json({ message: b2bPasswordError });
       const r = await rawDb.execute(rawSql`SELECT id FROM b2b_companies WHERE owner_id=${userId}::uuid LIMIT 1`);
       if (!r.rows.length) return res.status(404).json({ message: "No B2B company found for your account" });
       const hash = await hashPassword(String(password));

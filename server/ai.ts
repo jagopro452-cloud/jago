@@ -1,5 +1,6 @@
 import { db as rawDb } from "./db";
-import { sql as rawSql } from "drizzle-orm";`nimport { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { sql as rawSql } from "drizzle-orm";
+import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 
 // ----------------------------------------------------------------------------
 //  JAGO Pro AI Intelligence Layer
@@ -60,17 +61,17 @@ const INTENT_PATTERNS: Array<{ pattern: RegExp; intent: ParsedVoiceIntent["inten
 ];
 
 const VEHICLE_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
-  // SUV — matches our "SUV / XL" category
+  // SUV ï¿½ matches our "SUV / XL" category
   { pattern: /\b(suv|xl|innova|ertiga|fortuner|big\s*car|large\s*car)\b/i, type: "SUV" },
-  // Sedan — matches our "Sedan" category
+  // Sedan ï¿½ matches our "Sedan" category
   { pattern: /\b(sedan|swift|dzire|ciaz|city|verna|prime\s*car)\b/i, type: "Sedan" },
-  // Mini Car — matches our "Mini Car" category
+  // Mini Car ï¿½ matches our "Mini Car" category
   { pattern: /\b(mini\s*car|micro|go|mini|hatchback|economy|small\s*car|mini\s*cab)\b/i, type: "Mini Car" },
   // Auto
   { pattern: /\b(auto|rickshaw|three\s*wheeler|tuk|tuk\s*tuk|auto\s*rickshaw)\b/i, type: "Auto" },
-  // Bike — matches our "Bike" category
+  // Bike ï¿½ matches our "Bike" category
   { pattern: /\b(bike|two\s*wheeler|motorcycle|scooty|moto|rapido|bike\s*ride)\b/i, type: "Bike" },
-  // Parcel/Delivery — matches "Bike Delivery"
+  // Parcel/Delivery ï¿½ matches "Bike Delivery"
   { pattern: /\b(parcel|package|courier|delivery|send\s*parcel)\b/i, type: "Bike Delivery" },
   // Cargo
   { pattern: /\b(cargo|truck|lorry|goods|tata\s*ace|tempo|bolero|mini\s*truck)\b/i, type: "Tata Ace" },
@@ -601,10 +602,10 @@ export async function getDemandHeatmap(): Promise<DemandZone[]> {
 
       let prediction = "Normal demand expected";
       const hour = new Date().getHours();
-      if (hour >= 8 && hour <= 10) prediction = "Morning rush — demand rising";
-      else if (hour >= 17 && hour <= 20) prediction = "Evening rush — high demand expected";
-      else if (hour >= 22 || hour < 6) prediction = "Night hours — low demand";
-      else if (recentTrips > 5) prediction = "Trending up — demand increasing";
+      if (hour >= 8 && hour <= 10) prediction = "Morning rush ï¿½ demand rising";
+      else if (hour >= 17 && hour <= 20) prediction = "Evening rush ï¿½ high demand expected";
+      else if (hour >= 22 || hour < 6) prediction = "Night hours ï¿½ low demand";
+      else if (recentTrips > 5) prediction = "Trending up ï¿½ demand increasing";
 
       zones.push({
         zoneName: r.name || `Zone ${r.id}`,

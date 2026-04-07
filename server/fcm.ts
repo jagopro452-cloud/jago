@@ -15,7 +15,8 @@ async function initFirebaseAsync() {
   // Only use env var for service account
   let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!serviceAccountJson) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is required for FCM.");
+    // Fallback to DB-configured key when env var is not set
+    try {
       const r = await rawDb.execute(rawSql`SELECT value FROM business_settings WHERE key_name='firebase_service_account' LIMIT 1`);
       const val = (r.rows[0] as any)?.value?.trim();
       if (val && val.startsWith("{")) serviceAccountJson = val;
