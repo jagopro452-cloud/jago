@@ -418,8 +418,17 @@ function validateStrongPassword(value: any): string | null {
 
 /** Returns a safe error message: generic in production, detailed in development. */
 function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
-  if (process.env.NODE_ENV === "production") return fallback;
-  return e?.message || fallback;
+  const msg = e?.message || fallback;
+  // In production, hide internal/SQL details but show validation-level messages
+  if (process.env.NODE_ENV === "production") {
+    if (/duplicate key|unique constraint|violates|syntax error|relation.*does not exist|column.*does not exist/i.test(msg)) {
+      return fallback;
+    }
+    // Show user-facing messages (under 200 chars, no stack traces)
+    if (msg.length < 200 && !msg.includes('\n')) return msg;
+    return fallback;
+  }
+  return msg;
 }
 
 function shortLocationName(value: any): string {
@@ -1025,9 +1034,9 @@ async function ensureOperationalSchema() {
 
       -- Referral code: unique per user, generated at registration
       ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(30);
-      -- Backfill existing users who don't have a referral code yet
-      UPDATE users SET referral_code = 'JAGOPRO' || RIGHT(phone, 6)
-        WHERE referral_code IS NULL AND phone IS NOT NULL AND LENGTH(phone) >= 6;
+      -- Backfill existing users who don't have a referral code yet (using id suffix to ensure uniqueness)
+      UPDATE users SET referral_code = 'JAGO' || UPPER(LEFT(id::text, 8))
+        WHERE referral_code IS NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
 
       -- Commission Settlement: per-driver pending balance tracking
@@ -3429,6 +3438,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       p.startsWith("/app/")     ||  // mobile app routes � each has authApp
       p.startsWith("/admin/")   ||  // global admin middleware at line 1101
       p.startsWith("/driver/")  ||  // mobile driver routes � each has authApp
+      p.startsWith("/intercity") || // public intercity route listings
       p.startsWith("/webhook")       // payment callbacks (Razorpay, etc.)
     ) return next();
     // Everything else is a legacy admin route ? require admin auth
@@ -7534,7 +7544,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // -- PASSWORD-BASED REGISTER -----------------------------------------------
-  app.post("/api/app/register", loginLimiter, async (req, res) => {
+  app.post("/api/app/register", appLimiter, async (req, res) => {
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
@@ -8102,10 +8112,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const tripData = camelize(r.rows[0]) as any;
       const driverVehicleR = await rawDb.execute(rawSql`
-        SELECT dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category
-        FROM driver_details dd
+        SELECT u.vehicle_number, u.vehicle_model, vc.name as vehicle_category
+        FROM users u
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-        WHERE dd.user_id = ${driver.id}::uuid
+        WHERE u.id = ${driver.id}::uuid
         LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       const driverVehicle = (driverVehicleR.rows[0] as any) || {};
@@ -9852,8 +9863,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
-          COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
-          COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+          d.vehicle_number as driver_vehicle_number,
+          d.vehicle_model as driver_vehicle_model,
           vc.name as vehicle_name,
           COALESCE(dl.lat, d.current_lat) as driver_lat,
           COALESCE(dl.lng, d.current_lng) as driver_lng,
@@ -9908,8 +9919,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
           d.profile_photo as driver_photo,
-          COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
-          COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+          d.vehicle_number as driver_vehicle_number,
+          d.vehicle_model as driver_vehicle_model,
           COALESCE(dl.lat, d.current_lat) as driver_lat,
           COALESCE(dl.lng, d.current_lng) as driver_lng,
           dl.heading as driver_heading,
@@ -9918,7 +9929,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LEFT JOIN users d ON d.id = t.driver_id
         LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
         LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
-        LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
         WHERE t.customer_id = ${customer.id}::uuid AND t.current_status NOT IN ('completed','cancelled')
         ORDER BY t.created_at DESC LIMIT 1
       `);
@@ -10866,11 +10876,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/fcm-token", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const { fcmToken, deviceType = "android", appVersion } = req.body;
+      const { fcmToken, token: altToken, deviceType = "android", appVersion } = req.body;
+      const finalToken = fcmToken || altToken;
+      if (!finalToken) return res.status(400).json({ message: "fcmToken is required" });
       await rawDb.execute(rawSql`
         INSERT INTO user_devices (user_id, fcm_token, device_type, app_version)
-        VALUES (${user.id}::uuid, ${fcmToken}, ${deviceType}, ${appVersion||''})
-        ON CONFLICT (user_id) DO UPDATE SET fcm_token=${fcmToken}, device_type=${deviceType}, app_version=${appVersion||''}, updated_at=NOW()
+        VALUES (${user.id}::uuid, ${finalToken}, ${deviceType}, ${appVersion||''})
+        ON CONFLICT (user_id) DO UPDATE SET fcm_token=${finalToken}, device_type=${deviceType}, app_version=${appVersion||''}, updated_at=NOW()
       `);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -12168,12 +12180,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/driver/check-verification", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const r = await rawDb.execute(rawSql`
+      const verifyQuery = rawSql`
         SELECT last_face_verified_at, face_verified_trips,
         (SELECT COUNT(*) FROM trip_requests WHERE driver_id=${user.id}::uuid AND current_status='completed'
          AND created_at > COALESCE((SELECT last_face_verified_at FROM users WHERE id=${user.id}::uuid), '2000-01-01')) AS trips_since_verify
         FROM users WHERE id=${user.id}::uuid
-      `);
+      `;
+      let r;
+      try { r = await rawDb.execute(verifyQuery); }
+      catch (e2: any) {
+        if (String(e2.message).includes('last_face_verified_at') || String(e2.message).includes('face_verified_trips')) {
+          await rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_face_verified_at TIMESTAMPTZ`);
+          await rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified_trips INTEGER DEFAULT 0`);
+          r = await rawDb.execute(verifyQuery);
+        } else throw e2;
+      }
       const row = r.rows[0] as any;
       const lastVerified = row?.last_face_verified_at ? new Date(row.last_face_verified_at) : null;
       const tripsSince = parseInt(row?.trips_since_verify || '0');

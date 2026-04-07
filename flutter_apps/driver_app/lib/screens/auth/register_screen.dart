@@ -122,7 +122,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final password = _passwordCtrl.text;
         final name = _nameCtrl.text.trim();
         if (phone.length != 10) throw Exception('Enter a valid 10-digit phone number');
-        if (password.length < 6) throw Exception('Password must be at least 6 characters');
+        if (password.length < 8) throw Exception('Password must be at least 8 characters with a letter and number');
+        if (!RegExp(r'[A-Za-z]').hasMatch(password) || !RegExp(r'[0-9]').hasMatch(password)) throw Exception('Password must include at least one letter and one number');
         if (name.length < 2) throw Exception('Please enter your full name');
         final regRes = await AuthService.registerWithPassword(phone, password, name);
         if (regRes['success'] != true) {

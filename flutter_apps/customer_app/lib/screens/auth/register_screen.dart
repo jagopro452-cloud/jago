@@ -66,7 +66,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     final confirm = _confirmCtrl.text;
     if (name.length < 2) { _showSnack('Please enter your full name', error: true); return; }
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
-    if (password.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
+    if (password.length < 8) { _showSnack('Password must be at least 8 characters with a letter and number', error: true); return; }
+    if (!RegExp(r'[A-Za-z]').hasMatch(password) || !RegExp(r'[0-9]').hasMatch(password)) { _showSnack('Password must include at least one letter and one number', error: true); return; }
     if (password != confirm) { _showSnack('Passwords do not match', error: true); return; }
     setState(() => _loading = true);
     final res = await AuthService.registerWithPassword(phone, password, name, email: _emailCtrl.text.trim());
