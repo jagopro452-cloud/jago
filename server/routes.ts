@@ -7476,15 +7476,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         } catch (_) {}
 
-        // Final fallback: Firebase verified on-device — trust the phone number the app sent.
-        // We no longer require a server SMS or send-otp marker for Firebase-only auth.
+        // Final fallback: REJECT if we couldn't verify the token server-side.
+        // Without Firebase Admin or REST verification, we cannot trust client-sent phone.
         if (!restVerified) {
-          const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
-          if (!clientPhone || clientPhone.length < 10) {
-            return res.status(400).json({ message: "Phone number required for login. Please try again." });
-          }
-          phoneStr = clientPhone;
-          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10,'*')} - Firebase Admin not configured`);
+          console.error(`[AUTH] ❌ Firebase token verification failed — both Admin SDK and REST API unavailable. Configure FIREBASE_SERVICE_ACCOUNT_KEY env var.`);
+          return res.status(401).json({ message: "Authentication failed. Server cannot verify your identity. Please contact support." });
         }
       }
 
@@ -8882,6 +8878,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripType: String(trip.tripType || 'ride'),
       };
 
+      // Fetch customer gender for re-dispatch
+      const custR = await rawDb.execute(rawSql`SELECT gender, prefer_female_driver FROM users WHERE id=${trip.customerId}::uuid LIMIT 1`).catch(() => ({rows:[]}));
+      const custRow = custR.rows[0] as any;
       startDispatch(
         String(trip.id),
         String(trip.customerId),
@@ -8890,7 +8889,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         trip.vehicleCategoryId ? String(trip.vehicleCategoryId) : undefined,
         serviceType,
         dispatchMeta,
-        parcelVehicleCategory || undefined
+        parcelVehicleCategory || undefined,
+        custRow?.gender || undefined,
+        custRow?.prefer_female_driver === true
       ).catch((err: any) => {
         console.error('[DRIVER-CANCEL] Re-dispatch failed:', err?.message || err);
       });
@@ -9696,6 +9697,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // For parcel trips, generate delivery OTP now
       const deliveryOtpVal = (tripType === 'parcel' || tripType === 'delivery') ? Math.floor(1000 + Math.random() * 9000).toString() : null;
 
+      // -- SERVER-SIDE WALLET BALANCE CHECK --
+      if (finalPayment === 'wallet') {
+        const walBal = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
+        const balance = parseFloat((walBal.rows[0] as any)?.wallet_balance || '0');
+        if (balance < finalFareAfterDiscount) {
+          return res.status(400).json({ 
+            message: `Insufficient wallet balance. You need ₹${finalFareAfterDiscount} but have ₹${balance.toFixed(2)}. Please recharge or choose another payment method.`,
+            code: "INSUFFICIENT_WALLET" 
+          });
+        }
+      }
+
             // -- HARDENING: Pre-booking validations --
       try {
         // Check rate limit (max 20 bookings/hour per customer)
@@ -9838,7 +9851,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         vehicleCategoryId || undefined,
         serviceType,
         dispatchMeta,
-        parcelVehicleCategory
+        parcelVehicleCategory,
+        customer.gender || undefined,
+        customer.preferFemaleDriver === true || customer.prefer_female_driver === true
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
         // Fallback to legacy broadcast if dispatch engine fails
@@ -10933,10 +10948,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING id
       `);
       const alertId = (r.rows[0] as any)?.id || null;
-      console.log(`[SOS] ? ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
+      console.log(`[SOS] 🚨 ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
+
+      // ── SOS NOTIFICATIONS ──
+      // 1. Emit to admin dashboard via Socket.IO
+      if (io) {
+        io.emit("sos:alert", {
+          alertId,
+          userId: user.id,
+          userName: user.fullName,
+          userPhone: user.phone,
+          userType: user.userType,
+          lat: lat ? Number(lat) : null,
+          lng: lng ? Number(lng) : null,
+          tripId: tripId || null,
+          message: message || 'SOS triggered',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // 2. If active trip, notify the other party (driver↔customer)
+      if (tripId) {
+        try {
+          const tripR = await rawDb.execute(rawSql`SELECT customer_id, driver_id FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1`);
+          const trip = tripR.rows[0] as any;
+          if (trip) {
+            const otherUserId = user.userType === 'driver' ? trip.customer_id : trip.driver_id;
+            if (otherUserId) {
+              if (io) {
+                io.to(`user:${otherUserId}`).emit("sos:partner_alert", {
+                  message: `${user.userType === 'driver' ? 'Your pilot' : 'Your passenger'} triggered an SOS alert`,
+                  tripId, alertId,
+                });
+              }
+              const fcmR = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${otherUserId}::uuid AND fcm_token IS NOT NULL LIMIT 1`).catch(() => ({rows:[]}));
+              const fcmToken = (fcmR.rows[0] as any)?.fcm_token;
+              if (fcmToken) {
+                sendFcmNotification({ fcmToken, title: '🚨 SOS Emergency Alert', body: `${user.userType === 'driver' ? 'Your pilot' : 'Your passenger'} needs help!`, data: { type: 'sos', tripId: tripId || '', alertId: String(alertId || '') } }).catch((err: any) => console.error('[SOS] FCM to partner failed:', err.message));
+              }
+            }
+          }
+        } catch (e2: any) { console.error('[SOS] Trip notification error:', e2.message); }
+      }
+
+      // 3. Notify nearby online drivers (within 5km) via FCM
+      if (lat && lng) {
+        try {
+          const nearbyR = await rawDb.execute(rawSql`
+            SELECT ud.fcm_token FROM users u
+            JOIN driver_locations dl ON dl.driver_id = u.id
+            JOIN user_devices ud ON ud.user_id = u.id
+            WHERE u.user_type = 'driver' AND dl.is_online = true AND ud.fcm_token IS NOT NULL
+              AND u.id != ${user.id}::uuid
+              AND SQRT(POW((dl.lat - ${Number(lat)}) * 111.32, 2) + POW((dl.lng - ${Number(lng)}) * 111.32 * COS(RADIANS(${Number(lat)})), 2)) <= 5
+            LIMIT 20
+          `);
+          let notifiedCount = 0;
+          for (const row of nearbyR.rows) {
+            const token = (row as any).fcm_token;
+            if (token) {
+              sendFcmNotification({ fcmToken: token, title: '🚨 SOS Alert Nearby', body: 'Someone needs help near your location', data: { type: 'sos_nearby', tripId: tripId || '', alertId: String(alertId || '') } }).catch(() => {});
+              notifiedCount++;
+            }
+          }
+          if (notifiedCount > 0) {
+            await rawDb.execute(rawSql`UPDATE safety_alerts SET nearby_drivers_notified = ${notifiedCount} WHERE id = ${alertId}::uuid`).catch(() => {});
+          }
+          console.log(`[SOS] Notified ${notifiedCount} nearby drivers`);
+        } catch (e3: any) { console.error('[SOS] Nearby notification error:', e3.message); }
+      }
+
       res.json({ success: true, alertId, message: "SOS alert sent. Help is on the way." });
     } catch (e: any) {
-      console.error(`[SOS] ? Failed to create alert:`, e);
+      console.error(`[SOS] Failed to create alert:`, e);
       res.status(500).json({ message: safeErrMsg(e) });
     }
   });
@@ -14090,36 +14174,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       const order = (r.rows as any[])[0];
 
-      // Use vehicle-matched dispatch to find parcel-capable drivers
-      if (io && pickupLat && pickupLng) {
+      // Use sequential dispatch engine (same as ride bookings) for fair driver matching
+      if (pickupLat && pickupLng) {
         try {
-          const parcelDrivers = await findParcelCapableDrivers(
-            Number(pickupLat), Number(pickupLng), 6, vehicleCategory, [], 10
-          );
-          const payload = {
-            orderId: order.id,
-            vehicleCategory,
-            pickupAddress,
-            pickupLat, pickupLng,
-            totalFare,
-            dropCount: dropsWithOtp.length,
-            weightKg: wt,
-            isFragile: isFragile === true,
-            insuranceEnabled: insuranceEnabled === true,
-          };
-          for (const driver of parcelDrivers) {
-            io.to(`user:${driver.id}`).emit('parcel:new_request', payload);
-            // FCM: wake driver if app is in background
-            if (driver.fcm_token) {
-              notifyDriverNewParcel({
-                fcmToken: driver.fcm_token,
-                pickupAddress: String(pickupAddress || ''),
-                totalFare: Number(totalFare) || 0,
-                orderId: order.id,
-                vehicleCategory: vehicleCategory as string,
-              }).catch(dbCatch("db"));
-            }
-          }
+          startDispatch(
+            order.id,
+            customerId,
+            Number(pickupLat),
+            Number(pickupLng),
+            undefined, // vehicleCategoryId — parcel uses vehicleCategory string
+            'parcel',
+            {
+              refId: order.id,
+              pickupAddress: String(pickupAddress || ''),
+              destinationAddress: dropsWithOtp[0]?.address || '',
+              pickupLat: Number(pickupLat),
+              pickupLng: Number(pickupLng),
+              estimatedFare: Number(totalFare) || 0,
+              estimatedDistance: dist,
+              customerName: (req as any).currentUser?.name || 'Customer',
+              paymentMethod,
+              tripType: 'parcel',
+            },
+            vehicleCategory, // parcelVehicleCategory for matching
+          ).catch((err: any) => console.error('[DISPATCH] parcel startDispatch error:', err.message));
         } catch (_) {}
       }
 

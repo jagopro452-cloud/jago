@@ -51,6 +51,8 @@ interface DispatchSession {
   parcelVehicleCategory?: string; // e.g. "bike_parcel", "tata_ace" — for parcel vehicle-type filtering
   serviceType: string;
   config: DispatchConfig;
+  customerGender?: string;       // 'female'|'male'|null — for female-first matching
+  preferFemaleDriver?: boolean;  // customer preference flag
 
   // Trip metadata for socket payloads
   tripMeta: TripMeta;
@@ -125,7 +127,9 @@ export async function startDispatch(
   vehicleCategoryId: string | undefined,
   serviceType: string,
   tripMeta: TripMeta,
-  parcelVehicleCategory?: string
+  parcelVehicleCategory?: string,
+  customerGender?: string,
+  preferFemaleDriver?: boolean
 ): Promise<void> {
   // Cancel any existing dispatch for this trip (defensive)
   cancelDispatch(tripId);
@@ -141,6 +145,8 @@ export async function startDispatch(
     parcelVehicleCategory,
     serviceType,
     config,
+    customerGender,
+    preferFemaleDriver,
     tripMeta,
     radiusIndex: 0,
     driverQueue: [],
@@ -375,7 +381,9 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         radiusKm,
         session.vehicleCategoryId,
         uniqueExcludeIds,
-        config.driversPerStep
+        config.driversPerStep,
+        session.customerGender,
+        session.preferFemaleDriver
       );
     }
 
@@ -689,7 +697,9 @@ async function findDriversInRadius(
   radiusKm: number,
   vehicleCategoryId: string | undefined,
   excludeDriverIds: string[],
-  limit: number
+  limit: number,
+  customerGender?: string,
+  preferFemaleDriver?: boolean
 ): Promise<DriverMatchScore[]> {
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
@@ -707,9 +717,18 @@ async function findDriversInRadius(
       : rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`)
     : rawSql``;
 
+  // Female-first matching: if customer is female or prefers female driver, sort female drivers first
+  const wantFemaleFirst = (customerGender === 'female') || preferFemaleDriver;
+  const genderSelect = wantFemaleFirst
+    ? rawSql`, CASE WHEN u.gender = 'female' THEN 0 ELSE 1 END as gender_priority`
+    : rawSql``;
+  const genderOrder = wantFemaleFirst
+    ? rawSql`gender_priority ASC,`
+    : rawSql``;
+
   const drivers = await rawDb.execute(rawSql`
     SELECT
-      u.id, u.full_name, u.phone, u.rating,
+      u.id, u.full_name, u.phone, u.rating, u.gender,
       dl.lat, dl.lng,
       COALESCE(ds.total_trips, 0) as total_trips,
       COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,
@@ -720,6 +739,7 @@ async function findDriversInRadius(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
         POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
       ) as distance_km
+      ${genderSelect}
     FROM users u
     JOIN driver_locations dl ON dl.driver_id = u.id
     LEFT JOIN driver_details dd ON dd.user_id = u.id
@@ -742,7 +762,7 @@ async function findDriversInRadius(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
         POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
       ) <= ${radiusKm}
-    ORDER BY distance_km ASC
+    ORDER BY ${genderOrder} distance_km ASC
     LIMIT ${limit}
   `);
 
