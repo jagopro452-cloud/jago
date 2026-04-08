@@ -1,31 +1,25 @@
-name: Deploy to DigitalOcean
+name: App Platform Auto Deploy
 
 on:
   push:
     branches: [master]
 
 jobs:
-  deploy:
-    name: Build & Deploy
+  app-platform-config-check:
+    name: Validate App Platform Config
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: ${{ secrets.DO_USER }}
-          key: ${{ secrets.DO_SSH_KEY }}
-          script: |
-            set -e
-            cd /var/www/jago
-            git pull origin master
-            npm ci --prefer-offline
-            npm run build
-            set -a && source /var/www/jago/.env && set +a
-            pm2 restart jago --update-env || pm2 start dist/index.js --name jago --max-memory-restart 512M
-            pm2 save
-            sleep 5
-            curl -sf http://localhost:5000/api/health && echo "Deploy OK" || echo "WARNING: health check failed"
+      - name: Verify App Platform spec is present
+        run: |
+          test -f .do/app.yaml
+          grep -q "deploy_on_push: true" .do/app.yaml
+          grep -q "repo: jagopro452-cloud/jago" .do/app.yaml
+          grep -q "branch: master" .do/app.yaml
+
+      - name: Explain deployment mode
+        run: |
+          echo "DigitalOcean App Platform deploys this repo automatically on push."
+          echo "This workflow only validates the .do/app.yaml wiring and avoids legacy SSH deploy failures."
