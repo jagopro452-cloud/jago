@@ -430,6 +430,32 @@ function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try
   return msg;
 }
 
+async function ensureDbReady(context: string) {
+  const delays = [0, 3000, 6000, 10000];
+  let lastErr: any = null;
+  for (const delay of delays) {
+    if (delay) {
+      await new Promise((r) => setTimeout(r, delay));
+    }
+    try {
+      await rawDb.execute(rawSql`SELECT 1`);
+      return;
+    } catch (e: any) {
+      lastErr = e;
+      try {
+        const { pool: dbPool } = await import("./db");
+        await dbPool.query("SELECT 1");
+        return;
+      } catch (e2: any) {
+        lastErr = e2;
+      }
+    }
+  }
+  const msg = safeErrMsg(lastErr, "Database connection failed. Please try again.");
+  console.error(`[db] ensureDbReady failed (${context}):`, msg);
+  throw new Error(msg);
+}
+
 function shortLocationName(value: any): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -916,8 +942,29 @@ async function ensureAdminExists() {
 }
 
 async function ensureOperationalSchema() {
+  // pgcrypto might be blocked in some managed DBs; do not let it abort schema setup
+  await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch((e: any) => {
+    console.warn("[schema] pgcrypto extension unavailable:", formatDbError(e));
+  });
+
+  // Fallback: ensure gen_random_uuid() exists even if pgcrypto can't be created
+  await rawDb.execute(rawSql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'gen_random_uuid') THEN
+        CREATE OR REPLACE FUNCTION gen_random_uuid()
+        RETURNS uuid
+        AS $fn$ SELECT md5(random()::text || clock_timestamp()::text)::uuid; $fn$
+        LANGUAGE sql;
+      END IF;
+    END
+    $$;
+  `).catch((e: any) => {
+    console.warn("[schema] gen_random_uuid fallback unavailable:", formatDbError(e));
+  });
+
   try {
-    await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+    // pgcrypto already attempted above; keep schema setup running even if unavailable
 
     // -- Core auth tables � must always exist even if Drizzle migrations haven't run --
     await rawDb.execute(rawSql`
@@ -1924,6 +1971,38 @@ async function ensureOperationalSchema() {
         ('te', 'Telugu',   '??????',    '????', 1),
         ('hi', 'Hindi',    '??????',    '????', 2)
       ON CONFLICT (code) DO NOTHING;
+    `).catch(dbCatch("db"));
+
+    // -- OTP logs: tracks all OTP requests for rate-limiting & verification ----
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS otp_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone VARCHAR(20) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        user_type VARCHAR(20) DEFAULT 'customer',
+        is_used BOOLEAN DEFAULT false,
+        attempt_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '10 minutes')
+      );
+      CREATE INDEX IF NOT EXISTS idx_otp_logs_phone_created ON otp_logs(phone, created_at DESC);
+    `).catch(dbCatch("db"));
+
+    // -- OTP settings: configurable OTP parameters ----------------------------
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS otp_settings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        primary_provider VARCHAR(30) NOT NULL DEFAULT 'firebase',
+        sms_enabled BOOLEAN NOT NULL DEFAULT false,
+        firebase_enabled BOOLEAN NOT NULL DEFAULT true,
+        fallback_enabled BOOLEAN NOT NULL DEFAULT false,
+        otp_expiry_seconds INTEGER NOT NULL DEFAULT 600,
+        max_attempts INTEGER NOT NULL DEFAULT 3,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO otp_settings (primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds, max_attempts)
+      SELECT 'firebase', false, true, false, 600, 3
+      WHERE NOT EXISTS (SELECT 1 FROM otp_settings);
     `).catch(dbCatch("db"));
 
   } catch (e: any) {
@@ -3286,13 +3365,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Step 1: Ensure DB connectivity (handles Neon cold starts)
       step.current = "db-connect";
-      try {
-        await rawDb.execute(rawSql`SELECT 1`);
-      } catch (connErr: any) {
-        console.warn("[admin-login] DB cold, retrying in 3s:", connErr.message);
-        await new Promise(r => setTimeout(r, 3000));
-        await rawDb.execute(rawSql`SELECT 1`);
-      }
+      await ensureDbReady("admin-login");
 
       // Step 2: Ensure admins table exists with all columns
       step.current = "schema-check";
@@ -7468,10 +7541,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
-      // Rate limiting: max 5 OTPs per phone per hour
+      // Rate limiting: max 5 OTPs per phone per hour (graceful if otp_logs table missing)
       const recentCount = await rawDb.execute(rawSql`
         SELECT COUNT(*) as cnt FROM otp_logs WHERE phone=${phoneStr} AND created_at > NOW() - INTERVAL '1 hour'
-      `);
+      `).catch(() => ({ rows: [{ cnt: '0' }] as any[] }));
       if (parseInt((recentCount.rows[0] as any)?.cnt || "0") >= 5) {
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
@@ -7480,7 +7553,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
-      `).catch(dbCatch("db"));
+      `).catch(() => {/* otp_logs may not exist yet — non-fatal for firebase flow */});
       console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} -> Firebase`);
       return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
