@@ -213,6 +213,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   _ParcelVehicle get _vehicle => _vehicles[_vehicleIdx];
   double get _weightKg => (_kWeightOptions[_weightIdx]['value'] as num).toDouble();
+  double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
 
   bool get _step0Valid => true;
   bool get _step1Valid => _dropAddressCtrl.text.trim().isNotEmpty && _destLat != 0;
@@ -262,7 +266,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     try {
       final headers = await AuthService.getHeaders();
       final r = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/places/autocomplete?input=${Uri.encodeComponent(q)}'),
+        Uri.parse('${ApiConfig.placesAutocomplete}?query=${Uri.encodeComponent(q)}'),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
       if (r.statusCode == 200) {
@@ -270,10 +274,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         final list = (body['predictions'] ?? body['results'] ?? body) as List;
         if (mounted) setState(() {
           _suggestions = list.map<Map<String, dynamic>>((p) => {
-            'description': p['description'] ?? p['formatted_address'] ?? p['name'] ?? '',
-            'place_id': p['place_id'] ?? '',
-            'lat': (p['lat'] ?? p['geometry']?['location']?['lat'] ?? 0).toDouble(),
-            'lng': (p['lng'] ?? p['geometry']?['location']?['lng'] ?? 0).toDouble(),
+            'description': p['fullDescription'] ?? p['description'] ?? p['formatted_address'] ?? p['name'] ?? '',
+            'place_id': p['placeId'] ?? p['place_id'] ?? '',
+            'lat': _toDouble(p['lat'] ?? p['geometry']?['location']?['lat']),
+            'lng': _toDouble(p['lng'] ?? p['geometry']?['location']?['lng']),
           }).toList();
         });
       }
@@ -285,23 +289,24 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     final desc = s['description'] as String;
     setState(() {
       _dropAddressCtrl.text = desc;
-      _destLat = (s['lat'] as num).toDouble();
-      _destLng = (s['lng'] as num).toDouble();
+      _destLat = _toDouble(s['lat']);
+      _destLng = _toDouble(s['lng']);
       _suggestions = [];
     });
     // Resolve lat/lng if not available
     if (_destLat == 0 && s['place_id'] != null && s['place_id'] != '') {
       try {
+        final placeId = s['place_id'].toString();
         final headers = await AuthService.getHeaders();
         final r = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?place_id=${s['place_id']}'),
+          Uri.parse('${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId)}'),
           headers: headers,
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body);
           if (mounted) setState(() {
-            _destLat = (d['lat'] ?? d['result']?['geometry']?['location']?['lat'] ?? 0).toDouble();
-            _destLng = (d['lng'] ?? d['result']?['geometry']?['location']?['lng'] ?? 0).toDouble();
+            _destLat = _toDouble(d['lat'] ?? d['result']?['geometry']?['location']?['lat']);
+            _destLng = _toDouble(d['lng'] ?? d['result']?['geometry']?['location']?['lng']);
           });
         }
       } catch (_) {}

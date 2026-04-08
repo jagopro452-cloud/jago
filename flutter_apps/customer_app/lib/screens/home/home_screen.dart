@@ -1038,6 +1038,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     };
   }
 
+  static String _normalizeServiceKey(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  String _serviceDisplayName(Map<String, dynamic> item) {
+    final raw = (item['name'] ?? item['service_name'] ?? item['vehicleCategoryName'] ?? item['key'] ?? '').toString().trim();
+    return raw;
+  }
+
+  bool _serviceMatchesType(Map<String, dynamic> item, String type) {
+    final rawType = (item['type'] ?? item['category'] ?? item['serviceType'] ?? item['kind'] ?? '').toString().toLowerCase();
+    final rawName = _serviceDisplayName(item).toLowerCase();
+    if (type == 'ride') {
+      return rawType == 'ride' ||
+          rawName.contains('bike') ||
+          rawName.contains('auto') ||
+          rawName.contains('car');
+    }
+    if (type == 'parcel') {
+      return rawType == 'parcel' ||
+          rawType == 'cargo' ||
+          rawName.contains('parcel') ||
+          rawName.contains('truck') ||
+          rawName.contains('van') ||
+          rawName.contains('cargo');
+    }
+    if (type == 'pool') {
+      return rawType == 'pool' ||
+          rawName.contains('pool') ||
+          rawName.contains('share');
+    }
+    return rawType == type || rawName.contains(type);
+  }
+
+  List<String> _serviceNamesForType(String type) {
+    final names = <String>{};
+    for (final item in [..._vehicleCategories, ..._activeServices]) {
+      if (!_serviceMatchesType(item, type)) continue;
+      final display = _serviceDisplayName(item);
+      if (display.isNotEmpty) names.add(display);
+      final key = _normalizeServiceKey((item['key'] ?? item['service_key'] ?? item['slug'] ?? display).toString());
+      if (key.isNotEmpty) names.add(key.replaceAll('_', ' '));
+    }
+    return names.toList();
+  }
+
+  String _serviceSummaryForType(String type, String fallback) {
+    final names = _serviceNamesForType(type);
+    if (names.isEmpty) return fallback;
+    return names.take(3).join(' · ');
+  }
+
+  String _serviceStatusForType(String type) {
+    final names = _serviceNamesForType(type);
+    if (names.isEmpty) return 'LIVE';
+    return '${names.length} active';
+  }
+
   void _openSearch({String? presetVehicle}) {
     // Rule: ALL ride entry points go Home → LocationScreen → BookingScreen
     Navigator.push(
@@ -1683,10 +1746,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ── FEATURED SERVICES — RIDE + PARCEL (admin-controlled) ────────────────
   // Only shows cards for services that have active vehicle categories in DB.
   Widget _buildFeaturedGrid(bool isDark) {
-    final hasRide =
-        _vehicleCategories.any((v) => v['type']?.toString() == 'ride');
-    final hasParcel =
-        _vehicleCategories.any((v) => v['type']?.toString() == 'parcel');
+    final rideNames = _serviceNamesForType('ride');
+    final parcelNames = _serviceNamesForType('parcel');
+    final hasRide = rideNames.isNotEmpty;
+    final hasParcel = parcelNames.isNotEmpty;
 
     if (!hasRide && !hasParcel) {
       return Padding(
@@ -1771,7 +1834,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               imageUrl: ApiConfig.vehicleAsset('auto.png'),
               fallbackIcon: Icons.electric_rickshaw_rounded,
               title: 'Ride',
-              subtitle: 'Bike · Auto · Car',
+              subtitle: _serviceSummaryForType('ride', 'Bike · Auto · Car'),
+              metaLabel: _serviceStatusForType('ride'),
               accent: const Color(0xFF2563EB),
               onTap: () {
                 HapticFeedback.selectionClick();
@@ -1795,7 +1859,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               imageUrl: ApiConfig.vehicleAsset('parcel_bike.png'),
               fallbackIcon: Icons.local_shipping_rounded,
               title: 'Parcel',
-              subtitle: 'Bike · Truck · Van',
+              subtitle: _serviceSummaryForType('parcel', 'Bike · Truck · Van'),
+              metaLabel: _serviceStatusForType('parcel'),
               accent: const Color(0xFF059669),
               onTap: () {
                 HapticFeedback.selectionClick();
@@ -1821,6 +1886,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required IconData fallbackIcon,
     required String title,
     required String subtitle,
+    required String metaLabel,
     required Color accent,
     required VoidCallback onTap,
   }) {
@@ -1848,6 +1914,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     colors: [Colors.white, accent.withValues(alpha: 0.04)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 14,
+              right: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: accent.withValues(alpha: 0.16)),
+                ),
+                child: Text(
+                  metaLabel.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w500,
+                    color: accent,
+                    letterSpacing: 0.7,
                   ),
                 ),
               ),
@@ -2866,8 +2953,11 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
 
   Future<void> _fetchPopularLocations() async {
     try {
-      final r = await http.get(Uri.parse(
-          '${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'));
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'),
+        headers: headers,
+      );
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final list = (data['locations'] as List<dynamic>? ?? [])

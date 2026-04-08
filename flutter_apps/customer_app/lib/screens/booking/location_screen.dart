@@ -267,9 +267,11 @@ class _LocationScreenState extends State<LocationScreen>
   // ── Popular Locations ─────────────────────────────────────────────────────
   Future<void> _fetchPopular() async {
     try {
+      final headers = await AuthService.getHeaders();
       final r = await http.get(
           Uri.parse(
-              '${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'));
+              '${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'),
+          headers: headers);
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final list = ((data['locations'] as List<dynamic>?) ?? [])

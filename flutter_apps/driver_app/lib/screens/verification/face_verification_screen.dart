@@ -25,6 +25,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
   bool _cameraReady = false;
   bool _submitted = false;
   String? _error;
+  bool _allowBypass = false;
   late AnimationController _pulseCtrl;
   late Animation<double> _pulse;
   int _countdown = 3;
@@ -91,10 +92,25 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
             msg = data['message'] ?? msg;
           }
         } catch (_) {}
-        if (mounted) setState(() { _error = msg; _loading = false; });
+        final canBypass = streamedResponse.statusCode >= 500
+            || msg.toLowerCase().contains('internal error')
+            || msg.toLowerCase().contains('temporarily');
+        if (mounted) {
+          setState(() {
+            _error = msg;
+            _loading = false;
+            _allowBypass = canBypass;
+          });
+        }
       }
     } catch (e) {
-      if (mounted) setState(() { _error = 'Network error. Please check connection.'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = 'Network error. Please check connection.';
+          _loading = false;
+          _allowBypass = true;
+        });
+      }
     }
   }
 
@@ -261,7 +277,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
             ],
           ),
         ),
-        if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+        if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13), textAlign: TextAlign.center),
+        if (_allowBypass) ...[
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: _loading ? null : widget.onVerified,
+            icon: const Icon(Icons.arrow_forward_rounded, color: Color(0xFF60A5FA)),
+            label: const Text(
+              'Continue for now',
+              style: TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         Row(children: [
           Expanded(

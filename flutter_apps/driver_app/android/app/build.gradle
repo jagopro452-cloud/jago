@@ -19,7 +19,7 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace "com.mindwhile.jago_pilot"
-    compileSdk 35
+    compileSdk 36
     ndkVersion "27.0.12077973"
 
     compileOptions {
@@ -53,7 +53,7 @@ android {
     defaultConfig {
         applicationId "com.mindwhile.jago_pilot"
         minSdkVersion 24
-        targetSdkVersion 34
+        targetSdkVersion 36
         versionCode 60
         versionName "1.0.60"
         multiDexEnabled true

@@ -29,8 +29,6 @@ import '../trip/trip_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../referral/referral_screen.dart';
 import '../profile/support_chat_screen.dart';
-import '../onboarding/model_selection_screen.dart';
-import '../onboarding/subscription_plans_screen.dart';
 import '../earnings/earnings_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
 import '../parcel/parcel_delivery_screen.dart';
@@ -142,17 +140,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             context,
             MaterialPageRoute(builder: (_) => const PendingVerificationScreen()),
           );
-        } else if (data['modelSelectedAt'] == null) {
-          final inFreePeriod = data['launchFreeActive'] == true &&
-              data['freePeriodEnd'] != null &&
-              DateTime.tryParse(data['freePeriodEnd'].toString())?.isAfter(DateTime.now()) == true;
-          if (!inFreePeriod) {
-            if (!mounted) return;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const ModelSelectionScreen()),
-            );
-          }
         }
       }
     } catch (_) {}
@@ -1023,6 +1010,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           if (mounted) _toggleOnline();
           return true;
         }
+      } else if (res.statusCode >= 500 && mounted) {
+        _showSnack('Verification service busy. Continuing for now.');
       }
     } catch (_) {}
     return false;
@@ -1093,21 +1082,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           return;
         }
 
-        if (errBody['needsModelSelection'] == true || errBody['needsModelSelection'] == 'true') {
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ModelSelectionScreen()),
-          );
-          return;
-        }
-
-        if (errBody['subscriptionExpired'] == true || errBody['subscriptionExpired'] == 'true'
+        if (errBody['needsModelSelection'] == true || errBody['needsModelSelection'] == 'true'
+            || errBody['subscriptionExpired'] == true || errBody['subscriptionExpired'] == 'true'
             || errBody['requiresSubscription'] == true || errBody['requiresSubscription'] == 'true') {
           if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const SubscriptionPlansScreen()),
+          setState(() => _toggling = false);
+          _socket.setOnlineStatus(isOnline: false, lat: _center.latitude, lng: _center.longitude);
+          _showSnack(
+            errBody['message']?.toString() ?? 'Driver access configuration is being updated. Try again in a moment.',
+            error: true,
           );
           return;
         }

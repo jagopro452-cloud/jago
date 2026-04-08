@@ -39,6 +39,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   bool _loading = false;
   bool _estimating = true;
   List<Map<String, dynamic>> _allFares = [];
+  Set<String> _activeServiceKeys = {};
   int _selectedFareIndex = 0;
   String _paymentMethod = 'cash';
   double _walletBalance = 0;
@@ -72,7 +73,6 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   ];
 
   static const Color _jagoPrimary = JT.primary;
-  static const Color _jagoSecondary = JT.secondary;
 
   static const Color _blue = JT.primary;
   static const Color _green = JT.success;
@@ -141,6 +141,109 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('pool') || n.contains('carpool') || n.contains('outerpool')) return true;
     if (n.contains('sedan') && !n.contains('mini')) return true;
     return false;
+  }
+
+  static String _normalizeServiceKey(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  static Set<String> _fareServiceKeys(Map<String, dynamic> fare) {
+    final keys = <String>{};
+    final rawName = (fare['vehicleCategoryName'] ?? fare['vehicleName'] ?? fare['name'] ?? '').toString().toLowerCase();
+    final rawType = (fare['type'] ?? fare['vehicleType'] ?? fare['category'] ?? '').toString().toLowerCase();
+    if (rawType.isNotEmpty) keys.add(_normalizeServiceKey(rawType));
+    if (rawName.isNotEmpty) keys.add(_normalizeServiceKey(rawName));
+
+    if (rawName.contains('parcel auto')) keys.addAll({'parcel_auto', 'parcel', 'auto', 'cargo'});
+    if (rawName.contains('parcel bike') || rawName.contains('bike parcel')) {
+      keys.addAll({'parcel_bike', 'parcel', 'bike'});
+    }
+    if (rawName.contains('mini truck') || rawName.contains('tata ace')) {
+      keys.addAll({'mini_truck', 'cargo', 'truck', 'goods'});
+    }
+    if (rawName.contains('pickup van') || rawName.contains('pickup')) {
+      keys.addAll({'pickup_van', 'cargo', 'truck', 'van'});
+    }
+    if (rawName.contains('bike')) keys.add('bike');
+    if (rawName.contains('auto')) keys.add('auto');
+    if (rawName.contains('car')) keys.addAll({'car', 'sedan'});
+    if (rawName.contains('suv')) keys.add('suv');
+    if (rawName.contains('pool') || rawName.contains('share')) keys.addAll({'pool', 'carpool'});
+    if (rawName.contains('cargo') || rawName.contains('truck') || rawName.contains('van')) {
+      keys.addAll({'cargo', 'truck', 'van'});
+    }
+    if (rawType == 'parcel') keys.add('parcel');
+    if (rawType == 'ride') keys.addAll({'ride', 'bike', 'auto', 'car'});
+    return keys;
+  }
+
+  static Set<String> _serviceKeysFromActive(Map<String, dynamic> service) {
+    final keys = <String>{};
+    final rawName = (service['name'] ?? service['service_name'] ?? service['key'] ?? '').toString().toLowerCase();
+    final rawType = (service['type'] ?? service['category'] ?? service['serviceType'] ?? service['kind'] ?? '').toString().toLowerCase();
+    if (rawName.isNotEmpty) keys.add(_normalizeServiceKey(rawName));
+    if (rawType.isNotEmpty) keys.add(_normalizeServiceKey(rawType));
+
+    if (rawType == 'ride') keys.addAll({'ride', 'bike', 'auto', 'car'});
+    if (rawType == 'parcel' || rawType == 'cargo') keys.addAll({'parcel', 'cargo', 'truck', 'van'});
+    if (rawName.contains('parcel auto')) keys.addAll({'parcel_auto', 'parcel', 'auto'});
+    if (rawName.contains('parcel bike') || rawName.contains('bike parcel')) keys.addAll({'parcel_bike', 'parcel', 'bike'});
+    if (rawName.contains('mini truck') || rawName.contains('tata ace')) keys.addAll({'mini_truck', 'cargo', 'truck'});
+    if (rawName.contains('pickup van') || rawName.contains('pickup')) keys.addAll({'pickup_van', 'cargo', 'truck', 'van'});
+    if (rawName.contains('bike')) keys.add('bike');
+    if (rawName.contains('auto')) keys.add('auto');
+    if (rawName.contains('car')) keys.addAll({'car', 'sedan'});
+    if (rawName.contains('suv')) keys.add('suv');
+    if (rawName.contains('pool') || rawName.contains('share')) keys.addAll({'pool', 'carpool'});
+    return keys;
+  }
+
+  bool _isFareAllowedByActiveServices(Map<String, dynamic> fare) {
+    if (_activeServiceKeys.isEmpty) return true;
+    final fareKeys = _fareServiceKeys(fare);
+    return fareKeys.any(_activeServiceKeys.contains);
+  }
+
+  List<Map<String, dynamic>> _applyActiveServiceFilter(List<Map<String, dynamic>> fares) {
+    if (_activeServiceKeys.isEmpty) return fares;
+    return fares.where(_isFareAllowedByActiveServices).toList();
+  }
+
+  Future<void> _fetchActiveServices() async {
+    try {
+      final uri = Uri.parse(ApiConfig.servicesForLocation).replace(queryParameters: {
+        'lat': widget.pickupLat.toString(),
+        'lng': widget.pickupLng.toString(),
+      });
+      var r = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (r.statusCode != 200) {
+        r = await http.get(Uri.parse(ApiConfig.activeServices)).timeout(const Duration(seconds: 5));
+      }
+      if (r.statusCode != 200) return;
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final list = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+      final keys = <String>{};
+      for (final svc in list) {
+        keys.addAll(_serviceKeysFromActive(svc));
+      }
+      if (!mounted) return;
+      setState(() {
+        _activeServiceKeys = keys;
+      });
+      if (mounted && _allFares.isNotEmpty) {
+        setState(() {
+          _allFares = _applyActiveServiceFilter(_allFares);
+          if (_selectedFareIndex >= _allFares.length) {
+            _selectedFareIndex = 0;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   static Color _accentForVehicle(String name) {
@@ -395,6 +498,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handleRazorpaySuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handleRazorpayError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+    _fetchActiveServices();
     _estimateFare();
     _fetchWallet();
     _fetchPopularLocations();
@@ -405,7 +509,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final uri = Uri.parse(ApiConfig.popularLocations).replace(
         queryParameters: {'lat': widget.pickupLat.toString(), 'lng': widget.pickupLng.toString()},
       );
-      final r = await http.get(uri).timeout(const Duration(seconds: 5));
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body);
         if (data is! Map) return;
@@ -533,7 +638,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 return true;
               }).toList();
             }
-            _allFares = filtered.isNotEmpty ? filtered : _buildFallbackFares();
+            final candidateFares = filtered.isNotEmpty ? filtered : _buildFallbackFares();
+            _allFares = _applyActiveServiceFilter(candidateFares);
             if (widget.vehicleCategoryId != null) {
               final idx = _allFares.indexWhere((f) =>
                 f['vehicleCategoryId']?.toString() == widget.vehicleCategoryId ||
@@ -543,12 +649,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           });
         } else {
           // Server returned no fares — service is inactive for this category
-          if (mounted) setState(() => _allFares = []);
+          if (mounted) {
+            final fallback = _applyActiveServiceFilter(_buildFallbackFares());
+            setState(() => _allFares = fallback);
+          }
         }
       }
     } catch (_) {
       // Network error — show client-side estimates only on connectivity failure
-      if (mounted) setState(() => _allFares = _buildFallbackFares());
+      if (mounted) setState(() => _allFares = _applyActiveServiceFilter(_buildFallbackFares()));
     }
     if (mounted) setState(() => _estimating = false);
   }
