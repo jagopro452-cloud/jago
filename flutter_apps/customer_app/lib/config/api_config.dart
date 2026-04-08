@@ -28,6 +28,10 @@ class ApiConfig {
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
 
+  // Shared static asset base URL.
+  static String get assetBaseUrl => baseUrl;
+  static String vehicleAsset(String fileName) => '$assetBaseUrl/static/vehicles/$fileName';
+
   static String get sendOtp => '$baseUrl/api/app/send-otp';
   static String get verifyOtp => '$baseUrl/api/app/verify-otp';
   static String get verifyFirebaseToken => '$baseUrl/api/app/verify-firebase-token';

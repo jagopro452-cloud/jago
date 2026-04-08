@@ -160,14 +160,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   // ── Vehicle image URLs (real vehicle images, network with emoji fallback) ──
   // Replace these with your own CDN/server static asset URLs for production.
-  static const Map<String, String> _vehicleImageUrls = {
-    'bike':        'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png',
-    'auto':        'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png',
-    'car':         'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png',
-    'parcel_bike': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png',
-    'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
-    'mini_truck':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/mini_truck.png',
-    'pickup_van':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/pickup_van.png',
+  static final Map<String, String> _vehicleImageUrls = {
+    'bike':        ApiConfig.vehicleAsset('bike.png'),
+    'auto':        ApiConfig.vehicleAsset('auto.png'),
+    'car':         ApiConfig.vehicleAsset('car.png'),
+    'parcel_bike': ApiConfig.vehicleAsset('parcel_bike.png'),
+    'parcel_auto': ApiConfig.vehicleAsset('parcel_auto.png'),
+    'mini_truck':  ApiConfig.vehicleAsset('mini_truck.png'),
+    'pickup_van':  ApiConfig.vehicleAsset('pickup_van.png'),
   };
 
   static String? _vehicleImageKey(String name) {

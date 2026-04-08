@@ -477,7 +477,7 @@ export default function LandingPage() {
                 <p style={{ fontSize: 15, color: W40, marginTop: 14, lineHeight: 1.75 }}>From quick city hops to long-distance hauls — Jago gets you there.</p>
               </div>
               {(() => {
-                const CDN = "https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles";
+                const CDN = "/static/vehicles";
                 const SVC = [
                   { img: `${CDN}/bike.png`,       bg: "linear-gradient(145deg,#0a1535 0%,#0f2060 100%)", title: "Bike Taxi",       desc: "Fastest way through city traffic. Affordable 2-wheeler rides.",  tag: "2-Wheeler" },
                   { img: `${CDN}/auto.png`,        bg: "linear-gradient(145deg,#0f1a2e 0%,#0d2b4a 100%)", title: "Auto Ride",       desc: "Classic CNG auto rides. Comfortable and pocket-friendly.",        tag: "3-Wheeler" },

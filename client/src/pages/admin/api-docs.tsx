@@ -29,7 +29,7 @@ const METHOD_COLOR: Record<ApiMethod, string> = {
   DELETE: "#dc2626",
 };
 
-const BASE_URL = "https://jagopro.org";
+const BASE_URL = typeof window !== "undefined" ? window.location.origin : "https://jagopro.org";
 
 const API_SECTIONS: ApiSection[] = [
   {

@@ -1650,9 +1650,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   String? _vehicleImageUrlForCategory() {
     final n = _vehicleCategory.toLowerCase();
-    if (n.contains('bike')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png';
-    if (n.contains('auto')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png';
-    if (n.contains('car') || n.contains('suv')) return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png';
+    if (n.contains('bike')) return ApiConfig.vehicleAsset('bike.png');
+    if (n.contains('auto')) return ApiConfig.vehicleAsset('auto.png');
+    if (n.contains('car') || n.contains('suv')) return ApiConfig.vehicleAsset('car.png');
     return null;
   }
 

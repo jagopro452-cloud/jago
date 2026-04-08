@@ -1768,7 +1768,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (hasRide)
             Expanded(
                 child: _buildServiceCard(
-              imageUrl: 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png',
+              imageUrl: ApiConfig.vehicleAsset('auto.png'),
               fallbackIcon: Icons.electric_rickshaw_rounded,
               title: 'Ride',
               subtitle: 'Bike · Auto · Car',
@@ -1792,7 +1792,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (hasParcel)
             Expanded(
                 child: _buildServiceCard(
-              imageUrl: 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png',
+              imageUrl: ApiConfig.vehicleAsset('parcel_bike.png'),
               fallbackIcon: Icons.local_shipping_rounded,
               title: 'Parcel',
               subtitle: 'Bike · Truck · Van',

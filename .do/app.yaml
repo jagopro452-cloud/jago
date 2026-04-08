@@ -78,6 +78,8 @@ services:
       # To enable 2FA: set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE=+91XXXXXXXXXX in DO dashboard
       - key: ENABLE_DEV_OTP_RESPONSES
         value: "false"
+      - key: APP_BASE_URL
+        value: "https://jagopro.org"
       - key: SOCKET_ALLOWED_ORIGINS
         value: "https://jagopro.org,https://www.jagopro.org,https://oyster-app-9e9cd.ondigitalocean.app"
       - key: REDIS_URL

@@ -945,6 +945,22 @@ async function ensureAdminExists() {
   }
 }
 
+async function applyBootstrapMigration(fileName: string) {
+  const migrationsPath = path.join(process.cwd(), "migrations", fileName);
+  if (!fs.existsSync(migrationsPath)) {
+    console.warn(`[schema] migration file missing: ${fileName}`);
+    return;
+  }
+
+  const migrationSql = fs.readFileSync(migrationsPath, "utf8");
+  await rawDb.execute(rawSql.raw(migrationSql));
+}
+
+async function ensureBootstrapSchema() {
+  await applyBootstrapMigration("0000_crazy_living_mummy.sql");
+  await applyBootstrapMigration("0001_operational_schema_hardening.sql");
+}
+
 async function ensureOperationalSchema() {
   // pgcrypto might be blocked in some managed DBs; do not let it abort schema setup
   await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch((e: any) => {
@@ -1129,6 +1145,8 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS total_pending_balance NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_threshold NUMERIC(10,2) NOT NULL DEFAULT 200;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_payment_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_brands_name ON vehicle_brands(name);
 
       -- Parcel / delivery fields on trip_requests
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(12,2) DEFAULT 0;
@@ -2043,6 +2061,15 @@ async function ensureOperationalSchema() {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  const publicAppBaseUrl = process.env.APP_BASE_URL || "https://jagopro.org";
+
+  try {
+    await ensureBootstrapSchema();
+    console.log("[schema] bootstrap migrations applied");
+  } catch (e: any) {
+    console.error("[schema] bootstrap migration error:", e.message);
+  }
+
   // Always run schema bootstrap on startup to ensure all columns/tables exist
   try {
     await ensureOperationalSchema();
@@ -2310,6 +2337,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
     if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
     try {
+      await ensureBootstrapSchema();
       await ensureOperationalSchema();
       await ensureAdminExists();
       const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
@@ -2338,6 +2366,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
     if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
     try {
+      await ensureBootstrapSchema();
+      await ensureOperationalSchema();
       // -- 1. Vehicle categories (upsert by name) ------------------------------
       const vehicles = [
         // RIDE services
@@ -2524,12 +2554,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { name: "Mahindra Alfa", category: "three_wheeler" }, { name: "Piaggio Ape", category: "three_wheeler" },
       ];
       for (const b of brands) {
-        await rawDb.execute(rawSql`
-          INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})
-          ON CONFLICT (name) DO UPDATE SET category=${b.category}
-        `).catch(() => {
-          rawDb.execute(rawSql`INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})`).catch(dbCatch("db"));
-        });
+        const existing = await rawDb.execute(rawSql`SELECT id FROM vehicle_brands WHERE LOWER(name) = LOWER(${b.name}) LIMIT 1`);
+        if (existing.rows.length) {
+          const brandId = (existing.rows[0] as any).id;
+          await rawDb.execute(rawSql`
+            UPDATE vehicle_brands
+            SET category=${b.category}
+            WHERE id=${brandId}::uuid
+          `).catch(dbCatch("db"));
+        } else {
+          await rawDb.execute(rawSql`
+            INSERT INTO vehicle_brands (name, category) VALUES (${b.name}, ${b.category})
+          `).catch(dbCatch("db"));
+        }
       }
 
       // -- 3. Platform services � do NOT override admin toggles on restart ------
@@ -2641,6 +2678,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const provided = String(req.query.key || req.headers["x-ops-key"] || "").trim();
     if (!resetKey || provided !== resetKey) return res.status(403).json({ message: "Invalid key" });
     try {
+      await ensureBootstrapSchema();
+      await ensureOperationalSchema();
       const pwHash = await hashPassword("Test@123");
       // Fetch vehicle categories for driver assignment
       const vcRes = await rawDb.execute(rawSql`SELECT id, name FROM vehicle_categories ORDER BY created_at ASC`);
@@ -2708,9 +2747,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ON CONFLICT (user_id) DO UPDATE SET vehicle_category_id=${d.vc.id}::uuid, availability_status='offline'
           `).catch(dbCatch("db"));
           await rawDb.execute(rawSql`
-            INSERT INTO driver_locations (user_id, lat, lng, is_online)
+            INSERT INTO driver_locations (driver_id, lat, lng, is_online)
             VALUES (${driverId}::uuid, 17.3850, 78.4867, false)
-            ON CONFLICT (user_id) DO NOTHING
+            ON CONFLICT (driver_id) DO NOTHING
           `).catch(dbCatch("db"));
         }
       }
@@ -13368,7 +13407,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS share_token VARCHAR(64)`);
         await rawDb.execute(rawSql`UPDATE trip_requests SET share_token=${shareToken} WHERE id=${tripId}::uuid`);
       });
-      const shareLink = `${process.env.APP_BASE_URL || 'https://oyster-app-9e9cd.ondigitalocean.app'}/track/${shareToken}`;
+      const shareLink = `${publicAppBaseUrl}/track/${shareToken}`;
       res.json({ success: true, shareLink, shareToken });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13384,7 +13423,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                uv.lat as driver_lat, uv.lng as driver_lng
         FROM trip_requests t
         LEFT JOIN users u ON t.driver_id = u.id
-        LEFT JOIN (SELECT user_id, lat, lng FROM driver_locations ORDER BY created_at DESC) uv ON uv.user_id = t.driver_id
+        LEFT JOIN (SELECT driver_id AS user_id, lat, lng FROM driver_locations ORDER BY created_at DESC) uv ON uv.user_id = t.driver_id
         WHERE t.share_token=${token}
         LIMIT 1
       `).catch(() => ({ rows: [] }));
@@ -13556,7 +13595,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Download page � jagopro.org/download
   app.get("/download", (_req, res) => {
-    const base = process.env.APP_BASE_URL || "https://oyster-app-9e9cd.ondigitalocean.app";
+    const base = publicAppBaseUrl;
     res.send(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Download JAGO Pro App</title>
@@ -13577,12 +13616,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="card">
   <div class="logo">JAGO Pro</div>
   <div class="sub">Ride. Deliver. Earn.</div>
-  <a class="btn btn-blue" href="/apks/jago-customer-latest.apk" download>
+  <a class="btn btn-blue" href="${base}/apks/jago-customer-latest.apk" download>
     ?? Download Customer App
   </a>
   <span class="badge">v1.0.60 | Universal APK | 60 MB</span>
   <br><br>
-  <a class="btn btn-green" href="/apks/jago-driver-latest.apk" download>
+  <a class="btn btn-green" href="${base}/apks/jago-driver-latest.apk" download>
     ?? Download Driver / Pilot App
   </a>
   <span class="badge">v1.0.61 | Universal APK | 60 MB</span>

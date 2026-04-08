@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../config/api_config.dart';
 import '../services/alarm_service.dart';
 
 /// Full-screen ride request overlay.
@@ -292,25 +293,25 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     final type = (trip['type'] ?? trip['tripType'] ?? '').toString().toLowerCase();
     final isParcel = type.contains('parcel') || name.contains('parcel');
     if (name.contains('pickup van') || name.contains('pickup')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/pickup_van.png';
+      return ApiConfig.vehicleAsset('pickup_van.png');
     }
     if (name.contains('mini truck') || name.contains('tata ace')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/mini_truck.png';
+      return ApiConfig.vehicleAsset('mini_truck.png');
     }
     if (isParcel && name.contains('bike')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png';
+      return ApiConfig.vehicleAsset('parcel_bike.png');
     }
     if (isParcel && name.contains('auto')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png';
+      return ApiConfig.vehicleAsset('parcel_auto.png');
     }
     if (name.contains('bike')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/bike.png';
+      return ApiConfig.vehicleAsset('bike.png');
     }
     if (name.contains('auto')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png';
+      return ApiConfig.vehicleAsset('auto.png');
     }
     if (name.contains('car') || name.contains('suv')) {
-      return 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/car.png';
+      return ApiConfig.vehicleAsset('car.png');
     }
     return null;
   }
