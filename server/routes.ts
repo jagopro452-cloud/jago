@@ -187,6 +187,10 @@ function generateRefId(): string {
   return "TRP" + Math.random().toString(36).substr(2, 7).toUpperCase();
 }
 
+function normalizePhoneNumber(value: unknown): string {
+  return String(value ?? "").replace(/\D/g, "").slice(-10);
+}
+
 // -- Razorpay key helper: env ? DB fallback (consistent across all endpoints) --
 export async function getRazorpayKeys(): Promise<{ keyId: string | undefined; keySecret: string | undefined }> {
   const keyId = await getConf("RAZORPAY_KEY_ID", "razorpay_key_id");
@@ -2091,6 +2095,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         checks.adminsTable = `FAIL: ${e.message}`;
         return res.json(checks);
       }
+      try {
+        const userCheck = await rawDb.execute(rawSql`
+          SELECT
+            COUNT(*)::int as total,
+            COUNT(*) FILTER (WHERE user_type='customer')::int as customers,
+            COUNT(*) FILTER (WHERE user_type='driver')::int as drivers
+          FROM users
+        `);
+        const u: any = userCheck.rows[0] || {};
+        checks.usersTable = "exists";
+        checks.userCounts = {
+          total: Number(u.total || 0),
+          customers: Number(u.customers || 0),
+          drivers: Number(u.drivers || 0),
+        };
+        if (!checks.userCounts.total) {
+          checks.appLoginHint = "users table is empty in this DB; customer and driver logins will fail until data is restored";
+        }
+      } catch (e: any) {
+        checks.usersTable = `FAIL: ${e.message}`;
+      }
       // 3. Admin email configured?
       const configEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
       checks.adminEmailConfigured = configEmail ? configEmail.replace(/(.{3}).*(@.*)/, '$1***$2') : "NOT-SET";
@@ -2133,6 +2158,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 6. 2FA config
       checks.twoFaRequired = process.env.ADMIN_2FA_REQUIRED || "not-set";
       checks.requireAdminTwoFactorComputed = requireAdminTwoFactor;
+      if (requireAdminTwoFactor && !runtimeEnv.ADMIN_PHONE) {
+        checks.adminTwoFactorIssue = "2FA is enabled but ADMIN_PHONE is missing, so admin login will fail";
+      }
       checks.nodeEnv = process.env.NODE_ENV || "not-set";
       checks.adminPasswordSyncOnRestart = process.env.ADMIN_PASSWORD_SYNC_ON_RESTART || "not-set";
       // Test password verification if env password is set
@@ -7538,7 +7566,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
+      const phoneStr = normalizePhoneNumber(phone);
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
       // Rate limiting: max 5 OTPs per phone per hour (graceful if otp_logs table missing)
@@ -7564,7 +7592,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, otp, userType = "customer", name, referralCode } = req.body;
       if (!phone || !otp) return res.status(400).json({ message: "Phone and OTP required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
+      const phoneStr = normalizePhoneNumber(phone);
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
       // Per-phone OTP brute force protection (max_attempts from otp_settings, default 3)
@@ -7600,7 +7628,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`);
 
       // Find or create user
-      let userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      let userRes = await rawDb.execute(rawSql`
+        SELECT * FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       let user: any;
       let isNew = false;
 
@@ -7613,7 +7646,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)}
+          WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+            AND user_type=${userType}
+        `).catch(dbCatch("db"));
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -7671,8 +7709,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
         const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
-        const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
-        const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
+        const firebasePhone = normalizePhoneNumber(decoded.phone_number);
+        const clientPhone = normalizePhoneNumber(phone);
         phoneStr = firebasePhone || clientPhone;
         if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
           return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
@@ -7691,8 +7729,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const lookupData = (await lookupRes.json()) as any;
             const firebaseUser = lookupData.users?.[0];
             if (firebaseUser) {
-              const firebasePhone = (firebaseUser.phoneNumber || "").replace(/\D/g, "").slice(-10);
-              const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
+              const firebasePhone = normalizePhoneNumber(firebaseUser.phoneNumber);
+              const clientPhone = normalizePhoneNumber(phone);
               phoneStr = firebasePhone || clientPhone;
               if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
                 return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
@@ -7715,7 +7753,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Find or create user
-      let userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      let userRes = await rawDb.execute(rawSql`
+        SELECT * FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       let user: any;
       let isNew = false;
       if (!userRes.rows.length) {
@@ -7726,7 +7769,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
           RETURNING *
         `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)}
+          WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+            AND user_type=${userType}
+        `).catch(dbCatch("db"));
         user = camelize(newUser.rows[0]);
       } else {
         user = camelize(userRes.rows[0]);
@@ -7769,24 +7817,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/register", appLimiter, async (req, res) => {
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
+      const phoneStr = normalizePhoneNumber(phone);
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
       if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
-      if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
+      if (phoneStr.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
       if (fullName.length > 100) return res.status(400).json({ message: "Name too long (max 100 chars)" });
       if (email && email.length > 200) return res.status(400).json({ message: "Email too long" });
       const passwordError = validateStrongPassword(password);
       if (passwordError) return res.status(400).json({ message: passwordError });
-      const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      const existing = await rawDb.execute(rawSql`
+        SELECT id FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
       const passwordHash = await hashPassword(password);
       const insertRes = await rawDb.execute(rawSql`
         INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
-        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
+        VALUES (${fullName}, ${phoneStr}, ${email || null}, ${userType}, true, 0, ${passwordHash})
         RETURNING *
       `);
       // Set referral_code separately (handles DB where column may not exist yet)
-      const refCode = 'JAGOPRO' + phone.slice(-6);
-      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(dbCatch("db"));
+      const refCode = 'JAGOPRO' + phoneStr.slice(-6);
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET referral_code=${refCode}
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+      `).catch(dbCatch("db"));
       const user = camelize(insertRes.rows[0]) as any;
       const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
       const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -7814,8 +7873,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/login-password", loginLimiter, async (req, res) => {
     try {
       const { phone, password, userType = "customer" } = req.body;
+      const phoneStr = normalizePhoneNumber(phone);
       if (!phone || !password) return res.status(400).json({ message: "Phone and password are required" });
-      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+      const userRes = await rawDb.execute(rawSql`
+        SELECT * FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       if (!userRes.rows.length) return res.status(404).json({ message: "No account found. Please register first." });
       const user = camelize(userRes.rows[0]) as any;
       if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
@@ -7836,9 +7902,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone number is required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
+      const phoneStr = normalizePhoneNumber(phone);
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
-      const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      const userRes = await rawDb.execute(rawSql`
+        SELECT id FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       if (!userRes.rows.length) return res.status(404).json({ message: "No account found with this phone number." });
       // Use Firebase Phone Auth for password reset verification
       console.log(`[RESET] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} ? Firebase password reset`);
@@ -7851,14 +7922,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, otp, newPassword, userType = "customer" } = req.body;
       if (!phone || !otp || !newPassword) return res.status(400).json({ message: "Phone, OTP and new password are required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
+      const phoneStr = normalizePhoneNumber(phone);
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
       const firebaseResetPasswordError = validateStrongPassword(newPassword);
       if (firebaseResetPasswordError) return res.status(400).json({ message: firebaseResetPasswordError });
-      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
+      const userRes = await rawDb.execute(rawSql`
+        SELECT * FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+          AND reset_otp=${otp}
+          AND reset_otp_expiry > NOW()
+        LIMIT 1
+      `);
       if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
       const passwordHash = await hashPassword(newPassword);
-      await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+      `);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -7871,7 +7954,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Firebase token, phone and new password are required" });
       }
       if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
-      const phoneStr = phone.toString().replace(/\D/g, "").slice(-10);
+      const phoneStr = normalizePhoneNumber(phone);
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
 
       // Verify Firebase token
@@ -7880,7 +7963,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
         const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
-        firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
+        firebasePhone = normalizePhoneNumber(decoded.phone_number);
       } else {
         const webApiKey = process.env.FIREBASE_WEB_API_KEY;
         if (!webApiKey) return res.status(503).json({ message: "Firebase not configured. Contact support." });
@@ -7890,17 +7973,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
         if (!lookupRes.ok) return res.status(401).json({ message: "Invalid or expired Firebase token." });
         const lookupData = (await lookupRes.json()) as any;
-        firebasePhone = (lookupData.users?.[0]?.phoneNumber || "").replace(/\D/g, "").slice(-10);
+        firebasePhone = normalizePhoneNumber(lookupData.users?.[0]?.phoneNumber);
       }
       if (!firebasePhone) return res.status(401).json({ message: "Could not verify phone from Firebase token." });
       if (firebasePhone !== phoneStr) return res.status(400).json({ message: "Phone number mismatch." });
 
       // Check user exists
-      const userRes = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      const userRes = await rawDb.execute(rawSql`
+        SELECT id FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+        LIMIT 1
+      `);
       if (!userRes.rows.length) return res.status(404).json({ message: "User not found." });
 
       const passwordHash = await hashPassword(newPassword);
-      await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL
+        WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10)=${phoneStr}
+          AND user_type=${userType}
+      `);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
