@@ -1022,6 +1022,34 @@ async function ensureOperationalSchema() {
     `);
 
     await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        full_name VARCHAR(255),
+        first_name VARCHAR(191),
+        last_name VARCHAR(191),
+        email VARCHAR(191),
+        phone VARCHAR(20),
+        profile_image VARCHAR(191),
+        user_type VARCHAR(25) DEFAULT 'customer' NOT NULL,
+        is_active BOOLEAN DEFAULT true NOT NULL,
+        loyalty_points DOUBLE PRECISION DEFAULT 0 NOT NULL,
+        verification_status VARCHAR(30) DEFAULT 'pending' NOT NULL,
+        license_number VARCHAR(100),
+        license_image VARCHAR(500),
+        vehicle_image VARCHAR(500),
+        vehicle_number VARCHAR(50),
+        vehicle_model VARCHAR(100),
+        rejection_note TEXT,
+        password_hash VARCHAR(255),
+        reset_otp VARCHAR(10),
+        reset_otp_expiry TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT users_email_unique UNIQUE (email)
+      )
+    `);
+
+    await rawDb.execute(rawSql`
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50);
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS rejected_driver_ids UUID[] DEFAULT '{}'::uuid[];
