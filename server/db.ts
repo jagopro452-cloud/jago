@@ -48,7 +48,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Development: allow more parallel initializers without connection timeout noise.
 const maxConnections = isProduction ? 25 : 35;
 // Neon serverless DBs have cold starts (5-10s) — give enough headroom
-const connectTimeoutMs = isProduction ? 15000 : 15000;
+const connectTimeoutMs = isProduction ? 20000 : 15000;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -56,6 +56,8 @@ export const pool = new Pool({
   max: maxConnections,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: connectTimeoutMs,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
   allowExitOnIdle: false,
   application_name: 'jago-api',   // For debugging in pg_stat_statements
 });
