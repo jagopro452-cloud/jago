@@ -79,7 +79,7 @@ services:
       - key: ENABLE_DEV_OTP_RESPONSES
         value: "false"
       - key: SOCKET_ALLOWED_ORIGINS
-        value: "https://jagopro.org"
+        value: "https://jagopro.org,https://www.jagopro.org,https://oyster-app-9e9cd.ondigitalocean.app"
       - key: REDIS_URL
         value: ${jago-redis.REDIS_URL}
         type: SECRET

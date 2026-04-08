@@ -3,7 +3,7 @@ class ApiConfig {
   static const String compileTimeBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
   // Production server URL
-  static const String _prodUrl = 'https://jagopro.org';
+  static const String _prodUrl = 'https://oyster-app-9e9cd.ondigitalocean.app';
 
   // LAN IP for local testing only
   static const String _lanDevUrl = 'http://192.168.1.11:5000';
