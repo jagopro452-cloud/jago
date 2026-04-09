@@ -130,7 +130,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF5B8FFF), Color(0xFF1A50D0)],
+                  colors: [Color(0xFF3A9EEC), Color(0xFF2A4CB7)],
                 ),
               ),
             ),

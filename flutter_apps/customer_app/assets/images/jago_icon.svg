@@ -1,11 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#5B8FFF"/>
-      <stop offset="100%" stop-color="#2F6BFF"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2A4CB7"/>
+      <stop offset="100%" stop-color="#3A9EEC"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#g)"/>
-  <path d="M40 13 L40 38 Q40 53 28 53 Q16 53 16 42 L16 38"
-        stroke="white" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#shine)"/>
+  <!-- J letterform -->
+  <path d="M38 14 L38 38 Q38 50 28 50 Q18 50 18 40"
+        stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Dot accent -->
+  <circle cx="38" cy="14" r="0" fill="white"/>
+  <!-- Motion lines -->
+  <path d="M44 24 L50 24" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <path d="M44 30 L52 30" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+  <path d="M44 36 L48 36" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
 </svg>

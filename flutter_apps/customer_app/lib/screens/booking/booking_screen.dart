@@ -60,17 +60,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverPhoneCtrl = TextEditingController();
   bool _popularForPickup = false;
 
-  // Populated dynamically from /api/app/popular-locations; static data used as fallback
-  List<Map<String, dynamic>> _popularLocations = const [
-    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
-    {'name': 'Vijayawada Bus Stand', 'lat': 16.5179, 'lng': 80.6238},
-    {'name': 'Balaji Bus Stand', 'lat': 16.5106, 'lng': 80.6248},
-    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
-    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-  ];
+  // Populated dynamically from /api/app/popular-locations
+  List<Map<String, dynamic>> _popularLocations = const [];
 
   static const Color _jagoPrimary = JT.primary;
 
@@ -261,17 +252,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return JT.primary;
   }
 
-  // ── Vehicle image URLs (real vehicle images, network with emoji fallback) ──
-  // Replace these with your own CDN/server static asset URLs for production.
-  static final Map<String, String> _vehicleImageUrls = {
-    'bike':        ApiConfig.vehicleAsset('bike.png'),
-    'auto':        ApiConfig.vehicleAsset('auto.png'),
-    'car':         ApiConfig.vehicleAsset('car.png'),
-    'parcel_bike': ApiConfig.vehicleAsset('parcel_bike.png'),
-    'parcel_auto': ApiConfig.vehicleAsset('parcel_auto.png'),
-    'mini_truck':  ApiConfig.vehicleAsset('mini_truck.png'),
-    'pickup_van':  ApiConfig.vehicleAsset('pickup_van.png'),
-  };
+  // ── Vehicle icons — instant local rendering, no network dependency ──
 
   static String? _vehicleImageKey(String name) {
     final n = name.toLowerCase();
@@ -286,10 +267,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return null;
   }
 
-  /// Renders vehicle artwork — real network image with icon fallback.
+  /// Renders vehicle artwork with icon.
   Widget _buildVehicleArtwork(String name, Color accent, bool isSelected, {double size = 96}) {
-    final imageKey = _vehicleImageKey(name);
-    final imageUrl = imageKey != null ? _vehicleImageUrls[imageKey] : null;
     final icon = _iconForVehicle(name);
     final isParcel = widget.category == 'parcel';
 
@@ -302,22 +281,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           topLeft: Radius.circular(14), bottomLeft: Radius.circular(14)),
       ),
       child: Stack(alignment: Alignment.center, children: [
-        // Vehicle image (real) with icon fallback
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 18),
-          child: imageUrl != null
-            ? Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                  icon, size: size * 0.44,
-                  color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
-                ),
-              )
-            : Icon(
-                icon, size: size * 0.44,
-                color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
-              ),
+          child: Icon(
+            icon, size: size * 0.48,
+            color: accent.withValues(alpha: isSelected ? 0.90 : 0.65),
+          ),
         ),
         // DELIVERY / RIDE badge at bottom
         Positioned(
@@ -390,24 +359,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w400)),
             Text('estimated fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
           ])),
-          // Real vehicle image — emoji fallback if network fails
-          Builder(builder: (_) {
-            final imgKey = _vehicleImageKey(name);
-            final imgUrl = imgKey != null ? _vehicleImageUrls[imgKey] : null;
-            return SizedBox(
-              width: 100, height: 80,
-              child: imgUrl != null
-                ? Image.network(
-                    imgUrl,
-                    fit: BoxFit.contain,
-                    color: Colors.white.withValues(alpha: 0.92),
-                    colorBlendMode: BlendMode.modulate,
-                    errorBuilder: (_, __, ___) =>
-                        Text(emoji, style: const TextStyle(fontSize: 64)),
-                  )
-                : Text(emoji, style: const TextStyle(fontSize: 64)),
-            );
-          }),
+          // Vehicle icon
+          SizedBox(
+            width: 100, height: 80,
+            child: Icon(
+              _iconForVehicle(name),
+              size: 56,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
         ]),
       ),
     );

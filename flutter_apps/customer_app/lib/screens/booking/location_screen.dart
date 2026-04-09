@@ -162,8 +162,10 @@ class _LocationScreenState extends State<LocationScreen>
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high)
-          .timeout(const Duration(seconds: 8));
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ));
       final addr = await _reverseGeocode(pos.latitude, pos.longitude);
       if (!mounted) return;
       setState(() {
@@ -270,7 +272,7 @@ class _LocationScreenState extends State<LocationScreen>
       final headers = await AuthService.getHeaders();
       final r = await http.get(
           Uri.parse(
-              '${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'),
+              '${ApiConfig.baseUrl}/api/app/popular-locations?lat=${widget.pickupLat}&lng=${widget.pickupLng}'),
           headers: headers);
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
@@ -293,29 +295,7 @@ class _LocationScreenState extends State<LocationScreen>
         }
       }
     } catch (_) {}
-    if (mounted && _popular.isEmpty) {
-      setState(() => _popular = const [
-            {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-            {
-              'name': 'Vijayawada Railway Station',
-              'lat': 16.5175,
-              'lng': 80.6400
-            },
-            {
-              'name': 'Vijayawada Bus Stand',
-              'lat': 16.5179,
-              'lng': 80.6238
-            },
-            {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-            {
-              'name': 'Gannavaram Airport',
-              'lat': 16.5304,
-              'lng': 80.7968
-            },
-            {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-            {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-          ]);
-    }
+    // No hardcoded fallback — popular locations come from the API only
   }
 
   // ── Search ────────────────────────────────────────────────────────────────

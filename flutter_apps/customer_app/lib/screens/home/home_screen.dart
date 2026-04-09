@@ -65,11 +65,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _homeLoading = true;
   Timer? _loadingTimeout;
 
-  // New state: banners + feature flags
+  // New state: banners + feature flags + popular locations
   List<Map<String, dynamic>> _banners = [];
   int _bannerIndex = 0;
   Timer? _bannerTimer;
   final PageController _bannerPageCtrl = PageController();
+  List<Map<String, dynamic>> _popularLocations = [];
 
   // ── Live Map state ────────────────────────────────────────────────────────
   GoogleMapController? _mapController;
@@ -97,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadRecentTrips();
     _fetchBanners();
     _fetchFeatureFlags();
+    _fetchPopularLocations();
     _connectSocket();
     // Safety fallback: never show loading more than 6 seconds
     _loadingTimeout = Timer(const Duration(seconds: 6), () {
@@ -189,6 +191,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => _banners = list);
       }
     } catch (_) {}
+  }
+
+  Future<void> _fetchPopularLocations() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final params = <String, String>{};
+      if (_pickupLat != 0.0 && _pickupLng != 0.0) {
+        params['lat'] = _pickupLat.toString();
+        params['lng'] = _pickupLng.toString();
+      }
+      final uri = Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations')
+          .replace(queryParameters: params.isNotEmpty ? params : null);
+      final r = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 6));
+      if (r.statusCode == 200 && mounted) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final list = (data['locations'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
+            [];
+        if (list.isNotEmpty) {
+          setState(() => _popularLocations = list);
+        }
+      }
+    } catch (_) {}
+  }
+
+  IconData _iconForPlace(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('airport') || n.contains('gannavaram')) return Icons.flight_takeoff_rounded;
+    if (n.contains('railway') || n.contains('station') || n.contains('junction')) return Icons.train_rounded;
+    if (n.contains('bus') || n.contains('stand')) return Icons.directions_bus_rounded;
+    if (n.contains('temple') || n.contains('durga') || n.contains('mandir')) return Icons.temple_hindu_rounded;
+    if (n.contains('hospital')) return Icons.local_hospital_rounded;
+    if (n.contains('mall') || n.contains('market')) return Icons.shopping_bag_rounded;
+    if (n.contains('college') || n.contains('university')) return Icons.school_rounded;
+    return Icons.location_city_rounded;
+  }
+
+  Color _colorForPlace(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('airport')) return const Color(0xFF1E88E5);
+    if (n.contains('railway') || n.contains('station')) return const Color(0xFFE53935);
+    if (n.contains('bus')) return const Color(0xFF5E35B1);
+    if (n.contains('temple')) return const Color(0xFFFF8F00);
+    if (n.contains('hospital')) return const Color(0xFFD32F2F);
+    return const Color(0xFF43A047);
   }
 
   Future<void> _fetchFeatureFlags() async {
@@ -699,145 +748,110 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _getLocation() async {
-    try {
-      final fallbackPosition = await Geolocator.getLastKnownPosition();
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (fallbackPosition != null && mounted) {
-          setState(() {
-            _pickupLat = fallbackPosition.latitude;
-            _pickupLng = fallbackPosition.longitude;
-            _locationReady = true;
-            _pickup = 'Using last known location';
-          });
-          _reverseGeocode(
-              fallbackPosition.latitude, fallbackPosition.longitude);
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(
-              LatLng(fallbackPosition.latitude, fallbackPosition.longitude),
-              15,
-            ),
-          );
-          _fetchNearbyDrivers();
-        } else if (mounted) {
-          setState(() {
-            _pickup = 'Turn on location services to detect pickup';
-            _locationReady = false;
-          });
-          await _showLocationPrompt(
-            title: 'Location Services Off',
-            message:
-                'Turn on device location so we can detect your live pickup point accurately.',
-            openSettings: Geolocator.openLocationSettings,
-          );
-        }
+    // Step 1: Instant fallback — no GPS wait
+    Position? fallback;
+    try { fallback = await Geolocator.getLastKnownPosition(); } catch (_) {}
+
+    // Step 2: Check GPS services
+    bool serviceOn = false;
+    try { serviceOn = await Geolocator.isLocationServiceEnabled(); } catch (_) {}
+
+    if (!serviceOn) {
+      if (fallback != null && mounted) {
+        _applyPosition(fallback, label: 'Current Location');
+      } else if (mounted) {
+        setState(() { _pickup = 'Turn on location to detect pickup'; _locationReady = false; });
+        await _showLocationPrompt(
+          title: 'Location Services Off',
+          message: 'Turn on device location so we can detect your live pickup point accurately.',
+          openSettings: Geolocator.openLocationSettings,
+        );
+        // Re-check after user returns from settings
+        try { serviceOn = await Geolocator.isLocationServiceEnabled(); } catch (_) {}
+        if (!serviceOn) return;
+      } else {
         return;
       }
+    }
 
-      LocationPermission perm = await Geolocator.checkPermission();
+    // Step 3: Check permission
+    LocationPermission perm = LocationPermission.denied;
+    try {
+      perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied) {
-        if (mounted) {
-          setState(() {
-            _pickup = 'Location permission is needed to detect pickup';
-            _locationReady = false;
-          });
-        }
-        return;
-      }
-      if (perm == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        setState(() {
-          _pickup = 'Location permission is blocked. Open settings to enable it.';
-          _locationReady = false;
-        });
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            title: const Text('Location Required'),
-            content: const Text(
-                'Location access is required to request rides. Please enable it in your device settings.'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  Geolocator.openAppSettings();
-                },
-                child: const Text('Open Settings'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
+    } catch (_) {}
 
-      Position? pos;
-      try {
-        pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
-          ),
-        );
-      } catch (_) {
-        pos = fallbackPosition;
+    if (perm == LocationPermission.deniedForever) {
+      if (fallback != null && mounted) {
+        _applyPosition(fallback, label: 'Current Location');
       }
-
-      if (pos == null) {
-        if (mounted) {
-          setState(() {
-            _pickup = 'Could not detect your location. Tap to retry.';
-            _locationReady = false;
-          });
-        }
-        return;
-      }
-
-      if (mounted) {
-        setState(() {
-          _pickupLat = pos!.latitude;
-          _pickupLng = pos.longitude;
-          _locationReady = true;
-          _pickup = 'Current Location'; // placeholder — overwritten by _reverseGeocode
-        });
-      }
-      _reverseGeocode(pos.latitude, pos.longitude);
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 16),
+      if (!mounted) return;
+      setState(() { _pickup = 'Location blocked. Tap to open settings.'; _locationReady = fallback != null; });
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Location Required'),
+          content: const Text('Location access is required to request rides. Please enable it in your device settings.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () { Navigator.pop(context); Geolocator.openAppSettings(); },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
       );
-      _fetchNearbyDrivers();
-    } catch (_) {
-      // Unexpected error — try last known position before giving up
-      try {
-        final last = await Geolocator.getLastKnownPosition();
-        if (last != null && mounted) {
-          setState(() {
-            _pickupLat = last.latitude;
-            _pickupLng = last.longitude;
-            _locationReady = true;
-            _pickup = 'Current Location';
-          });
-          _reverseGeocode(last.latitude, last.longitude);
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(LatLng(last.latitude, last.longitude), 15),
-          );
-          _fetchNearbyDrivers();
-          return;
-        }
-      } catch (_) {}
-      if (mounted) {
-        setState(() {
-          _pickup = 'Tap to detect your location';
-          _locationReady = false;
-        });
-      }
+      return;
     }
+    if (perm == LocationPermission.denied) {
+      if (fallback != null && mounted) _applyPosition(fallback, label: 'Current Location');
+      if (mounted && fallback == null) {
+        setState(() { _pickup = 'Location permission needed'; _locationReady = false; });
+      }
+      return;
+    }
+
+    // Step 4: Permission granted — get accurate position
+    // Show fallback immediately for fast UI response
+    if (fallback != null && !_locationReady) {
+      _applyPosition(fallback, label: 'Current Location');
+    }
+
+    Position? pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+    } catch (_) {
+      pos = fallback;
+    }
+
+    if (pos != null && mounted) {
+      _applyPosition(pos);
+    } else if (mounted && !_locationReady) {
+      setState(() { _pickup = 'Tap to detect your location'; _locationReady = false; });
+    }
+  }
+
+  void _applyPosition(Position pos, {String? label}) {
+    if (!mounted) return;
+    setState(() {
+      _pickupLat = pos.latitude;
+      _pickupLng = pos.longitude;
+      _locationReady = true;
+      _pickup = label ?? 'Current Location';
+    });
+    _reverseGeocode(pos.latitude, pos.longitude);
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 15),
+    );
+    _fetchNearbyDrivers();
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -850,9 +864,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
+        // Try structured fields first, then formattedAddress
+        final parts = <String>[];
+        for (final k in ['area', 'city', 'state']) {
+          final v = data[k]?.toString() ?? '';
+          if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
+        }
+        if (parts.isNotEmpty && mounted) {
+          setState(() => _pickup = parts.take(3).join(', '));
+          return;
+        }
         final addr = data['formattedAddress']?.toString() ?? '';
         if (mounted && addr.isNotEmpty) {
-          setState(() => _pickup = addr);
+          setState(() => _pickup = addr.split(',').take(3).join(',').trim());
           return;
         }
       }
@@ -868,15 +892,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final addr = data['display_name']?.toString() ?? '';
         if (mounted && addr.isNotEmpty) {
-          // Trim to first 3 components for readability
           final short = addr.split(',').take(3).join(',').trim();
           setState(() => _pickup = short.isNotEmpty ? short : 'Current Location');
           return;
         }
       }
     } catch (_) {}
-    // Final fallback — keep 'Current Location' set by caller
-    if (mounted && (_pickup.isEmpty)) {
+    // Final fallback — always show something meaningful
+    if (mounted) {
       setState(() => _pickup = 'Current Location');
     }
   }
@@ -1168,7 +1191,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     const isDark = false;
-    final cardH = _bottomCardHeight(context);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
@@ -1176,189 +1198,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: JT.bg,
+      backgroundColor: Colors.white,
       drawer: _buildDrawer(isDark),
-      body: Stack(
-        children: [
-          // ── 1. Full-screen live map ──────────────────────────────────────
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _locationReady
-                  ? LatLng(_pickupLat, _pickupLng)
-                  : const LatLng(20.5937, 78.9629),
-              zoom: _locationReady ? 15 : 5,
-            ),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: false,
-            markers: _mapMarkers,
-            onMapCreated: (controller) {
-              _mapController = controller;
-              setState(() => _mapReady = true);
-              // Move to real GPS once map is ready (only if location is known)
-              if (_locationReady) {
-                _mapController!.animateCamera(
-                  CameraUpdate.newLatLng(LatLng(_pickupLat, _pickupLng)),
-                );
-              }
-            },
-          ),
-
-          // ── 1b. Map loading overlay (while map tiles load) ───────────────
-          if (!_mapReady)
-            Positioned.fill(
-              child: Container(
-                color: JT.bgSoft,
-                child: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.5, color: JT.primary),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Active trip banner ──
+            if (_activeTrip != null) _buildActiveTripBanner(isDark),
+            // ── Scrollable home content ──
+            Expanded(
+              child: _homeLoading
+                  ? _buildSkeletonLoader(isDark, JT.bgSoft)
+                  : SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Search bar
+                          _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
+                          // Recent places
+                          _buildRecentPlacesSection(),
+                          // "Everything In Minutes" service cards
+                          _buildEverythingInMinutes(isDark),
+                          // "Explore" vehicle types
+                          _buildExploreSection(isDark),
+                          // "Go Places with Jago" horizontal cards
+                          _buildGoPlacesSection(),
+                          // Brand banner
+                          _buildJagoBrandBanner(),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Text('Loading map...', style: JT.caption),
-                  ]),
-                ),
-              ),
             ),
-
-          // ── 2. Top gradient fade (white → transparent) ──────────────────
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 104,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ── 3. Top bar overlay ───────────────────────────────────────────
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: _buildTopBar(isDark, Colors.transparent, JT.textPrimary),
-            ),
-          ),
-
-          // ── 4. Active trip banner (above bottom card) ────────────────────
-          if (_activeTrip != null)
-            Positioned(
-              bottom: cardH + 12,
-              left: 16,
-              right: 16,
-              child: _buildActiveTripBanner(isDark),
-            ),
-
-          // ── 5. "My location" recenter button ────────────────────────────
-          Positioned(
-            right: 16,
-            bottom: cardH + (_activeTrip != null ? 90 : 12),
-            child: _buildRecenterButton(),
-          ),
-
-          // ── 6. Bottom card with search + services ────────────────────────
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomCard(isDark),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Approximate height of the visible bottom card area — responsive
-  double _bottomCardHeight(BuildContext ctx) =>
-      (MediaQuery.of(ctx).size.height * 0.40).clamp(260.0, 360.0);
-
-  Widget _buildRecenterButton() {
-    return GestureDetector(
-      onTap: () {
-        if (!_locationReady) return;
-        _mapController?.animateCamera(
-          CameraUpdate.newCameraPosition(CameraPosition(
-            target: LatLng(_pickupLat, _pickupLng),
-            zoom: 15,
-          )),
-        );
-        _fetchNearbyDrivers();
-      },
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4)),
+            // ── Bottom navigation ──
+            _buildBottomNav(isDark, JT.bg, JT.textPrimary),
           ],
         ),
-        child:
-            const Icon(Icons.my_location_rounded, color: JT.primary, size: 22),
       ),
     );
   }
 
-  Widget _buildBottomCard(bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, -4)),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Drag handle
-          Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 4),
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: JT.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          // Content
-          if (_homeLoading)
-            _buildSkeletonLoader(isDark, JT.bgSoft)
-          else ...[
-            _buildSearchBar(isDark, JT.bgSoft, JT.textPrimary),
-            _buildFeaturedGrid(isDark),
-            _buildExploreSection(isDark),
-          ],
-          // Bottom nav
-          _buildBottomNav(isDark, JT.bg, JT.textPrimary),
-        ],
-      ),
-    );
+  Widget _buildRecenterButton() {
+    return const SizedBox.shrink(); // Not used in new layout
   }
 
   Widget _buildSkeletonLoader(bool isDark, Color cardBg) {
@@ -1409,342 +1291,392 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── TOP BAR ──────────────────────────────────────────────────────────────
+  // ── TOP BAR — not used in new layout (search bar is the first element) ──
   Widget _buildTopBar(bool isDark, Color cardBg, Color textColor) {
-    return Container(
-      color: cardBg == Colors.transparent
-          ? Colors.transparent
-          : (isDark ? _darkBg : JT.bg),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Row(children: [
-        // Logo
-        GestureDetector(
-          onTap: () => _scaffoldKey.currentState?.openDrawer(),
-          child: isDark ? JT.logoWhite(height: 32) : JT.logoBlue(height: 32),
-        ),
-        const SizedBox(width: 8),
-        // Location indicator — tap to pick on map
-        Expanded(
-          child: GestureDetector(
-            onTap: () async {
-              final result = await Navigator.push<PickedLocation>(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => MapLocationPicker(
-                          title: 'Select Pickup Location',
-                          initialLat: _pickupLat,
-                          initialLng: _pickupLng,
-                        )),
-              );
-              if (result != null && mounted) {
-                setState(() {
-                  _pickupLat = result.lat;
-                  _pickupLng = result.lng;
-                  _pickup = result.address;
-                  _locationReady = true;
-                });
-              }
-            },
-            child: Row(children: [
-              Icon(Icons.location_on_rounded, color: JT.primary, size: 13),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text(
-                  _pickup == 'Getting location...'
-                      ? 'Getting location...'
-                      : _pickup.split(',').first,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.white70 : JT.textSecondary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ]),
-          ),
-        ),
-        // Wallet balance chip
-        if (_walletBalance > 0) ...[
-          GestureDetector(
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const WalletScreen())),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: JT.surfaceAlt,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.account_balance_wallet_rounded,
-                    color: JT.primary, size: 13),
-                const SizedBox(width: 4),
-                Text(
-                  '₹${_walletBalance.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(
-                      color: JT.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500),
-                ),
-              ]),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-        // Notification bell — outline icon in JT.primary
-        GestureDetector(
-          onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen()))
-              .then((_) => _fetchUnreadCount()),
-          child: Stack(clipBehavior: Clip.none, children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isDark ? _darkCard : JT.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: isDark ? const Color(0xFF334155) : JT.border),
-              ),
-              child: Icon(Icons.notifications_outlined,
-                  color: JT.primary, size: 20),
-            ),
-            if (_unreadNotifCount > 0)
-              Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  constraints:
-                      const BoxConstraints(minWidth: 17, minHeight: 17),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: JT.primaryDark,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                          color: JT.primaryDark.withValues(alpha: 0.26),
-                          blurRadius: 4)
-                    ],
-                  ),
-                  child: Center(
-                      child: Text(
-                    _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w500),
-                  )),
-                ),
-              ),
-          ]),
-        ),
-      ]),
-    );
+    return const SizedBox.shrink(); // Replaced by scrollable layout
   }
 
-  // ── SEARCH BAR ────────────────────────────────────────────────────────────
+  // ── SEARCH BAR — Rapido-style clean "Where are you going?" ────────────────
   Widget _buildSearchBar(bool isDark, Color cardBg, Color textColor) {
-    final firstName =
-        _userName == 'there' ? 'there' : _userName.split(' ').first;
+    final nearbyCount = _mapMarkers.length;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Profile greeting row
-        Row(children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: JT.primary,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: JT.btnShadow,
-            ),
-            child: Center(
-                child: Text(
-              firstName.isNotEmpty ? firstName[0].toUpperCase() : 'U',
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500),
-            )),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                Text(
-                  'Hello, $firstName!',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                      color: JT.textPrimary),
-                ),
-                Text(
-                  'Where are you heading today?',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: JT.textSecondary,
-                      fontWeight: FontWeight.w400),
-                ),
-              ])),
-          GestureDetector(
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const VoiceBookingScreen())),
-            child: Stack(clipBehavior: Clip.none, children: [
-              Container(
-                width: 40,
-                height: 40,
+        // Location + Nearby count row
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(children: [
+            GestureDetector(
+              onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              child: Container(
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: JT.surfaceAlt,
+                  color: const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(12),
-                  ),
-                child:
-                    const Icon(Icons.mic_rounded, color: JT.primary, size: 19),
-              ),
-              Positioned(
-                top: -3,
-                right: -3,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: JT.primary,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white, width: 1),
-                  ),
-                  child: const Text('AI',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 7,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.3)),
                 ),
+                child: const Icon(Icons.menu_rounded, color: JT.textPrimary, size: 20),
               ),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 16),
-        // "Where to?" search bar (Uber-style)
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () async {
+                  final result = await Navigator.push<PickedLocation>(context,
+                    MaterialPageRoute(builder: (_) => MapLocationPicker(
+                      title: 'Select Pickup Location',
+                      initialLat: _pickupLat, initialLng: _pickupLng,
+                    )));
+                  if (result != null && mounted) {
+                    setState(() {
+                      _pickupLat = result.lat; _pickupLng = result.lng;
+                      _pickup = result.address; _locationReady = true;
+                    });
+                  }
+                },
+                child: Row(children: [
+                  Icon(Icons.location_on_rounded, color: JT.primary, size: 16),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      _pickup == 'Getting location...' ? 'Getting location...' : _pickup.split(',').first,
+                      style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textPrimary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.keyboard_arrow_down_rounded, color: JT.textSecondary, size: 18),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Notification bell
+            GestureDetector(
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+                  .then((_) => _fetchUnreadCount()),
+              child: Stack(clipBehavior: Clip.none, children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.notifications_outlined, color: JT.textPrimary, size: 20),
+                ),
+                if (_unreadNotifCount > 0)
+                  Positioned(top: -2, right: -2,
+                    child: Container(
+                      width: 16, height: 16,
+                      decoration: BoxDecoration(color: JT.error, shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5)),
+                      child: Center(child: Text(
+                        _unreadNotifCount > 9 ? '9+' : _unreadNotifCount.toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w600),
+                      )),
+                    ),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
+        // Search bar
         GestureDetector(
           onTap: (_pickup.contains('retry') || _pickup.contains('Tap'))
               ? _getLocation
               : _openSearch,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3)),
-              ],
+              color: const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(28),
             ),
             child: Row(children: [
-              // Pickup dot indicator
-              Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 10, height: 10,
-                  decoration: BoxDecoration(
-                    color: JT.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ]),
+              Icon(Icons.search_rounded, color: JT.textSecondary, size: 22),
               const SizedBox(width: 12),
               Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                    Text(
-                      'Where to?',
-                      style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                          color: JT.textPrimary),
-                    ),
-                    const SizedBox(height: 1),
-                    if (_locationReady && _pickup.isNotEmpty &&
-                        !_pickup.contains('retry') && !_pickup.contains('Tap') &&
-                        !_pickup.contains('Turn on') && !_pickup.contains('permission'))
-                      Row(children: [
-                        const Icon(Icons.my_location_rounded,
-                            size: 10, color: JT.primary),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text(
-                            _pickup.split(',').first,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: JT.textSecondary,
-                                fontWeight: FontWeight.w400),
-                          ),
-                        ),
-                      ])
-                    else if (_pickup == 'Current Location' || _pickup.isEmpty)
-                      Row(children: [
-                        SizedBox(
-                          width: 10, height: 10,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: JT.primary.withValues(alpha: 0.5)),
-                        ),
-                        const SizedBox(width: 5),
-                        Text('Detecting location...',
-                            style: GoogleFonts.poppins(
-                                fontSize: 11, color: JT.textTertiary)),
-                      ])
-                    else
-                      Text(
-                        _pickup,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: _pickup.contains('retry') || _pickup.contains('Tap')
-                                ? JT.primaryDark
-                                : JT.textSecondary,
-                            fontWeight: FontWeight.w400),
-                      ),
-                  ])),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: JT.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
                 child: Text(
-                  'Go',
+                  'Where are you going?',
                   style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                    color: JT.textSecondary,
+                  ),
                 ),
               ),
             ]),
           ),
         ),
+        // Live nearby driver count
+        if (nearbyCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 10, left: 4),
+            child: Row(children: [
+              Container(
+                width: 8, height: 8,
+                decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$nearbyCount ${nearbyCount == 1 ? 'driver' : 'drivers'} nearby',
+                style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF22C55E), fontWeight: FontWeight.w500),
+              ),
+            ]),
+          ),
       ]),
     );
   }
 
-  // ── FEATURED SERVICES — RIDE + PARCEL (admin-controlled) ────────────────
-  // Only shows cards for services that have active vehicle categories in DB.
+  // ── RECENT PLACES — history with heart icon ──────────────────────────────
+  Widget _buildRecentPlacesSection() {
+    // Combine saved places + recent trips
+    final List<Map<String, dynamic>> recentItems = [];
+    for (final place in _savedPlaces) {
+      recentItems.add({
+        'name': place['label']?.toString() ?? '',
+        'address': place['address']?.toString() ?? '',
+        'lat': double.tryParse(place['lat']?.toString() ?? '0') ?? 0.0,
+        'lng': double.tryParse(place['lng']?.toString() ?? '0') ?? 0.0,
+        'isSaved': true,
+      });
+    }
+    for (final trip in _recentTrips.take(3)) {
+      final dest = trip['destinationAddress']?.toString() ??
+          trip['destination_address']?.toString() ?? '';
+      if (dest.isNotEmpty) {
+        recentItems.add({
+          'name': dest.split(',').first.trim(),
+          'address': dest,
+          'lat': double.tryParse(trip['destLat']?.toString() ?? '0') ?? 0.0,
+          'lng': double.tryParse(trip['destLng']?.toString() ?? '0') ?? 0.0,
+          'isSaved': false,
+        });
+      }
+    }
+    if (recentItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F6FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDBE8F5), width: 1),
+      ),
+      child: Column(
+        children: recentItems.take(3).map((item) {
+          final name = item['name'] as String;
+          final address = item['address'] as String;
+          final isSaved = item['isSaved'] as bool;
+          return InkWell(
+            onTap: () {
+              final lat = item['lat'] as double;
+              final lng = item['lng'] as double;
+              if (lat != 0.0 && lng != 0.0) {
+                Navigator.push(context,
+                    MaterialPageRoute(
+                        builder: (_) => BookingScreen(
+                              pickup: _pickup,
+                              destination: address,
+                              pickupLat: _pickupLat,
+                              pickupLng: _pickupLng,
+                              destLat: lat,
+                              destLng: lng,
+                            )));
+              } else {
+                _openSearch();
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: const Color(0xFFDBE8F5),
+                    width: 1,
+                    style: BorderStyle.solid,
+                  ),
+                ),
+              ),
+              child: Row(children: [
+                Icon(
+                  Icons.access_time_rounded,
+                  color: JT.textSecondary,
+                  size: 20,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: JT.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (address.isNotEmpty && address != name)
+                        Text(
+                          address,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: JT.textSecondary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  isSaved ? Icons.favorite_border_rounded : Icons.favorite_border_rounded,
+                  color: JT.textTertiary,
+                  size: 20,
+                ),
+              ]),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── "EVERYTHING IN MINUTES" — Rapido-style 2×2 service cards ──────────────
+  Widget _buildEverythingInMinutes(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Everything In Minutes',
+            style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: JT.textPrimary)),
+        const SizedBox(height: 14),
+        Row(children: [
+          // Send anything — Parcel
+          Expanded(
+            child: _serviceCard(
+              subtitle: 'Send anything',
+              title: 'Parcel',
+              bgColor: const Color(0xFFFFF8F0),
+              icon: Icons.inventory_2_rounded,
+              iconColor: const Color(0xFFE8943A),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                Navigator.push(context,
+                    MaterialPageRoute(
+                        builder: (_) => LocationScreen(
+                              serviceType: 'parcel',
+                              pickupAddress: _pickup.isNotEmpty ? _pickup : null,
+                              pickupLat: _pickupLat,
+                              pickupLng: _pickupLng,
+                            )));
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Beat the traffic — Bike Taxi
+          Expanded(
+            child: _serviceCard(
+              subtitle: 'Beat the traffic',
+              title: 'Bike Taxi',
+              bgColor: const Color(0xFFF5F5F5),
+              icon: Icons.electric_bike_rounded,
+              iconColor: JT.textPrimary,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _openSearch();
+              },
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          // Your everyday rides — Book now
+          Expanded(
+            child: _serviceCard(
+              subtitle: 'Your everyday rides',
+              title: 'Book now',
+              bgColor: const Color(0xFFF0FFF0),
+              icon: Icons.electric_rickshaw_rounded,
+              iconColor: const Color(0xFF3CB371),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _openSearch();
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          // All Services
+          Expanded(
+            child: _serviceCard(
+              subtitle: '',
+              title: 'All\nServices',
+              bgColor: const Color(0xFFF5F5F5),
+              icon: Icons.grid_view_rounded,
+              iconColor: JT.textSecondary,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _showAllServicesSheet();
+              },
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _serviceCard({
+    required String subtitle,
+    required String title,
+    required Color bgColor,
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 110,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Stack(children: [
+          // Background icon
+          Positioned(
+            right: -8,
+            bottom: -8,
+            child: Icon(icon, size: 64, color: iconColor.withValues(alpha: 0.12)),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (subtitle.isNotEmpty) ...[
+                Text(subtitle,
+                    style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: JT.textSecondary,
+                        fontWeight: FontWeight.w400)),
+                const SizedBox(height: 2),
+              ],
+              Text(title,
+                  style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: JT.textPrimary,
+                      height: 1.2)),
+            ],
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── LEGACY FEATURED GRID (kept for compatibility) ──────────────────────
   Widget _buildFeaturedGrid(bool isDark) {
     final rideNames = _serviceNamesForType('ride');
     final parcelNames = _serviceNamesForType('parcel');
@@ -1939,21 +1871,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // Vehicle real image — right side, bottom-anchored
+            // Vehicle icon — right side, bottom-anchored
             Positioned(
               right: -6,
               bottom: -4,
               child: SizedBox(
                 width: 118,
                 height: 118,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    fallbackIcon,
-                    size: 88,
-                    color: accent.withValues(alpha: 0.10),
-                  ),
+                child: Icon(
+                  fallbackIcon,
+                  size: 88,
+                  color: accent.withValues(alpha: 0.15),
                 ),
               ),
             ),
@@ -2071,18 +1999,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Positioned(
             right: -8,
             top: -8,
-            child: imageUrl.isNotEmpty
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(imageUrl,
-                        width: 64,
-                        height: 64,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Icon(iconData,
-                            size: 72,
-                            color: Colors.white.withValues(alpha: 0.1))))
-                : Icon(iconData,
-                    size: 72, color: gradColors.first.withValues(alpha: 0.08)),
+            child: Icon(iconData,
+                size: 72, color: gradColors.first.withValues(alpha: 0.08)),
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
@@ -2181,84 +2099,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── QUICK ACCESS STRIP (Bike / Auto / Car / Parcel) ──────────────────────
+  // ── EXPLORE — Rapido-style round vehicle icons with "View All" ────────────
   Widget _buildExploreSection(bool isDark) {
-    // Static quick-access chips — always shown, fast tap to book
-    final chips = <Map<String, dynamic>>[
-      {
-        'name': 'Bike',
-        'icon': Icons.electric_bike_rounded,
-        'color': const Color(0xFF2D8CFF),
-        'type': 'ride'
-      },
-      {
-        'name': 'Auto',
-        'icon': Icons.electric_rickshaw_rounded,
-        'color': const Color(0xFF2D8CFF),
-        'type': 'ride'
-      },
-      {
-        'name': 'Car',
-        'icon': Icons.directions_car_filled_rounded,
-        'color': const Color(0xFF2D8CFF),
-        'type': 'ride'
-      },
-      {
-        'name': 'Parcel Bike',
-        'icon': Icons.inventory_2_rounded,
-        'color': const Color(0xFF5BABFF),
-        'type': 'parcel',
-        'vehicleKey': 'bike_parcel'
-      },
-      {
-        'name': 'Mini Truck',
-        'icon': Icons.local_shipping_rounded,
-        'color': const Color(0xFF5BABFF),
-        'type': 'parcel',
-        'vehicleKey': 'tata_ace'
-      },
-      {
-        'name': 'Pickup Van',
-        'icon': Icons.fire_truck_rounded,
-        'color': const Color(0xFF5BABFF),
-        'type': 'parcel',
-        'vehicleKey': 'pickup_truck'
-      },
+    final vehicles = <Map<String, dynamic>>[
+      {'name': 'Shared\nAuto', 'icon': Icons.electric_rickshaw_rounded, 'color': const Color(0xFF2E7D32), 'type': 'ride'},
+      {'name': 'Bike', 'icon': Icons.electric_bike_rounded, 'color': JT.textPrimary, 'type': 'ride'},
+      {'name': 'Auto', 'icon': Icons.electric_rickshaw_rounded, 'color': const Color(0xFF2E7D32), 'type': 'ride'},
+      {'name': 'Parcel', 'icon': Icons.inventory_2_rounded, 'color': const Color(0xFFE8943A), 'type': 'parcel'},
     ];
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
-        child: Text('Quick Book',
-            style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w400,
-                color: JT.textPrimary)),
-      ),
-      const SizedBox(height: 12),
-      SizedBox(
-        height: 90,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          itemCount: chips.length,
-          itemBuilder: (_, i) {
-            final item = chips[i];
-            final name = item['name'] as String;
-            final icon = item['icon'] as IconData;
-            final color = item['color'] as Color;
-            final type = item['type'] as String;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('Explore',
+              style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: JT.textPrimary)),
+          const Spacer(),
+          GestureDetector(
+            onTap: _showAllServicesSheet,
+            child: Row(children: [
+              Text('View All',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: JT.textSecondary)),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, color: JT.textSecondary, size: 18),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: vehicles.map((v) {
             return GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
-                if (type == 'parcel') {
-                  Navigator.push(
-                      context,
+                if (v['type'] == 'parcel') {
+                  Navigator.push(context,
                       MaterialPageRoute(
                           builder: (_) => LocationScreen(
                                 serviceType: 'parcel',
-                                pickupAddress:
-                                    _pickup.isNotEmpty ? _pickup : null,
+                                pickupAddress: _pickup.isNotEmpty ? _pickup : null,
                                 pickupLat: _pickupLat,
                                 pickupLng: _pickupLng,
                               )));
@@ -2266,37 +2151,199 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   _openSearch();
                 }
               },
-              child: Container(
-                width: 74,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                          color: color.withValues(alpha: 0.25), width: 1.5),
-                    ),
-                    child: Icon(icon, color: color, size: 26),
+              child: Column(children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 5),
-                  Text(name,
-                      style: GoogleFonts.poppins(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w400,
-                          color: JT.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center),
-                ]),
-              ),
+                  child: Icon(v['icon'] as IconData,
+                      color: v['color'] as Color, size: 30),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  v['name'] as String,
+                  style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: JT.textPrimary),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                ),
+              ]),
             );
-          },
+          }).toList(),
         ),
+      ]),
+    );
+  }
+
+  // ── "GO PLACES WITH JAGO" — Horizontal destination cards (LIVE from API) ──
+  Widget _buildGoPlacesSection() {
+    // Use _popularLocations fetched from server, with fallback
+    final destinations = _popularLocations.isNotEmpty
+        ? _popularLocations.take(8).map((p) {
+            final name = p['name']?.toString() ?? '';
+            return {
+              'name': name,
+              'icon': _iconForPlace(name),
+              'color': _colorForPlace(name),
+              'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
+              'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
+            };
+          }).toList()
+        : <Map<String, dynamic>>[];
+
+    if (destinations.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Go Places with Jago',
+              style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: JT.textPrimary)),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 160,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: destinations.length,
+            itemBuilder: (_, i) {
+              final d = destinations[i];
+              return GestureDetector(
+                onTap: () {
+                  final lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
+                  final lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
+                  final name = d['name'] as String;
+                  if (lat != 0.0 && lng != 0.0) {
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => BookingScreen(
+                          pickup: _pickup,
+                          destination: name,
+                          pickupLat: _pickupLat, pickupLng: _pickupLng,
+                          destLat: lat, destLng: lng,
+                        )));
+                  } else {
+                    _openSearch();
+                  }
+                },
+                child: Container(
+                  width: 140,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Column(children: [
+                    // Illustration area with yellow wave background
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              const Color(0xFFFFC107).withValues(alpha: 0.25),
+                              const Color(0xFFFFF8E1),
+                            ],
+                          ),
+                        ),
+                        child: Icon(
+                          d['icon'] as IconData,
+                          size: 48,
+                          color: d['color'] as Color,
+                        ),
+                      ),
+                    ),
+                    // Label
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      child: Text(
+                        (d['name'] as String).replaceAll('\n', ' '),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: JT.textPrimary,
+                        ),
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
+        // Page indicator dots
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(width: 20, height: 6, decoration: BoxDecoration(
+              color: JT.textPrimary, borderRadius: BorderRadius.circular(3))),
+            const SizedBox(width: 4),
+            Container(width: 20, height: 6, decoration: BoxDecoration(
+              color: const Color(0xFFD9D9D9), borderRadius: BorderRadius.circular(3))),
+          ],
+        ),
+      ]),
+    );
+  }
+
+  // ── BRAND BANNER — "#goJago" style like Rapido ──────────────────────────
+  Widget _buildJagoBrandBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(20),
       ),
-    ]);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Brand tagline
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [Color(0xFF2A4CB7), Color(0xFF3A9EEC)],
+            ).createShader(bounds),
+            child: Text(
+              '#goJago',
+              style: GoogleFonts.poppins(
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                fontStyle: FontStyle.italic,
+                color: Colors.white,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Text('Made for India', style: GoogleFonts.poppins(
+              fontSize: 13, color: JT.textSecondary, fontWeight: FontWeight.w400)),
+          ]),
+          const SizedBox(height: 4),
+          Row(children: [
+            Text('Safe, Fast & Affordable', style: GoogleFonts.poppins(
+              fontSize: 13, color: JT.textSecondary, fontWeight: FontWeight.w400)),
+          ]),
+        ],
+      ),
+    );
   }
 
   // ── BANNER CAROUSEL ───────────────────────────────────────────────────────
@@ -2713,57 +2760,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── BOTTOM NAV ───────────────────────────────────────────────────────────
+  // ── BOTTOM NAV — Rapido-style (Ride, All Services, Travel, Profile) ──────
   Widget _buildBottomNav(bool isDark, Color cardBg, Color textColor) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: const Border(top: BorderSide(color: JT.border, width: 1)),
+        color: const Color(0xFF3C3C3C),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _navItem(Icons.home_rounded, Icons.home_outlined, 'Home', 0,
-                  JT.iconInactive, isDark),
-              _navItem(Icons.receipt_long_rounded, Icons.receipt_long_outlined,
-                  'Trips', 1, JT.iconInactive, isDark),
-              _navItem(
-                  Icons.account_balance_wallet_rounded,
-                  Icons.account_balance_wallet_outlined,
-                  'Wallet',
-                  2,
-                  JT.iconInactive,
-                  isDark),
-              _navItem(Icons.person_rounded, Icons.person_outline_rounded,
-                  'Profile', 3, JT.iconInactive, isDark),
-            ],
-          ),
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _navItem(Icons.home_rounded, Icons.home_outlined, 'Ride', 0, isDark),
+            _navItem(Icons.near_me_rounded, Icons.near_me_outlined, 'All Services', 1, isDark),
+            _navItem(Icons.sailing_rounded, Icons.sailing_outlined, 'Travel', 2, isDark),
+            _navItem(Icons.person_rounded, Icons.person_outline_rounded, 'Profile', 3, isDark),
+          ],
         ),
       ),
     );
   }
 
   Widget _navItem(IconData activeIcon, IconData inactiveIcon, String label,
-      int index, Color iconColor, bool isDark) {
+      int index, bool isDark) {
     final active = _navIndex == index;
     return GestureDetector(
       onTap: () {
         setState(() => _navIndex = index);
         if (index == 1)
-          Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
+          _showAllServicesSheet();
         if (index == 2)
           Navigator.push(
               context, MaterialPageRoute(builder: (_) => const WalletScreen()));
@@ -2771,29 +2804,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Navigator.push(context,
               MaterialPageRoute(builder: (_) => const ProfileScreen()));
       },
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 40,
-          height: 32,
-          decoration: BoxDecoration(
-            color:
-                active ? JT.primary.withValues(alpha: 0.1) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+      child: SizedBox(
+        width: 80,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(active ? activeIcon : inactiveIcon,
+              size: 22, color: active ? Colors.white : Colors.white54),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              color: active ? Colors.white : Colors.white54,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          child: Icon(active ? activeIcon : inactiveIcon,
-              size: 20, color: active ? JT.primary : JT.iconInactive),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 10,
-            fontWeight: active ? FontWeight.w500 : FontWeight.w500,
-            color: active ? JT.primary : JT.iconInactive,
-          ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -2955,7 +2983,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     try {
       final headers = await AuthService.getHeaders();
       final r = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'),
+        Uri.parse('${ApiConfig.baseUrl}/api/app/popular-locations?lat=${widget.pickupLat}&lng=${widget.pickupLng}'),
         headers: headers,
       );
       if (r.statusCode == 200) {
@@ -2979,22 +3007,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
         }
       }
     } catch (_) {}
-    if (mounted && _popular.isEmpty) {
-      setState(() => _popular = [
-            {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-            {
-              'name': 'Vijayawada Railway Station',
-              'lat': 16.5175,
-              'lng': 80.6400
-            },
-            {'name': 'Vijayawada Bus Stand', 'lat': 16.5179, 'lng': 80.6238},
-            {'name': 'Balaji Bus Stand', 'lat': 16.5106, 'lng': 80.6248},
-            {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-            {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
-            {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-            {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-          ]);
-    }
+    // No hardcoded fallback — popular locations come from the API only
   }
 
   // Fetch actual nearby places based on real GPS coordinates

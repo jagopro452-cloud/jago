@@ -157,7 +157,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         primary: primary,
         secondary: Color(0xFF5B9DFF),
         surface: card,
-        background: bg,
+        surfaceContainerHighest: bg,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onSurface: Color(0xFF111827),

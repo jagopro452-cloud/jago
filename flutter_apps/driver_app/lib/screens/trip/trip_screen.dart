@@ -57,7 +57,7 @@ class TripScreen extends StatefulWidget {
 class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
-  LatLng _center = const LatLng(17.3850, 78.4867);
+  LatLng _center = const LatLng(20.5937, 78.9629);
   String _status = 'accepted';
   Map<String, dynamic>? _trip;
   bool _loading = false;

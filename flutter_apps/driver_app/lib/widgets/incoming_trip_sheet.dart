@@ -286,38 +286,22 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     );
   }
 
-  // Returns the CDN image URL for the vehicle type in the trip
-  String? _vehicleImageUrl() {
+  // Returns the appropriate icon for the vehicle type in the trip
+  IconData _vehicleIcon() {
     final trip = widget.trip;
     final name = (trip['vehicleCategoryName'] ?? trip['vehicleName'] ?? trip['vehicle_name'] ?? '').toString().toLowerCase();
     final type = (trip['type'] ?? trip['tripType'] ?? '').toString().toLowerCase();
     final isParcel = type.contains('parcel') || name.contains('parcel');
-    if (name.contains('pickup van') || name.contains('pickup')) {
-      return ApiConfig.vehicleAsset('pickup_van.png');
-    }
-    if (name.contains('mini truck') || name.contains('tata ace')) {
-      return ApiConfig.vehicleAsset('mini_truck.png');
-    }
-    if (isParcel && name.contains('bike')) {
-      return ApiConfig.vehicleAsset('parcel_bike.png');
-    }
-    if (isParcel && name.contains('auto')) {
-      return ApiConfig.vehicleAsset('parcel_auto.png');
-    }
-    if (name.contains('bike')) {
-      return ApiConfig.vehicleAsset('bike.png');
-    }
-    if (name.contains('auto')) {
-      return ApiConfig.vehicleAsset('auto.png');
-    }
-    if (name.contains('car') || name.contains('suv')) {
-      return ApiConfig.vehicleAsset('car.png');
-    }
-    return null;
+    if (name.contains('pickup van') || name.contains('pickup')) return Icons.fire_truck_rounded;
+    if (name.contains('mini truck') || name.contains('tata ace')) return Icons.local_shipping_rounded;
+    if (isParcel) return Icons.delivery_dining_rounded;
+    if (name.contains('bike')) return Icons.electric_bike_rounded;
+    if (name.contains('auto')) return Icons.electric_rickshaw_rounded;
+    if (name.contains('car') || name.contains('suv')) return Icons.directions_car_filled_rounded;
+    return Icons.directions_car_rounded;
   }
 
   Widget _buildPulsingIcon(bool urgency) {
-    final imageUrl = _vehicleImageUrl();
     final accentColor = urgency ? const Color(0xFF1A6FDB) : _blue;
 
     return AnimatedBuilder(
@@ -344,20 +328,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 ),
               ],
             ),
-            child: imageUrl != null
-              ? Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.directions_car_rounded,
-                      color: accentColor,
-                      size: 60,
-                    ),
-                  ),
-                )
-              : Icon(Icons.directions_car_rounded, color: accentColor, size: 60),
+            child: Icon(_vehicleIcon(), color: accentColor, size: 60),
           ),
         );
       },

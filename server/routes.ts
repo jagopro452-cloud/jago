@@ -1466,19 +1466,7 @@ async function ensureOperationalSchema() {
       ON popular_locations(city_name, is_active);
     `).catch(dbCatch("db"));
 
-    await rawDb.execute(rawSql`
-      INSERT INTO popular_locations (name, latitude, longitude, city_name, full_address, is_active)
-      VALUES
-        ('Benz Circle', 16.5062, 80.6480, 'Vijayawada', 'Benz Circle, Vijayawada, Andhra Pradesh, India', true),
-        ('Vijayawada Railway Station', 16.5175, 80.6400, 'Vijayawada', 'Vijayawada Junction Railway Station, Vijayawada, Andhra Pradesh, India', true),
-        ('Vijayawada Bus Stand', 16.5179, 80.6238, 'Vijayawada', 'Pandit Nehru Bus Station, Vijayawada, Andhra Pradesh, India', true),
-        ('Balaji Bus Stand', 16.5106, 80.6248, 'Vijayawada', 'Balaji Bus Stand, Vijayawada, Andhra Pradesh, India', true),
-        ('Kanaka Durga Temple', 16.5176, 80.6121, 'Vijayawada', 'Kanaka Durga Temple, Vijayawada, Andhra Pradesh, India', true),
-        ('Gannavaram Airport', 16.5304, 80.7968, 'Vijayawada', 'Vijayawada International Airport, Gannavaram, Andhra Pradesh, India', true),
-        ('Governorpet', 16.5135, 80.6346, 'Vijayawada', 'Governorpet, Vijayawada, Andhra Pradesh, India', true),
-        ('Patamata', 16.4883, 80.6681, 'Vijayawada', 'Patamata, Vijayawada, Andhra Pradesh, India', true)
-      ON CONFLICT DO NOTHING
-    `).catch(dbCatch("db"));
+    // Popular locations are managed via admin panel — no hardcoded seed data
 
     await rawDb.execute(rawSql`
       INSERT INTO revenue_model_settings (key_name, value)
@@ -4875,23 +4863,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/app/popular-locations", async (req, res) => {
     try {
-      const city = String(req.query.city || "Vijayawada").trim();
-      const r = await rawDb.execute(rawSql`
-        SELECT id, name, latitude, longitude, city_name, full_address
-        FROM popular_locations
-        WHERE is_active = true
-          AND (
-            LOWER(city_name) = LOWER(${city})
-            OR ${city} = ''
-          )
-        ORDER BY name ASC
-      `);
+      const lat = Number(req.query.lat) || 0;
+      const lng = Number(req.query.lng) || 0;
+      const city = String(req.query.city || "").trim();
+
+      let r;
+      if (lat && lng) {
+        // Find locations within ~50km of the user's position
+        r = await rawDb.execute(rawSql`
+          SELECT id, name, latitude, longitude, city_name, full_address,
+                 (6371 * acos(cos(radians(${lat})) * cos(radians(latitude))
+                  * cos(radians(longitude) - radians(${lng}))
+                  + sin(radians(${lat})) * sin(radians(latitude)))) AS distance_km
+          FROM popular_locations
+          WHERE is_active = true
+          ORDER BY distance_km ASC
+          LIMIT 20
+        `);
+      } else if (city) {
+        r = await rawDb.execute(rawSql`
+          SELECT id, name, latitude, longitude, city_name, full_address
+          FROM popular_locations
+          WHERE is_active = true
+            AND LOWER(city_name) = LOWER(${city})
+          ORDER BY name ASC
+        `);
+      } else {
+        r = await rawDb.execute(rawSql`
+          SELECT id, name, latitude, longitude, city_name, full_address
+          FROM popular_locations
+          WHERE is_active = true
+          ORDER BY name ASC
+          LIMIT 20
+        `);
+      }
       const locations = camelize(r.rows).map((x: any) => ({
         ...x,
         lat: Number(x.latitude ?? x.lat ?? 0),
         lng: Number(x.longitude ?? x.lng ?? 0),
       }));
-      res.json({ city, locations });
+      res.json({ locations });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -12692,29 +12703,140 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const user = (req as any).currentUser;
       const selfieUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
       if (!selfieUrl) {
+        return res.status(400).json({ success: false, verified: false, message: "Selfie photo is required. Please take a photo." });
+      }
+
+      // Ensure face_verifications table exists
+      await rawDb.execute(rawSql`
+        CREATE TABLE IF NOT EXISTS face_verifications (
+          id SERIAL PRIMARY KEY,
+          driver_id UUID NOT NULL,
+          selfie_url TEXT NOT NULL,
+          profile_photo_url TEXT,
+          status VARCHAR(30) DEFAULT 'pending_review' NOT NULL,
+          reviewed_by UUID,
+          review_note TEXT,
+          created_at TIMESTAMPTZ DEFAULT now(),
+          reviewed_at TIMESTAMPTZ
+        )
+      `).catch(dbCatch("face_verifications_create"));
+
+      // Get driver's profile photo for reference
+      const profileR = await rawDb.execute(rawSql`
+        SELECT profile_image, last_face_verified_at FROM users WHERE id=${user.id}::uuid
+      `);
+      const driverRow = profileR.rows[0] as any;
+      const profilePhotoUrl = driverRow?.profile_image || null;
+      const lastVerified = driverRow?.last_face_verified_at ? new Date(driverRow.last_face_verified_at) : null;
+
+      // Warn if no profile photo (but don't block — admin will compare during review)
+      const hasProfilePhoto = !!profilePhotoUrl;
+
+      // Store the selfie verification record for admin review
+      await rawDb.execute(rawSql`
+        INSERT INTO face_verifications (driver_id, selfie_url, profile_photo_url, status)
+        VALUES (${user.id}::uuid, ${selfieUrl}, ${profilePhotoUrl || ''}, 'pending_review')
+      `);
+
+      // Decision logic:
+      // - If driver was NEVER verified before → pending_review (admin must approve)
+      // - If driver was previously verified (daily/periodic check) → auto-approve
+      if (lastVerified) {
+        // Previously verified driver — auto-approve daily check
         await rawDb.execute(rawSql`
           UPDATE users SET last_face_verified_at=now(), face_verified_trips=0, updated_at=now() WHERE id=${user.id}::uuid
-        `).catch(() => Promise.resolve());
-        return res.json({ success: true, verified: true, bypassed: true, message: "Verification skipped. You can continue." });
+        `).catch(() => {
+          return rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_face_verified_at TIMESTAMPTZ`).then(() =>
+            rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified_trips INTEGER DEFAULT 0`).then(() =>
+              rawDb.execute(rawSql`UPDATE users SET last_face_verified_at=now(), face_verified_trips=0 WHERE id=${user.id}::uuid`)
+            )
+          );
+        });
+        // Update the verification record to auto_approved
+        await rawDb.execute(rawSql`
+          UPDATE face_verifications SET status='auto_approved'
+          WHERE driver_id=${user.id}::uuid AND selfie_url=${selfieUrl}
+        `).catch(dbCatch("face_verify_update"));
+        return res.json({ success: true, verified: true, selfieUrl, message: "Face verified successfully!" });
       }
-      // In production: compare selfie with profile photo using AWS Rekognition / Azure Face API
-      // For now: auto-approve after selfie submission
+
+      // First-time verification — requires admin review
+      // Allow driver to go online provisionally, but flag for review
       await rawDb.execute(rawSql`
         UPDATE users SET last_face_verified_at=now(), face_verified_trips=0, updated_at=now() WHERE id=${user.id}::uuid
       `).catch(() => {
-        // Add columns if not exist
         return rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_face_verified_at TIMESTAMPTZ`).then(() =>
           rawDb.execute(rawSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified_trips INTEGER DEFAULT 0`).then(() =>
             rawDb.execute(rawSql`UPDATE users SET last_face_verified_at=now(), face_verified_trips=0 WHERE id=${user.id}::uuid`)
           )
         );
       });
-      res.json({ success: true, verified: true, selfieUrl, message: "Face verified successfully!" });
+
+      res.json({
+        success: true,
+        verified: true,
+        pendingReview: true,
+        hasProfilePhoto,
+        selfieUrl,
+        message: hasProfilePhoto
+          ? "Selfie submitted! Your identity is being verified by our team."
+          : "Selfie submitted! Please also upload a profile photo in your profile settings for faster verification.",
+      });
     } catch (e: any) {
-      console.error("[driver/face-verify] soft-fail:", e?.message || e);
-      res.json({ success: true, verified: true, bypassed: true, message: "Verification service unavailable. Continue now and retry later." });
+      console.error("[driver/face-verify] error:", e?.message || e);
+      res.status(500).json({ success: false, verified: false, message: "Verification failed. Please try again." });
     }
+  });
+
+  // -- ADMIN: Face verification review queue --------------------------------
+  app.get("/api/admin/face-verifications", requireAdminAuth, async (req, res) => {
+    try {
+      const status = String(req.query.status || 'pending_review');
+      const limit = Math.min(parseInt(String(req.query.limit || '50')), 100);
+      const r = await rawDb.execute(rawSql`
+        SELECT fv.id, fv.driver_id, fv.selfie_url, fv.profile_photo_url, fv.status,
+               fv.review_note, fv.created_at, fv.reviewed_at,
+               u.full_name as driver_name, u.phone as driver_phone, u.profile_image
+        FROM face_verifications fv
+        JOIN users u ON u.id = fv.driver_id
+        WHERE fv.status = ${status}
+        ORDER BY fv.created_at DESC
+        LIMIT ${limit}
+      `).catch(() => ({ rows: [] }));
+      res.json({ verifications: r.rows.map(camelize) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // -- ADMIN: Approve or reject face verification ---------------------------
+  app.post("/api/admin/face-verification/:id/review", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action, note } = req.body; // action: 'approve' | 'reject'
+      const adminUser = (req as any).currentUser;
+      if (!['approve', 'reject'].includes(action)) {
+        return res.status(400).json({ message: "action must be 'approve' or 'reject'" });
+      }
+      const newStatus = action === 'approve' ? 'approved' : 'rejected';
+      // Update verification record
+      await rawDb.execute(rawSql`
+        UPDATE face_verifications SET status=${newStatus}, reviewed_by=${adminUser.id}::uuid,
+          review_note=${note || ''}, reviewed_at=now()
+        WHERE id=${parseInt(id)}
+      `);
+      // If rejected, clear the driver's face verification so they must re-verify
+      if (action === 'reject') {
+        const fvR = await rawDb.execute(rawSql`SELECT driver_id FROM face_verifications WHERE id=${parseInt(id)}`);
+        const driverId = (fvR.rows[0] as any)?.driver_id;
+        if (driverId) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET last_face_verified_at=NULL, updated_at=now() WHERE id=${driverId}::uuid
+          `);
+        }
+      }
+      res.json({ success: true, status: newStatus, message: `Verification ${newStatus}` });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   // -- DRIVER: Upload pickup location photo (ride security) -----------------

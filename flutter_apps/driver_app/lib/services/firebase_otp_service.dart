@@ -12,21 +12,35 @@ class FirebaseOtpService {
   static String _mapAuthError(FirebaseAuthException e) {
     switch (e.code) {
       case 'invalid-phone-number':
-        return 'Invalid phone number format.';
+        return 'Invalid phone number. Please check and try again.';
       case 'too-many-requests':
-        return 'Too many attempts. Please wait a bit before trying again.';
+        return 'Too many attempts. Please wait 5 minutes and try again.';
       case 'quota-exceeded':
-        return 'OTP quota exceeded. Please try again later.';
+        return 'SMS limit reached. Please try again after some time.';
+      case 'operation-not-allowed':
+        return 'Phone authentication is not enabled. Please contact support.';
       case 'app-not-authorized':
-        return 'Firebase phone auth is not authorized for this app build.';
+        return 'App is not authorized. Please update to the latest version.';
+      case 'web-context-cancelled':
+        return 'Verification was cancelled. Please try again.';
+      case 'missing-client-identifier':
+        return 'Device verification failed. Please restart the app and try again.';
       case 'session-expired':
-        return 'This OTP session expired. Please resend OTP and try again.';
+        return 'OTP expired. Please tap "Resend OTP" to get a new code.';
       case 'invalid-verification-code':
-        return 'Incorrect OTP. Please check the code and try again.';
+        return 'Wrong OTP entered. Please check the code and try again.';
+      case 'invalid-verification-id':
+        return 'OTP session expired. Please tap "Resend OTP" to get a new code.';
       case 'network-request-failed':
-        return 'Network issue while contacting Firebase. Check your connection and try again.';
+        return 'No internet connection. Please check your network and try again.';
+      case 'credential-already-in-use':
+        return 'This phone number is already linked to another account.';
       default:
-        return e.message ?? 'Failed to process OTP. Please try again.';
+        final msg = e.message ?? '';
+        if (msg.contains('blocked') || msg.contains('identitytoolkit')) {
+          return 'OTP service is temporarily unavailable. Please try again in a few minutes or use password login.';
+        }
+        return msg.isNotEmpty ? msg : 'Something went wrong. Please try again.';
     }
   }
 
@@ -105,21 +119,31 @@ class FirebaseOtpService {
     String? verificationId,
   }) async {
     final vId = verificationId ?? _verificationId;
-    if (vId == null) throw Exception('Verification ID missing. Please resend OTP.');
-
-    // Sign out any stale session before creating a new one — prevents "session expired"
-    try { await _auth.signOut(); } catch (_) {}
+    if (vId == null) throw Exception('OTP session expired. Please tap "Resend OTP" and try again.');
 
     final credential = PhoneAuthProvider.credential(
       verificationId: vId,
       smsCode: smsCode,
     );
+
     try {
+      // Attempt sign-in with OTP credential directly (no sign-out first —
+      // signing out kills the verification session on some devices)
       final userCred = await _auth.signInWithCredential(credential);
       final idToken = await userCred.user?.getIdToken(true);
       if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
       return idToken;
     } on FirebaseAuthException catch (e) {
+      // If session expired, try signing out stale session and retrying once
+      if (e.code == 'session-expired' || e.code == 'invalid-verification-id') {
+        try {
+          await _auth.signOut();
+          final retryCred = await _auth.signInWithCredential(credential);
+          final idToken = await retryCred.user?.getIdToken(true);
+          if (idToken != null) return idToken;
+        } catch (_) {}
+        throw Exception('OTP session expired. Please tap "Resend OTP" to get a new code.');
+      }
       throw Exception(_mapAuthError(e));
     }
   }

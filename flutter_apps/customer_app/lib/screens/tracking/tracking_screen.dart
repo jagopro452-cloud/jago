@@ -31,7 +31,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     with TickerProviderStateMixin {
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
-  LatLng _center = const LatLng(17.3850, 78.4867);
+  LatLng _center = const LatLng(20.5937, 78.9629);
   LatLng? _driverLatLng;
   String _status = 'searching';
   Map<String, dynamic>? _trip;
@@ -42,6 +42,8 @@ class _TrackingScreenState extends State<TrackingScreen>
   List<String> _cancelReasons = [];
   late AnimationController _pulseCtrl;
   final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  bool _routeFetched = false;
   final List<StreamSubscription> _subs = [];
   final FlutterTts _tts = FlutterTts();
   String _lastAnnouncedStatus = '';
@@ -313,6 +315,130 @@ class _TrackingScreenState extends State<TrackingScreen>
         _status == 'on_the_way') {
       _mapController?.animateCamera(CameraUpdate.newLatLngZoom(pos, 16));
     }
+  }
+
+  /// Decode a Google Maps encoded polyline string into LatLng points.
+  List<LatLng> _decodePolyline(String encoded) {
+    final points = <LatLng>[];
+    int index = 0;
+    int lat = 0, lng = 0;
+    while (index < encoded.length) {
+      int shift = 0, result = 0;
+      int b;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return points;
+  }
+
+  /// Fetch route polyline from server and draw it on the map.
+  Future<void> _fetchRoutePolyline() async {
+    if (_routeFetched) return;
+    final trip = _trip;
+    if (trip == null) return;
+
+    final pLat = double.tryParse(trip['pickupLat']?.toString() ?? trip['pickup_lat']?.toString() ?? '');
+    final pLng = double.tryParse(trip['pickupLng']?.toString() ?? trip['pickup_lng']?.toString() ?? '');
+    final dLat = double.tryParse(trip['destinationLat']?.toString() ?? trip['destination_lat']?.toString() ?? '');
+    final dLng = double.tryParse(trip['destinationLng']?.toString() ?? trip['destination_lng']?.toString() ?? '');
+
+    if (pLat == null || pLng == null || dLat == null || dLng == null) return;
+    if (pLat == 0 || dLat == 0) return;
+
+    _routeFetched = true; // prevent duplicate fetches
+
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.post(
+        Uri.parse(ApiConfig.routeMultiWaypoint),
+        headers: headers,
+        body: jsonEncode({
+          'origin': {'lat': pLat, 'lng': pLng},
+          'destination': {'lat': dLat, 'lng': dLng},
+        }),
+      );
+      if (res.statusCode == 200 && mounted) {
+        final data = jsonDecode(res.body);
+        final encodedPolyline = data['overviewPolyline']?.toString() ?? '';
+        if (encodedPolyline.isNotEmpty) {
+          final points = _decodePolyline(encodedPolyline);
+          if (points.isNotEmpty) {
+            setState(() {
+              _polylines.clear();
+              _polylines.add(Polyline(
+                polylineId: const PolylineId('route'),
+                points: points,
+                color: _blue,
+                width: 5,
+                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+              ));
+              // Add pickup marker
+              _markers.removeWhere((m) => m.markerId.value == 'pickup');
+              _markers.add(Marker(
+                markerId: const MarkerId('pickup'),
+                position: LatLng(pLat, pLng),
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                infoWindow: InfoWindow(title: trip['pickupAddress']?.toString() ?? trip['pickup_address']?.toString() ?? 'Pickup'),
+              ));
+              // Add destination marker
+              _markers.removeWhere((m) => m.markerId.value == 'destination');
+              _markers.add(Marker(
+                markerId: const MarkerId('destination'),
+                position: LatLng(dLat, dLng),
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                infoWindow: InfoWindow(title: trip['destinationAddress']?.toString() ?? trip['destination_address']?.toString() ?? 'Destination'),
+              ));
+            });
+            // Fit camera to show the entire route
+            _fitMapToRoute(LatLng(pLat, pLng), LatLng(dLat, dLng));
+          }
+        }
+      }
+    } catch (_) {
+      // Fallback: draw a straight dashed line between pickup and destination
+      if (mounted) {
+        setState(() {
+          _polylines.clear();
+          _polylines.add(Polyline(
+            polylineId: const PolylineId('route'),
+            points: [LatLng(pLat, pLng), LatLng(dLat, dLng)],
+            color: _blue.withValues(alpha: 0.5),
+            width: 3,
+            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+          ));
+        });
+      }
+    }
+  }
+
+  void _fitMapToRoute(LatLng pickup, LatLng destination) {
+    if (_mapController == null) return;
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        math.min(pickup.latitude, destination.latitude),
+        math.min(pickup.longitude, destination.longitude),
+      ),
+      northeast: LatLng(
+        math.max(pickup.latitude, destination.latitude),
+        math.max(pickup.longitude, destination.longitude),
+      ),
+    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
   }
 
   @override
@@ -670,6 +796,8 @@ class _TrackingScreenState extends State<TrackingScreen>
               }
             }
           });
+          // Fetch route polyline once trip data has pickup+destination
+          _fetchRoutePolyline();
           if (_status == 'completed' || _status == 'cancelled')
             _pollTimer?.cancel();
         }
@@ -824,8 +952,11 @@ class _TrackingScreenState extends State<TrackingScreen>
             onMapCreated: (c) {
               _mapController = c;
               if (_driverLatLng != null) _updateDriverMarker(_driverLatLng!);
+              // Fetch route polyline once map is ready
+              _fetchRoutePolyline();
             },
             markers: _markers,
+            polylines: _polylines,
             myLocationEnabled: true,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,

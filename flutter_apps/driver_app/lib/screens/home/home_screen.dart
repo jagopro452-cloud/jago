@@ -19,7 +19,7 @@ import '../../widgets/incoming_parcel_sheet.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_verification_screen.dart';
-import '../verification/face_verification_screen.dart';
+
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
-  LatLng _center = const LatLng(16.5062, 80.6480);
+  LatLng _center = const LatLng(20.5937, 78.9629); // India center — overwritten by GPS
   bool _isOnline = false;
   bool _toggling = false;
   bool _socketConnected = false;
@@ -392,70 +392,93 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Future<void> _getLocation() async {
+    // Step 1: Get last known position immediately (instant, no GPS cold-start)
+    Position? fallback;
     try {
-      final fallbackPosition = await Geolocator.getLastKnownPosition();
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _hasLiveLocationAccess = false;
-        if (fallbackPosition != null) {
-          _applyLocationFix(fallbackPosition);
-        } else {
-          _hasValidLocationFix = false;
-          if (mounted) {
-            _showSnack('Turn on device location to get live trips.', error: true);
-            await _showLocationRequiredDialog(
-              title: 'Location Services Off',
-              message: 'Turn on device location so we can detect your live position and assign rides nearby.',
-              openSettings: Geolocator.openLocationSettings,
-            );
-          }
-        }
+      fallback = await Geolocator.getLastKnownPosition();
+    } catch (_) {}
+
+    // Step 2: Check if location services (GPS) are enabled
+    bool serviceEnabled = false;
+    try {
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    } catch (_) {}
+
+    if (!serviceEnabled) {
+      _hasLiveLocationAccess = false;
+      if (fallback != null) {
+        _applyLocationFix(fallback);
+      } else {
+        _hasValidLocationFix = false;
+      }
+      if (mounted) {
+        _showSnack('Turn on device location to get live trips.', error: true);
+        await _showLocationRequiredDialog(
+          title: 'Location Services Off',
+          message: 'Turn on device location so we can detect your live position and assign rides nearby.',
+          openSettings: Geolocator.openLocationSettings,
+        );
+        // Re-check after user returns from settings
+        try {
+          serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        } catch (_) {}
+        if (!serviceEnabled) return;
+      } else {
         return;
       }
+    }
 
-      LocationPermission perm = await Geolocator.checkPermission();
+    // Step 3: Check and request location permission
+    LocationPermission perm = LocationPermission.denied;
+    try {
+      perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        _hasLiveLocationAccess = false;
-        if (fallbackPosition != null) {
-          _applyLocationFix(fallbackPosition);
-        } else {
-          _hasValidLocationFix = false;
-          if (!mounted) return;
-          await _showLocationRequiredDialog(
-            title: 'Location Required',
-            message: 'Location access is required to request rides. Please enable it in your device settings.',
-            openSettings: Geolocator.openAppSettings,
-          );
-        }
-        return;
+    } catch (_) {}
+
+    if (perm == LocationPermission.deniedForever) {
+      _hasLiveLocationAccess = false;
+      if (fallback != null) _applyLocationFix(fallback);
+      if (mounted) {
+        await _showLocationRequiredDialog(
+          title: 'Location Permission Blocked',
+          message: 'Location access is permanently blocked. Please enable it in your device settings to receive trips.',
+          openSettings: Geolocator.openAppSettings,
+        );
       }
-      _hasLiveLocationAccess = true;
-      // Fast path: last known position is instant, no cold-start GPS delay
-      if (fallbackPosition != null) {
-        _applyLocationFix(fallbackPosition);
-      }
-      // Accurate position with timeout to avoid indefinite hang
+      return;
+    }
+
+    if (perm == LocationPermission.denied) {
+      _hasLiveLocationAccess = false;
+      if (fallback != null) _applyLocationFix(fallback);
+      return;
+    }
+
+    // Permission granted (whileInUse or always) — mark access as available
+    _hasLiveLocationAccess = true;
+
+    // Step 4: Apply fallback immediately for fast UI response
+    if (fallback != null && !_hasValidLocationFix) {
+      _applyLocationFix(fallback);
+    }
+
+    // Step 5: Get accurate live position with timeout
+    try {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+          timeLimit: Duration(seconds: 12),
         ),
       );
       _applyLocationFix(pos);
     } catch (_) {
-      if (_lastPosition == null) {
-        try {
-          final last = await Geolocator.getLastKnownPosition();
-          if (last != null) {
-            _applyLocationFix(last);
-            return;
-          }
-        } catch (_) {}
-        _hasValidLocationFix = false;
-        _hasLiveLocationAccess = false;
+      // GPS fix failed (timeout, hardware issue, etc.)
+      // Permission is still valid — keep _hasLiveLocationAccess = true
+      // Use fallback if we don't have any fix yet
+      if (!_hasValidLocationFix && fallback != null) {
+        _applyLocationFix(fallback);
       }
     }
   }
@@ -988,49 +1011,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
-  Future<bool> _checkFaceVerificationAndProceed() async {
-    try {
-      final headers = await AuthService.getHeaders();
-      final res = await http.get(
-        Uri.parse(ApiConfig.checkVerification),
-        headers: headers,
-      ).timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['needsVerification'] == true && mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FaceVerificationScreen(
-                reason: data['reason']?.toString() ?? 'daily_check',
-                onVerified: () => Navigator.pop(context),
-              ),
-            ),
-          );
-          if (mounted) _toggleOnline();
-          return true;
-        }
-      } else if (res.statusCode >= 500 && mounted) {
-        _showSnack('Verification service busy. Continuing for now.');
-      }
-    } catch (_) {}
-    return false;
-  }
-
   Future<void> _toggleOnline() async {
     HapticFeedback.mediumImpact();
-    if (!_isOnline) {
-      final redirected = await _checkFaceVerificationAndProceed();
-      if (redirected) return;
-    }
     setState(() => _toggling = true);
     final newStatus = !_isOnline;
     try {
       if (newStatus) {
         await _getLocation();
-        if (!_hasValidLocationFix || !_hasLiveLocationAccess) {
+        if (!_hasValidLocationFix) {
           if (mounted) setState(() => _toggling = false);
-          _showSnack('Live location is required to go online. Turn on GPS and try again.', error: true);
+          _showSnack('Could not detect your location. Turn on GPS and try again.', error: true);
+          return;
+        }
+        if (!_hasLiveLocationAccess) {
+          if (mounted) setState(() => _toggling = false);
+          _showSnack('Location permission is required to go online. Please allow location access.', error: true);
           return;
         }
       }
@@ -1659,16 +1654,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(children: [
-          // Vehicle real image / icon fallback
+          // Vehicle icon
           SizedBox(
             width: 52, height: 42,
-            child: imageUrl != null
-              ? Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(vIcon, color: AppColors.primary, size: 28),
-                )
-              : Icon(vIcon, color: AppColors.primary, size: 28),
+            child: Icon(vIcon, color: AppColors.primary, size: 32),
           ),
           const SizedBox(width: 12),
           Expanded(

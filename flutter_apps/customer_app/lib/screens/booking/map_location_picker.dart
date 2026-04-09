@@ -119,7 +119,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     } catch (e) {
       debugPrint('[MAP] Geocode error: $e');
     }
-    if (mounted) setState(() { _address = _address == 'Move the map to select location' ? 'Unknown Location' : _address; _geocoding = false; });
+    if (mounted) setState(() { _address = _address == 'Move the map to select location' ? 'Current Location' : _address; _geocoding = false; });
   }
 
   @override
@@ -154,8 +154,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         if (lastPos != null && mounted) {
           setState(() {
             // Use last known if valid, otherwise fallback to a default city center
-            _lat = (lastPos.latitude != 0 && lastPos.latitude != 0.0) ? lastPos.latitude : 16.5062;
-            _lng = (lastPos.longitude != 0 && lastPos.longitude != 0.0) ? lastPos.longitude : 80.6480;
+            _lat = (lastPos.latitude != 0 && lastPos.latitude != 0.0) ? lastPos.latitude : (widget.initialLat ?? 20.5937);
+            _lng = (lastPos.longitude != 0 && lastPos.longitude != 0.0) ? lastPos.longitude : (widget.initialLng ?? 78.9629);
             _gpsLat = lastPos.latitude;
             _gpsLng = lastPos.longitude;
             _locationLoading = false;
@@ -172,8 +172,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         }
         // Ensure loading is stopped even if no location is found
         setState(() {
-          _lat = 16.5062; // Default (e.g., Vijayawada)
-          _lng = 80.6480;
+          _lat = (widget.initialLat ?? 20.5937);
+          _lng = (widget.initialLng ?? 78.9629);
           _locationLoading = false;
           _address = 'Location services disabled. Showing default.';
         });
@@ -186,8 +186,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.denied) {
         setState(() {
           _locationLoading = false;
-          _lat = 16.5062;
-          _lng = 80.6480;
+          _lat = (widget.initialLat ?? 20.5937);
+          _lng = (widget.initialLng ?? 78.9629);
           _address = 'Location permission is needed to detect your current location.';
         });
         return;
@@ -195,8 +195,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.deniedForever) {
         setState(() {
           _locationLoading = false;
-          _lat = 16.5062;
-          _lng = 80.6480;
+          _lat = (widget.initialLat ?? 20.5937);
+          _lng = (widget.initialLng ?? 78.9629);
           _address = 'Location permission is blocked. Enable it from settings.';
         });
         return;
@@ -206,8 +206,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         setState(() {
           // Ensure we have non-zero coordinates, otherwise fallback to default
           final isValid = lastPos.latitude != 0 && lastPos.longitude != 0;
-          _lat = isValid ? lastPos.latitude : (_lat ?? 16.5062);
-          _lng = isValid ? lastPos.longitude : (_lng ?? 80.6480);
+          _lat = isValid ? lastPos.latitude : (_lat ?? (widget.initialLat ?? 20.5937));
+          _lng = isValid ? lastPos.longitude : (_lng ?? (widget.initialLng ?? 78.9629));
           _gpsLat = lastPos.latitude;
           _gpsLng = lastPos.longitude;
         });
@@ -228,8 +228,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       );
       if (!mounted) return;
       setState(() {
-        _lat = pos.latitude != 0 ? pos.latitude : (_lat ?? 16.5062);
-        _lng = pos.longitude != 0 ? pos.longitude : (_lng ?? 80.6480);
+        _lat = pos.latitude != 0 ? pos.latitude : (_lat ?? (widget.initialLat ?? 20.5937));
+        _lng = pos.longitude != 0 ? pos.longitude : (_lng ?? (widget.initialLng ?? 78.9629));
         _gpsLat = pos.latitude;
         _gpsLng = pos.longitude;
         _locationLoading = false;

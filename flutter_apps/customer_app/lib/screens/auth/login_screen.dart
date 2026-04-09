@@ -241,31 +241,34 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 76, height: 76,
+                        width: 80, height: 80,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(24),
-                          color: Colors.white,
-                          border: Border.all(color: const Color(0xFFD8E6F8)),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF3A9EEC), Color(0xFF2A4CB7)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: JT.primary.withValues(alpha: 0.08),
-                              blurRadius: 20,
+                              color: const Color(0xFF2A4CB7).withValues(alpha: 0.25),
+                              blurRadius: 24,
                               offset: const Offset(0, 8),
                             ),
                           ],
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: JT.logoBlue(height: 44),
+                          padding: const EdgeInsets.all(14),
+                          child: JT.logoWhite(height: 44),
                         ),
                       ),
                       const SizedBox(height: 18),
-                      JT.logoBlue(height: 36),
+                      JT.logoBlue(height: 40),
                       const SizedBox(height: 6),
-                      Text('Your ride, your way', style: GoogleFonts.poppins(
+                      Text('Safe, Fast & Affordable Rides', style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.w400,
                         color: JT.textSecondary,
-                        letterSpacing: 0.5,
+                        letterSpacing: 0.3,
                       )),
                     ],
                   ),

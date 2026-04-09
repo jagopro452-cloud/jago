@@ -154,13 +154,26 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
     setState(() => _booking = true);
     try {
       // Get user's actual location
-      double pickupLat = 17.385044;
-      double pickupLng = 78.486671;
+      double pickupLat = 20.5937;
+      double pickupLng = 78.9629;
       try {
-        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high).timeout(const Duration(seconds: 5));
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 5),
+          ));
         pickupLat = pos.latitude;
         pickupLng = pos.longitude;
-      } catch (_) {}
+      } catch (_) {
+        // Try last known position as fallback
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) {
+            pickupLat = last.latitude;
+            pickupLng = last.longitude;
+          }
+        } catch (_) {}
+      }
       final headers = await AuthService.getHeaders();
       final res = await http.post(Uri.parse(ApiConfig.scheduleRide), headers: headers,
         body: jsonEncode({

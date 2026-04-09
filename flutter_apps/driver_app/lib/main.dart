@@ -85,7 +85,7 @@ class JagoPilotApp extends StatelessWidget {
         primary: primary,
         secondary: Color(0xFF5B9DFF),
         surface: card,
-        background: bg,
+        surfaceContainerHighest: bg,
         onPrimary: Colors.white,
         onSurface: Color(0xFF111827),
         outline: Color(0xFFD9E4F5),
