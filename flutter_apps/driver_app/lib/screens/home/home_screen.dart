@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/heatmap_service.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/alarm_service.dart';
@@ -277,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     _subs.add(_socket.onWalletRecharged.listen((data) {
       if (!mounted) return;
-      final newBalance = (data['newBalance'] ?? data['balance'] ?? 0).toDouble();
+      final newBalance = safeDouble(data['newBalance'] ?? data['balance']);
       setState(() => _walletBalance = newBalance);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Wallet recharged! Balance: ₹${newBalance.toStringAsFixed(0)}',
@@ -511,9 +512,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         if (!mounted) return;
         setState(() {
           _isOnline = data['isOnline'] ?? false;
-          _walletBalance = (data['walletBalance'] ?? 0).toDouble();
-          _tripsToday = data['tripsToday'] ?? 0;
-          _earningsToday = (data['earningsToday'] ?? 0).toDouble();
+          _walletBalance = safeDouble(data['walletBalance']);
+          _tripsToday = safeInt(data['tripsToday']);
+          _earningsToday = safeDouble(data['earningsToday']);
           _vehicleCategory = data['vehicleCategory'] ?? '';
           _vehicleNumber = data['vehicleNumber'] ?? '';
           _vehicleModel = data['vehicleModel'] ?? '';

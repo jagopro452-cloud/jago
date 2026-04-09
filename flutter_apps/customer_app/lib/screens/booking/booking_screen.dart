@@ -10,6 +10,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
@@ -59,6 +60,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
   bool _popularForPickup = false;
+
+  // Route polyline points (fetched from server)
+  List<LatLng> _routePoints = [];
 
   // Populated dynamically from /api/app/popular-locations
   List<Map<String, dynamic>> _popularLocations = const [];
@@ -314,9 +318,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final name = fare['vehicleCategoryName']?.toString() ?? fare['name']?.toString() ?? 'Bike';
     final emoji = _emojiForVehicle(name);
     final accent = _accentForVehicle(name);
-    final fareVal = (fare['estimatedFare'] ?? 0).toDouble();
-    final rawMin = (fare['fareMin'] ?? (fareVal * 0.95)).toDouble();
-    final rawMax = (fare['fareMax'] ?? (fareVal * 1.05)).toDouble();
+    final fareVal = safeDouble(fare['estimatedFare']);
+    final rawMin = safeDouble(fare['fareMin'], fareVal * 0.95);
+    final rawMax = safeDouble(fare['fareMax'], fareVal * 1.05);
     final displayMin = (rawMin - _promoDiscount).clamp(0.0, double.infinity);
     final displayMax = (rawMax - _promoDiscount).clamp(0.0, double.infinity);
     return AnimatedSwitcher(
@@ -447,7 +451,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   double get _finalFare {
-    final f = (_fare?['estimatedFare'] ?? 0).toDouble();
+    final f = safeDouble(_fare?['estimatedFare']);
     return (f - _promoDiscount).clamp(0, double.infinity);
   }
 
@@ -460,6 +464,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
     _fetchActiveServices();
     _estimateFare();
+    _fetchRoute();
     _fetchWallet();
     _fetchPopularLocations();
   }
@@ -506,7 +511,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (mounted) setState(() => _walletBalance = (data['balance'] ?? 0).toDouble());
+        if (mounted) setState(() => _walletBalance = safeDouble(data['balance']));
       }
     } catch (_) {}
   }
@@ -531,7 +536,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final headers = await AuthService.getHeaders();
       final res = await http.post(Uri.parse(ApiConfig.applyCoupon),
         headers: headers,
-        body: jsonEncode({'code': code, 'fareAmount': (_fare?['estimatedFare'] ?? 0).toDouble()}));
+        body: jsonEncode({'code': code, 'fareAmount': safeDouble(_fare?['estimatedFare'])}));
       if (res.statusCode == 200) {
         try {
           final data = jsonDecode(res.body);
@@ -620,6 +625,56 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       if (mounted) setState(() => _allFares = _applyActiveServiceFilter(_buildFallbackFares()));
     }
     if (mounted) setState(() => _estimating = false);
+  }
+
+  Future<void> _fetchRoute() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.post(
+        Uri.parse(ApiConfig.routeMultiWaypoint),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'origin': {'lat': widget.pickupLat, 'lng': widget.pickupLng},
+          'destination': {'lat': widget.destLat, 'lng': widget.destLng},
+        }),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final encoded = data['overviewPolyline']?.toString() ?? '';
+        if (encoded.isNotEmpty) {
+          final pts = _decodePolyline(encoded);
+          if (mounted && pts.isNotEmpty) setState(() => _routePoints = pts);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Decode Google encoded polyline string into list of LatLng.
+  static List<LatLng> _decodePolyline(String encoded) {
+    final points = <LatLng>[];
+    int index = 0, lat = 0, lng = 0;
+    while (index < encoded.length) {
+      int shift = 0, result = 0;
+      int b;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return points;
   }
 
   /// Builds client-side fare estimates (Bike/Auto/Car) when the server returns
@@ -977,9 +1032,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           },
           polylines: {
             Polyline(polylineId: const PolylineId('route'),
-              points: [_pickupLatLng, _destLatLng],
+              points: _routePoints.isNotEmpty ? _routePoints : [_pickupLatLng, _destLatLng],
               color: _blue, width: 4,
-              patterns: [PatternItem.dash(20), PatternItem.gap(10)]),
+              patterns: _routePoints.isNotEmpty ? [] : [PatternItem.dash(20), PatternItem.gap(10)]),
           },
           zoomControlsEnabled: false, mapToolbarEnabled: false,
           myLocationEnabled: true, myLocationButtonEnabled: false,
@@ -1611,9 +1666,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     int fastestIdx = 0, saverIdx = 0, premiumIdx = 0;
     for (int j = 0; j < _allFares.length; j++) {
       final f = _allFares[j];
-      final fare = (f['estimatedFare'] ?? 0).toDouble();
-      final bestFare = (_allFares[saverIdx]['estimatedFare'] ?? 0).toDouble();
-      final highFare = (_allFares[premiumIdx]['estimatedFare'] ?? 0).toDouble();
+      final fare = safeDouble(f['estimatedFare']);
+      final bestFare = safeDouble(_allFares[saverIdx]['estimatedFare']);
+      final highFare = safeDouble(_allFares[premiumIdx]['estimatedFare']);
       if (fare < bestFare) saverIdx = j;
       if (fare > highFare) premiumIdx = j;
       final timeStr = f['estimatedTime']?.toString() ?? '99 min';
@@ -1805,7 +1860,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         final f = entry.value;
         final isSelected = i == _selectedFareIndex;
         final name = f['vehicleCategoryName']?.toString() ?? f['vehicleName']?.toString() ?? f['name']?.toString() ?? 'Vehicle';
-        final fareVal = (f['estimatedFare'] ?? 0).toDouble();
+        final fareVal = safeDouble(f['estimatedFare']);
         final time = f['estimatedTime']?.toString() ?? '~5 min';
         final displayFare = isSelected ? (fareVal - _promoDiscount).clamp(0.0, double.infinity) : fareVal;
         final tag = _getVehicleTag(i);
@@ -1979,15 +2034,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     const textMain = JT.textPrimary;
     final textSub = Colors.grey.shade600;
 
-    final baseFare = (fare['baseFare'] ?? 0).toDouble();
-    final distanceFare = (fare['distanceFare'] ?? 0).toDouble();
-    final timeFare = (fare['timeFare'] ?? 0).toDouble();
-    final helperCharge = (fare['helperCharge'] ?? 0).toDouble();
-    final gst = (fare['gst'] ?? 0).toDouble();
-    final minFare = (fare['minimumFare'] ?? 0).toDouble();
-    final farePerKm = (fare['farePerKm'] ?? 0).toDouble();
-    final waitingChargePerMin = (fare['waitingChargePerMin'] ?? 0).toDouble();
-    final subtotal = (fare['subtotal'] ?? (baseFare + distanceFare + timeFare)).toDouble();
+    final baseFare = safeDouble(fare['baseFare']);
+    final distanceFare = safeDouble(fare['distanceFare']);
+    final timeFare = safeDouble(fare['timeFare']);
+    final helperCharge = safeDouble(fare['helperCharge']);
+    final gst = safeDouble(fare['gst']);
+    final minFare = safeDouble(fare['minimumFare']);
+    final farePerKm = safeDouble(fare['farePerKm']);
+    final waitingChargePerMin = safeDouble(fare['waitingChargePerMin']);
+    final subtotal = safeDouble(fare['subtotal'], baseFare + distanceFare + timeFare);
     final isMinFareApplied = minFare > 0 && subtotal <= minFare + 0.01;
     final isNight = fare['isNightCharge'] == true;
 

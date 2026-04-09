@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
@@ -168,7 +169,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
     final driver = d['driverName'] ?? 'Driver';
     final vehicle = d['vehicleName'] ?? 'Vehicle';
     final available = d['availableSeats'] ?? 0;
-    final seatPrice = (d['seatPrice'] ?? 0).toDouble();
+    final seatPrice = safeDouble(d['seatPrice']);
     final depTime = d['departureTime'] != null ? _fmt(d['departureTime']) : '--';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -244,7 +245,7 @@ class _CarSharingScreenState extends State<CarSharingScreen> with SingleTickerPr
     final driver = d['driverName'] ?? 'Driver';
     final status = d['status'] ?? 'confirmed';
     final seats = d['seatsBooked'] ?? 1;
-    final total = (d['totalFare'] ?? 0).toDouble();
+    final total = safeDouble(d['totalFare']);
     final depTime = d['departureTime'] != null ? _fmt(d['departureTime']) : '--';
     final Color statusColor = status == 'confirmed' ? _green : status == 'cancelled' ? Colors.red : _amber;
     return Container(

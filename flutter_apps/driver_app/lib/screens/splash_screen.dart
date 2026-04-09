@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/jago_theme.dart';
+import '../services/auth_service.dart';
 import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
@@ -102,8 +103,27 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
     final token = prefs.getString('auth_token');
     if (!mounted) return;
+
+    Widget destination = const LoginScreen();
+    if (token != null && token.isNotEmpty) {
+      // Validate token with server — don't blindly trust cached token
+      try {
+        final profile = await AuthService.getProfile();
+        if (profile != null) {
+          destination = const HomeScreen();
+        } else {
+          // Token invalid — clear and go to login
+          await prefs.remove('auth_token');
+        }
+      } catch (_) {
+        // Network error — allow offline access with cached token
+        destination = const HomeScreen();
+      }
+    }
+
+    if (!mounted) return;
     Navigator.pushReplacement(context, PageRouteBuilder(
-      pageBuilder: (_, __, ___) => (token != null && token.isNotEmpty) ? const HomeScreen() : const LoginScreen(),
+      pageBuilder: (_, __, ___) => destination,
       transitionDuration: const Duration(milliseconds: 600),
       transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
     ));

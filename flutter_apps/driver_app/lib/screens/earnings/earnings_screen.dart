@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 
 class EarningsScreen extends StatefulWidget {
@@ -77,7 +78,7 @@ class _EarningsScreenState extends State<EarningsScreen>
         final d = jsonDecode(res.body);
         setState(() {
           _weekDays = List<Map<String, dynamic>>.from(d['days'] ?? []);
-          _weekTotal = (d['total'] ?? 0).toDouble();
+          _weekTotal = safeDouble(d['total']);
         });
       }
     } catch (_) {}
@@ -86,15 +87,15 @@ class _EarningsScreenState extends State<EarningsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final gross = (_stats['grossFare'] ?? 0).toDouble();
-    final commission = (_stats['commission'] ?? 0).toDouble();
-    final net = (_stats['netEarnings'] ?? 0).toDouble();
+    final gross = safeDouble(_stats['grossFare']);
+    final commission = safeDouble(_stats['commission']);
+    final net = safeDouble(_stats['netEarnings']);
     final completed = _stats['completedTrips'] ?? 0;
     final cancelled = _stats['cancelledTrips'] ?? 0;
     final maxWeek = _weekDays.isEmpty
         ? 1.0
         : _weekDays
-            .map((d) => (d['gross'] as num).toDouble())
+            .map((d) => safeDouble(d['gross']))
             .reduce((a, b) => a > b ? a : b)
             .clamp(1.0, double.infinity);
 
@@ -456,7 +457,7 @@ class _EarningsScreenState extends State<EarningsScreen>
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: _weekDays.map((d) {
-                final val = (d['gross'] as num).toDouble();
+                final val = safeDouble(d['gross']);
                 final frac = val / maxWeek;
                 final today = DateTime.now();
                 final isToday =

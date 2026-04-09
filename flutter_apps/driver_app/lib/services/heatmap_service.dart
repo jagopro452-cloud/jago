@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
+import '../config/safe_parse.dart';
 
 // Demand level colors
 const Color kHeatLow    = Color(0xFF22C55E); // green
@@ -39,17 +40,17 @@ class HeatmapZone {
 
   factory HeatmapZone.fromJson(Map<String, dynamic> j) => HeatmapZone(
     key: j['key']?.toString() ?? '',
-    lat: (j['lat'] ?? 0).toDouble(),
-    lng: (j['lng'] ?? 0).toDouble(),
-    requestCount: (j['requestCount'] ?? 0) as int,
-    activeDrivers: (j['activeDrivers'] ?? 0) as int,
-    demandScore: (j['demandScore'] ?? 0).toDouble(),
+    lat: safeDouble(j['lat']),
+    lng: safeDouble(j['lng']),
+    requestCount: safeInt(j['requestCount']),
+    activeDrivers: safeInt(j['activeDrivers']),
+    demandScore: safeDouble(j['demandScore']),
     demandLevel: j['demandLevel']?.toString() ?? 'low',
     serviceBreakdown: Map<String, int>.from(
-      (j['serviceBreakdown'] as Map? ?? {}).map((k, v) => MapEntry(k.toString(), (v ?? 0) as int))
+      (j['serviceBreakdown'] as Map? ?? {}).map((k, v) => MapEntry(k.toString(), safeInt(v)))
     ),
-    earningMin: (j['earningMin'] ?? 0) as int,
-    earningMax: (j['earningMax'] ?? 0) as int,
+    earningMin: safeInt(j['earningMin']),
+    earningMax: safeInt(j['earningMax']),
   );
 
   Color get color {
@@ -94,12 +95,12 @@ class HeatmapSuggestion {
   });
 
   factory HeatmapSuggestion.fromJson(Map<String, dynamic> j) => HeatmapSuggestion(
-    lat: (j['lat'] ?? 0).toDouble(),
-    lng: (j['lng'] ?? 0).toDouble(),
-    distanceKm: (j['distanceKm'] ?? 0).toDouble(),
+    lat: safeDouble(j['lat']),
+    lng: safeDouble(j['lng']),
+    distanceKm: safeDouble(j['distanceKm']),
     demandLevel: j['demandLevel']?.toString() ?? 'medium',
-    earningMin: (j['earningMin'] ?? 0) as int,
-    earningMax: (j['earningMax'] ?? 0) as int,
+    earningMin: safeInt(j['earningMin']),
+    earningMax: safeInt(j['earningMax']),
     topService: j['topService']?.toString() ?? 'ride',
     message: j['message']?.toString() ?? '',
     detail: j['detail']?.toString() ?? '',

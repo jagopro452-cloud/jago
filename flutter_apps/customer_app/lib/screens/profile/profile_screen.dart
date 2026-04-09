@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import 'package:http/http.dart' as http;
 import 'package:shimmer/shimmer.dart';
 import '../../services/auth_service.dart';
@@ -53,12 +54,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _name = data?['fullName'] ?? data?['name'] ?? 'User';
       _phone = data?['phone'] ?? '';
       _email = data?['email'] ?? '';
-      _rating = (data?['rating'] ?? 5.0).toDouble();
-      _walletBalance = (data?['walletBalance'] ?? 0).toDouble();
-      _loyaltyPoints = (data?['loyaltyPoints'] ?? 0).toInt();
+      _rating = safeDouble(data?['rating'], 5.0);
+      _walletBalance = safeDouble(data?['walletBalance']);
+      _loyaltyPoints = safeInt(data?['loyaltyPoints']);
       final stats = data?['stats'] as Map<String, dynamic>? ?? {};
-      _completedTrips = (stats['completedTrips'] ?? 0).toInt();
-      _totalSpent = (stats['totalSpent'] ?? 0).toDouble();
+      _completedTrips = safeInt(stats['completedTrips']);
+      _totalSpent = safeDouble(stats['totalSpent']);
       _nameCtrl.text = _name;
       _emailCtrl.text = _email;
       _loading = false;

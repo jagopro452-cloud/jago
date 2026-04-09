@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
 
@@ -212,7 +213,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
   _ParcelVehicle get _vehicle => _vehicles[_vehicleIdx];
-  double get _weightKg => (_kWeightOptions[_weightIdx]['value'] as num).toDouble();
+  double get _weightKg => safeDouble(_kWeightOptions[_weightIdx]['value']);
   double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0.0;
@@ -888,7 +889,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         const SizedBox(height: 10),
         ...List.generate(_kWeightOptions.length, (i) {
           final w = _kWeightOptions[i];
-          final kg = (w['value'] as num).toDouble();
+          final kg = safeDouble(w['value']);
           final overLimit = kg > _vehicle.maxKg;
           final sel = _weightIdx == i;
           return GestureDetector(
@@ -1226,13 +1227,13 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   Widget _buildFareCard() {
     final e = _estimate!;
     // Use grandTotal (includes GST) if present; fall back to totalFare for backward compat
-    final total  = (e['grandTotal'] ?? e['totalFare'] ?? 0) as num;
-    final base   = (e['baseFare'] ?? 0) as num;
-    final dist   = (e['distanceFare'] ?? 0) as num;
-    final wt     = (e['weightFare'] ?? 0) as num;
-    final load   = (e['loadingCharge'] ?? e['loadCharge'] ?? 0) as num;
-    final gst    = (e['gstAmount'] ?? 0) as num;
-    final minFare = (e['minimumFare'] ?? 0) as num;
+    final total  = safeDouble(e['grandTotal'] ?? e['totalFare']);
+    final base   = safeDouble(e['baseFare']);
+    final dist   = safeDouble(e['distanceFare']);
+    final wt     = safeDouble(e['weightFare']);
+    final load   = safeDouble(e['loadingCharge'] ?? e['loadCharge']);
+    final gst    = safeDouble(e['gstAmount']);
+    final minFare = safeDouble(e['minimumFare']);
 
     return Container(
       decoration: BoxDecoration(

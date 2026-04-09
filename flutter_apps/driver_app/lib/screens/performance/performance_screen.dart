@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
@@ -136,10 +137,10 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
 
   Widget _buildWeeklyChart() {
     final days = (_weeklyData?['days'] as List?) ?? [];
-    final total = (_weeklyData?['total'] ?? 0.0) as num;
+    final total = safeDouble(_weeklyData?['total']);
     if (days.isEmpty) return const SizedBox();
     final maxGross = days.fold<double>(0, (m, d) {
-      final g = (d['gross'] as num?)?.toDouble() ?? 0;
+      final g = safeDouble(d['gross']);
       return g > m ? g : m;
     });
 

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 import 'booking_screen.dart';
 import 'map_location_picker.dart';
@@ -981,8 +982,8 @@ class _LocationScreenState extends State<LocationScreen>
                   iconColor: JT.textSecondary,
                   onTap: () => _selectDrop(
                       p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
+                      safeDouble(p['lat']),
+                      safeDouble(p['lng'])),
                 )),
             const SizedBox(height: 12),
           ],
@@ -996,8 +997,8 @@ class _LocationScreenState extends State<LocationScreen>
                   iconColor: const Color(0xFFF59E0B),
                   onTap: () => _selectDrop(
                       p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
+                      safeDouble(p['lat']),
+                      safeDouble(p['lng'])),
                 )),
           ],
         ],

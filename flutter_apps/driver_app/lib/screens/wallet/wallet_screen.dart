@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -625,7 +626,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final balance = (_wallet?['walletBalance'] ?? _wallet?['balance'] ?? 0).toDouble();
+    final balance = safeDouble(_wallet?['walletBalance'] ?? _wallet?['balance']);
     final isLocked = _wallet?['isLocked'] ?? false;
     final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
     final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;

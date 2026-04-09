@@ -4,6 +4,7 @@ import '../../config/jago_theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../config/api_config.dart';
+import '../../config/safe_parse.dart';
 import '../../services/auth_service.dart';
 import '../home/home_screen.dart';
 
@@ -534,8 +535,8 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
     final isSelected = _selectedPlanId == id;
     final name = plan['name']?.toString() ?? '';
     final price = _toDouble(plan['price']);
-    final durationDays = plan['duration_days'] ?? plan['durationDays'] ?? 30;
-    final dailyRate = (price / (durationDays as num)).toStringAsFixed(0);
+    final durationDays = safeInt(plan['duration_days'] ?? plan['durationDays'], 30);
+    final dailyRate = (price / (durationDays > 0 ? durationDays : 30)).toStringAsFixed(0);
     final features = List<String>.from(plan['features'] ?? []);
 
     final isPopular = name.toLowerCase().contains('weekly') || name.toLowerCase().contains('week');

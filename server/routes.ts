@@ -8142,6 +8142,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           UPDATE driver_details SET zone_id=${autoZoneId}::uuid WHERE user_id=${driver.id}::uuid
         `).catch(dbCatch("db"));
       }
+      // Broadcast driver location to customer on active trip
+      try {
+        const activeTrip = await rawDb.execute(rawSql`
+          SELECT id, customer_id FROM trips
+          WHERE driver_id=${driver.id}::uuid AND status IN ('accepted','on_the_way','arrived','in_progress')
+          LIMIT 1
+        `);
+        const at = activeTrip.rows[0] as any;
+        if (at && io) {
+          io.to(`user:${at.customer_id}`).emit("driver:location_update", {
+            tripId: at.id, lat: coords.lat, lng: coords.lng,
+            heading: validHeading, speed: validSpeed,
+          });
+        }
+      } catch (_) {}
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
