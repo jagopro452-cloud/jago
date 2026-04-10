@@ -114,6 +114,15 @@ class _TrackingScreenState extends State<TrackingScreen>
                       '0',
                 ) ??
                 0.0;
+            // Merge completion data into _trip so completed card shows fare immediately
+            if (_trip != null) {
+              if (data['fare'] != null) _trip!['actualFare'] = data['fare'];
+              if (data['userDiscount'] != null) _trip!['userDiscount'] = data['userDiscount'];
+              if (data['userPayable'] != null) _trip!['userPayable'] = data['userPayable'];
+              if (data['actualDistance'] != null) _trip!['actualDistance'] = data['actualDistance'];
+              if (data['paymentMethod'] != null) _trip!['paymentMethod'] = data['paymentMethod'];
+              if (data['gstAmount'] != null) _trip!['gstAmount'] = data['gstAmount'];
+            }
           }
         });
         _announceStatus(newStatus);
@@ -1019,7 +1028,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                             const SizedBox(height: 12),
                             _buildFareRow(trip, actualFare, estimatedFare),
                           ],
-                          if (_status == 'completed') ...[
+                          if (_status == 'completed' && trip != null) ...[
                             const SizedBox(height: 16),
                             _buildCompletedCard(actualFare,
                                 walletPendingAmount: _walletPendingAmount),
