@@ -491,12 +491,42 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               _distanceToTargetM = distKm * 1000;
               _etaSec = (durMin * 60).round();
             });
-            // Fit camera to show entire route on first load
             _fitCameraToRoute(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
+            return;
           }
         }
       }
-    } catch (_) {}
+      // Server returned non-200 or empty polyline — draw straight line fallback
+      print('[TRIP] Route API returned ${res.statusCode}, drawing fallback line');
+      _drawFallbackRoute(fromLat, fromLng, toLat, toLng);
+    } catch (e) {
+      print('[TRIP] Route fetch error: $e');
+      _drawFallbackRoute(fromLat, fromLng, toLat, toLng);
+    }
+  }
+
+  /// Draw a straight dashed line when real route is unavailable.
+  void _drawFallbackRoute(double fromLat, double fromLng, double toLat, double toLng) {
+    if (!mounted) return;
+    // Calculate approximate distance via haversine
+    final dLat = (toLat - fromLat) * pi / 180;
+    final dLng = (toLng - fromLng) * pi / 180;
+    final a = pow(sin(dLat / 2), 2) + cos(fromLat * pi / 180) * cos(toLat * pi / 180) * pow(sin(dLng / 2), 2);
+    final distM = 6371000 * 2 * asin(sqrt(a));
+    final etaS = distM > 0 ? (distM / 8.33).round() : 0;
+    setState(() {
+      _polylines.clear();
+      _polylines.add(Polyline(
+        polylineId: const PolylineId('route'),
+        points: [LatLng(fromLat, fromLng), LatLng(toLat, toLng)],
+        color: JT.primary.withValues(alpha: 0.6),
+        width: 4,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ));
+      _distanceToTargetM = distM;
+      _etaSec = etaS;
+    });
+    _fitCameraToRoute(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
   }
 
   void _fitCameraToRoute(LatLng from, LatLng to) {

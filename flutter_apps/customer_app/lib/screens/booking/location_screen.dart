@@ -340,7 +340,7 @@ class _LocationScreenState extends State<LocationScreen>
       final r = await http.get(
         Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
         headers: headers,
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 8));
       if (!mounted) return;
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
@@ -348,8 +348,8 @@ class _LocationScreenState extends State<LocationScreen>
         setState(() {
           _searchResults = preds
               .map((p) {
-                final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
-                final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
+                final lat2 = safeDouble(p['lat']);
+                final lng2 = safeDouble(p['lng']);
                 return <String, dynamic>{
                   'name': p['fullDescription']?.toString() ??
                       p['mainText']?.toString() ?? '',
@@ -361,8 +361,12 @@ class _LocationScreenState extends State<LocationScreen>
               .where((r) => (r['name'] as String).isNotEmpty)
               .toList();
         });
+      } else {
+        debugPrint('[LOCATION] Search API returned ${r.statusCode}: ${r.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[LOCATION] Search error: $e');
+    }
     if (mounted) setState(() => _searching = false);
   }
 
@@ -969,6 +973,21 @@ class _LocationScreenState extends State<LocationScreen>
                 iconColor: _accent,
                 onTap: () => _selectFromSearch(p, forDrop: _activeField),
               )),
+        ]
+        else if (isSearching && items.isEmpty && !_searching) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off_rounded, size: 40, color: Colors.grey),
+                SizedBox(height: 10),
+                Text('No locations found', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500)),
+                SizedBox(height: 4),
+                Text('Try a different search or pick on map', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
         ]
 
         // Default state: recent + popular

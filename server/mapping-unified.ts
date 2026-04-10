@@ -401,7 +401,10 @@ export async function getMultiWaypointRoute(
   // If no waypoints, use simple route
   if (!waypoints.length) {
     const route = await getRouteWithCache(origin.lat, origin.lng, destination.lat, destination.lng);
-    if (!route) return null;
+    if (!route) {
+      // No API key or API failed — use haversine fallback with encoded polyline
+      return haversineMultiRoute(origin, destination, []);
+    }
     return {
       legs: [{
         originAddress: "",
@@ -467,6 +470,31 @@ export async function getMultiWaypointRoute(
   }
 }
 
+/** Encode a single coordinate value into Google polyline format */
+function encodePolylineValue(value: number): string {
+  let v = Math.round(value * 1e5);
+  v = v < 0 ? ~(v << 1) : (v << 1);
+  let encoded = '';
+  while (v >= 0x20) {
+    encoded += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+    v >>= 5;
+  }
+  encoded += String.fromCharCode(v + 63);
+  return encoded;
+}
+
+/** Encode array of {lat,lng} into Google encoded polyline string */
+function encodePolyline(points: Array<{ lat: number; lng: number }>): string {
+  let prevLat = 0, prevLng = 0, encoded = '';
+  for (const p of points) {
+    encoded += encodePolylineValue(p.lat - prevLat);
+    encoded += encodePolylineValue(p.lng - prevLng);
+    prevLat = p.lat;
+    prevLng = p.lng;
+  }
+  return encoded;
+}
+
 function haversineMultiRoute(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
@@ -488,12 +516,13 @@ function haversineMultiRoute(
   for (let i = 0; i < allPoints.length - 1; i++) {
     const d = haversineKm(allPoints[i].lat, allPoints[i].lng, allPoints[i + 1].lat, allPoints[i + 1].lng);
     const dur = Math.round((d / 25) * 60);
+    const legPolyline = encodePolyline([allPoints[i], allPoints[i + 1]]);
     legs.push({
       originAddress: "",
       destAddress: "",
       distanceKm: Math.round(d * 100) / 100,
       durationMinutes: dur,
-      polyline: "",
+      polyline: legPolyline,
     });
     totalDist += d;
     totalDur += dur;
@@ -503,7 +532,7 @@ function haversineMultiRoute(
     legs,
     totalDistanceKm: Math.round(totalDist * 100) / 100,
     totalDurationMinutes: totalDur,
-    overviewPolyline: "",
+    overviewPolyline: encodePolyline(allPoints),
     waypointOrder: waypoints.map((_, i) => i),
   };
 }

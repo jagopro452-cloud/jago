@@ -243,7 +243,15 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       }
       _reverseGeocode(_lat, _lng);
     } catch (e) {
-      setState(() => _locationLoading = false);
+      debugPrint('[MAP_PICKER] Location error: $e');
+      if (mounted) {
+        setState(() {
+          _locationLoading = false;
+          _lat ??= widget.initialLat ?? 20.5937;
+          _lng ??= widget.initialLng ?? 78.9629;
+          _address = 'Could not detect location. Move map to select.';
+        });
+      }
     }
   }
 

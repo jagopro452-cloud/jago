@@ -2065,6 +2065,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   } catch (e: any) {
     console.error("[schema] startup schema error:", e.message);
   }
+
+  // Seed Google Maps API key into business_settings from env var (if not already set)
+  try {
+    const gmapsEnv = process.env.GOOGLE_MAPS_API_KEY;
+    if (gmapsEnv) {
+      await rawDb.execute(rawSql`
+        INSERT INTO business_settings (key_name, value, settings_type)
+        VALUES ('google_maps_key', ${gmapsEnv}, 'api_keys')
+        ON CONFLICT (key_name) DO NOTHING
+      `).catch(() => {});
+      console.log("[bootstrap] Google Maps API key seeded into business_settings");
+    }
+  } catch { /* non-critical */ }
   // Must be awaited so the admins table exists before any login request is handled
   try {
     await ensureAdminExists();
