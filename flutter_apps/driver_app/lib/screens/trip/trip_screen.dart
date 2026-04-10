@@ -75,6 +75,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   bool _hasLiveLocationAccess = false;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  Timer? _routeRefreshTimer;
+  String _lastRouteStatus = ''; // track status changes to re-fetch route
 
   // Live stats
   double _distanceToTargetM = 0;
@@ -116,7 +118,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initMapMarkers();
       _fetchRouteForCurrentStatus();
-      if (_status == 'accepted' || _status == 'driver_assigned') _openNavigation();
+      _startRouteRefresh();
       if (_status == 'in_progress' || _status == 'on_the_way') _startTripTimer();
       _validateActiveTrip();
     });
@@ -193,10 +195,14 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         }
         // Sync status if server differs from local (handles race conditions)
         if (serverStatus.isNotEmpty && serverStatus != _status) {
+          final oldStatus = _status;
           setState(() {
             _status = serverStatus;
             _trip = serverTrip;
           });
+          // Status changed — refetch route (e.g. now heading to destination instead of pickup)
+          if (oldStatus != serverStatus) _fetchRouteForCurrentStatus();
+          if (serverStatus == 'in_progress' || serverStatus == 'on_the_way') _startTripTimer();
         }
       }
     } catch (_) {} // network error — keep polling
@@ -297,6 +303,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     _otpCtrl.dispose();
     _locationTimer?.cancel();
     _posStream?.cancel();
+    _routeRefreshTimer?.cancel();
     _stopTripTimer();
     _stopStatePoll();
     _cancelSub?.cancel();
@@ -434,8 +441,9 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   Future<void> _fetchRouteForCurrentStatus() async {
     final t = _trip;
     if (t == null) return;
-    final myLat = _center.latitude;
-    final myLng = _center.longitude;
+    // Use live GPS position if available, otherwise map center
+    final myLat = _lastTripPosition?.latitude ?? _center.latitude;
+    final myLng = _lastTripPosition?.longitude ?? _center.longitude;
     final toPickup = _status == 'accepted' || _status == 'driver_assigned';
 
     double destLat, destLng;
@@ -468,23 +476,55 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         final overviewPolyline = data['overviewPolyline']?.toString();
         final distKm = (data['totalDistanceKm'] as num?)?.toDouble() ?? 0.0;
         final durMin = (data['totalDurationMinutes'] as num?)?.toDouble() ?? 0.0;
-        if (overviewPolyline != null && mounted) {
+        if (overviewPolyline != null && overviewPolyline.isNotEmpty && mounted) {
           final pts = _decodePolyline(overviewPolyline);
-          setState(() {
-            _polylines.clear();
-            _polylines.add(Polyline(
-              polylineId: const PolylineId('route'),
-              points: pts,
-              color: JT.primary,
-              width: 5,
-              patterns: [],
-            ));
-            _distanceToTargetM = distKm * 1000;
-            _etaSec = (durMin * 60).round();
-          });
+          if (pts.isNotEmpty) {
+            setState(() {
+              _polylines.clear();
+              _polylines.add(Polyline(
+                polylineId: const PolylineId('route'),
+                points: pts,
+                color: JT.primary,
+                width: 5,
+                patterns: [],
+              ));
+              _distanceToTargetM = distKm * 1000;
+              _etaSec = (durMin * 60).round();
+            });
+            // Fit camera to show entire route on first load
+            _fitCameraToRoute(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
+          }
         }
       }
     } catch (_) {}
+  }
+
+  void _fitCameraToRoute(LatLng from, LatLng to) {
+    if (_mapController == null) return;
+    final swLat = from.latitude < to.latitude ? from.latitude : to.latitude;
+    final swLng = from.longitude < to.longitude ? from.longitude : to.longitude;
+    final neLat = from.latitude > to.latitude ? from.latitude : to.latitude;
+    final neLng = from.longitude > to.longitude ? from.longitude : to.longitude;
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
+      LatLngBounds(southwest: LatLng(swLat, swLng), northeast: LatLng(neLat, neLng)),
+      80,
+    ));
+  }
+
+  /// Periodically refresh route polyline as driver moves (every 30s).
+  void _startRouteRefresh() {
+    _routeRefreshTimer?.cancel();
+    _lastRouteStatus = _status;
+    _routeRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      // If status changed (e.g. accepted → in_progress), force immediate refetch
+      if (_status != _lastRouteStatus) {
+        _lastRouteStatus = _status;
+      }
+      // Skip route refresh when waiting at pickup (arrived) or trip completed
+      if (_status == 'arrived' || _status == 'completed' || _status == 'cancelled') return;
+      _fetchRouteForCurrentStatus();
+    });
   }
 
   // ── Location updates ──────────────────────────────────────────────────────
@@ -785,8 +825,10 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
         final dLat = double.tryParse(_trip?['destinationLat']?.toString() ?? _trip?['destination_lat']?.toString() ?? '') ?? 0;
         final dLng = double.tryParse(_trip?['destinationLng']?.toString() ?? _trip?['destination_lng']?.toString() ?? '') ?? 0;
         if (dLat != 0 && dLng != 0) {
+          final fromLat = _lastTripPosition?.latitude ?? _center.latitude;
+          final fromLng = _lastTripPosition?.longitude ?? _center.longitude;
           _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(dLat, dLng), 15));
-          await _fetchRoute(_center.latitude, _center.longitude, dLat, dLng);
+          await _fetchRoute(fromLat, fromLng, dLat, dLng);
         }
         _showSnack('Trip started! Navigate to destination');
         _showPickupPhotoPrompt(tripId);

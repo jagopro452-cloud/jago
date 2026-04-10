@@ -125,6 +125,9 @@ class _TrackingScreenState extends State<TrackingScreen>
         if (newStatus == 'in_progress' || newStatus == 'on_the_way') {
           AlarmService().playChime();
           HapticFeedback.mediumImpact();
+          // Trip started — re-fetch route from driver to destination
+          _routeFetched = false;
+          _fetchRoutePolyline();
         }
         if (newStatus == 'completed') AlarmService().playChime();
         if (newStatus == 'completed' || newStatus == 'cancelled') {
@@ -347,6 +350,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   /// Fetch route polyline from server and draw it on the map.
+  /// When trip is in_progress, uses driver's live position as origin.
   Future<void> _fetchRoutePolyline() async {
     if (_routeFetched) return;
     final trip = _trip;
@@ -360,15 +364,20 @@ class _TrackingScreenState extends State<TrackingScreen>
     if (pLat == null || pLng == null || dLat == null || dLng == null) return;
     if (pLat == 0 || dLat == 0) return;
 
+    // When trip is in progress, use driver's live position as route origin
+    final bool tripStarted = _status == 'in_progress' || _status == 'on_the_way';
+    final originLat = (tripStarted && _driverLatLng != null) ? _driverLatLng!.latitude : pLat;
+    final originLng = (tripStarted && _driverLatLng != null) ? _driverLatLng!.longitude : pLng;
+
     _routeFetched = true; // prevent duplicate fetches
 
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.post(
         Uri.parse(ApiConfig.routeMultiWaypoint),
-        headers: headers,
+        headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({
-          'origin': {'lat': pLat, 'lng': pLng},
+          'origin': {'lat': originLat, 'lng': originLng},
           'destination': {'lat': dLat, 'lng': dLng},
         }),
       );
@@ -385,7 +394,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                 points: points,
                 color: _blue,
                 width: 5,
-                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+                patterns: [],
               ));
               // Add pickup marker
               _markers.removeWhere((m) => m.markerId.value == 'pickup');
