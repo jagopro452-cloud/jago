@@ -191,8 +191,8 @@ app.use((req, res, next) => {
   // ─── NOW START SERVER LISTENING ───
   // Routes are registered and ready to handle requests
   const port = parseInt(process.env.PORT || "5000", 10);
-  const server = httpServer.listen(3000, "0.0.0.0", () => {
-    console.log("Server running on port 3000");
+  const server = httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on port ${port}`);
   });
 
   // ─── BACKGROUND INITIALIZATION (non-blocking) ───
