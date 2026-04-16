@@ -1948,6 +1948,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Public env/config diagnostic — reports which critical keys are configured.
+  // Returns booleans only (never exposes values). Safe to expose publicly.
+  app.get("/api/health/env", async (_req, res) => {
+    const has = (k: string) => !!(process.env[k] && process.env[k]!.trim());
+    let dbKey = false;
+    try {
+      const { pool: dbPool } = await import("./db");
+      const r = await dbPool.query(
+        "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY') LIMIT 1"
+      );
+      dbKey = !!(r.rows[0]?.value && String(r.rows[0].value).trim());
+    } catch {}
+    res.json({
+      status: "ok",
+      ts: new Date().toISOString(),
+      env: {
+        NODE_ENV: process.env.NODE_ENV || null,
+        DATABASE_URL: has("DATABASE_URL"),
+        GOOGLE_MAPS_API_KEY_env: has("GOOGLE_MAPS_API_KEY"),
+        GOOGLE_MAPS_API_KEY_db: dbKey,
+        GOOGLE_MAPS_API_KEY_resolved: has("GOOGLE_MAPS_API_KEY") || dbKey,
+        FIREBASE_SERVICE_ACCOUNT_KEY: has("FIREBASE_SERVICE_ACCOUNT_KEY"),
+        FIREBASE_WEB_API_KEY: has("FIREBASE_WEB_API_KEY"),
+        RAZORPAY_KEY_ID: has("RAZORPAY_KEY_ID"),
+        RAZORPAY_KEY_SECRET: has("RAZORPAY_KEY_SECRET"),
+        RAZORPAY_WEBHOOK_SECRET: has("RAZORPAY_WEBHOOK_SECRET"),
+        TWO_FACTOR_API_KEY: has("TWO_FACTOR_API_KEY"),
+        FAST2SMS_API_KEY: has("FAST2SMS_API_KEY"),
+        ANTHROPIC_API_KEY: has("ANTHROPIC_API_KEY"),
+        REDIS_URL: has("REDIS_URL"),
+        OPS_API_KEY: has("OPS_API_KEY"),
+        ADMIN_PASSWORD: has("ADMIN_PASSWORD"),
+      },
+    });
+  });
+
+  // Live Google Maps API probe — tests if backend's configured key works
+  // from DigitalOcean's IP. Returns status (REQUEST_DENIED = IP not allowlisted,
+  // OK = all good). Public to enable quick debugging.
+  app.get("/api/health/maps", async (_req, res) => {
+    try {
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
+      if (!apiKey) {
+        return res.json({ ok: false, reason: "GOOGLE_MAPS_API_KEY_not_set" });
+      }
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=Hyderabad&key=${apiKey}`;
+      const r = await fetch(url);
+      const d: any = await r.json();
+      res.json({
+        ok: d.status === "OK",
+        googleStatus: d.status,
+        errorMessage: d.error_message || null,
+        resultsCount: Array.isArray(d.results) ? d.results.length : 0,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // Simple ping
   app.get("/api/ping", (_req, res) => {
     res.json({ pong: true });
