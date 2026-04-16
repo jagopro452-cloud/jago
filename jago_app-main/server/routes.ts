@@ -13022,9 +13022,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ========== APK DOWNLOADS ==========
   const apkDir = path.join(process.cwd(), "public", "apks");
   const apkLatestAliases: Record<string, string> = {
-    "jago-customer-latest.apk": "jago-customer-v1.0.58-release.apk",
-    "jago-driver-latest.apk": "jago-pilot-v1.0.60-release.apk",
-    "jago-pilot-latest.apk": "jago-pilot-v1.0.60-release.apk",
+    "jago-customer-latest.apk": "jago-customer-v1.0.61-release.apk",
+    "jago-driver-latest.apk": "jago-pilot-v1.0.62-release.apk",
+    "jago-pilot-latest.apk": "jago-pilot-v1.0.62-release.apk",
   };
 
   app.get("/apks/:fileName", (req, res, next) => {
@@ -13061,12 +13061,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <a class="btn btn-blue" href="/apks/jago-customer-latest.apk" download>
     ?? Download Customer App
   </a>
-  <span class="badge">v1.0.58 | Universal APK | 60 MB</span>
+  <span class="badge">v1.0.61 | Universal APK | 60 MB</span>
   <br><br>
   <a class="btn btn-green" href="/apks/jago-driver-latest.apk" download>
     ?? Download Driver / Pilot App
   </a>
-  <span class="badge">v1.0.60 | Universal APK | 60 MB</span>
+  <span class="badge">v1.0.62 | Universal APK | 60 MB</span>
   <div class="version">Android 6.0+ required � Free Download</div>
 </div>
 </body></html>`);
