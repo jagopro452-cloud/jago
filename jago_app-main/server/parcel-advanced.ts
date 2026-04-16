@@ -1,0 +1,642 @@
+﻿/**
+ * Advanced Parcel Delivery System — Production-Grade (Porter-Level)
+ *
+ * Features:
+ * 1. Parcel dimensions & volumetric weight (L×W×H / 5000)
+ * 2. Vehicle-based dispatch filtering (vehicle_type match)
+ * 3. Receiver notifications (SMS + FCM + tracking link)
+ * 4. Proof of delivery (photo upload + digital signature)
+ * 5. B2B CSV bulk upload with validation
+ * 6. B2B webhook callbacks (order lifecycle events)
+ * 7. Declared value & insurance pricing
+ * 8. Prohibited items validation (admin-managed blocklist)
+ * 9. SLA tracking (expected vs actual delivery time)
+ * 10. Parcel-specific socket events
+ */
+
+import { db as rawDb } from "./db";
+import { sql as rawSql } from "drizzle-orm";
+import { sendFcmNotification } from "./fcm";
+// Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
+import { io } from "./socket";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface ParcelDimensions {
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightKg: number;
+}
+
+export interface InsuranceQuote {
+  declaredValue: number;
+  premiumRate: number;
+  premiumAmount: number;
+  coverageMax: number;
+  isFragile: boolean;
+}
+
+export interface ParcelSLA {
+  orderId: string;
+  expectedDeliveryMinutes: number;
+  actualDeliveryMinutes: number | null;
+  delayMinutes: number;
+  slaBreached: boolean;
+}
+
+export interface B2BWebhookEvent {
+  eventType: "order_created" | "driver_assigned" | "parcel_picked" | "parcel_delivered" | "order_cancelled";
+  orderId: string;
+  companyId: string;
+  timestamp: string;
+  data: Record<string, any>;
+}
+
+// ── Volumetric Weight Calculation ────────────────────────────────────────────
+
+const VOLUMETRIC_DIVISOR = 5000; // Industry standard: L×W×H / 5000
+
+export function calculateBillableWeight(dims: ParcelDimensions): {
+  actualWeightKg: number;
+  volumetricWeightKg: number;
+  billableWeightKg: number;
+  method: "actual" | "volumetric";
+} {
+  const actualKg = Math.max(0.1, dims.weightKg || 0.1);
+  const volumetricKg =
+    ((dims.lengthCm || 0) * (dims.widthCm || 0) * (dims.heightCm || 0)) /
+    VOLUMETRIC_DIVISOR;
+  const billable = Math.max(actualKg, volumetricKg);
+  return {
+    actualWeightKg: Math.round(actualKg * 100) / 100,
+    volumetricWeightKg: Math.round(volumetricKg * 100) / 100,
+    billableWeightKg: Math.round(billable * 100) / 100,
+    method: volumetricKg > actualKg ? "volumetric" : "actual",
+  };
+}
+
+// ── Insurance & Declared Value ───────────────────────────────────────────────
+
+const DEFAULT_INSURANCE_RATES = {
+  standard: { rate: 0.02, maxCoverage: 50000 },   // 2% premium, max ₹50,000
+  fragile:  { rate: 0.035, maxCoverage: 25000 },   // 3.5% premium, max ₹25,000
+};
+
+export async function calculateInsurance(
+  declaredValue: number,
+  isFragile: boolean
+): Promise<InsuranceQuote> {
+  // Try to load admin-configured rates
+  let rates = isFragile ? DEFAULT_INSURANCE_RATES.fragile : DEFAULT_INSURANCE_RATES.standard;
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT value FROM business_settings
+      WHERE key_name = ${isFragile ? "parcel_insurance_fragile_rate" : "parcel_insurance_standard_rate"}
+      LIMIT 1
+    `);
+    if (r.rows.length) {
+      const parsed = JSON.parse((r.rows[0] as any).value);
+      if (parsed.rate) rates = parsed;
+    }
+  } catch {}
+
+  const capped = Math.min(declaredValue, rates.maxCoverage);
+  const premium = Math.ceil(capped * rates.rate);
+
+  return {
+    declaredValue: capped,
+    premiumRate: rates.rate,
+    premiumAmount: premium,
+    coverageMax: rates.maxCoverage,
+    isFragile,
+  };
+}
+
+// ── Prohibited Items Validation ──────────────────────────────────────────────
+
+const DEFAULT_PROHIBITED = [
+  "explosives", "ammunition", "firearms", "weapons", "narcotics", "drugs",
+  "flammable liquids", "corrosive chemicals", "radioactive materials",
+  "live animals", "human remains", "currency notes", "counterfeit goods",
+  "hazardous waste", "compressed gas", "poison", "biohazard",
+];
+
+export async function validateProhibitedItems(
+  description: string
+): Promise<{ allowed: boolean; matchedItems: string[] }> {
+  const desc = (description || "").toLowerCase();
+  if (!desc) return { allowed: true, matchedItems: [] };
+
+  // Load admin-managed blocklist
+  let blocklist = DEFAULT_PROHIBITED;
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT item_name FROM parcel_prohibited_items WHERE is_active = true
+    `);
+    if (r.rows.length) {
+      blocklist = r.rows.map((row: any) => (row.item_name || "").toLowerCase());
+    }
+  } catch {}
+
+  const matched = blocklist.filter((item) => desc.includes(item));
+  return { allowed: matched.length === 0, matchedItems: matched };
+}
+
+// ── SLA Tracking ─────────────────────────────────────────────────────────────
+
+// Estimated delivery minutes based on distance + vehicle type
+const SLA_ESTIMATES: Record<string, { baseMinutes: number; perKmMinutes: number }> = {
+  bike_parcel:   { baseMinutes: 15, perKmMinutes: 3 },
+  tata_ace:      { baseMinutes: 30, perKmMinutes: 4 },
+  pickup_truck:  { baseMinutes: 45, perKmMinutes: 5 },
+  auto_parcel:   { baseMinutes: 20, perKmMinutes: 3.5 },
+  cargo_car:     { baseMinutes: 35, perKmMinutes: 4 },
+  bolero_cargo:  { baseMinutes: 45, perKmMinutes: 5 },
+};
+
+export function calculateExpectedDeliveryMinutes(
+  vehicleCategory: string,
+  distanceKm: number
+): number {
+  const est = SLA_ESTIMATES[vehicleCategory] || SLA_ESTIMATES.bike_parcel;
+  return Math.ceil(est.baseMinutes + distanceKm * est.perKmMinutes);
+}
+
+export async function getParcelSLA(orderId: string): Promise<ParcelSLA | null> {
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT id, vehicle_category, total_distance_km, current_status,
+             created_at, updated_at
+      FROM parcel_orders WHERE id = ${orderId}::uuid
+    `);
+    if (!r.rows.length) return null;
+    const o = r.rows[0] as any;
+    const expectedMin = calculateExpectedDeliveryMinutes(
+      o.vehicle_category || "bike_parcel",
+      parseFloat(o.total_distance_km) || 5
+    );
+    const createdAt = new Date(o.created_at).getTime();
+    const now = Date.now();
+    const completedAt =
+      o.current_status === "completed"
+        ? new Date(o.updated_at).getTime()
+        : now;
+    const actualMin = Math.round((completedAt - createdAt) / 60000);
+    const delay = Math.max(0, actualMin - expectedMin);
+
+    return {
+      orderId,
+      expectedDeliveryMinutes: expectedMin,
+      actualDeliveryMinutes:
+        o.current_status === "completed" ? actualMin : null,
+      delayMinutes: delay,
+      slaBreached: delay > 15, // 15-min grace period
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Receiver Notifications ───────────────────────────────────────────────────
+
+export async function notifyReceiver(opts: {
+  receiverPhone: string;
+  receiverName: string;
+  eventType: "pickup_started" | "arriving" | "otp_share" | "delivered";
+  orderId: string;
+  otp?: string;
+  driverName?: string;
+  trackingUrl?: string;
+}): Promise<void> {
+  const { receiverPhone, receiverName, eventType, orderId, otp, driverName, trackingUrl } = opts;
+  if (!receiverPhone) return;
+
+  const messages: Record<string, string> = {
+    pickup_started: `Hi ${receiverName}, your parcel has been picked up by ${driverName || "the driver"}. Track: ${trackingUrl || "JAGO Pro"}`,
+    arriving: `Hi ${receiverName}, your parcel is arriving soon! Driver: ${driverName || "JAGO Pro Pilot"}. Keep OTP ready.`,
+    otp_share: `Hi ${receiverName}, your JAGO Pro parcel delivery OTP is ${otp}. Share with the driver to confirm delivery.`,
+    delivered: `Hi ${receiverName}, your parcel has been delivered successfully! Order: ${orderId.slice(0, 8).toUpperCase()}`,
+  };
+
+  const smsBody = messages[eventType];
+  if (!smsBody) return;
+  // SMS notification removed. Only FCM and socket notifications are supported.
+
+  // FCM push if receiver is a registered user
+  try {
+    const userR = await rawDb.execute(rawSql`
+      SELECT ud.fcm_token
+      FROM users u
+      JOIN user_devices ud ON ud.user_id = u.id
+      WHERE u.phone = ${receiverPhone}
+        AND ud.fcm_token IS NOT NULL
+      LIMIT 1
+    `);
+    const fcmToken = (userR.rows[0] as any)?.fcm_token;
+    if (fcmToken) {
+      await sendFcmNotification({
+        fcmToken,
+        title: eventType === "delivered" ? "📦 Parcel Delivered!" : "📦 Parcel Update",
+        body: smsBody,
+        data: { type: "parcel_update", orderId, eventType },
+        channelId: "parcel_updates",
+      });
+    }
+  } catch {}
+}
+
+// Send receiver notifications for all drops (when parcel picked up)
+export async function notifyAllReceivers(
+  orderId: string,
+  dropLocations: any[],
+  eventType: "pickup_started" | "arriving" | "delivered",
+  driverName?: string
+): Promise<void> {
+  for (const drop of dropLocations) {
+    if (drop.receiverPhone) {
+      await notifyReceiver({
+        receiverPhone: drop.receiverPhone,
+        receiverName: drop.receiverName || "Customer",
+        eventType,
+        orderId,
+        otp: eventType === "arriving" ? drop.deliveryOtp : undefined,
+        driverName,
+        trackingUrl: `https://jago.app/track/parcel/${orderId}`,
+      });
+    }
+  }
+}
+
+// ── B2B Webhook Callbacks ────────────────────────────────────────────────────
+
+export async function fireB2BWebhook(event: B2BWebhookEvent): Promise<void> {
+  try {
+    // Get the company's webhook URL
+    const r = await rawDb.execute(rawSql`
+      SELECT webhook_url, webhook_secret FROM b2b_companies
+      WHERE id = ${event.companyId}::uuid AND webhook_url IS NOT NULL
+    `);
+    if (!r.rows.length) return;
+    const company = r.rows[0] as any;
+    if (!company.webhook_url) return;
+
+    // Log the webhook attempt
+    await rawDb.execute(rawSql`
+      INSERT INTO b2b_webhook_logs (company_id, event_type, order_id, payload, status)
+      VALUES (${event.companyId}::uuid, ${event.eventType}, ${event.orderId}::uuid,
+              ${JSON.stringify(event)}, 'pending')
+    `).catch(() => {});
+
+    // Fire webhook (with timeout)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const hmacBody = JSON.stringify(event);
+    const signature = company.webhook_secret
+      ? await computeHmac(hmacBody, company.webhook_secret)
+      : "";
+
+    const response = await fetch(company.webhook_url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-JAGO-Signature": signature,
+        "X-JAGO-Event": event.eventType,
+      },
+      body: hmacBody,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    // Update webhook log
+    await rawDb.execute(rawSql`
+      UPDATE b2b_webhook_logs
+      SET status = ${response.ok ? "delivered" : "failed"},
+          response_code = ${response.status},
+          delivered_at = NOW()
+      WHERE company_id = ${event.companyId}::uuid
+        AND order_id = ${event.orderId}::uuid
+        AND event_type = ${event.eventType}
+        AND status = 'pending'
+    `).catch(() => {});
+  } catch (err: any) {
+    console.error(`[B2B-WEBHOOK] Failed for ${event.eventType}:`, err.message);
+  }
+}
+
+async function computeHmac(body: string, secret: string): Promise<string> {
+  const crypto = await import("crypto");
+  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+}
+
+// ── B2B CSV Bulk Upload Parser ───────────────────────────────────────────────
+
+export interface CSVParcelRow {
+  receiverName: string;
+  receiverPhone: string;
+  dropAddress: string;
+  dropLat?: number;
+  dropLng?: number;
+  weightKg?: number;
+  description?: string;
+  declaredValue?: number;
+}
+
+export function parseParcelCSV(csvContent: string): {
+  rows: CSVParcelRow[];
+  errors: string[];
+} {
+  const lines = csvContent.trim().split("\n");
+  if (lines.length < 2) return { rows: [], errors: ["CSV must have a header row and at least one data row"] };
+
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""));
+  const required = ["receivername", "receiverphone", "dropaddress"];
+  const missing = required.filter(
+    (r) => !headers.some((h) => h.includes(r.replace("_", "")))
+  );
+  if (missing.length) {
+    return { rows: [], errors: [`Missing required columns: ${missing.join(", ")}. Required: receiverName, receiverPhone, dropAddress`] };
+  }
+
+  const nameIdx = headers.findIndex((h) => h.includes("receivername") || h.includes("name"));
+  const phoneIdx = headers.findIndex((h) => h.includes("receiverphone") || h.includes("phone"));
+  const addrIdx = headers.findIndex((h) => h.includes("dropaddress") || h.includes("address"));
+  const latIdx = headers.findIndex((h) => h.includes("droplat") || h === "lat" || h === "latitude");
+  const lngIdx = headers.findIndex((h) => h.includes("droplng") || h === "lng" || h === "longitude");
+  const weightIdx = headers.findIndex((h) => h.includes("weight"));
+  const descIdx = headers.findIndex((h) => h.includes("description") || h.includes("desc"));
+  const valueIdx = headers.findIndex((h) => h.includes("declaredvalue") || h.includes("value"));
+
+  const rows: CSVParcelRow[] = [];
+  const errors: string[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",").map((c) => c.trim());
+    if (cols.every((c) => !c)) continue; // skip empty rows
+
+    const name = cols[nameIdx] || "";
+    const phone = cols[phoneIdx] || "";
+    const addr = cols[addrIdx] || "";
+
+    if (!name || !phone || !addr) {
+      errors.push(`Row ${i + 1}: Missing required fields (receiverName, receiverPhone, dropAddress)`);
+      continue;
+    }
+
+    // Basic phone validation
+    const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    if (cleanPhone.length < 10) {
+      errors.push(`Row ${i + 1}: Invalid phone number "${phone}"`);
+      continue;
+    }
+
+    rows.push({
+      receiverName: name,
+      receiverPhone: cleanPhone,
+      dropAddress: addr,
+      dropLat: latIdx >= 0 ? parseFloat(cols[latIdx]) || undefined : undefined,
+      dropLng: lngIdx >= 0 ? parseFloat(cols[lngIdx]) || undefined : undefined,
+      weightKg: weightIdx >= 0 ? parseFloat(cols[weightIdx]) || undefined : undefined,
+      description: descIdx >= 0 ? cols[descIdx] : undefined,
+      declaredValue: valueIdx >= 0 ? parseFloat(cols[valueIdx]) || undefined : undefined,
+    });
+  }
+
+  return { rows, errors };
+}
+
+// ── Proof of Delivery ────────────────────────────────────────────────────────
+
+export async function saveProofOfDelivery(opts: {
+  orderId: string;
+  dropIndex: number;
+  photoUrl?: string;
+  signatureUrl?: string;
+  deliveredTo?: string;
+  driverId: string;
+}): Promise<void> {
+  const { orderId, dropIndex, photoUrl, signatureUrl, deliveredTo, driverId } = opts;
+
+  await rawDb.execute(rawSql`
+    INSERT INTO parcel_delivery_proofs
+      (order_id, drop_index, photo_url, signature_url, delivered_to, driver_id)
+    VALUES
+      (${orderId}::uuid, ${dropIndex}, ${photoUrl || null}, ${signatureUrl || null},
+       ${deliveredTo || null}, ${driverId}::uuid)
+    ON CONFLICT (order_id, drop_index) DO UPDATE SET
+      photo_url = COALESCE(EXCLUDED.photo_url, parcel_delivery_proofs.photo_url),
+      signature_url = COALESCE(EXCLUDED.signature_url, parcel_delivery_proofs.signature_url),
+      delivered_to = COALESCE(EXCLUDED.delivered_to, parcel_delivery_proofs.delivered_to),
+      updated_at = NOW()
+  `);
+}
+
+export async function getProofOfDelivery(
+  orderId: string,
+  dropIndex?: number
+): Promise<any[]> {
+  const filter = dropIndex !== undefined
+    ? rawSql`AND drop_index = ${dropIndex}`
+    : rawSql``;
+  const r = await rawDb.execute(rawSql`
+    SELECT * FROM parcel_delivery_proofs
+    WHERE order_id = ${orderId}::uuid ${filter}
+    ORDER BY drop_index ASC
+  `);
+  return r.rows as any[];
+}
+
+// ── Parcel Socket Events ─────────────────────────────────────────────────────
+
+export function emitParcelEvent(
+  eventName: string,
+  customerId: string,
+  driverId: string | null,
+  payload: Record<string, any>
+): void {
+  if (!io) return;
+  io.to(`user:${customerId}`).emit(eventName, payload);
+  if (driverId) {
+    io.to(`user:${driverId}`).emit(eventName, payload);
+  }
+}
+
+// Emit parcel lifecycle events to customer + driver
+export function emitParcelLifecycle(
+  orderId: string,
+  customerId: string,
+  driverId: string | null,
+  event: "new_order" | "driver_assigned" | "pickup_started" | "in_transit" | "delivery_approaching" | "delivered" | "completed" | "cancelled",
+  extra?: Record<string, any>
+): void {
+  const payload = { orderId, event, timestamp: new Date().toISOString(), ...extra };
+  emitParcelEvent(`parcel:${event}`, customerId, driverId, payload);
+}
+
+// ── Vehicle Type Matching for Dispatch ───────────────────────────────────────
+
+// Maps parcel vehicle categories to driver vehicle types in driver_details
+const PARCEL_VEHICLE_DRIVER_MAP: Record<string, string[]> = {
+  bike_parcel:   ["bike", "motorcycle", "scooter", "two_wheeler"],
+  auto_parcel:   ["auto", "auto_rickshaw", "three_wheeler"],
+  tata_ace:      ["tata_ace", "mini_truck", "small_truck", "tempo"],
+  pickup_truck:  ["pickup_truck", "truck", "lorry", "bolero", "dost"],
+  cargo_car:     ["car", "sedan", "suv", "cargo_car"],
+  bolero_cargo:  ["bolero", "bolero_cargo", "pickup_truck", "truck"],
+};
+
+export async function findParcelCapableDrivers(
+  pickupLat: number,
+  pickupLng: number,
+  radiusKm: number,
+  vehicleCategory: string,
+  excludeDriverIds: string[],
+  limit: number = 10
+): Promise<any[]> {
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const safeExclude = excludeDriverIds.filter((id) => uuidRe.test(id));
+  const excludeClause = safeExclude.length > 0
+    ? rawSql`AND NOT (u.id = ANY(${safeExclude}::uuid[]))`
+    : rawSql``;
+
+  // Get allowed vehicle types for this parcel category
+  const allowedTypes = PARCEL_VEHICLE_DRIVER_MAP[vehicleCategory] || ["bike"];
+
+  // Also filter by vehicle_category_id if we have a matching category in DB
+  const vcR = await rawDb.execute(rawSql`
+    SELECT id FROM vehicle_categories
+    WHERE LOWER(name) = ANY(${allowedTypes.map((t) => t.toLowerCase())})
+      OR LOWER(slug) = ANY(${allowedTypes.map((t) => t.toLowerCase())})
+  `).catch(() => ({ rows: [] as any[] }));
+
+  const categoryIds = vcR.rows.map((r: any) => r.id);
+  const vcFilter = categoryIds.length > 0
+    ? rawSql`AND dd.vehicle_category_id = ANY(${categoryIds}::uuid[])`
+    : rawSql``;
+
+  const drivers = await rawDb.execute(rawSql`
+    SELECT
+      u.id, u.full_name, u.phone, u.rating,
+      dl.lat, dl.lng,
+      COALESCE(dbs.overall_score, 50) as behavior_score,
+      (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token,
+      SQRT(
+        POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+        POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+      ) as distance_km
+    FROM users u
+    JOIN driver_locations dl ON dl.driver_id = u.id
+    JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
+    WHERE u.user_type = 'driver'
+      AND u.is_active = true
+      AND u.is_locked = false
+      AND dl.is_online = true
+      AND u.current_trip_id IS NULL
+      AND u.verification_status = 'approved'
+      ${vcFilter}
+      ${excludeClause}
+      AND SQRT(
+        POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+        POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+      ) <= ${radiusKm}
+    ORDER BY distance_km ASC
+    LIMIT ${limit}
+  `);
+
+  return drivers.rows as any[];
+}
+
+// ── DB Table Initialization ──────────────────────────────────────────────────
+
+export async function initParcelAdvancedTables(): Promise<void> {
+  // Proof of delivery table
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS parcel_delivery_proofs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id UUID NOT NULL,
+      drop_index INTEGER NOT NULL DEFAULT 0,
+      photo_url TEXT,
+      signature_url TEXT,
+      delivered_to VARCHAR(255),
+      driver_id UUID NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(order_id, drop_index)
+    )
+  `).catch(() => {});
+
+  // Prohibited items table
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS parcel_prohibited_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      item_name VARCHAR(255) NOT NULL,
+      category VARCHAR(100) DEFAULT 'general',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  // Seed default prohibited items
+  for (const item of DEFAULT_PROHIBITED) {
+    await rawDb.execute(rawSql`
+      INSERT INTO parcel_prohibited_items (item_name, category)
+      VALUES (${item}, 'general')
+      ON CONFLICT DO NOTHING
+    `).catch(() => {});
+  }
+
+  // B2B webhook logs
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS b2b_webhook_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id UUID NOT NULL,
+      event_type VARCHAR(50) NOT NULL,
+      order_id UUID,
+      payload JSONB,
+      status VARCHAR(20) DEFAULT 'pending',
+      response_code INTEGER,
+      delivered_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  // Add columns to b2b_companies for webhooks
+  await rawDb.execute(rawSql`
+    ALTER TABLE b2b_companies
+    ADD COLUMN IF NOT EXISTS webhook_url TEXT,
+    ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(255)
+  `).catch(() => {});
+
+  // Add parcel dimension columns to parcel_orders
+  await rawDb.execute(rawSql`
+    ALTER TABLE parcel_orders
+    ADD COLUMN IF NOT EXISTS length_cm NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS width_cm NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS height_cm NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS volumetric_weight_kg NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS billable_weight_kg NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS declared_value NUMERIC(10,2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS is_fragile BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS insurance_enabled BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS insurance_premium NUMERIC(10,2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS parcel_description TEXT,
+    ADD COLUMN IF NOT EXISTS expected_delivery_minutes INTEGER,
+    ADD COLUMN IF NOT EXISTS proof_of_delivery JSONB,
+    ADD COLUMN IF NOT EXISTS sla_breached BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS load_charge NUMERIC(10,2) DEFAULT 0
+  `).catch(() => {});
+
+  // Insurance settings in business_settings
+  await rawDb.execute(rawSql`
+    INSERT INTO business_settings (key_name, value, settings_type)
+    VALUES
+      ('parcel_insurance_standard_rate', '{"rate":0.02,"maxCoverage":50000}', 'parcel_settings'),
+      ('parcel_insurance_fragile_rate', '{"rate":0.035,"maxCoverage":25000}', 'parcel_settings')
+    ON CONFLICT (key_name) DO NOTHING
+  `).catch(() => {});
+
+  console.log("[PARCEL-ADV] Advanced parcel tables initialized");
+}
