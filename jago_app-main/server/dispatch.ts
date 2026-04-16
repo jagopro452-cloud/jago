@@ -30,7 +30,7 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   bike:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
   auto:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
   cab:        { radiusStepsKm: [5, 8, 12, 15, 20],driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  parcel:     { radiusStepsKm: [5, 8, 12],         driverTimeoutMs: 60000, maxTotalTimeMs: 240000, driversPerStep: 8 },
+  parcel:     { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 240000, driversPerStep: 8 },
   b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
   carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
   outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },

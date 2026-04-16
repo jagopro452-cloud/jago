@@ -475,18 +475,65 @@ export function emitParcelLifecycle(
   emitParcelEvent(`parcel:${event}`, customerId, driverId, payload);
 }
 
-// ── Vehicle Type Matching for Dispatch ───────────────────────────────────────
+// ── Vehicle Type Matching for Dispatch (Porter-grade strict) ─────────────────
 
-// Maps parcel vehicle categories to driver vehicle types in driver_details
+/**
+ * Strict 1:1 mapping from parcel vehicle_key (sent by app) to canonical
+ * driver vehicle_categories.name / slug. NO fuzzy fallback — a parcel key
+ * with no mapping is rejected outright.
+ */
 const PARCEL_VEHICLE_DRIVER_MAP: Record<string, string[]> = {
-  bike_parcel:   ["bike", "motorcycle", "scooter", "two_wheeler"],
-  auto_parcel:   ["auto", "auto_rickshaw", "three_wheeler"],
-  tata_ace:      ["tata_ace", "mini_truck", "small_truck", "tempo"],
-  pickup_truck:  ["pickup_truck", "truck", "lorry", "bolero", "dost"],
-  cargo_car:     ["car", "sedan", "suv", "cargo_car"],
-  bolero_cargo:  ["bolero", "bolero_cargo", "pickup_truck", "truck"],
+  bike_parcel:   ["bike"],
+  auto_parcel:   ["auto"],
+  tata_ace:      ["mini_truck", "tempo"],
+  pickup_truck:  ["truck"],
+  cargo_car:     ["car"],
+  bolero_cargo:  ["truck"],
 };
 
+// 60s in-memory cache for parcel_key → vehicle_category_id[] resolution.
+// Saves one DB round-trip per dispatch call on hot paths.
+const VC_ID_CACHE = new Map<string, { ids: string[]; expiresAt: number }>();
+const VC_CACHE_TTL_MS = 60_000;
+
+async function resolveAllowedCategoryIds(parcelKey: string): Promise<string[]> {
+  const cached = VC_ID_CACHE.get(parcelKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.ids;
+
+  const allowedNames = PARCEL_VEHICLE_DRIVER_MAP[parcelKey];
+  if (!allowedNames || !allowedNames.length) return [];
+
+  const lowered = allowedNames.map((t) => t.toLowerCase());
+  const r = await rawDb.execute(rawSql`
+    SELECT id FROM vehicle_categories
+    WHERE LOWER(name) = ANY(${lowered})
+       OR LOWER(slug) = ANY(${lowered})
+  `).catch(() => ({ rows: [] as any[] }));
+
+  const ids = (r.rows as any[]).map((row) => String(row.id));
+  VC_ID_CACHE.set(parcelKey, { ids, expiresAt: Date.now() + VC_CACHE_TTL_MS });
+  return ids;
+}
+
+export interface ParcelMatchResult {
+  drivers: any[];
+  excludedSummary: Record<string, number>;
+  rejected: boolean; // true when parcelKey has no mapping at all
+}
+
+/**
+ * Find parcel-capable drivers using strict Porter-grade filters.
+ * All filters are ANDed. No silent fallback.
+ *
+ * Eligibility (driver must satisfy EVERY condition):
+ *   - vehicle_category_id matches parcel key mapping
+ *   - verification_status = 'approved' (strict — no pending/verified)
+ *   - is_online = true on driver_locations
+ *   - current_trip_id IS NULL
+ *   - lat/lng != 0
+ *   - is_active = true, is_locked = false
+ *   - location_updated_at within last 30 seconds (fresh GPS)
+ */
 export async function findParcelCapableDrivers(
   pickupLat: number,
   pickupLng: number,
@@ -495,28 +542,42 @@ export async function findParcelCapableDrivers(
   excludeDriverIds: string[],
   limit: number = 10
 ): Promise<any[]> {
+  const result = await findParcelCapableDriversDetailed(
+    pickupLat, pickupLng, radiusKm, vehicleCategory, excludeDriverIds, limit
+  );
+  return result.drivers;
+}
+
+/**
+ * Like findParcelCapableDrivers but also returns a breakdown of exclusion
+ * reasons — used by dispatch logs and diagnostics.
+ */
+export async function findParcelCapableDriversDetailed(
+  pickupLat: number,
+  pickupLng: number,
+  radiusKm: number,
+  vehicleCategory: string,
+  excludeDriverIds: string[],
+  limit: number = 10
+): Promise<ParcelMatchResult> {
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeExclude = excludeDriverIds.filter((id) => uuidRe.test(id));
   const excludeClause = safeExclude.length > 0
     ? rawSql`AND NOT (u.id = ANY(${safeExclude}::uuid[]))`
     : rawSql``;
 
-  // Get allowed vehicle types for this parcel category
-  const allowedTypes = PARCEL_VEHICLE_DRIVER_MAP[vehicleCategory] || ["bike"];
+  const categoryIds = await resolveAllowedCategoryIds(vehicleCategory);
 
-  // Also filter by vehicle_category_id if we have a matching category in DB
-  const vcR = await rawDb.execute(rawSql`
-    SELECT id FROM vehicle_categories
-    WHERE LOWER(name) = ANY(${allowedTypes.map((t) => t.toLowerCase())})
-      OR LOWER(slug) = ANY(${allowedTypes.map((t) => t.toLowerCase())})
-  `).catch(() => ({ rows: [] as any[] }));
+  // Strict: no mapping → no fallback → dispatch cannot proceed for this key.
+  if (!categoryIds.length) {
+    console.warn(
+      `[PARCEL_MATCH] rejected — parcelKey=${vehicleCategory} has no valid ` +
+      `vehicle_category mapping (check PARCEL_VEHICLE_DRIVER_MAP + vehicle_categories table)`
+    );
+    return { drivers: [], excludedSummary: { vehicle_mapping_missing: 1 }, rejected: true };
+  }
 
-  const categoryIds = vcR.rows.map((r: any) => r.id);
-  const vcFilter = categoryIds.length > 0
-    ? rawSql`AND dd.vehicle_category_id = ANY(${categoryIds}::uuid[])`
-    : rawSql``;
-
-  const drivers = await rawDb.execute(rawSql`
+  const eligible = await rawDb.execute(rawSql`
     SELECT
       u.id, u.full_name, u.phone, u.rating,
       dl.lat, dl.lng,
@@ -536,7 +597,9 @@ export async function findParcelCapableDrivers(
       AND dl.is_online = true
       AND u.current_trip_id IS NULL
       AND u.verification_status = 'approved'
-      ${vcFilter}
+      AND dl.lat != 0 AND dl.lng != 0
+      AND dl.updated_at > NOW() - INTERVAL '30 seconds'
+      AND dd.vehicle_category_id = ANY(${categoryIds}::uuid[])
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -546,7 +609,64 @@ export async function findParcelCapableDrivers(
     LIMIT ${limit}
   `);
 
-  return drivers.rows as any[];
+  console.log(
+    `[PARCEL_MATCH] parcelKey=${vehicleCategory} radiusKm=${radiusKm} ` +
+    `allowedCategoryIds=${categoryIds.length} drivers=${eligible.rows.length}`
+  );
+
+  // When no drivers match, surface per-driver exclusion reasons for nearby
+  // online drivers so the operator can see what's wrong (log-only; cheap).
+  const excludedSummary: Record<string, number> = {};
+  if (!eligible.rows.length) {
+    try {
+      const nearby = await rawDb.execute(rawSql`
+        SELECT
+          u.id, u.full_name, u.is_active, u.is_locked,
+          u.current_trip_id, u.verification_status,
+          dl.is_online as dl_online, dl.lat, dl.lng, dl.updated_at,
+          dd.vehicle_category_id,
+          SQRT(
+            POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
+            POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
+          ) as distance_km
+        FROM users u
+        JOIN driver_locations dl ON dl.driver_id = u.id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        WHERE u.user_type = 'driver' AND dl.is_online = true
+        ORDER BY distance_km ASC
+        LIMIT 20
+      `).catch(() => ({ rows: [] as any[] }));
+
+      for (const row of nearby.rows as any[]) {
+        const reasons: string[] = [];
+        if (!row.is_active) reasons.push("inactive");
+        if (row.is_locked) reasons.push("locked");
+        if (!row.dl_online) reasons.push("offline");
+        if (row.current_trip_id) reasons.push("busy");
+        if (row.verification_status !== "approved") reasons.push("not_verified");
+        if (Number(row.lat) === 0 && Number(row.lng) === 0) reasons.push("gps_invalid");
+        const mins = row.updated_at
+          ? (Date.now() - new Date(row.updated_at).getTime()) / 1000
+          : null;
+        if (mins != null && mins > 30) reasons.push("stale_location");
+        if (!row.vehicle_category_id || !categoryIds.includes(String(row.vehicle_category_id))) {
+          reasons.push("vehicle_mismatch");
+        }
+        const distKm = Number(row.distance_km);
+        if (Number.isFinite(distKm) && distKm > radiusKm) reasons.push("outside_radius");
+
+        reasons.forEach((r) => (excludedSummary[r] = (excludedSummary[r] || 0) + 1));
+        console.log(
+          `[PARCEL_EXCLUDE] driverId=${row.id} parcelKey=${vehicleCategory} ` +
+          `distKm=${distKm.toFixed(2)} reasons=${reasons.join(",") || "none"}`
+        );
+      }
+    } catch (e: any) {
+      console.error("[PARCEL_EXCLUDE] diagnostic query failed:", e.message);
+    }
+  }
+
+  return { drivers: eligible.rows as any[], excludedSummary, rejected: false };
 }
 
 // ── DB Table Initialization ──────────────────────────────────────────────────

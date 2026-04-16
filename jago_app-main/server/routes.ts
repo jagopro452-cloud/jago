@@ -52,6 +52,7 @@ import {
   resolveServiceType,
   type TripMeta,
 } from "./dispatch";
+import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
 import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
 import {
   computeDemandHeatmap,
@@ -97,6 +98,7 @@ import {
   getProofOfDelivery,
   emitParcelLifecycle,
   findParcelCapableDrivers,
+  findParcelCapableDriversDetailed,
   initParcelAdvancedTables,
 } from "./parcel-advanced";
 import {
@@ -1949,6 +1951,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Simple ping
   app.get("/api/ping", (_req, res) => {
     res.json({ pong: true });
+  });
+
+  // Dispatch diagnostic — surfaces why nearby drivers were included/excluded
+  // Query params: includeEligible (default true), includeRawData, simulate, radiusKm
+  app.get("/api/admin/dispatch-diag/:tripId", requireAdminAuth, async (req, res) => {
+    try {
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const tripId = String(req.params.tripId || "");
+      if (!uuidRe.test(tripId)) {
+        return res.status(400).json({ message: "Invalid tripId — expected UUID" });
+      }
+      const q = req.query;
+      const parseBool = (v: any, def: boolean) =>
+        v === undefined ? def : v === "true" || v === "1";
+      const radiusRaw = q.radiusKm !== undefined ? Number(q.radiusKm) : undefined;
+      const radiusKm = Number.isFinite(radiusRaw) && radiusRaw! > 0 && radiusRaw! <= 100
+        ? radiusRaw : undefined;
+
+      const result = await diagnoseDispatch(tripId, {
+        includeEligible: parseBool(q.includeEligible, true),
+        includeRawData: parseBool(q.includeRawData, false),
+        simulate: parseBool(q.simulate, false),
+        radiusKm,
+      });
+      res.json(result);
+    } catch (e: any) {
+      if (e instanceof TripNotFoundError) {
+        return res.status(404).json({ message: e.message });
+      }
+      console.error("[DISPATCH_DIAG] error:", e);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Env vars diagnostic endpoint (shows what's configured, sanitized)
@@ -3896,24 +3930,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const ncm = parseFloat(String(nightChargeMultiplier));
       const hc = parseFloat(String(helperCharge));
 
-      // Update vehicle_categories primary pricing
-      const updateParts: string[] = [
-        `base_fare = ${bf}`,
-        `fare_per_km = ${pkm}`,
-        `minimum_fare = ${mf}`,
-        `waiting_charge_per_min = ${wc}`,
-      ];
-      if (totalSeats !== undefined) updateParts.push(`total_seats = ${parseInt(String(totalSeats)) || 0}`);
-      if (isActive !== undefined) updateParts.push(`is_active = ${isActive === true || isActive === 'true'}`);
-      if (name) updateParts.push(`name = '${String(name).replace(/'/g, "''")}'`);
-      if (icon) updateParts.push(`icon = '${String(icon).replace(/'/g, "''")}'`);
-
+      // Update vehicle_categories primary pricing (name + icon were previously
+      // collected into `updateParts` but never applied to the UPDATE query —
+      // admin edits to name/icon silently failed. Fixed with parameterized fragments.)
       const vcUpdated = await rawDb.execute(rawSql`
         UPDATE vehicle_categories
         SET base_fare = ${bf}, fare_per_km = ${pkm}, minimum_fare = ${mf},
             waiting_charge_per_min = ${wc}
             ${totalSeats !== undefined ? rawSql`, total_seats = ${parseInt(String(totalSeats)) || 0}` : rawSql``}
             ${isActive !== undefined ? rawSql`, is_active = ${isActive === true || isActive === 'true'}` : rawSql``}
+            ${name ? rawSql`, name = ${String(name)}` : rawSql``}
+            ${icon ? rawSql`, icon = ${String(icon)}` : rawSql``}
         WHERE id = ${id}::uuid
         RETURNING *
       `);
@@ -13754,6 +13781,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     bolero_cargo: { baseFare: 200, perKm: 22, perKg: 3, name: 'Bolero Cargo', maxWeightKg: 1500, loadCharge: 80 },
   };
 
+  // 60s in-memory caches for parcel pricing lookups — avoids hammering DB
+  // on every quote/booking (parcel_vehicle_types + parcel_fares + platform_services
+  // + zones.surge_factor are otherwise 4 queries per call).
+  const PARCEL_CACHE_TTL_MS = 60_000;
+  type CacheEntry<T> = { value: T; expiresAt: number };
+  const parcelVehicleCache = new Map<string, CacheEntry<any>>();
+  const parcelFareCache = new Map<string, CacheEntry<any>>();
+  const parcelCommissionCache = new Map<string, CacheEntry<number>>();
+  const zoneSurgeCache = new Map<string, CacheEntry<number>>();
+
+  function cacheGet<T>(m: Map<string, CacheEntry<T>>, k: string): T | undefined {
+    const e = m.get(k);
+    if (e && e.expiresAt > Date.now()) return e.value;
+    if (e) m.delete(k);
+    return undefined;
+  }
+  function cacheSet<T>(m: Map<string, CacheEntry<T>>, k: string, v: T) {
+    m.set(k, { value: v, expiresAt: Date.now() + PARCEL_CACHE_TTL_MS });
+  }
+
   // Shared helper: resolves zone-aware parcel fare rates for a given vehicle + pickup location.
   // Priority: parcel_fares (zone match) ? parcel_fares (global latest) ? parcel_vehicle_types DB ? PARCEL_VEHICLES hardcoded
   async function resolveParcelFare(
@@ -13763,12 +13810,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     pickupLat?: number | null,
     pickupLng?: number | null,
   ) {
-    // 1. Vehicle row from DB
-    const pvRes = await rawDb.execute(rawSql`
-      SELECT vehicle_key, name, max_weight_kg, base_fare, per_km, per_kg, load_charge
-      FROM parcel_vehicle_types WHERE vehicle_key = ${vehicleCategory} AND is_active = true LIMIT 1
-    `).catch(() => ({ rows: [] as any[] }));
-    const pv = pvRes.rows[0] as any;
+    // 1. Vehicle row from DB (cached)
+    let pv = cacheGet<any>(parcelVehicleCache, vehicleCategory);
+    if (pv === undefined) {
+      const pvRes = await rawDb.execute(rawSql`
+        SELECT vehicle_key, name, max_weight_kg, base_fare, per_km, per_kg, load_charge
+        FROM parcel_vehicle_types WHERE vehicle_key = ${vehicleCategory} AND is_active = true LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      pv = pvRes.rows[0] || null;
+      cacheSet(parcelVehicleCache, vehicleCategory, pv);
+    }
     const hc = PARCEL_VEHICLES[vehicleCategory] || PARCEL_VEHICLES.bike_parcel;
     const vehicleName = pv?.name || hc.name;
     const maxWeightKg = safeFloat(pv?.max_weight_kg ?? hc.maxWeightKg, 10);
@@ -13777,24 +13828,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     const vcPerKg = safeFloat(pv?.per_kg ?? hc.perKg, 5);
     const vcLoadCharge = safeFloat(pv?.load_charge ?? hc.loadCharge, 0);
 
-    // 2. Zone-based parcel_fares override
+    // 2. Zone-based parcel_fares override (cached by zoneId)
     let pfRow: any = {};
+    let zoneId: string | null = null;
     if (pickupLat && pickupLng) {
-      const zoneId = await detectZoneId(pickupLat, pickupLng).catch(() => null);
-      let pfRes = { rows: [] as any[] };
-      if (zoneId) {
-        pfRes = await rawDb.execute(rawSql`
-          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
-          FROM parcel_fares WHERE zone_id = ${zoneId}::uuid LIMIT 1
-        `).catch(() => ({ rows: [] as any[] }));
+      zoneId = await detectZoneId(pickupLat, pickupLng).catch(() => null);
+      const fareCacheKey = `zone:${zoneId || 'global'}`;
+      const cachedFare = cacheGet<any>(parcelFareCache, fareCacheKey);
+      if (cachedFare !== undefined) {
+        pfRow = cachedFare || {};
+      } else {
+        let pfRes = { rows: [] as any[] };
+        if (zoneId) {
+          pfRes = await rawDb.execute(rawSql`
+            SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+            FROM parcel_fares WHERE zone_id = ${zoneId}::uuid LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+        }
+        if (!pfRes.rows.length) {
+          pfRes = await rawDb.execute(rawSql`
+            SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
+            FROM parcel_fares ORDER BY created_at DESC LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+        }
+        const row = pfRes.rows[0] || null;
+        cacheSet(parcelFareCache, fareCacheKey, row);
+        if (row) pfRow = row;
       }
-      if (!pfRes.rows.length) {
-        pfRes = await rawDb.execute(rawSql`
-          SELECT base_fare, fare_per_km, fare_per_kg, minimum_fare, loading_charge, helper_charge_per_hour, max_helpers
-          FROM parcel_fares ORDER BY created_at DESC LIMIT 1
-        `).catch(() => ({ rows: [] as any[] }));
-      }
-      if (pfRes.rows.length) pfRow = pfRes.rows[0];
     }
 
     const baseFare = pfRow.base_fare != null ? safeFloat(pfRow.base_fare, vcBaseFare) : vcBaseFare;
@@ -13805,27 +13865,57 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     const helperRate = safeFloat(pfRow.helper_charge_per_hour, 0);
     const maxHelpers = parseInt(pfRow.max_helpers || '0') || 0;
 
-    // 3. Configurable commission from platform_services
-    const platRes = await rawDb.execute(rawSql`
-      SELECT commission_pct FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
-    `).catch(() => ({ rows: [] as any[] }));
-    const commPctNum = safeFloat((platRes.rows[0] as any)?.commission_pct, 15);
+    // 3. Configurable commission from platform_services (cached)
+    let commPctNum = cacheGet<number>(parcelCommissionCache, 'parcel_delivery');
+    if (commPctNum === undefined) {
+      const platRes = await rawDb.execute(rawSql`
+        SELECT commission_pct FROM platform_services WHERE service_key = 'parcel_delivery' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      commPctNum = safeFloat((platRes.rows[0] as any)?.commission_pct, 15);
+      cacheSet(parcelCommissionCache, 'parcel_delivery', commPctNum);
+    }
     const commRate = commPctNum / 100;
     const gstRate = 0.05;
 
-    // 4. Fare calculation
-    const rawFare = baseFare + (distKm * perKm) + (wt * perKg) + loadCharge;
+    // 4. Zone surge multiplier (cached, applies to base+distance+weight, not loadCharge/GST)
+    let surgeMult = 1.0;
+    if (zoneId) {
+      const cachedSurge = cacheGet<number>(zoneSurgeCache, zoneId);
+      if (cachedSurge !== undefined) {
+        surgeMult = cachedSurge;
+      } else {
+        const sR = await rawDb.execute(rawSql`
+          SELECT surge_factor FROM zones WHERE id=${zoneId}::uuid AND is_active=true LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        surgeMult = safeFloat((sR.rows[0] as any)?.surge_factor, 1.0) || 1.0;
+        if (surgeMult < 1) surgeMult = 1.0; // surge can never reduce fare
+        cacheSet(zoneSurgeCache, zoneId, surgeMult);
+      }
+    }
+
+    // 5. Fare calculation — Porter formula:
+    //   fare = base + dist*per_km + wt*per_kg, then apply surge, then enforce min
+    const distFareRaw = distKm * perKm;
+    const weightFareRaw = wt * perKg;
+    const surgedCore = (baseFare + distFareRaw + weightFareRaw) * surgeMult;
+    const rawFare = surgedCore + loadCharge;
     const customerFare = Math.ceil(Math.max(rawFare, minFare));
     const gstAmt = Math.ceil(customerFare * gstRate);
     const grandTotal = customerFare + gstAmt;
     const commAmt = Math.ceil(customerFare * commRate);
     const driverEarnings = Math.max(0, customerFare - commAmt);
 
+    console.log(
+      `[PARCEL_FARE] vehicle=${vehicleCategory} zoneId=${zoneId || 'none'} ` +
+      `dist=${distKm}km wt=${wt}kg base=${baseFare} perKm=${perKm} perKg=${perKg} ` +
+      `surge=${surgeMult} minFare=${minFare} total=${grandTotal}`
+    );
+
     return {
       vehicleName, maxWeightKg,
       baseFare, perKm, perKg, loadCharge, minFare, helperRate, maxHelpers,
-      distFare: Math.ceil(distKm * perKm),
-      weightFare: Math.ceil(wt * perKg),
+      distFare: Math.ceil(distFareRaw * surgeMult),
+      weightFare: Math.ceil(weightFareRaw * surgeMult),
       customerFare, gstAmt, grandTotal,
       commPct: commPctNum, commAmt, driverEarnings,
     };
@@ -14007,12 +14097,43 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       const order = (r.rows as any[])[0];
 
-      // Use vehicle-matched dispatch to find parcel-capable drivers
+      // Porter-grade parcel dispatch: strict vehicle match + expanding radius
+      // 5km → 10km → 15km. Stops at first radius that finds any eligible driver.
       if (io && pickupLat && pickupLng) {
         try {
-          const parcelDrivers = await findParcelCapableDrivers(
-            Number(pickupLat), Number(pickupLng), 6, vehicleCategory, [], 10
-          );
+          const PARCEL_DISPATCH_RADII = [5, 10, 15];
+          let parcelDrivers: any[] = [];
+          let finalRadiusUsed = PARCEL_DISPATCH_RADII[0];
+          let lastExcludedSummary: Record<string, number> = {};
+          let mappingRejected = false;
+
+          for (const r of PARCEL_DISPATCH_RADII) {
+            const match = await findParcelCapableDriversDetailed(
+              Number(pickupLat), Number(pickupLng), r, vehicleCategory, [], 10
+            );
+            finalRadiusUsed = r;
+            lastExcludedSummary = match.excludedSummary;
+            mappingRejected = match.rejected;
+            if (match.rejected) break; // mapping missing — expanding radius won't help
+            if (match.drivers.length) {
+              parcelDrivers = match.drivers;
+              break;
+            }
+          }
+
+          if (!parcelDrivers.length) {
+            console.warn(
+              `[PARCEL_DISPATCH_FAIL] orderId=${order.id} parcelKey=${vehicleCategory} ` +
+              `radiusTried=${finalRadiusUsed}km mappingRejected=${mappingRejected} ` +
+              `excludedSummary=${JSON.stringify(lastExcludedSummary)}`
+            );
+          } else {
+            console.log(
+              `[PARCEL_MATCH] orderId=${order.id} parcelKey=${vehicleCategory} ` +
+              `found=${parcelDrivers.length} radius=${finalRadiusUsed}km`
+            );
+          }
+
           const payload = {
             orderId: order.id,
             vehicleCategory,
@@ -14037,7 +14158,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
               }).catch(dbCatch("db"));
             }
           }
-        } catch (_) { }
+        } catch (e: any) {
+          console.error(`[PARCEL_DISPATCH_FAIL] orderId=${order.id} error=${e?.message || e}`);
+        }
       }
 
       // Fire B2B webhook if applicable
