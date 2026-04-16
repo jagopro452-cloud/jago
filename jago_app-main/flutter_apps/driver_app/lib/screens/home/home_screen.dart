@@ -21,7 +21,6 @@ import '../../widgets/incoming_parcel_sheet.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_verification_screen.dart';
-import '../verification/face_verification_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
@@ -1012,28 +1011,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Future<bool> _checkFaceVerificationAndProceed() async {
-    try {
-      final headers = await AuthService.getHeaders();
-      final res = await http.get(
-        Uri.parse(ApiConfig.checkVerification),
-        headers: headers,
-      ).timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['needsVerification'] == true && mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FaceVerificationScreen(
-                reason: data['reason']?.toString() ?? 'daily_check',
-                onVerified: () => Navigator.pop(context),
-              ),
-            ),
-          );
-          return true;
-        }
-      }
-    } catch (_) {}
     return false;
   }
 
