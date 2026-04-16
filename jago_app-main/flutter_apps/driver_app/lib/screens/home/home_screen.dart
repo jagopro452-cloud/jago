@@ -133,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _connectSocket();
       
       await _recoverActiveTrip();
+      await _consumeQueuedAlertAction();
       await _checkPendingFcmTrip();
     });
   }
@@ -243,6 +244,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     _subs.add(_socket.onTripCancelled.listen((data) {
       if (!mounted) return;
+      FcmService().dismissTripNotification();
       setState(() => _incomingTrip = null);
       Navigator.of(context).popUntil((r) => r.isFirst);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -258,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final takenTripId = (data['tripId'] ?? data['id'] ?? '').toString();
       final currentTripId = (_incomingTrip?['tripId'] ?? _incomingTrip?['id'] ?? '').toString();
       if (currentTripId.isEmpty || takenTripId.isEmpty || takenTripId == currentTripId) {
+        FcmService().dismissTripNotification();
         setState(() => _incomingTrip = null);
         Navigator.of(context).popUntil((r) => r.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -275,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final timeoutTripId = (data['tripId'] ?? data['id'] ?? '').toString();
       final currentTripId = (_incomingTrip?['tripId'] ?? _incomingTrip?['id'] ?? '').toString();
       if (currentTripId.isEmpty || timeoutTripId.isEmpty || timeoutTripId == currentTripId) {
+        FcmService().dismissTripNotification();
         setState(() => _incomingTrip = null);
         Navigator.of(context).popUntil((r) => r.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -342,6 +346,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && _isOnline) {
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _consumeQueuedAlertAction();
+      _checkPendingFcmTrip();
+    }
     if (state == AppLifecycleState.paused) {
       // App backgrounded — suspend GPS stream + server poll to save battery
       // Socket stays connected so the driver still receives trip requests via FCM
@@ -483,17 +494,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   void _handleSessionExpired() {
-    AuthService.logout();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Session expired. Please login again.', style: TextStyle(fontWeight: FontWeight.w500)),
-      backgroundColor: JT.error,
-      behavior: SnackBarBehavior.floating,
-    ));
+    AuthService.rehydrateStoredSession().then((stillValid) async {
+      if (stillValid || !mounted) return;
+      await AuthService.clearLocalSession();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Session expired. Please login again.', style: TextStyle(fontWeight: FontWeight.w500)),
+        backgroundColor: JT.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    });
+  }
+
+  Future<void> _consumeQueuedAlertAction() async {
+    final queued = await FcmService().consumeQueuedAction();
+    if (queued == null || !mounted) return;
+
+    final actionId = (queued['actionId'] ?? '').toString();
+    final rawData = queued['data'];
+    if (rawData is! Map) return;
+    final data = Map<String, dynamic>.from(rawData);
+
+    final prefs = await SharedPreferences.getInstance();
+    if (actionId.startsWith('trip_')) {
+      await prefs.remove('pending_trip_data');
+    }
+    if (actionId == 'parcel_open') {
+      await prefs.remove('pending_parcel_data');
+    }
+
+    if (actionId == 'trip_accept') {
+      await _acceptIncomingTrip(data);
+      return;
+    }
+
+    if (actionId == 'trip_reject') {
+      await _rejectIncomingTrip(data);
+      return;
+    }
+
+    if (actionId == 'parcel_open' && _incomingTrip == null && _incomingParcel == null) {
+      setState(() => _incomingParcel = data);
+      _showIncomingParcel();
+    }
   }
 
   Future<void> _fetchDashboard() async {
@@ -814,77 +861,108 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         transitionDuration: const Duration(milliseconds: 300),
         pageBuilder: (_, __, ___) => IncomingTripSheet(
           trip: _incomingTrip!,
-          onAccept: () async {
-            final trip = Map<String, dynamic>.from(_incomingTrip!);
-            Navigator.pop(context);
-            setState(() => _incomingTrip = null);
-            FcmService().dismissTripNotification();
-
-            final tripId = trip['tripId'] ?? trip['id'] ?? '';
-            bool accepted = false;
-            if (_socketConnected) {
-              accepted = await _socket.acceptTrip(tripId);
-            }
-            if (!accepted) {
-              try {
-                final hdrs = await AuthService.getHeaders();
-                final res = await http.post(
-                  Uri.parse(ApiConfig.driverAcceptTrip),
-                  headers: {...hdrs, 'Content-Type': 'application/json'},
-                  body: jsonEncode({'tripId': tripId}),
-                );
-                if (res.statusCode == 200) accepted = true;
-              } catch (_) {}
-            }
-            if (!mounted) return;
-            // Always verify against the server before opening TripScreen.
-            Map<String, dynamic>? fullTrip;
-            try {
-              final hdrs = await AuthService.getHeaders();
-              final res = await http.get(Uri.parse(ApiConfig.driverActiveTrip), headers: hdrs)
-                .timeout(const Duration(seconds: 30));
-              if (res.statusCode == 200) {
-                final data = jsonDecode(res.body) as Map<String, dynamic>;
-                final activeTrip = data['trip'];
-                if (activeTrip is Map) {
-                  final serverTrip = Map<String, dynamic>.from(activeTrip as Map);
-                  final serverTripId = (serverTrip['id'] ?? serverTrip['tripId'] ?? '').toString();
-                  if (serverTripId == tripId) {
-                    fullTrip = Map<String, dynamic>.from(trip)..addAll(serverTrip);
-                  }
-                }
-              }
-            } catch (_) {}
-            if (!mounted) return;
-            if (fullTrip == null) {
-              _showSnack(
-                accepted
-                    ? 'Trip accepted but server did not confirm full trip data yet. Please wait for refresh.'
-                    : 'Could not accept this trip. Please try the next request.',
-                error: true,
-              );
-              return;
-            }
-            Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
-          },
-          onReject: () async {
-            final trip = Map<String, dynamic>.from(_incomingTrip!);
-            Navigator.pop(context);
-            setState(() => _incomingTrip = null);
-            FcmService().dismissTripNotification();
-            try {
-              final hdrs = await AuthService.getHeaders();
-              await http.post(
-                Uri.parse(ApiConfig.driverRejectTrip),
-                headers: hdrs,
-                body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}),
-              );
-            } catch (_) {}
-          },
+          onAccept: () async => _acceptIncomingTrip(
+            Map<String, dynamic>.from(_incomingTrip!),
+            closePopup: true,
+          ),
+          onReject: () async => _rejectIncomingTrip(
+            Map<String, dynamic>.from(_incomingTrip!),
+            closePopup: true,
+          ),
         ),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
       ),
     );
+  }
+
+  Future<void> _acceptIncomingTrip(
+    Map<String, dynamic> trip, {
+    bool closePopup = false,
+  }) async {
+    if (closePopup && mounted) {
+      Navigator.pop(context);
+    }
+    if (mounted) {
+      setState(() => _incomingTrip = null);
+    }
+    await FcmService().dismissTripNotification();
+
+    final tripId = (trip['tripId'] ?? trip['id'] ?? '').toString();
+    if (tripId.isEmpty) {
+      if (mounted) {
+        _showSnack('Trip data is missing. Please wait for the next request.', error: true);
+      }
+      return;
+    }
+
+    bool accepted = false;
+    if (_socketConnected) {
+      accepted = await _socket.acceptTrip(tripId);
+    }
+    if (!accepted) {
+      try {
+        final hdrs = await AuthService.getHeaders();
+        final res = await http.post(
+          Uri.parse(ApiConfig.driverAcceptTrip),
+          headers: {...hdrs, 'Content-Type': 'application/json'},
+          body: jsonEncode({'tripId': tripId}),
+        );
+        if (res.statusCode == 200) accepted = true;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    Map<String, dynamic>? fullTrip;
+    try {
+      final hdrs = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse(ApiConfig.driverActiveTrip),
+        headers: hdrs,
+      ).timeout(const Duration(seconds: 30));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final activeTrip = data['trip'];
+        if (activeTrip is Map) {
+          final serverTrip = Map<String, dynamic>.from(activeTrip);
+          final serverTripId = (serverTrip['id'] ?? serverTrip['tripId'] ?? '').toString();
+          if (serverTripId == tripId) {
+            fullTrip = Map<String, dynamic>.from(trip)..addAll(serverTrip);
+          }
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    if (fullTrip == null) {
+      _showSnack(
+        accepted
+            ? 'Trip accepted but server did not confirm full trip data yet. Please wait for refresh.'
+            : 'Could not accept this trip. Please try the next request.',
+        error: true,
+      );
+      return;
+    }
+    Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
+  }
+
+  Future<void> _rejectIncomingTrip(
+    Map<String, dynamic> trip, {
+    bool closePopup = false,
+  }) async {
+    if (closePopup && mounted) {
+      Navigator.pop(context);
+    }
+    if (mounted) {
+      setState(() => _incomingTrip = null);
+    }
+    await FcmService().dismissTripNotification();
+    try {
+      final hdrs = await AuthService.getHeaders();
+      await http.post(
+        Uri.parse(ApiConfig.driverRejectTrip),
+        headers: {...hdrs, 'Content-Type': 'application/json'},
+        body: jsonEncode({'tripId': trip['tripId'] ?? trip['id'] ?? ''}),
+      );
+    } catch (_) {}
   }
 
   void _showIncomingParcel() {

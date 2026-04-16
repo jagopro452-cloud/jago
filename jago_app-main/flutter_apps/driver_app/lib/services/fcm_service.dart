@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -9,115 +8,200 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND / TERMINATED STATE HANDLER
-// Top-level function — runs in a separate Dart isolate when app is killed.
-// Server sends data-only FCM (no `notification` key) so this fires every time.
-// ─────────────────────────────────────────────────────────────────────────────
-@pragma('vm:entry-point')
-Future<void> firebaseBackgroundMessageHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+const String _tripAlertChannelId = 'trip_alerts';
+const String _tripAlertChannelName = 'Trip Alerts';
+const String _tripAlertChannelDescription = 'Incoming ride and parcel requests';
+const String _tripDataKey = 'pending_trip_data';
+const String _parcelDataKey = 'pending_parcel_data';
+const String _alertActionKey = 'pending_driver_alert_action';
+const int _tripNotificationId = 42;
+const int _parcelNotificationId = 43;
+const String _tripAcceptActionId = 'trip_accept';
+const String _tripRejectActionId = 'trip_reject';
+const String _parcelOpenActionId = 'parcel_open';
 
-  final type = message.data['type'] ?? '';
-  final isTrip   = type == 'new_trip';
-  final isParcel = type == 'new_parcel';
-  if (!isTrip && !isParcel) return;
+bool _isTripAlert(Map<String, dynamic> data) => (data['type'] ?? '') == 'new_trip';
+bool _isParcelAlert(Map<String, dynamic> data) => (data['type'] ?? '') == 'new_parcel';
+bool _isDriverAlert(Map<String, dynamic> data) => _isTripAlert(data) || _isParcelAlert(data);
 
-  debugPrint('[FCM-BG] 📩 type=$type — showing full-screen alert');
-
-  // ── Persist for HomeScreen to pick up on next resume ─────────────────────
+Future<void> _persistPendingAlert(Map<String, dynamic> data) async {
   try {
     final prefs = await SharedPreferences.getInstance();
-    if (isTrip)   await prefs.setString('pending_trip_data',   jsonEncode(message.data));
-    if (isParcel) await prefs.setString('pending_parcel_data', jsonEncode(message.data));
+    if (_isTripAlert(data)) {
+      await prefs.setString(_tripDataKey, jsonEncode(data));
+    }
+    if (_isParcelAlert(data)) {
+      await prefs.setString(_parcelDataKey, jsonEncode(data));
+    }
   } catch (_) {}
+}
 
-  // ── Show full-screen intent notification ─────────────────────────────────
-  final plugin = FlutterLocalNotificationsPlugin();
-  const initSettings = InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-  );
-  await plugin.initialize(initSettings);
+Future<void> _queueAlertAction(String actionId, Map<String, dynamic> data) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _alertActionKey,
+      jsonEncode({
+        'actionId': actionId,
+        'data': data,
+        'queuedAt': DateTime.now().toIso8601String(),
+      }),
+    );
+    await _persistPendingAlert(data);
+  } catch (_) {}
+}
 
-  // Ensure channel exists (may be first launch)
-  final androidPlugin =
-      plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-  await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel(
-    'trip_alerts',
-    'Trip Alerts',
-    description: 'Incoming ride and parcel requests — full-screen alert',
+Future<void> _handleNotificationResponse(NotificationResponse response) async {
+  final payload = response.payload;
+  if (payload == null || payload.isEmpty) return;
+
+  try {
+    final decoded = jsonDecode(payload);
+    if (decoded is! Map) return;
+    final data = Map<String, dynamic>.from(decoded);
+    final actionId = response.actionId;
+
+    if (actionId == _tripAcceptActionId ||
+        actionId == _tripRejectActionId ||
+        actionId == _parcelOpenActionId) {
+      await _queueAlertAction(actionId!, data);
+      return;
+    }
+
+    await _persistPendingAlert(data);
+  } catch (_) {}
+}
+
+AndroidNotificationChannel _tripAlertChannel() {
+  return const AndroidNotificationChannel(
+    _tripAlertChannelId,
+    _tripAlertChannelName,
+    description: _tripAlertChannelDescription,
     importance: Importance.max,
     playSound: true,
     sound: RawResourceAndroidNotificationSound('trip_alert'),
     enableVibration: true,
     showBadge: true,
-  ));
+  );
+}
 
-  // Build notification content from data payload
-  final title = message.data['title']
-      ?? (isParcel ? '📦 New Parcel Delivery!' : '🚗 New Ride Request!');
-  final body  = message.data['body']
-      ?? (isTrip
-          ? '${message.data['customerName'] ?? 'Customer'} • ₹${message.data['estimatedFare'] ?? '0'} • ${message.data['pickupAddress'] ?? 'Pickup'}'
-          : '${message.data['pickupAddress'] ?? 'Pickup'} • ₹${message.data['totalFare'] ?? '0'}');
+List<AndroidNotificationAction> _buildAlertActions(Map<String, dynamic> data) {
+  if (_isTripAlert(data)) {
+    return const <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        _tripRejectActionId,
+        'Reject',
+        showsUserInterface: true,
+      ),
+      AndroidNotificationAction(
+        _tripAcceptActionId,
+        'Accept',
+        showsUserInterface: true,
+      ),
+    ];
+  }
+
+  if (_isParcelAlert(data)) {
+    return const <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        _parcelOpenActionId,
+        'Open',
+        showsUserInterface: true,
+      ),
+    ];
+  }
+
+  return const <AndroidNotificationAction>[];
+}
+
+Future<FlutterLocalNotificationsPlugin> _createAlertPlugin() async {
+  final plugin = FlutterLocalNotificationsPlugin();
+  const initSettings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+  );
+  await plugin.initialize(initSettings);
+  final androidPlugin =
+      plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  await androidPlugin?.createNotificationChannel(_tripAlertChannel());
+  return plugin;
+}
+
+Future<void> _showDriverAlertNotification(
+  FlutterLocalNotificationsPlugin plugin,
+  Map<String, dynamic> data,
+) async {
+  final isTrip = _isTripAlert(data);
+  final isParcel = _isParcelAlert(data);
+  if (!isTrip && !isParcel) return;
+
+  final title = data['title'] ??
+      (isParcel ? 'New Parcel Delivery!' : 'New Ride Request!');
+  final body = data['body'] ??
+      (isTrip
+          ? '${data['customerName'] ?? 'Customer'} | Fare Rs ${data['estimatedFare'] ?? '0'} | ${data['pickupAddress'] ?? 'Pickup'}'
+          : '${data['pickupAddress'] ?? 'Pickup'} | Fare Rs ${data['totalFare'] ?? '0'}');
 
   await plugin.show(
-    isParcel ? 43 : 42,
-    title,
-    body,
+    isParcel ? _parcelNotificationId : _tripNotificationId,
+    title.toString(),
+    body.toString(),
     NotificationDetails(
       android: AndroidNotificationDetails(
-        'trip_alerts',
-        'Trip Alerts',
-        channelDescription: 'Incoming ride and parcel requests',
+        _tripAlertChannelId,
+        _tripAlertChannelName,
+        channelDescription: _tripAlertChannelDescription,
         importance: Importance.max,
         priority: Priority.max,
         playSound: true,
         sound: const RawResourceAndroidNotificationSound('trip_alert'),
         enableVibration: true,
-        // Rapido-style vibration: long bursts
         vibrationPattern: Int64List.fromList([0, 500, 200, 700, 200, 500, 200, 700, 200, 500]),
         icon: '@mipmap/ic_launcher',
-        // ── THE KEY FLAGS ────────────────────────────────────────────────────
-        fullScreenIntent: true,          // Shows over lock screen / other apps
-        autoCancel: false,               // Stays until driver responds
-        ongoing: true,                   // Can't be swiped away
-        category: AndroidNotificationCategory.call, // Treated as incoming call
-        visibility: NotificationVisibility.public,  // Show on lock screen
-        timeoutAfter: 40000,             // Auto-dismiss after 40s (matches countdown)
+        fullScreenIntent: true,
+        autoCancel: false,
+        ongoing: true,
+        category: AndroidNotificationCategory.call,
+        visibility: NotificationVisibility.public,
+        timeoutAfter: 40000,
+        actions: _buildAlertActions(data),
       ),
     ),
-    payload: jsonEncode(message.data),
+    payload: jsonEncode(data),
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND NOTIFICATION TAP (top-level, for when app is not running)
-// ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
-void _onBackgroundNotifTap(NotificationResponse response) {
-  // Data is stored in SharedPrefs — HomeScreen reads it on init.
-  // No navigation here because Flutter engine isn't running yet.
+Future<void> firebaseBackgroundMessageHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+
+  final data = Map<String, dynamic>.from(message.data);
+  if (!_isDriverAlert(data)) return;
+
+  debugPrint('[FCM-BG] incoming driver alert ${data['type']}');
+  await _persistPendingAlert(data);
+
+  final plugin = await _createAlertPlugin();
+  await _showDriverAlertNotification(plugin, data);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FCM SERVICE (singleton)
-// ─────────────────────────────────────────────────────────────────────────────
+@pragma('vm:entry-point')
+void _onBackgroundNotifTap(NotificationResponse response) {
+  _handleNotificationResponse(response);
+}
+
 class FcmService {
   static final FcmService _instance = FcmService._internal();
   factory FcmService() => _instance;
   FcmService._internal();
 
   final FlutterLocalNotificationsPlugin _localNotif = FlutterLocalNotificationsPlugin();
-  bool _initialized = false;
-
-  // ── Stream for foreground messages → HomeScreen shows IncomingTripSheet directly
   final _foregroundAlertController =
       StreamController<Map<String, dynamic>>.broadcast();
+  bool _initialized = false;
+
   Stream<Map<String, dynamic>> get onForegroundAlert =>
       _foregroundAlertController.stream;
 
-  // ── Initialize once (called from main()) ─────────────────────────────────
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
@@ -125,57 +209,46 @@ class FcmService {
     try {
       final messaging = FirebaseMessaging.instance;
 
-      // Request permission (Android 13+, iOS)
       await messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
         criticalAlert: true,
-      ).timeout(const Duration(seconds: 10), onTimeout: () => const NotificationSettings(
-        alert: AppleNotificationSetting.disabled,
-        announcement: AppleNotificationSetting.disabled,
-        authorizationStatus: AuthorizationStatus.notDetermined,
-        badge: AppleNotificationSetting.disabled,
-        carPlay: AppleNotificationSetting.disabled,
-        lockScreen: AppleNotificationSetting.disabled,
-        notificationCenter: AppleNotificationSetting.disabled,
-        showPreviews: AppleShowPreviewSetting.never,
-        sound: AppleNotificationSetting.disabled,
-        criticalAlert: AppleNotificationSetting.disabled,
-        timeSensitive: AppleNotificationSetting.disabled,
-        providesAppNotificationSettings: AppleNotificationSetting.disabled,
-      ));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => const NotificationSettings(
+          alert: AppleNotificationSetting.disabled,
+          announcement: AppleNotificationSetting.disabled,
+          authorizationStatus: AuthorizationStatus.notDetermined,
+          badge: AppleNotificationSetting.disabled,
+          carPlay: AppleNotificationSetting.disabled,
+          lockScreen: AppleNotificationSetting.disabled,
+          notificationCenter: AppleNotificationSetting.disabled,
+          showPreviews: AppleShowPreviewSetting.never,
+          sound: AppleNotificationSetting.disabled,
+          criticalAlert: AppleNotificationSetting.disabled,
+          timeSensitive: AppleNotificationSetting.disabled,
+          providesAppNotificationSettings: AppleNotificationSetting.disabled,
+        ),
+      );
 
-      // Allow foreground FCM to trigger onMessage (we handle it ourselves)
       await messaging.setForegroundNotificationPresentationOptions(
-        alert: false, badge: true, sound: false,
-      );
-
-      // ── Android notification channels ──────────────────────────────────────
-      const tripAlertChannel = AndroidNotificationChannel(
-        'trip_alerts',
-        'Trip Alerts',
-        description: 'Full-screen incoming ride and parcel alerts',
-        importance: Importance.max,
-        playSound: true,
-        sound: RawResourceAndroidNotificationSound('trip_alert'),
-        enableVibration: true,
-        showBadge: true,
-      );
-      const tripUpdateChannel = AndroidNotificationChannel(
-        'trip_updates',
-        'Trip Updates',
-        description: 'Status updates for active trips',
-        importance: Importance.high,
+        alert: false,
+        badge: true,
+        sound: false,
       );
 
       final androidPlugin = _localNotif
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      await androidPlugin?.createNotificationChannel(tripAlertChannel);
-      await androidPlugin?.createNotificationChannel(tripUpdateChannel);
+      await androidPlugin?.createNotificationChannel(_tripAlertChannel());
+      await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel(
+        'trip_updates',
+        'Trip Updates',
+        description: 'Status updates for active trips',
+        importance: Importance.high,
+      ));
       await androidPlugin?.requestExactAlarmsPermission();
 
-      // ── Local notifications init ────────────────────────────────────────────
       const initSettings = InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
@@ -190,89 +263,84 @@ class FcmService {
         onDidReceiveBackgroundNotificationResponse: _onBackgroundNotifTap,
       );
 
-      // ── Register handlers ───────────────────────────────────────────────────
       FirebaseMessaging.onBackgroundMessage(firebaseBackgroundMessageHandler);
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
       FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationOpened);
 
-      // App launched from terminated state via notification tap
       try {
         final initialMsg = await messaging.getInitialMessage();
-        if (initialMsg != null) _handleMessageData(initialMsg.data);
+        if (initialMsg != null) {
+          _handleMessageData(initialMsg.data);
+        }
       } catch (e) {
-        debugPrint('[FCM-PILOT] ❌ getInitialMessage error: $e');
+        debugPrint('[FCM-PILOT] getInitialMessage error: $e');
       }
 
-      // Save FCM token
-      _saveFcmToken(); // Run in background
+      _saveFcmToken();
       messaging.onTokenRefresh.listen((token) => _saveTokenToServer(token));
     } catch (e) {
-      debugPrint('[FCM-PILOT] ❌ Fatal error in FcmService.init(): $e');
+      debugPrint('[FCM-PILOT] init failed: $e');
     }
   }
 
-  // ── FOREGROUND MESSAGE ─────────────────────────────────────────────────────
-  // App is in foreground: emit to stream so HomeScreen shows IncomingTripSheet.
-  // Skip the system notification — the in-app sheet IS the notification.
   void _onForegroundMessage(RemoteMessage message) {
     final type = message.data['type'] ?? '';
-    debugPrint('[FCM-FG] 📩 type=$type');
+    debugPrint('[FCM-FG] type=$type');
 
     if (type == 'new_trip' || type == 'new_parcel') {
-      // Emit directly to HomeScreen's listener
       _foregroundAlertController.add(Map<String, dynamic>.from(message.data));
       return;
     }
 
-    // Non-alert messages (trip_completed, trip_cancelled, etc.) → show notification
     _showUpdateNotification(
       title: message.notification?.title ?? message.data['title'] ?? 'JAGO Pro Pilot',
-      body:  message.notification?.body  ?? message.data['body']  ?? '',
-      data:  message.data,
+      body: message.notification?.body ?? message.data['body'] ?? '',
+      data: message.data,
     );
   }
 
-  // ── NOTIFICATION TAP (app in background) ──────────────────────────────────
   void _onNotificationOpened(RemoteMessage message) {
     _handleMessageData(message.data);
   }
 
-  // Stores pending data AND emits so HomeScreen can respond immediately
   void _handleMessageData(Map<String, dynamic> data) {
-    final type = data['type'] ?? '';
-    if (type == 'new_trip' || type == 'new_parcel') {
-      _persistPending(data);
-      // Also push to stream in case HomeScreen is mounted and listening
-      _foregroundAlertController.add(Map<String, dynamic>.from(data));
-    }
+    final payload = Map<String, dynamic>.from(data);
+    if (!_isDriverAlert(payload)) return;
+    _persistPendingAlert(payload);
+    _foregroundAlertController.add(payload);
   }
 
-  // ── LOCAL NOTIFICATION TAP (from our own full-screen notification) ────────
   void _onLocalNotifTap(NotificationResponse response) {
-    if (response.payload == null) return;
-    try {
-      final data = jsonDecode(response.payload!) as Map<String, dynamic>;
-      _persistPending(data);
-      // Emit to stream — if HomeScreen is mounted it will show IncomingTripSheet
-      _foregroundAlertController.add(data);
-    } catch (_) {}
+    _handleNotificationResponse(response).then((_) {
+      final payload = response.payload;
+      if (payload == null || payload.isEmpty) return;
+      if (response.actionId != null && response.actionId!.isNotEmpty) return;
+
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is! Map) return;
+        _foregroundAlertController.add(Map<String, dynamic>.from(decoded));
+      } catch (_) {}
+    });
   }
 
-  // ── Show trip/parcel alert (foreground, when app is visible) ────────────
   Future<void> showFullScreenAlert({
     required String title,
     required String body,
     required Map<String, dynamic> data,
     bool isParcel = false,
   }) async {
+    final payload = Map<String, dynamic>.from(data);
+    await _persistPendingAlert(payload);
     await _localNotif.show(
-      isParcel ? 43 : 42,
+      isParcel ? _parcelNotificationId : _tripNotificationId,
       title,
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'trip_alerts',
-          'Trip Alerts',
+          _tripAlertChannelId,
+          _tripAlertChannelName,
+          channelDescription: _tripAlertChannelDescription,
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
@@ -286,13 +354,13 @@ class FcmService {
           category: AndroidNotificationCategory.call,
           visibility: NotificationVisibility.public,
           timeoutAfter: 40000,
+          actions: _buildAlertActions(payload),
         ),
       ),
-      payload: jsonEncode(data),
+      payload: jsonEncode(payload),
     );
   }
 
-  // ── Show non-alert update notification (completed, cancelled, etc.) ───────
   void _showUpdateNotification({
     required String title,
     required String body,
@@ -323,36 +391,38 @@ class FcmService {
     );
   }
 
-  // ── Dismiss active trip/parcel notifications ─────────────────────────────
   Future<void> dismissTripNotification() async {
     try {
-      await _localNotif.cancel(42); // trip
-      await _localNotif.cancel(43); // parcel
+      await _localNotif.cancel(_tripNotificationId);
+      await _localNotif.cancel(_parcelNotificationId);
     } catch (_) {}
   }
 
-  // ── Persist pending trip/parcel data for HomeScreen to consume ──────────
-  Future<void> _persistPending(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>?> consumeQueuedAction() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final type = data['type'] ?? '';
-      if (type == 'new_trip')   await prefs.setString('pending_trip_data',   jsonEncode(data));
-      if (type == 'new_parcel') await prefs.setString('pending_parcel_data', jsonEncode(data));
+      final raw = prefs.getString(_alertActionKey);
+      if (raw == null || raw.isEmpty) return null;
+      await prefs.remove(_alertActionKey);
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
     } catch (_) {}
+    return null;
   }
 
-  // ── FCM Token management ─────────────────────────────────────────────────
   Future<void> _saveFcmToken() async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) {
-        debugPrint('[FCM-PILOT] ❌ getToken() returned null');
+        debugPrint('[FCM-PILOT] getToken returned null');
         return;
       }
-      debugPrint('[FCM-PILOT] 🔑 Token: ${token.substring(0, 20)}...');
+      debugPrint('[FCM-PILOT] token ${token.substring(0, 20)}...');
       await _saveTokenToServer(token);
     } catch (e) {
-      debugPrint('[FCM-PILOT] ❌ getToken() threw: $e');
+      debugPrint('[FCM-PILOT] getToken failed: $e');
     }
   }
 
@@ -367,18 +437,22 @@ class FcmService {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({'fcmToken': token, 'platform': 'android', 'userType': 'driver'}),
+        body: jsonEncode({
+          'fcmToken': token,
+          'platform': 'android',
+          'userType': 'driver',
+        }),
       ).timeout(const Duration(seconds: 30));
       if (res.statusCode == 200 || res.statusCode == 201) {
-        debugPrint('[FCM-PILOT] ✅ Token saved');
+        debugPrint('[FCM-PILOT] token saved');
       }
     } catch (e) {
-      debugPrint('[FCM-PILOT] ❌ Token save failed: $e');
+      debugPrint('[FCM-PILOT] token save failed: $e');
     }
   }
 
   Future<void> onLoginSuccess() async {
-    debugPrint('[FCM-PILOT] 🔄 Re-saving token after login...');
+    debugPrint('[FCM-PILOT] re-saving token after login');
     await _saveFcmToken();
   }
 }

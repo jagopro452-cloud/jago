@@ -12,6 +12,9 @@ import 'fcm_service.dart';
 class AuthService {
   static const _tokenKey = 'auth_token';
   static const _userKey = 'user_data';
+  static const _userNameKey = 'user_name';
+  static const _userPhoneKey = 'user_phone';
+  static const _userIdKey = 'user_id';
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -20,7 +23,7 @@ class AuthService {
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    await prefs.setString(_tokenKey, token.trim());
   }
 
   static Future<void> saveUser(Map<String, dynamic> userData) async {
@@ -31,9 +34,21 @@ class AuthService {
     final phone = userData['phone'] ?? '';
     // CRITICAL: save user_id — socket_service.dart needs this to connect
     final id = userData['id']?.toString() ?? userData['userId']?.toString() ?? userData['user_id']?.toString() ?? '';
-    if (name.toString().isNotEmpty) await prefs.setString('user_name', name.toString());
-    if (phone.toString().isNotEmpty) await prefs.setString('user_phone', phone.toString());
-    if (id.isNotEmpty) await prefs.setString('user_id', id);
+    if (name.toString().isNotEmpty) {
+      await prefs.setString(_userNameKey, name.toString());
+    } else {
+      await prefs.remove(_userNameKey);
+    }
+    if (phone.toString().isNotEmpty) {
+      await prefs.setString(_userPhoneKey, phone.toString());
+    } else {
+      await prefs.remove(_userPhoneKey);
+    }
+    if (id.isNotEmpty) {
+      await prefs.setString(_userIdKey, id);
+    } else {
+      await prefs.remove(_userIdKey);
+    }
   }
 
   static Future<Map<String, dynamic>?> getSavedUser() async {
@@ -46,6 +61,59 @@ class AuthService {
   static Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> clearLocalSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userKey);
+    await prefs.remove(_userNameKey);
+    await prefs.remove(_userPhoneKey);
+    await prefs.remove(_userIdKey);
+  }
+
+  static Future<bool> rehydrateStoredSession({bool refreshProfile = true}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey)?.trim() ?? '';
+    if (token.isEmpty) return false;
+
+    final savedUser = await getSavedUser();
+    if (savedUser != null && savedUser.isNotEmpty) {
+      await saveUser(savedUser);
+    }
+
+    if (!refreshProfile) return true;
+
+    try {
+      final res = await http.get(
+        Uri.parse(ApiConfig.driverProfile),
+        headers: {
+          ..._base,
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        if ((res.headers['content-type'] ?? '').contains('application/json')) {
+          final body = jsonDecode(res.body);
+          if (body is Map<String, dynamic>) {
+            await saveUser(body);
+          }
+        }
+        return true;
+      }
+
+      if (res.statusCode == 401) {
+        await clearLocalSession();
+        return false;
+      }
+    } on TimeoutException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+
+    return true;
   }
 
   static const Map<String, String> _base = {
@@ -108,16 +176,12 @@ class AuthService {
       await http.post(Uri.parse(ApiConfig.logout), headers: headers)
           .timeout(const Duration(seconds: 30));
     } catch (_) {}
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userKey);
+    await clearLocalSession();
   }
 
   /// Call when server returns 401 — clears session and redirects to login.
   static Future<void> handle401() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userKey);
+    await clearLocalSession();
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const SplashScreen()),
       (route) => false,
