@@ -1997,23 +1997,67 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  // Live Google Maps API probe — tests if backend's configured key works
-  // from DigitalOcean's IP. Returns status (REQUEST_DENIED = IP not allowlisted,
-  // OK = all good). Public to enable quick debugging.
+  // Live Google Maps API probe.
+  // Tests env key, DB key, and the app's effective resolved key separately so we
+  // can distinguish a bad env var from a healthy DB-backed runtime configuration.
   app.get("/api/health/maps", async (_req, res) => {
     try {
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
-      if (!apiKey) {
-        return res.json({ ok: false, reason: "GOOGLE_MAPS_API_KEY_not_set" });
-      }
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=Hyderabad&key=${apiKey}`;
-      const r = await fetch(url);
-      const d: any = await r.json();
+      const envKey = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
+      let dbKey = "";
+      try {
+        const keyR = await rawDb.execute(rawSql`
+          SELECT value
+          FROM business_settings
+          WHERE key_name IN ('google_maps_key', 'GOOGLE_MAPS_API_KEY', 'google_maps_api_key')
+            AND value IS NOT NULL
+            AND TRIM(value) != ''
+          ORDER BY CASE
+            WHEN key_name = 'google_maps_key' THEN 1
+            WHEN key_name = 'GOOGLE_MAPS_API_KEY' THEN 2
+            ELSE 3
+          END
+          LIMIT 1
+        `);
+        dbKey = String((keyR.rows[0] as any)?.value || "").trim();
+      } catch {}
+
+      const resolvedKey = dbKey || envKey;
+      const resolvedSource = dbKey ? "db" : envKey ? "env" : null;
+
+      const probeKey = async (apiKey: string) => {
+        if (!apiKey) {
+          return {
+            configured: false,
+            ok: false,
+            googleStatus: "NOT_CONFIGURED",
+            errorMessage: null,
+            resultsCount: 0,
+          };
+        }
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=Hyderabad&key=${apiKey}`;
+        const r = await fetch(url);
+        const d: any = await r.json();
+        return {
+          configured: true,
+          ok: d.status === "OK",
+          googleStatus: d.status || "UNKNOWN",
+          errorMessage: d.error_message || null,
+          resultsCount: Array.isArray(d.results) ? d.results.length : 0,
+        };
+      };
+
+      const [envProbe, dbProbe, resolvedProbe] = await Promise.all([
+        probeKey(envKey),
+        probeKey(dbKey),
+        probeKey(resolvedKey),
+      ]);
+
       res.json({
-        ok: d.status === "OK",
-        googleStatus: d.status,
-        errorMessage: d.error_message || null,
-        resultsCount: Array.isArray(d.results) ? d.results.length : 0,
+        ok: resolvedProbe.ok,
+        resolvedSource,
+        resolved: resolvedProbe,
+        env: envProbe,
+        db: dbProbe,
       });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e.message });
