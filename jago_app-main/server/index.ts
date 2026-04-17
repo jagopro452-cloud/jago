@@ -202,8 +202,19 @@ app.use((req, res, next) => {
     try {
       const { pool: dbPool } = await import("./db");
       const settingsRes = await dbPool.query(
-        "SELECT key_name, value FROM business_settings WHERE key_name IN ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-        ["razorpay_key_id", "razorpay_key_secret", "razorpay_webhook_secret", "fast2sms_api_key", "two_factor_api_key", "google_maps_key", "twilio_account_sid", "twilio_auth_token", "twilio_phone_number", "anthropic_api_key"]
+        "SELECT key_name, value FROM business_settings WHERE key_name = ANY($1::text[])",
+        [[
+          "razorpay_key_id",
+          "razorpay_key_secret",
+          "razorpay_webhook_secret",
+          "fast2sms_api_key",
+          "two_factor_api_key",
+          "google_maps_key",
+          "twilio_account_sid",
+          "twilio_auth_token",
+          "twilio_phone_number",
+          "anthropic_api_key",
+        ]]
       );
       const ENV_MAP: Record<string, string> = {
         razorpay_key_id: "RAZORPAY_KEY_ID",
