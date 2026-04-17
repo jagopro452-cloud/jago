@@ -17,17 +17,33 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
 
+function normalizeDatabaseUrl(connectionString: string): string {
+  try {
+    const parsed = new URL(connectionString);
+    // Let node-postgres honor the explicit ssl object below instead of
+    // inheriting stricter sslmode semantics from the URL query string.
+    parsed.searchParams.delete("sslmode");
+    parsed.searchParams.delete("sslcert");
+    parsed.searchParams.delete("sslkey");
+    parsed.searchParams.delete("sslrootcert");
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 // Cloud DBs (Neon, Supabase, Railway) use intermediate CAs that trigger Node.js SSL errors.
 // Fix: disable cert rejection at pool level only (not globally — global setting breaks all HTTPS).
 const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
 const isProduction = process.env.NODE_ENV === 'production';
+const normalizedDatabaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
 // Single-instance production: 25 connections max (Neon free tier allows ~100)
 // Development: 20 connections max
 const maxConnections = isProduction ? 25 : 20;
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: normalizedDatabaseUrl,
   ssl: isLocalDb ? false : { rejectUnauthorized: false },
   max: maxConnections,
   idleTimeoutMillis: 30000,
