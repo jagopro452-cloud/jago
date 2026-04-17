@@ -1714,6 +1714,16 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_driver_payments_driver ON driver_payments(driver_id);
       CREATE INDEX IF NOT EXISTS idx_driver_payments_status ON driver_payments(status);
     `).catch(dbCatch("db"));
+    await rawDb.execute(rawSql`
+      ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS trip_id UUID;
+      ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(120);
+      ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
+      ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS razorpay_signature TEXT;
+      ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_driver_payments_trip ON driver_payments(trip_id) WHERE trip_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_driver_payments_order ON driver_payments(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_driver_payments_payment ON driver_payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+    `).catch(dbCatch("db"));
 
     // -- Customer payment ledger: records every wallet topup / ride payment ------
     await rawDb.execute(rawSql`
@@ -1750,6 +1760,7 @@ async function ensureOperationalSchema() {
     `).catch(dbCatch("db"));
     // -- Migration: add GST/insurance columns to driver_subscriptions ---------
     await rawDb.execute(rawSql`
+      ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100);
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS insurance_amount NUMERIC(10,2) DEFAULT 0;
       ALTER TABLE driver_subscriptions ADD COLUMN IF NOT EXISTS insurance_plan_id UUID;
@@ -1761,6 +1772,8 @@ async function ensureOperationalSchema() {
     // -- SECURITY MIGRATIONS: Unique constraints for payment idempotency -------
     // Prevents duplicate wallet credits even under concurrent requests
     await rawDb.execute(rawSql`
+      ALTER TABLE commission_settlements ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(120);
+      ALTER TABLE commission_settlements ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(120);
       -- Unique index: one earning/refund/recharge per (payment_id, type)
       -- ON CONFLICT ... DO NOTHING in INSERT statements will safely skip duplicates
       CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_idempotency
@@ -16963,4 +16976,3 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   return httpServer;
 }
-
