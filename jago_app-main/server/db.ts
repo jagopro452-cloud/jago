@@ -38,9 +38,9 @@ const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1
 const isProduction = process.env.NODE_ENV === 'production';
 const normalizedDatabaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
-// Single-instance production: 25 connections max (Neon free tier allows ~100)
-// Development: 20 connections max
-const maxConnections = isProduction ? 25 : 20;
+// Keep production pool conservative so startup jobs do not exhaust managed DB limits.
+// Development can still use a slightly higher ceiling for local workflows.
+const maxConnections = isProduction ? 10 : 20;
 
 export const pool = new Pool({
   connectionString: normalizedDatabaseUrl,
