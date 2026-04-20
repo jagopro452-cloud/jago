@@ -99,7 +99,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
         backgroundColor: _blue,
         foregroundColor: Colors.white,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('JAGO Pro Support', style: JT.h5.copyWith(color: Colors.white)),
+          Text('Jago Support', style: JT.h5.copyWith(color: Colors.white)),
           Row(children: [
             Container(width: 7, height: 7, decoration: BoxDecoration(color: JT.success, shape: BoxShape.circle)),
             SizedBox(width: JT.spacing4),
@@ -130,7 +130,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
               ),
               SizedBox(width: JT.spacing12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('JAGO Pro Support Team', style: JT.subtitle1),
+                Text('Jago Support Team', style: JT.subtitle1),
                 SizedBox(height: JT.spacing4),
                 Text('Mee query ki meeru message cheyyandi. Meeru 24/7 available.',
                   style: JT.caption),

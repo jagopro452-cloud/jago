@@ -1,5 +1,5 @@
-﻿name: jago_customer
-description: JAGO Pro - Ride Sharing App by MindWhile IT Solutions
+name: jago_customer
+description: JAGO - Move Smarter.
 publish_to: 'none'
 version: 1.0.62+62
 
@@ -37,6 +37,7 @@ dependencies:
   flutter_svg: ^2.0.10+1
   sms_autofill: ^2.4.1
   just_audio: ^0.9.31
+  flutter_polyline_points: ^3.1.0
 
 dev_dependencies:
   flutter_test:

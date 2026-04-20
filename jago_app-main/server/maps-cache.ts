@@ -172,7 +172,10 @@ export async function geocodeWithCache(address: string): Promise<GeocodeResult |
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'Referer': 'https://jagopro.org' }
+    });
     if (!r.ok) return null;
     const data = await r.json() as any;
     if (data?.status !== "OK" || !data.results?.length) return null;
@@ -243,7 +246,10 @@ export async function getDistanceWithCache(
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originLat},${originLng}&destinations=${destLat},${destLng}&key=${apiKey}`;
-      const r = await fetch(url, { signal: controller.signal });
+      const r = await fetch(url, { 
+        signal: controller.signal,
+        headers: { 'Referer': 'https://jagopro.org' }
+      });
       if (r.ok) {
         const data = await r.json() as any;
         const element = data?.rows?.[0]?.elements?.[0];
@@ -311,7 +317,10 @@ export async function getRouteWithCache(
 
   try {
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originLat},${originLng}&destination=${destLat},${destLng}&key=${apiKey}`;
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'Referer': 'https://jagopro.org' }
+    });
     if (!r.ok) return null;
     const data = await r.json() as any;
 

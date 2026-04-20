@@ -285,7 +285,7 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
               systemNavigationBarIconBrightness: Brightness.dark,
             ));
             return MaterialApp(
-              title: 'JAGO Pro',
+              title: 'Jago',
               debugShowCheckedModeBanner: false,
               navigatorKey: _navKey,
               themeMode: ThemeMode.light,

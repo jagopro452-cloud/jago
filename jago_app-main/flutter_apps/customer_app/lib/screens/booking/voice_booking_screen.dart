@@ -217,7 +217,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   Future<void> _speakWelcome() async {
     await Future.delayed(const Duration(milliseconds: 800));
-    await _speak('Welcome to JAGO Pro Voice Assistant. You can book a ride, send a parcel, or book an intercity trip. Tap the mic and speak.');
+    await _speak('Welcome to Jago Voice Assistant. You can book a ride, send a parcel, or book an intercity trip. Tap the mic and speak.');
   }
 
   // ─── Language picker ─────────────────────────────────────────────────────

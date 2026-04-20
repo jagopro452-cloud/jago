@@ -48,7 +48,7 @@ class _TermsScreenState extends State<TermsScreen> {
               SizedBox(height: JT.spacing16),
               Text('Before you begin', style: JT.h2),
               SizedBox(height: JT.spacing8),
-              Text('Please review our terms to continue using JAGO Pro.',
+              Text('Please review our terms to continue using Jago.',
                   style: JT.body),
               SizedBox(height: JT.spacing32),
 
@@ -65,7 +65,7 @@ class _TermsScreenState extends State<TermsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _sectionTitle('Terms of Service'),
-                        _bodyText('By using JAGO Pro, you agree to use the service lawfully and only for legitimate transportation needs. You must provide accurate pickup and destination information. Misuse or abuse of the platform will result in account suspension.'),
+                        _bodyText('By using Jago, you agree to use the service lawfully and only for legitimate transportation needs. You must provide accurate pickup and destination information. Misuse or abuse of the platform will result in account suspension.'),
                         SizedBox(height: JT.spacing16),
                         _sectionTitle('Payments & Cancellations'),
                         _bodyText('Wallet balance deducted for rides is non-refundable except in cases of driver no-show or technical failure. Cancelling after a driver is assigned will incur a small cancellation fee. Unused wallet balance can be refunded on account closure upon request.'),

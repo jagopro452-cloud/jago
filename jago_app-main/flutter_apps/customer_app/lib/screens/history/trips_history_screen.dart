@@ -29,8 +29,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   late AnimationController _headerCtrl;
   late Animation<double> _headerAnim;
 
-  static const Color _blue = Color(0xFF2F7BFF);
-  static const Color _navy = Color(0xFF0F172A);
+  static const Color _blue = Color(0xFF6366F1);
+  static const Color _navy = Color(0xFF1E293B);
+  static const Color _purple = Color(0xFF7C3AED);
 
   @override
   void initState() {
@@ -224,7 +225,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         height: 10,
                                         decoration: const BoxDecoration(
                                             shape: BoxShape.circle,
-                                            color: JT.primary)),
+                                            color: _blue)),
                                     Expanded(
                                         child: Container(
                                             width: 2,
@@ -235,7 +236,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                         width: 10,
                                         height: 10,
                                         decoration: BoxDecoration(
-                                            color: const Color(0xFF1A6FDB),
+                                            color: _purple,
                                             borderRadius:
                                                 BorderRadius.circular(2))),
                                   ]),
@@ -247,7 +248,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                       children: [
                                     Text('PICKUP',
                                         style: GoogleFonts.poppins(
-                                            color: JT.primary,
+                                            color: _blue,
                                             fontSize: 10,
                                             fontWeight: FontWeight.w500,
                                             letterSpacing: 0.8)),
@@ -261,7 +262,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     const SizedBox(height: 12),
                                     Text('DROP-OFF',
                                         style: GoogleFonts.poppins(
-                                            color: const Color(0xFF1A6FDB),
+                                            color: _purple,
                                             fontSize: 10,
                                             fontWeight: FontWeight.w500,
                                             letterSpacing: 0.8)),
@@ -361,7 +362,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                       height: 54,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: JT.primary,
+                          color: _blue,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
@@ -619,10 +620,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF3B48D1) : Colors.white,
+          color: active ? _blue : Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: active ? const Color(0xFF3B48D1) : const Color(0xFFE2E8F0)),
-          boxShadow: active ? [BoxShadow(color: const Color(0xFF3B48D1).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
+          border: Border.all(color: active ? _blue : const Color(0xFFE2E8F0)),
+          boxShadow: active ? [BoxShadow(color: _blue.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
         ),
         child: Text(
           label,

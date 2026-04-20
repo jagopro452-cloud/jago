@@ -90,7 +90,7 @@ class _MainScreenState extends State<MainScreen> {
                   // Jago Logo
                   GestureDetector(
                     onTap: () => setState(() => _currentIndex = 3), // Navigate to Profile
-                    child: JT.logoWhite(height: 64),
+                    child: JT.logoBlue(height: 56),
                   ),
                   
                   // Actions: Wallet & Notifications

@@ -408,7 +408,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   Widget _paymentSelector() => Row(children: [
     for (final p in [
       {'key': 'cash', 'label': 'Cash', 'icon': Icons.money},
-      {'key': 'wallet', 'label': 'JAGO Pro Wallet', 'icon': Icons.account_balance_wallet_outlined},
+      {'key': 'wallet', 'label': 'Jago Wallet', 'icon': Icons.account_balance_wallet_outlined},
       {'key': 'upi', 'label': 'UPI', 'icon': Icons.payment_outlined},
     ]) ...[
       Expanded(

@@ -8,10 +8,12 @@ import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../tracking/tracking_screen.dart';
+import 'ride_for_whom_screen.dart';
 
 class BookingScreen extends StatefulWidget {
   final String pickup;
@@ -51,13 +53,16 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   late Razorpay _razorpay;
 
-  // Book for someone else
   bool _bookForSomeone = false;
   final _passengerNameCtrl = TextEditingController();
   final _passengerPhoneCtrl = TextEditingController();
   final _receiverNameCtrl = TextEditingController();
   final _receiverPhoneCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
   bool _popularForPickup = false;
+  
+  Set<Polyline> _polylines = {};
+  double _routedDistanceKm = 0.0;
 
   // Populated dynamically from /api/app/popular-locations; static data used as fallback
   List<Map<String, dynamic>> _popularLocations = const [
@@ -74,7 +79,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   static const Color _jagoPrimary = JT.primary;
   static const Color _jagoSecondary = JT.secondary;
 
-  static const Color _blue = JT.primary;
+  static const Color _blue = Color(0xFF6366F1); // Vibrant Indigo
   static const Color _green = JT.success;
 
   LatLng get _pickupLatLng => LatLng(widget.pickupLat, widget.pickupLng);
@@ -134,28 +139,25 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return '';
   }
 
-  // Rule 4: Returns true if vehicle should be HIDDEN (inactive services)
+  // Rule 4: Returns true if vehicle should be HIDDEN
   static bool _shouldHideVehicle(String name) {
     final n = name.toLowerCase();
-    // Hide Carpool, Outerpool, SUV, Sedan if not explicitly enabled
-    if (n.contains('pool') || n.contains('carpool') || n.contains('outerpool')) return true;
-    if (n.contains('sedan') && !n.contains('mini')) return true;
-    return false;
+    
+    // Whitelist only requested categories: bike, auto, cab, premium
+    // Relaxed contains checks to avoid hiding valid variations (e.g. "Bike - Fast")
+    if (n.contains('bike')) return false;
+    if (n.contains('auto')) return false;
+    if (n.contains('cab')) return false;
+    if (n.contains('premium')) return false;
+    if (n.contains('sedan')) return false;
+    if (n.contains('car')) return false;
+
+    // Hide everything else (Parcel, SUV, Pool, etc. if not requested)
+    return true;
   }
 
   static Color _accentForVehicle(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('pickup van') || n.contains('pickup')) return const Color(0xFF7C3AED);
-    if (n.contains('mini truck') || n.contains('tata ace')) return const Color(0xFF0EA5E9);
-    if (n.contains('parcel bike') || n.contains('bike parcel')) return const Color(0xFF10B981);
-    if (n.contains('parcel auto')) return const Color(0xFFF59E0B);
-    if (n.contains('parcel')) return const Color(0xFFF97316);
-    if (n.contains('bike')) return JT.primary;
-    if (n.contains('auto')) return const Color(0xFF059669);
-    if (n.contains('cargo') || n.contains('truck')) return const Color(0xFF7C3AED);
-    if (n.contains('suv')) return const Color(0xFF0EA5E9);
-    if (n.contains('car')) return const Color(0xFF2563EB);
-    return JT.primary;
+    return const Color(0xFF6366F1); // Unified Premium Indigo
   }
 
   // ── Vehicle image URLs (real vehicle images, network with emoji fallback) ──
@@ -163,12 +165,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   static const Map<String, String> _vehicleImageUrls = {
     'bike': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775123974/bike_logo_g7idrq.png',
     'auto': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125550/ChatGPT_Image_Apr_2_2026_03_55_30_PM_ywb7fj.png',
-    'cab': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125074/ChatGPT_Image_Apr_2_2026_03_47_37_PM_j0kqty.png',
-    'premium': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775126468/ChatGPT_Image_Apr_2_2026_04_10_47_PM_oyl3uh.png',
-    'parcel_bike': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png',
+    'cab': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_27_28_AM_w0rcnh',
+    'premium': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_31_05_AM_kavp5e',
+    'parcel_bike': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
     'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
-    'mini_truck':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/mini_truck.png',
-    'pickup_van':  'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/pickup_van.png',
+    'mini_truck':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
+    'pickup_van':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
   };
 
   static String? _vehicleImageKey(String name) {
@@ -345,6 +347,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   double get _distanceKm {
+    if (_routedDistanceKm > 0) return _routedDistanceKm;
     if (widget.destLat == 0 && widget.destLng == 0) return 3.0;
     // Haversine formula for accurate distance calculation
     const double earthRadius = 6371.0;
@@ -400,6 +403,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _estimateFare();
     _fetchWallet();
     _fetchPopularLocations();
+    _fetchRoutePolyline();
   }
 
   Future<void> _fetchPopularLocations() async {
@@ -433,6 +437,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _passengerPhoneCtrl.dispose();
     _receiverNameCtrl.dispose();
     _receiverPhoneCtrl.dispose();
+    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -535,30 +540,43 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 return true;
               }).toList();
             }
-            _allFares = filtered.isNotEmpty ? filtered : _buildFallbackFares();
+            _allFares = filtered;
+            
+            // Ensure we have at least the core categories (Bike, Auto, Cab)
             if (widget.category != 'parcel') {
               final fallbacks = _buildFallbackFares();
               for (var fb in fallbacks) {
                 final fbName = fb['vehicleCategoryName'].toString();
-                if (fbName != 'Bike' && !_allFares.any((f) {
-                  final name = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString();
-                  return name.contains(fbName);
+                // Add fallback if no similar category exists in server result
+                if (!_allFares.any((f) {
+                  final name = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                  return name.contains(fbName.split(' ').first.toLowerCase());
                 })) {
                   _allFares.add(fb);
                 }
               }
             }
-            if (widget.vehicleCategoryId != null) {
-              final idx = _allFares.indexWhere((f) =>
-                f['vehicleCategoryId']?.toString() == widget.vehicleCategoryId ||
-                f['id']?.toString() == widget.vehicleCategoryId);
+            
+            // Final safety check: if still empty (shouldn't happen with fallbacks), use all fallbacks
+            if (_allFares.isEmpty) _allFares = _buildFallbackFares();
+            if (widget.vehicleCategoryId != null || widget.vehicleCategoryName != null) {
+              final targetName = (widget.vehicleCategoryName ?? '').toLowerCase();
+              final idx = _allFares.indexWhere((f) {
+                final fName = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final fId = f['vehicleCategoryId']?.toString() ?? f['id']?.toString();
+                return fId == widget.vehicleCategoryId || 
+                       (targetName.isNotEmpty && fName.contains(targetName));
+              });
               if (idx >= 0) _selectedFareIndex = idx;
             }
           });
         } else {
-          // Server returned no fares — service is inactive for this category
-          if (mounted) setState(() => _allFares = []);
+          // Server returned 200 but body wasn't as expected — use fallbacks
+          if (mounted) setState(() => _allFares = _buildFallbackFares());
         }
+      } else {
+        // Server returned error status — use fallbacks
+        if (mounted) setState(() => _allFares = _buildFallbackFares());
       }
     } catch (_) {
       // Network error — show client-side estimates only on connectivity failure
@@ -634,15 +652,22 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (_promoDiscount > 0) 'promoDiscount': _promoDiscount,
         if (_appliedPromo != null) 'couponCode': _appliedPromo,
         if (razorpayPaymentId != null) 'razorpayPaymentId': razorpayPaymentId,
+        'ride_for': _bookForSomeone ? 'other' : 'self',
         if (_bookForSomeone) 'isForSomeoneElse': true,
-        if (_bookForSomeone && _passengerNameCtrl.text.trim().isNotEmpty)
+        if (_bookForSomeone && _passengerNameCtrl.text.trim().isNotEmpty) ...{
           'passengerName': _passengerNameCtrl.text.trim(),
-        if (_bookForSomeone && _passengerPhoneCtrl.text.trim().isNotEmpty)
+          'passenger_name': _passengerNameCtrl.text.trim(),
+        },
+        if (_bookForSomeone && _passengerPhoneCtrl.text.trim().isNotEmpty) ...{
           'passengerPhone': _passengerPhoneCtrl.text.trim(),
+          'passenger_mobile': _passengerPhoneCtrl.text.trim(),
+        },
         if (_bookForSomeone && _receiverNameCtrl.text.trim().isNotEmpty)
           'receiverName': _receiverNameCtrl.text.trim(),
         if (_bookForSomeone && _receiverPhoneCtrl.text.trim().isNotEmpty)
           'receiverPhone': _receiverPhoneCtrl.text.trim(),
+        if (_bookForSomeone && _noteCtrl.text.trim().isNotEmpty)
+          'note': _noteCtrl.text.trim(),
       };
       final vcId = _fare?['vehicleCategoryId']?.toString() ?? _fare?['id']?.toString() ?? widget.vehicleCategoryId;
       if (vcId != null && vcId.isNotEmpty) body['vehicleCategoryId'] = vcId;
@@ -776,6 +801,27 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     );
   }
 
+  Future<void> _goToRideForWhomScreen() async {
+    final result = await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => RideForWhomScreen(vehicleName: _vehicleName),
+    ));
+    if (result != null && result is Map) {
+      setState(() {
+        _bookForSomeone = result['isForSomeone'] == true;
+        if (_bookForSomeone) {
+          _passengerNameCtrl.text = result['name'] ?? '';
+          _passengerPhoneCtrl.text = result['phone'] ?? '';
+          _noteCtrl.text = result['note'] ?? '';
+        } else {
+          _passengerNameCtrl.clear();
+          _passengerPhoneCtrl.clear();
+          _noteCtrl.clear();
+        }
+      });
+      _handleOnConfirm();
+    }
+  }
+
   Future<void> _handleOnConfirm() async {
     if (_paymentMethod == 'upi') {
       await _startRazorpayRidePayment();
@@ -822,7 +868,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'key': keyId,
         'amount': order['amount'],
         'currency': 'INR',
-        'name': 'JAGO Pro Rides',
+        'name': 'Jago Rides',
         'description': 'Ride to ${_shortLocation(widget.destination)}',
         'order_id': order['id'],
         'prefill': {
@@ -884,6 +930,143 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     ));
   }
 
+  List<LatLng> _decodePolyline(String encoded) {
+    final List<LatLng> pts = [];
+    int index = 0;
+    int lat = 0, lng = 0;
+    while (index < encoded.length) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final dLat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dLat;
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final dLng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dLng;
+      pts.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return pts;
+  }
+
+  Future<void> _fetchRoutePolyline() async {
+    bool success = false;
+    List<LatLng> points = [];
+    double fetchedDistMeters = 0.0;
+
+    // Attempt 1: OSRM Public Routing API (Highly reliable, no API key, returns distance)
+    try {
+      final uri = Uri.parse(
+        'https://router.project-osrm.org/route/v1/driving/${widget.pickupLng},${widget.pickupLat};${widget.destLng},${widget.destLat}?overview=full&geometries=polyline'
+      );
+      final res = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          final encoded = route['geometry'];
+          points = _decodePolyline(encoded);
+          fetchedDistMeters = (route['distance'] as num).toDouble();
+          success = points.isNotEmpty;
+        }
+      }
+    } catch (_) {}
+
+    // Attempt 2: Direct Google Directions API
+    if (!success) {
+      try {
+        final uri = Uri.parse(
+          'https://maps.googleapis.com/maps/api/directions/json?origin=${widget.pickupLat},${widget.pickupLng}&destination=${widget.destLat},${widget.destLng}&key=${ApiConfig.googleMapsApiKey}'
+        );
+        final res = await http.get(uri).timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['routes'] != null && data['routes'].isNotEmpty) {
+            final encoded = data['routes'][0]['overview_polyline']['points'];
+            points = _decodePolyline(encoded);
+            final legs = data['routes'][0]['legs'];
+            if (legs != null && legs.isNotEmpty) {
+               fetchedDistMeters = (legs[0]['distance']['value'] as num).toDouble();
+            }
+            success = points.isNotEmpty;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Attempt 3: Backend Navigation API
+    if (!success) {
+      try {
+        final headers = await AuthService.getHeaders();
+        final res = await http.post(
+          Uri.parse(ApiConfig.routeMultiWaypoint),
+          headers: {...headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'origin': {'lat': widget.pickupLat, 'lng': widget.pickupLng},
+            'destination': {'lat': widget.destLat, 'lng': widget.destLng},
+            'waypoints': [],
+            'optimize': false,
+          }),
+        ).timeout(const Duration(seconds: 4));
+        
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          final overviewPolyline = data['overviewPolyline']?.toString();
+          if (overviewPolyline != null && overviewPolyline.isNotEmpty) {
+            points = _decodePolyline(overviewPolyline);
+            success = points.isNotEmpty;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      if (fetchedDistMeters > 0) {
+        _routedDistanceKm = fetchedDistMeters / 1000.0;
+        // Recalculate true road distance fares
+        _estimateFare();
+      }
+
+      setState(() {
+        _polylines = {
+          Polyline( // Production quality curvy road line constraint
+            polylineId: const PolylineId('route'),
+            points: points,
+            color: _jagoPrimary,
+            width: 5,
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            geodesic: true,
+          )
+        };
+      });
+      _fitMapToRoute(routePoints: points);
+    } else {
+      setState(() {
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('route_fallback'),
+            points: [_pickupLatLng, _destLatLng],
+            color: _blue, width: 4,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)]
+          )
+        };
+      });
+      _fitMapToRoute();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const panelBg = JT.surface;
@@ -897,21 +1080,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 13),
           onMapCreated: (c) {
             _mapController = c;
-            Future.delayed(const Duration(milliseconds: 500), () {
-              _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
-                LatLngBounds(
-                  southwest: LatLng(
-                    _pickupLatLng.latitude < _destLatLng.latitude ? _pickupLatLng.latitude : _destLatLng.latitude,
-                    _pickupLatLng.longitude < _destLatLng.longitude ? _pickupLatLng.longitude : _destLatLng.longitude,
-                  ),
-                  northeast: LatLng(
-                    _pickupLatLng.latitude > _destLatLng.latitude ? _pickupLatLng.latitude : _destLatLng.latitude,
-                    _pickupLatLng.longitude > _destLatLng.longitude ? _pickupLatLng.longitude : _destLatLng.longitude,
-                  ),
-                ),
-                80,
-              ));
-            });
+            _fitMapToRoute();
           },
           markers: {
             Marker(markerId: const MarkerId('pickup'), position: _pickupLatLng,
@@ -921,15 +1090,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               infoWindow: InfoWindow(title: 'Drop', snippet: widget.destination),
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue)),
           },
-          polylines: {
-            Polyline(polylineId: const PolylineId('route'),
-              points: [_pickupLatLng, _destLatLng],
-              color: _blue, width: 4,
-              patterns: [PatternItem.dash(20), PatternItem.gap(10)]),
-          },
+          polylines: _polylines,
           zoomControlsEnabled: false, mapToolbarEnabled: false,
           myLocationEnabled: true, myLocationButtonEnabled: false,
         ),
+
         // Floating Top Bar matching image
         SafeArea(
           child: Padding(
@@ -1011,43 +1176,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                           const Text('Payment Method', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
                           Row(
                             children: [
-                              GestureDetector(
-                                onTap: () => setState(() => _paymentMethod = 'cash'),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _paymentMethod == 'cash' ? const Color(0xFFF3E8FF) : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: _paymentMethod == 'cash' ? const Color(0xFF7C3AED) : Colors.grey.shade300),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.money, size: 14, color: _paymentMethod == 'cash' ? const Color(0xFF7C3AED) : const Color(0xFF64748B)),
-                                      const SizedBox(width: 4),
-                                      Text('Cash', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _paymentMethod == 'cash' ? const Color(0xFF7C3AED) : const Color(0xFF64748B))),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                              _payBtn('cash', Icons.payments_rounded, 'Cash'),
                               const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => setState(() => _paymentMethod = 'upi'),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _paymentMethod == 'upi' ? const Color(0xFFF3E8FF) : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: _paymentMethod == 'upi' ? const Color(0xFF7C3AED) : Colors.grey.shade300),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.qr_code_scanner_rounded, size: 14, color: _paymentMethod == 'upi' ? const Color(0xFF7C3AED) : const Color(0xFF64748B)),
-                                      const SizedBox(width: 4),
-                                      Text('UPI', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _paymentMethod == 'upi' ? const Color(0xFF7C3AED) : const Color(0xFF64748B))),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                              _payBtn('upi', Icons.qr_code_scanner_rounded, 'UPI'),
                             ],
                           ),
                         ],
@@ -1055,21 +1186,22 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                       const SizedBox(height: 16),
                       // Big Book Button
                       GestureDetector(
-                        onTap: _loading || _estimating || _allFares.isEmpty ? null : _handleOnConfirm,
-                        child: Container(
+                        onTap: _loading || _estimating || _allFares.isEmpty ? null : _goToRideForWhomScreen,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
                           width: double.infinity,
                           height: 52,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF7C3AED), // vibrant purple
+                            color: const Color(0xFF6366F1), // vibrant indigo
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
-                               BoxShadow(color: const Color(0xFF7C3AED).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                               BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
                             ],
                           ),
                           child: Center(
                             child: _loading 
                                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                               : Text('Book $_vehicleName', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.white)),
+                               : Text('Confirm Ride', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: Colors.white)),
                           ),
                         ),
                       ),
@@ -1089,165 +1221,17 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return n.contains('parcel') || n.contains('cargo') || n.contains('delivery');
   }
 
-  Widget _buildBookForSomeoneSection() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      GestureDetector(
-        onTap: () => setState(() { _bookForSomeone = !_bookForSomeone; }),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: _bookForSomeone ? _blue.withValues(alpha: 0.06) : const Color(0xFFF8FAFF),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: _bookForSomeone ? _blue.withValues(alpha: 0.3) : const Color(0xFFE8EFFF)),
-          ),
-          child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                color: _bookForSomeone ? _blue.withValues(alpha: 0.12) : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(Icons.person_add_rounded,
-                color: _bookForSomeone ? _blue : Colors.grey.shade500, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_isParcel ? 'Book Parcel for Someone' : 'Book for Someone Else',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500, fontSize: 14,
-                  color: _bookForSomeone ? _blue : JT.textPrimary)),
-              const SizedBox(height: 2),
-              Text(_isParcel ? 'Set sender & receiver details' : 'Enter passenger contact details',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-            ])),
-            Switch(
-              value: _bookForSomeone,
-              onChanged: (v) => setState(() => _bookForSomeone = v),
-              activeThumbColor: _blue,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ]),
-        ),
-      ),
-      if (_bookForSomeone) ...[
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _blue.withValues(alpha: 0.12)),
-          ),
-          child: Builder(builder: (ctx) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_isParcel ? 'Sender Details' : 'Passenger Details',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
-                color: Color(0xFF374151), letterSpacing: 0.5)),
-            const SizedBox(height: 10),
-            _bookingInputField(
-              controller: _passengerNameCtrl,
-              hint: _isParcel ? 'Sender name' : 'Passenger name',
-              icon: Icons.person_outline_rounded,
-              keyboardType: TextInputType.name,
-            ),
-            const SizedBox(height: 8),
-            _bookingInputField(
-              controller: _passengerPhoneCtrl,
-              hint: _isParcel ? 'Sender phone' : 'Passenger phone',
-              icon: Icons.phone_outlined,
-              keyboardType: TextInputType.phone,
-            ),
-            if (_isParcel) ...[
-              const SizedBox(height: 14),
-              Text('Receiver Details',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
-                  color: Color(0xFF374151), letterSpacing: 0.5)),
-              const SizedBox(height: 10),
-              _bookingInputField(
-                controller: _receiverNameCtrl,
-                hint: 'Receiver name',
-                icon: Icons.person_pin_outlined,
-                keyboardType: TextInputType.name,
-              ),
-              const SizedBox(height: 8),
-              _bookingInputField(
-                controller: _receiverPhoneCtrl,
-                hint: 'Receiver phone (for delivery OTP)',
-                icon: Icons.phone_forwarded_outlined,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
-                child: const Row(children: [
-                  Icon(Icons.info_outline_rounded, color: Colors.amber, size: 14),
-                  SizedBox(width: 6),
-                  Expanded(child: Text(
-                    'Delivery OTP will be sent to receiver\'s phone when package is picked up.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
-                  )),
-                ]),
-              ),
-            ],
-          ]);
-          }),
-        ),
-      ],
-    ]);
-  }
-
-  Widget _bookingInputField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE8EFFF)),
-      ),
-      child: Row(children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 10),
-          child: Icon(icon, size: 18, color: Colors.grey.shade400),
-        ),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            style: const TextStyle(fontSize: 14, color: JT.textPrimary),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-
   Widget _buildPaymentSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Payment Method',
         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF374151), letterSpacing: 0.2)),
       const SizedBox(height: 10),
       Row(children: [
-        Expanded(child: _payBtn('cash', Icons.payments_rounded, 'Cash', null)),
+        Expanded(child: _payBtn('cash', Icons.payments_rounded, 'Cash')),
         const SizedBox(width: 8),
-        Expanded(child: _payBtn('wallet', Icons.account_balance_wallet_rounded, 'Wallet',
-          _walletBalance > 0 ? '₹${_walletBalance.toStringAsFixed(0)}' : '₹0')),
+        Expanded(child: _payBtn('wallet', Icons.account_balance_wallet_rounded, 'Wallet')),
         const SizedBox(width: 8),
-        Expanded(child: _payBtn('upi', Icons.qr_code_scanner_rounded, 'UPI', 'Razorpay')),
+        Expanded(child: _payBtn('upi', Icons.qr_code_scanner_rounded, 'UPI')),
       ]),
       if (_paymentMethod == 'wallet') ...[
         const SizedBox(height: 8),
@@ -1304,11 +1288,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     ]);
   }
 
-  Widget _payBtn(String method, IconData icon, String label, String? subtitle) {
+  Widget _payBtn(String method, IconData icon, String label) {
     final selected = _paymentMethod == method;
-    const unselBg = Color(0xFFF8FAFF);
     const unselBorder = Color(0xFFE2E8F0);
-    const unselText = Color(0xFF374151);
+    const selBorder = Color(0xFF7C3AED);
+    const selText = Color(0xFF7C3AED);
+    const unselText = Color(0xFF64748B);
+    
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -1316,27 +1302,20 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
         decoration: BoxDecoration(
-          color: selected ? _blue : unselBg,
-          borderRadius: BorderRadius.circular(14),
+          color: selected ? const Color(0xFFF3E8FF) : Colors.white,
+          borderRadius: BorderRadius.circular(30),
           border: Border.all(
-            color: selected ? _blue : unselBorder,
-            width: selected ? 2 : 1,
+            color: selected ? selBorder : unselBorder,
+            width: 1,
           ),
-          boxShadow: selected ? [BoxShadow(color: _blue.withValues(alpha: 0.3), blurRadius: 14, offset: const Offset(0, 5))] : [],
+          boxShadow: selected ? [BoxShadow(color: selBorder.withValues(alpha: 0.1), blurRadius: 8)] : [],
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 22, color: selected ? Colors.white : Colors.grey[500]),
-          const SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-            color: selected ? Colors.white : unselText)),
-          if (subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(subtitle, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-              color: selected ? Colors.white.withValues(alpha: 0.75) : Colors.grey[400]),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: selected ? selText : unselText),
+          const SizedBox(width: 6),
+          Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? selText : unselText)),
         ]),
       ),
     );
@@ -1426,7 +1405,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     IconData icon;
     switch (tag) {
       case 'FASTEST':
-        color = const Color(0xFF3B82F6);
+        color = const Color(0xFF7C3AED); // Premium Purple matching image
         icon = Icons.bolt_rounded;
         break;
       case 'SAVER':
@@ -1455,6 +1434,43 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     );
   }
 
+  void _fitMapToRoute({List<LatLng>? routePoints}) {
+    if (_mapController == null) return;
+    Future.delayed(const Duration(milliseconds: 300), () {
+      double minLat, maxLat, minLng, maxLng;
+      
+      if (routePoints != null && routePoints.isNotEmpty) {
+        minLat = maxLat = routePoints.first.latitude;
+        minLng = maxLng = routePoints.first.longitude;
+        for (final p in routePoints) {
+          if (p.latitude < minLat) minLat = p.latitude;
+          if (p.latitude > maxLat) maxLat = p.latitude;
+          if (p.longitude < minLng) minLng = p.longitude;
+          if (p.longitude > maxLng) maxLng = p.longitude;
+        }
+      } else {
+        final pLat = _pickupLatLng.latitude;
+        final pLng = _pickupLatLng.longitude;
+        final dLat = widget.destLat != 0 ? widget.destLat : pLat + 0.005;
+        final dLng = widget.destLng != 0 ? widget.destLng : pLng + 0.005;
+        minLat = min(pLat, dLat);
+        maxLat = max(pLat, dLat);
+        minLng = min(pLng, dLng);
+        maxLng = max(pLng, dLng);
+      }
+
+      try {
+        _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
+          ),
+          90, // Significant visual padding for the route
+        ));
+      } catch (_) {}
+    });
+  }
+
   Widget _buildVehicleSelector() {
     if (_estimating) {
       return Padding(
@@ -1469,7 +1485,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         ),
       );
     }
-    if (_allFares.isEmpty) return const SizedBox.shrink();
+    if (_allFares.isEmpty && !_estimating) return const SizedBox.shrink();
 
     return Column(
       children: _allFares.asMap().entries.map((entry) {
@@ -1483,8 +1499,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         
         final etaMins = _etaMins(time);
         final dropTime = _dropTimeStr(time);
-        final subtitle = '$etaMins min • Drop $dropTime';
         final tag = _getVehicleTag(i);
+        final isFastest = tag == 'FASTEST';
+        final isPremium = name.toLowerCase().contains('premium') || tag == 'PREMIUM';
+        
+        final subtitle = '$etaMins min • Drop $dropTime';
 
         // Styling matches the image exactly.
         final cardBgColor = isSelected ? const Color(0xFFF3E8FF) : Colors.transparent;
@@ -1554,8 +1573,17 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                                 children: [
                                   TextSpan(
                                     text: name,
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                    style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF1E293B)),
                                   ),
+                                  if (isFastest)
+                                    WidgetSpan(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        margin: const EdgeInsets.only(left: 6),
+                                        decoration: BoxDecoration(color: const Color(0xFFF3E8FF), borderRadius: BorderRadius.circular(4)),
+                                        child: const Text('FASTEST', style: TextStyle(color: Color(0xFF7C3AED), fontSize: 9, fontWeight: FontWeight.w700)),
+                                      ),
+                                    ),
                                   if (isSelected) 
                                     TextSpan(
                                       text: ' • $subtitle', 

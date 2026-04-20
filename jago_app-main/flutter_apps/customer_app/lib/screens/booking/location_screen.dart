@@ -14,7 +14,7 @@ import 'booking_screen.dart';
 import 'map_location_picker.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JAGO Pro — Full-Screen Location Picker
+// Jago — Full-Screen Location Picker
 // Rule 1: Location ALWAYS comes before vehicle selection.
 // Rule 7: Pickup auto-detect · Drop auto-focus · Map pick · Add stop · Suggestions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,8 +329,10 @@ class _LocationScreenState extends State<LocationScreen>
 
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
-    _activeQuery = q;
-    _activeField = true;
+    setState(() {
+      _activeQuery = q;
+      _activeField = true;
+    });
     if (_debounce?.isActive == true) _debounce!.cancel();
     if (q.trim().length < 2) {
       setState(() {
@@ -344,8 +346,10 @@ class _LocationScreenState extends State<LocationScreen>
   }
 
   void _onStopChanged(String q) {
-    _activeQuery = q;
-    _activeField = false;
+    setState(() {
+      _activeQuery = q;
+      _activeField = false;
+    });
     if (_debounce?.isActive == true) _debounce!.cancel();
     if (q.trim().length < 2) {
       setState(() {
@@ -386,9 +390,13 @@ class _LocationScreenState extends State<LocationScreen>
               .map((p) {
                 final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
                 final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
+                final main = p['mainText']?.toString() ?? '';
+                final sec = p['secondaryText']?.toString() ?? '';
                 return <String, dynamic>{
                   'name': p['fullDescription']?.toString() ??
-                      p['mainText']?.toString() ?? '',
+                          p['mainText']?.toString() ?? '',
+                  'mainText': main,
+                  'secondaryText': sec,
                   'placeId': p['placeId']?.toString() ?? '',
                   'lat': lat2,
                   'lng': lng2,
@@ -992,18 +1000,42 @@ class _LocationScreenState extends State<LocationScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        // ── Quick Actions ──
+        if (!isSearching) ...[
+          _placeRow(
+            name: 'Current Location',
+            mainText: 'Current Location',
+            secondaryText: 'Using GPS for accuracy',
+            icon: Icons.my_location_rounded,
+            iconColor: JT.primary,
+            onTap: () {
+              // Usually handled by the manual map picker or geocoding
+              _pickDropOnMap(); 
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+
         // Search results
         if (isSearching) ...[
           if (_searching && items.isEmpty)
             _buildShimmerLoading()
           else if (items.isNotEmpty) ...[
             _sectionHeader('Search Results', Icons.search_rounded),
-            ...items.map((p) => _placeRow(
+            ...items.map((p) {
+               final dist = (p['lat'] != 0.0) 
+                  ? JT.calculateDistance(_pickupLat, _pickupLng, p['lat'], p['lng'])
+                  : null;
+                return _placeRow(
                   name: p['name']?.toString() ?? '',
+                  mainText: p['mainText']?.toString() ?? '',
+                  secondaryText: p['secondaryText']?.toString() ?? '',
+                  distanceKm: dist,
                   icon: Icons.location_on_rounded,
                   iconColor: _accent,
                   onTap: () => _selectFromSearch(p, forDrop: _activeField),
-                )),
+                );
+            }),
           ] else if (!_searching)
             _buildNoResults(),
         ]
@@ -1015,6 +1047,8 @@ class _LocationScreenState extends State<LocationScreen>
             _sectionHeader('Recent', Icons.history_rounded),
             ..._recent.map((p) => _placeRow(
                   name: p['name']?.toString() ?? '',
+                  mainText: p['name']?.toString() ?? '',
+                  secondaryText: p['address']?.toString() ?? 'Recent search',
                   icon: Icons.history_rounded,
                   iconColor: JT.textSecondary,
                   onTap: () => _selectDrop(
@@ -1028,15 +1062,24 @@ class _LocationScreenState extends State<LocationScreen>
           // Popular locations
           if (_popular.isNotEmpty) ...[
             _sectionHeader('Popular Locations', Icons.star_rounded),
-            ..._popular.map((p) => _placeRow(
-                  name: p['name']?.toString() ?? '',
-                  icon: Icons.place_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  onTap: () => _selectDrop(
-                      p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
-                )),
+            ..._popular.map((p) {
+                  final dist = JT.calculateDistance(
+                      _pickupLat, _pickupLng, 
+                      (p['lat'] as num?)?.toDouble() ?? 0.0, 
+                      (p['lng'] as num?)?.toDouble() ?? 0.0);
+                  return _placeRow(
+                    name: p['name']?.toString() ?? '',
+                    mainText: p['name']?.toString() ?? '',
+                    secondaryText: 'Popular Location',
+                    distanceKm: dist > 0 ? dist : null,
+                    icon: Icons.place_rounded,
+                    iconColor: const Color(0xFFF59E0B),
+                    onTap: () => _selectDrop(
+                        p['name'] ?? '',
+                        (p['lat'] as num).toDouble(),
+                        (p['lng'] as num).toDouble()),
+                  );
+                }),
           ],
         ],
       ],
@@ -1045,71 +1088,142 @@ class _LocationScreenState extends State<LocationScreen>
 
   Widget _sectionHeader(String label, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      padding: const EdgeInsets.only(bottom: 12, top: 16),
       child: Row(children: [
-        Icon(icon, size: 14, color: JT.textSecondary),
-        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: JT.textSecondary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Icon(icon, size: 12, color: JT.textSecondary),
+        ),
+        const SizedBox(width: 8),
         Text(
-          label,
+          label.toUpperCase(),
           style: GoogleFonts.poppins(
             color: JT.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
           ),
         ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: JT.textSecondary.withValues(alpha: 0.1), thickness: 1)),
       ]),
     );
   }
 
   Widget _placeRow({
     required String name,
+    required String mainText,
+    required String secondaryText,
     required IconData icon,
     required Color iconColor,
     required VoidCallback onTap,
+    double? distanceKm,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFF1F5FA)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Row(children: [
+          // Premium Icon setup
           Container(
-            width: 36,
-            height: 36,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 18, color: iconColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: GoogleFonts.poppins(
-                color: JT.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
+              gradient: LinearGradient(
+                colors: [
+                  iconColor.withValues(alpha: 0.15),
+                  iconColor.withValues(alpha: 0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        mainText.isNotEmpty ? mainText : name,
+                        style: GoogleFonts.poppins(
+                          color: JT.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (distanceKm != null)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: iconColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${distanceKm.toStringAsFixed(1)} km',
+                          style: GoogleFonts.poppins(
+                            color: iconColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (secondaryText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      secondaryText,
+                      style: GoogleFonts.poppins(
+                        color: JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded,
-              size: 18, color: JT.textSecondary),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_forward_ios_rounded,
+                size: 10, color: JT.textSecondary),
+          ),
         ]),
       ),
     );

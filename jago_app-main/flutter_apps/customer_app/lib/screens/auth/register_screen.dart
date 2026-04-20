@@ -120,7 +120,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                 // Header
                 const SizedBox(height: 4),
                 Text(
-                  'Join JAGO Pro Today',
+                  'Join Jago Today',
                   style: GoogleFonts.poppins(
                     fontSize: 26,
                     fontWeight: FontWeight.w400,

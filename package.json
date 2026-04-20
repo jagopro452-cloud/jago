@@ -6,6 +6,7 @@
   "scripts": {
     "install:app": "cd jago_app-main && npm ci --include=dev",
     "build": "cd jago_app-main && npm ci --include=dev && npm run build",
+    "dev": "cd jago_app-main && npm run dev",
     "start": "cd jago_app-main && npm start",
     "postinstall": "cd jago_app-main && npm ci --include=dev"
   },

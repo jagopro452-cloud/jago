@@ -1088,9 +1088,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
-  Future<bool> _checkFaceVerificationAndProceed() async {
-    return false;
-  }
 
   Future<void> _toggleOnline() async {
     HapticFeedback.mediumImpact();
@@ -1117,8 +1114,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     Future.microtask(() async {
       try {
         if (newStatus) {
-          final redirected = await _checkFaceVerificationAndProceed();
-          if (redirected) return;
           await _getLocation();
         }
 
@@ -1163,17 +1158,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           if (_navIndex == 0) ...[
             // Full-screen map (Deferred to prevent stutter)
             if (_mapReadyToLoad)
-              GoogleMap(
-                initialCameraPosition: CameraPosition(target: _center, zoom: 14),
-                onMapCreated: (c) { _mapController = c; },
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                circles: _heatmapCircles,
+              Positioned.fill(
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+                  onMapCreated: (c) { _mapController = c; },
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('driver_location'),
+                      position: _center,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                      infoWindow: const InfoWindow(title: 'You are here'),
+                    ),
+                  },
+                  circles: _heatmapCircles,
+                ),
               )
             else
-              Container(color: const Color(0xFFF1F5F9)),
+              Positioned.fill(
+                child: Container(color: const Color(0xFFF1F5F9)),
+              ),
               
             // Clean white gradient overlay at top for readability
             Positioned(
@@ -1241,6 +1248,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 const Expanded(child: InlineEarningsView()),
               ] else if (_navIndex == 3) ...[
                 const Expanded(child: InlineWalletView()),
+              ] else if (_navIndex == 4) ...[
+                Expanded(child: InlineRatingsView(rating: _driverRating)),
               ]
             ]),
           ),
@@ -1394,12 +1403,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SvgPicture.asset(
-                  'assets/images/pilot_logo_full_white.svg',
-                  height: 44, // Bigger size compared to old 32
-                  colorFilter: const ColorFilter.mode(Color(0xFF2D8CFF), BlendMode.srcIn), // Better brand color instead of black
-                ),
+                padding: const EdgeInsets.only(top: 12),
+                child: JT.logoBlue(height: 64),
               ),
             ),
           ),
@@ -1540,7 +1545,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.currency_rupee_rounded,
                   value: '₹${_earningsToday.toStringAsFixed(2)}',
                   label: 'Earnings',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen())),
+                  onTap: () => setState(() => _navIndex = 2),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1550,7 +1555,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.directions_car_rounded,
                   value: '$_tripsToday',
                   label: 'Trips',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
+                  onTap: () => setState(() => _navIndex = 1),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1560,7 +1565,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.star_rounded,
                   value: _driverRating.toStringAsFixed(1),
                   label: 'Rating',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
+                  onTap: () => setState(() => _navIndex = 4),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1570,7 +1575,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.account_balance_wallet_rounded,
                   value: '₹${_walletBalance.toStringAsFixed(2)}',
                   label: 'Wallet',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+                  onTap: () => setState(() => _navIndex = 3),
                 ),
               ),
             ],
@@ -1848,7 +1853,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.verified_rounded, color: Colors.white, size: 14),
                       const SizedBox(width: 6),
-                      SvgPicture.asset('assets/images/pilot_logo_full_white.svg', height: 12),
+                      JT.logoWhite(height: 12),
                     ]),
                   ),
                 ]),
@@ -3159,6 +3164,168 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
           Text(subtitle, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 13, height: 1.5)),
         ]),
       ),
+    );
+  }
+}
+
+class InlineRatingsView extends StatefulWidget {
+  final double rating;
+  const InlineRatingsView({super.key, required this.rating});
+
+  @override
+  State<InlineRatingsView> createState() => _InlineRatingsViewState();
+}
+
+class _InlineRatingsViewState extends State<InlineRatingsView> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _feedbacks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.performance), headers: headers);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          _feedbacks = (data['feedbacks'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        });
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2D8CFF), Color(0xFF1A50D0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2D8CFF).withValues(alpha: 0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: Column(children: [
+                  Text(
+                    'Overall Rating',
+                    style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(
+                      widget.rating.toStringAsFixed(1),
+                      style: GoogleFonts.poppins(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w700, height: 1),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 4),
+                      child: Text('/ 5.0', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (i) {
+                      return Icon(
+                        i < widget.rating.floor() ? Icons.star_rounded : Icons.star_outline_rounded,
+                        color: Colors.amber,
+                        size: 24,
+                      );
+                    }),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'Recent Feedback',
+                style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
+              ),
+            ),
+          ),
+          if (_loading)
+            const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: Color(0xFF2D8CFF))))
+          else if (_feedbacks.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(color: const Color(0xFFF1F5F9), shape: BoxShape.circle),
+                    child: const Icon(Icons.star_outline_rounded, color: Color(0xFF94A3B8), size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('No ratings yet', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, color: const Color(0xFF1E293B))),
+                  const SizedBox(height: 4),
+                  Text('Your customer reviews will appear here', style: GoogleFonts.poppins(color: const Color(0xFF64748B), fontSize: 13)),
+                  const SizedBox(height: 100), // Push up for visual balance
+                ]),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _feedbackTile(_feedbacks[index]),
+                  childCount: _feedbacks.length,
+                ),
+              ),
+            ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackTile(Map<String, dynamic> f) {
+    final stars = int.tryParse(f['rating']?.toString() ?? '5') ?? 5;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(f['customerName'] ?? 'Verified Rider', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14, color: const Color(0xFF1E293B))),
+          Row(children: List.generate(5, (i) => Icon(Icons.star_rounded, color: i < stars ? Colors.amber : const Color(0xFFE2E8F0), size: 14))),
+        ]),
+        const SizedBox(height: 8),
+        if ((f['comment'] ?? '').isNotEmpty)
+          Text('"${f['comment']}"', style: GoogleFonts.poppins(color: const Color(0xFF475569), fontSize: 13, fontStyle: FontStyle.italic, height: 1.4)),
+        const SizedBox(height: 10),
+        Text(f['date'] ?? 'Just now', style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 11)),
+      ]),
     );
   }
 }

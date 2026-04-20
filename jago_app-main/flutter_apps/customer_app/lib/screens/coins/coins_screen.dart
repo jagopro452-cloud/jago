@@ -72,7 +72,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
             child: Icon(Icons.monetization_on, color: JT.primary, size: 20),
           ),
           SizedBox(width: JT.spacing8),
-          Text('JAGO Pro Coins', style: JT.h4),
+          Text('Jago Coins', style: JT.h4),
         ]),
       ),
       body: _loading
@@ -95,7 +95,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         Icon(Icons.stars_rounded, color: JT.warning, size: 48),
                         SizedBox(height: JT.spacing8),
                         Text('$balance', style: JT.h1.copyWith(color: Colors.white, fontSize: 52)),
-                        Text('JAGO Pro Coins', style: JT.h5.copyWith(color: Colors.white70)),
+                        Text('Jago Coins', style: JT.h5.copyWith(color: Colors.white70)),
                         SizedBox(height: JT.spacing8),
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing6),
@@ -150,7 +150,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('How JAGO Pro Coins work', style: JT.h5),
+                        Text('How Jago Coins work', style: JT.h5),
                         SizedBox(height: JT.spacing12),
                         ...tips.map((t) => Padding(
                           padding: EdgeInsets.only(bottom: JT.spacing8),

@@ -63,12 +63,18 @@ class JT {
 
   // LOGOS — Pilot branding
   static Widget logoBlue({double height = 36}) =>
-      SvgPicture.asset('assets/images/pilot_logo_full.svg', height: height, fit: BoxFit.contain);
+      ColorFiltered(
+        colorFilter: const ColorFilter.mode(Color(0xFF2D8CFF), BlendMode.srcIn),
+        child: Image.asset('assets/images/pilot_logo_white.png', height: height, fit: BoxFit.contain),
+      );
 
   static Widget logoPilot({double height = 36}) =>
-      SvgPicture.asset('assets/images/pilot_logo_full.svg', height: height, fit: BoxFit.contain);
+      ColorFiltered(
+        colorFilter: const ColorFilter.mode(Color(0xFF2D8CFF), BlendMode.srcIn),
+        child: Image.asset('assets/images/pilot_logo_white.png', height: height, fit: BoxFit.contain),
+      );
 
   static Widget logoWhite({double height = 36}) =>
-      SvgPicture.asset('assets/images/pilot_logo_full_white.svg', height: height, fit: BoxFit.contain);
+      Image.asset('assets/images/pilot_logo_white.png', height: height, fit: BoxFit.contain);
 }
 

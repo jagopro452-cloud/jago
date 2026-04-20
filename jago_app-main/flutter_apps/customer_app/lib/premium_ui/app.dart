@@ -11,7 +11,7 @@ class JagoProApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Jago Pro',
+      title: 'Jago',
       theme: JagoTheme.themeData,
       debugShowCheckedModeBanner: false,
       initialRoute: '/',

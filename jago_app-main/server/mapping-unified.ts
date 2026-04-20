@@ -179,11 +179,14 @@ export async function searchPlaces(
     console.log(`[mapping] Google response status: ${data.status}`);
 
     if (data?.status !== "OK") {
-      console.warn(`[mapping-unified:searchPlaces] API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}`);
+      console.warn(`[mapping-unified:searchPlaces] Google API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}. Falling back to Nominatim/Local.`);
+      const nomResults = await searchNominatimFallback(query);
+      if (nomResults.length > 0) return nomResults;
       return searchPopularLocations(query);
     }
 
     if (!data.predictions?.length) {
+      console.log(`[mapping-unified:searchPlaces] Google returned 0 results. Trying Nominatim fallback.`);
       return searchNominatimFallback(query);
     }
 
@@ -192,6 +195,7 @@ export async function searchPlaces(
       mainText: p.structured_formatting?.main_text || p.description?.split(",")[0] || "",
       secondaryText: p.structured_formatting?.secondary_text || "",
       fullDescription: p.description || "",
+      description: p.description || "", // Backward compatibility
       types: p.types || [],
     }));
 
@@ -230,6 +234,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
             mainText: main,
             secondaryText: sec,
             fullDescription: p.display_name || "",
+            description: p.display_name || "", // Backward compatibility
             types: [p.type || "point_of_interest"],
             lat: parseFloat(p.lat) || 0,
             lng: parseFloat(p.lon) || 0,
@@ -309,6 +314,7 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
       mainText: row.name,
       secondaryText: row.full_address || "",
       fullDescription: `${row.name}, ${row.full_address || ""}`,
+      description: `${row.name}, ${row.full_address || ""}`, // Backward compatibility
       types: ["popular_location"],
       lat: parseFloat(String(row.latitude)) || 0,
       lng: parseFloat(String(row.longitude)) || 0,

@@ -1316,10 +1316,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           child: Container(
                             height: 120, // Matching reduced height
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [Color(0xFFFF9D42), Color(0xFFF97316)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                              gradient: const LinearGradient(colors: [Color(0xFFC29763), Color(0xFFD6B58F)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                               borderRadius: BorderRadius.circular(16), 
                               boxShadow: [
-                                BoxShadow(color: const Color(0xFFF97316).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                                BoxShadow(color: const Color(0xFFC29763).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
                               ],
                             ),
                             child: Stack(
@@ -1385,7 +1385,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                       // Bike (Hero 3D Model style)
                       GestureDetector(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', vehicleCategoryName: 'Bike', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white, 
@@ -1424,7 +1424,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       // Auto (Hero 3D Model style)
                       GestureDetector(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', vehicleCategoryName: 'Auto', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white, 
@@ -1463,7 +1463,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       // Cab (Hero 3D Model style)
                       GestureDetector(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', vehicleCategoryName: 'Cab', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white, 
@@ -1491,7 +1491,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 top: -12,
                                 bottom: -12,
                                 child: Image.network(
-                                  'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125074/ChatGPT_Image_Apr_2_2026_03_47_37_PM_j0kqty.png',
+                                  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_27_28_AM_w0rcnh',
                                   width: 105, 
                                   fit: BoxFit.contain,
                                 ),
@@ -1502,7 +1502,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       // Premium (Hero 3D Model style)
                       GestureDetector(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PremiumLocationScreen(serviceType: 'ride', vehicleCategoryName: 'Premium', pickupAddress: _pickup.isNotEmpty ? _pickup : null, pickupLat: _pickupLat, pickupLng: _pickupLng))),
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white, 
@@ -1530,7 +1530,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 top: -12,
                                 bottom: -12,
                                 child: Image.network(
-                                  'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775126468/ChatGPT_Image_Apr_2_2026_04_10_47_PM_oyl3uh.png',
+                                  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_31_05_AM_kavp5e',
                                   width: 100, 
                                   fit: BoxFit.contain,
                                 ),
