@@ -121,7 +121,7 @@ class JagoPilotApp extends StatelessWidget {
         ),
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: Colors.white,
         elevation: 0,
         margin: EdgeInsets.zero,

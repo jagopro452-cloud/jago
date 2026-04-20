@@ -198,7 +198,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
           Text(subtitle, style: JT.caption),
         ],
       )),
-      Switch(value: val, onChanged: onChanged, activeThumbColor: JT.primary),
+      Switch(value: val, onChanged: onChanged, activeColor: JT.primary),
     ]),
   );
 
