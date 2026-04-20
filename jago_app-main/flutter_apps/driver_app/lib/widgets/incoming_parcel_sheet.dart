@@ -170,10 +170,10 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: urgency
-                      ? [const Color(0xFFF59E0B).withValues(alpha: 0.18), const Color(0xFFF59E0B).withValues(alpha: 0.05)]
-                      : [const Color(0xFFF59E0B).withValues(alpha: 0.15), Colors.transparent],
+                      ? [const Color(0xFFF59E0B).withOpacity(0.18), const Color(0xFFF59E0B).withOpacity(0.05)]
+                      : [const Color(0xFFF59E0B).withOpacity(0.15), Colors.transparent],
                   begin: Alignment.topLeft, end: Alignment.bottomRight),
-                border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+                border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
               ),
               child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -186,7 +186,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                           shape: BoxShape.circle,
                           color: const Color(0xFFF59E0B),
                           boxShadow: [BoxShadow(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.4 + 0.4 * _pulseCtrl.value),
+                            color: const Color(0xFFF59E0B).withOpacity(0.4 + 0.4 * _pulseCtrl.value),
                             blurRadius: 8 + 4 * _pulseCtrl.value)],
                         ),
                       ),
@@ -203,9 +203,9 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      color: const Color(0xFFF59E0B).withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4))),
+                      border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.4))),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Text('📦', style: TextStyle(fontSize: 13)),
                       const SizedBox(width: 6),
@@ -223,9 +223,9 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       builder: (_, __) => CircularProgressIndicator(
                         value: 1.0 - _ringCtrl.value,
                         strokeWidth: 6,
-                        backgroundColor: Colors.white.withValues(alpha: 0.10),
+                        backgroundColor: Colors.white.withOpacity(0.10),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          urgency ? const Color(0xFFF59E0B) : const Color(0xFFF59E0B).withValues(alpha: 0.7)),
+                          urgency ? const Color(0xFFF59E0B) : const Color(0xFFF59E0B).withOpacity(0.7)),
                       ),
                     ),
                   ),
@@ -235,7 +235,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                         color: urgency ? const Color(0xFFF59E0B) : Colors.white,
                         fontSize: 28, fontWeight: FontWeight.w500, height: 1.0)),
                     Text('sec', style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: Colors.white.withOpacity(0.4),
                       fontSize: 10, fontWeight: FontWeight.w400)),
                   ]),
                 ]),
@@ -254,10 +254,10 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                       width: 80, height: 80,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.08 + 0.06 * _pulseCtrl.value),
-                        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3 + 0.2 * _pulseCtrl.value), width: 2),
+                        color: const Color(0xFFF59E0B).withOpacity(0.08 + 0.06 * _pulseCtrl.value),
+                        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3 + 0.2 * _pulseCtrl.value), width: 2),
                         boxShadow: [BoxShadow(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.1 + 0.15 * _pulseCtrl.value),
+                          color: const Color(0xFFF59E0B).withOpacity(0.1 + 0.15 * _pulseCtrl.value),
                           blurRadius: 18 + 8 * _pulseCtrl.value)],
                       ),
                       child: Icon(vehicleIcon, color: const Color(0xFFF59E0B), size: 38)),
@@ -266,14 +266,14 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(vehicleName, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w400)),
                     const SizedBox(height: 4),
-                    Text('Parcel Delivery', style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 13)),
+                    Text('Parcel Delivery', style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 13)),
                   ])),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
                       borderRadius: BorderRadius.circular(14),
-                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), blurRadius: 12)]),
+                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.4), blurRadius: 12)]),
                     child: Text('₹${fare}',
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 24)),
                   ),
@@ -294,14 +294,14 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                 if (pickup.isNotEmpty) Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.04),
+                    color: Colors.white.withOpacity(0.04),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+                    border: Border.all(color: Colors.white.withOpacity(0.08))),
                   child: Row(children: [
                     const Icon(Icons.store_rounded, color: Color(0xFF10B981), size: 20),
                     const SizedBox(width: 10),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('PICKUP', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.8)),
+                      Text('PICKUP', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.8)),
                       const SizedBox(height: 4),
                       Text(pickup, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
                     ])),
@@ -324,7 +324,7 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                         colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
                         begin: Alignment.topLeft, end: Alignment.bottomRight),
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.45), blurRadius: 24, offset: const Offset(0, 8))]),
+                      boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.45), blurRadius: 24, offset: const Offset(0, 8))]),
                     child: Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       const Icon(Icons.inventory_2_rounded, color: Colors.white, size: 30),
                       const SizedBox(width: 12),
@@ -340,9 +340,9 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
                   child: Container(
                     width: double.infinity, height: 50,
                     decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.07),
+                      color: Colors.red.withOpacity(0.07),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.red.withValues(alpha: 0.22), width: 1.5)),
+                      border: Border.all(color: Colors.red.withOpacity(0.22), width: 1.5)),
                     child: Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       const Icon(Icons.close_rounded, color: Color(0xFFF87171), size: 20),
                       const SizedBox(width: 8),
@@ -363,14 +363,14 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
     return Expanded(child: Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.15))),
+        border: Border.all(color: color.withOpacity(0.15))),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
         Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
-        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 9, fontWeight: FontWeight.w400), textAlign: TextAlign.center),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 9, fontWeight: FontWeight.w400), textAlign: TextAlign.center),
       ]),
     ));
   }

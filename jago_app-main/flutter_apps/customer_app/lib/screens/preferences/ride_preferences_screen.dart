@@ -170,7 +170,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     decoration: BoxDecoration(
       color: JT.primaryLight,
       borderRadius: BorderRadius.circular(JT.radiusMd),
-      border: Border.all(color: JT.primary.withValues(alpha: 0.2)),
+      border: Border.all(color: JT.primary.withOpacity(0.2)),
     ),
     child: Row(children: [
       Icon(Icons.tune, color: JT.primary),
@@ -187,7 +187,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
     child: Row(children: [
       Container(
         padding: EdgeInsets.all(JT.spacing8),
-        decoration: BoxDecoration(color: val ? JT.primary.withValues(alpha: 0.1) : JT.borderLight, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: val ? JT.primary.withOpacity(0.1) : JT.borderLight, shape: BoxShape.circle),
         child: Icon(icon, color: val ? JT.primary : JT.textTertiary, size: 20),
       ),
       SizedBox(width: JT.spacing12),
@@ -208,7 +208,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
       child: Container(
         padding: EdgeInsets.all(JT.spacing8 + 2),
         decoration: BoxDecoration(
-          color: _preferredGender == value ? JT.primary.withValues(alpha: 0.1) : JT.borderLight,
+          color: _preferredGender == value ? JT.primary.withOpacity(0.1) : JT.borderLight,
           borderRadius: BorderRadius.circular(JT.radiusSm + 2),
           border: Border.all(color: _preferredGender == value ? JT.primary : Colors.transparent),
         ),

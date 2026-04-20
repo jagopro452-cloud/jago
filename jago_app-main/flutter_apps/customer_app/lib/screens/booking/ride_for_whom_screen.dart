@@ -72,7 +72,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
         curve: Curves.easeInOut,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? JT.primary.withValues(alpha: 0.05) : JT.surface,
+          color: isSelected ? JT.primary.withOpacity(0.05) : JT.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? JT.primary : JT.borderLight,
@@ -80,13 +80,13 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
           ),
           boxShadow: isSelected ? [
             BoxShadow(
-              color: JT.primary.withValues(alpha: 0.12),
+              color: JT.primary.withOpacity(0.12),
               blurRadius: 20,
               offset: const Offset(0, 8),
             )
           ] : [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
+              color: Colors.black.withOpacity(0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -100,7 +100,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
                 gradient: isSelected ? JT.grad : LinearGradient(colors: [JT.bgSoft, JT.borderLight]),
                 shape: BoxShape.circle,
                 boxShadow: isSelected ? [
-                  BoxShadow(color: JT.primary.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))
+                  BoxShadow(color: JT.primary.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))
                 ] : [],
               ),
               child: Icon(icon, color: isSelected ? Colors.white : JT.textTertiary, size: 24),
@@ -116,7 +116,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
                   )),
                   const SizedBox(height: 4),
                   Text(subtitle, style: JT.caption.copyWith(
-                    color: isSelected ? JT.primary.withValues(alpha: 0.7) : JT.textSecondary,
+                    color: isSelected ? JT.primary.withOpacity(0.7) : JT.textSecondary,
                   )),
                 ],
               ),
@@ -160,7 +160,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
           decoration: JT.modernInputDecoration(
             labelText: '',
             hintText: hint,
-            prefixIcon: Icon(icon, size: 20, color: JT.primary.withValues(alpha: 0.6)),
+            prefixIcon: Icon(icon, size: 20, color: JT.primary.withOpacity(0.6)),
           ).copyWith(
             contentPadding: const EdgeInsets.all(18),
             fillColor: Colors.white,
@@ -182,7 +182,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
             child: Container(
               width: 300, height: 300,
               decoration: BoxDecoration(
-                color: JT.primary.withValues(alpha: 0.04),
+                color: JT.primary.withOpacity(0.04),
                 shape: BoxShape.circle,
               ),
             ),
@@ -297,7 +297,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -10), blurRadius: 20),
+                      BoxShadow(color: Colors.black.withOpacity(0.05), offset: const Offset(0, -10), blurRadius: 20),
                     ],
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                   ),

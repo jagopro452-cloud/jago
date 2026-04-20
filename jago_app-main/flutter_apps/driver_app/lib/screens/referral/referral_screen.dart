@@ -147,7 +147,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
+                              color: Colors.white.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.white24),
                             ),
@@ -226,9 +226,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       child: Column(
                         children: [
                           _howStep('1', 'మీ referral code share చేయండి', Icons.share_rounded, _blue),
-                          Divider(height: 1, color: Colors.white.withValues(alpha: 0.08), indent: 46),
+                          Divider(height: 1, color: Colors.white.withOpacity(0.08), indent: 46),
                           _howStep('2', 'Friend JAGO Pro Pilot download చేసి register చేయాలి', Icons.person_add_alt_1_rounded, Colors.purple),
-                          Divider(height: 1, color: Colors.white.withValues(alpha: 0.08), indent: 46),
+                          Divider(height: 1, color: Colors.white.withOpacity(0.08), indent: 46),
                           _howStep('3', 'First 10 trips complete అవగానే bonus!', Icons.star_rounded, Colors.amber),
                         ],
                       ),
@@ -246,7 +246,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _referrals.length,
-                          separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+                          separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withOpacity(0.06)),
                           itemBuilder: (_, i) {
                             final r = _referrals[i] as Map<String, dynamic>;
                             final status = r['status']?.toString() ?? 'pending';
@@ -254,7 +254,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Color statusColor = status == 'paid' ? Colors.green : status == 'expired' ? Colors.red : Colors.orange;
                             return ListTile(
                               leading: CircleAvatar(
-                                backgroundColor: Colors.blue.withValues(alpha: 0.15),
+                                backgroundColor: Colors.blue.withOpacity(0.15),
                                 child: const Icon(Icons.drive_eta_rounded, color: Colors.blue, size: 20),
                               ),
                               title: const Text('Driver Referral',
@@ -293,7 +293,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(width: 12),
@@ -316,7 +316,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           Container(
             width: 32, height: 32,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
             child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.w500, fontSize: 14))),
           ),
           const SizedBox(width: 14),

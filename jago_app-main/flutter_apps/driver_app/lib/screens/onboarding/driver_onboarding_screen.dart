@@ -150,7 +150,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                             borderRadius: BorderRadius.circular(3),
                             boxShadow: i == _current ? [
                               BoxShadow(
-                                color: slide.neonColor.withValues(alpha: 0.6),
+                                color: slide.neonColor.withOpacity(0.6),
                                 blurRadius: 8,
                               ),
                             ] : [],
@@ -208,7 +208,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: slide.neonColor.withValues(alpha: 0.45),
+                              color: slide.neonColor.withOpacity(0.45),
                               blurRadius: 24,
                               offset: const Offset(0, 8),
                             ),
@@ -267,15 +267,15 @@ class _SlidePage extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF0F5FF),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: slide.neonColor.withValues(alpha: 0.4), width: 1.5),
+                  border: Border.all(color: slide.neonColor.withOpacity(0.4), width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: slide.neonColor.withValues(alpha: 0.3),
+                      color: slide.neonColor.withOpacity(0.3),
                       blurRadius: 30,
                       spreadRadius: 0,
                     ),
                     BoxShadow(
-                      color: slide.neonColor.withValues(alpha: 0.1),
+                      color: slide.neonColor.withOpacity(0.1),
                       blurRadius: 60,
                       spreadRadius: 5,
                     ),
@@ -290,9 +290,9 @@ class _SlidePage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
-                  color: slide.neonColor.withValues(alpha: 0.1),
+                  color: slide.neonColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: slide.neonColor.withValues(alpha: 0.3), width: 1),
+                  border: Border.all(color: slide.neonColor.withOpacity(0.3), width: 1),
                 ),
                 child: Text(slide.label, style: GoogleFonts.poppins(
                   color: slide.neonColor,
@@ -325,15 +325,15 @@ class _SlidePage extends StatelessWidget {
                   Container(
                     width: 32, height: 32,
                     decoration: BoxDecoration(
-                      color: slide.neonColor.withValues(alpha: 0.12),
+                      color: slide.neonColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: slide.neonColor.withValues(alpha: 0.25), width: 1),
+                      border: Border.all(color: slide.neonColor.withOpacity(0.25), width: 1),
                     ),
                     child: Icon(Icons.check_rounded, color: slide.neonColor, size: 18),
                   ),
                   const SizedBox(width: 14),
                   Text(f, style: GoogleFonts.poppins(
-                    color: Colors.white.withValues(alpha: 0.88),
+                    color: Colors.white.withOpacity(0.88),
                     fontSize: 14, fontWeight: FontWeight.w400,
                   )),
                 ]),

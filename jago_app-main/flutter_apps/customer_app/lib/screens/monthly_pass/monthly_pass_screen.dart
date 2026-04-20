@@ -106,7 +106,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                             borderRadius: BorderRadius.circular(JT.radiusSm),
                             child: LinearProgressIndicator(
                               value: ((_activePlan!['ridesUsed'] ?? 0) / (_activePlan!['ridesTotal'] ?? 30)).clamp(0.0, 1.0),
-                              backgroundColor: Colors.white.withValues(alpha: 0.3),
+                              backgroundColor: Colors.white.withOpacity(0.3),
                               valueColor: AlwaysStoppedAnimation(JT.warning),
                               minHeight: 8,
                             ),
@@ -119,7 +119,7 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                   // Header
                   Container(
                     padding: EdgeInsets.all(JT.spacing16),
-                    decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusMd), border: Border.all(color: JT.warning.withValues(alpha: 0.3))),
+                    decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusMd), border: Border.all(color: JT.warning.withOpacity(0.3))),
                     child: Row(children: [
                       Icon(Icons.info_outline, color: JT.warning),
                       SizedBox(width: JT.spacing8),
@@ -138,8 +138,8 @@ class _MonthlyPassScreenState extends State<MonthlyPassScreen> {
                       decoration: BoxDecoration(
                         color: JT.bg,
                         borderRadius: BorderRadius.circular(JT.radiusLg),
-                        border: Border.all(color: color.withValues(alpha: 0.3)),
-                        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 12)],
+                        border: Border.all(color: color.withOpacity(0.3)),
+                        boxShadow: [BoxShadow(color: color.withOpacity(0.08), blurRadius: 12)],
                       ),
                       child: Padding(
                         padding: EdgeInsets.all(JT.spacing16),

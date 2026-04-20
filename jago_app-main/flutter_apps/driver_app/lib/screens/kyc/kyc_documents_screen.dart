@@ -173,7 +173,7 @@ class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
       decoration: BoxDecoration(
         color: JT.bgSoft,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withValues(alpha: 0.3) : JT.border),
+        border: Border.all(color: status == 'approved' ? const Color(0xFF22C55E).withOpacity(0.3) : JT.border),
       ),
       child: Row(
         children: [

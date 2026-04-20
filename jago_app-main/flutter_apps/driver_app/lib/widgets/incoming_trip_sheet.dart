@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/alarm_service.dart';
@@ -223,9 +223,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: typeColor.withValues(alpha: 0.10),
+                color: typeColor.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: typeColor.withValues(alpha: 0.18)),
+                border: Border.all(color: typeColor.withOpacity(0.18)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(typeEmoji, style: const TextStyle(fontSize: 13)),
@@ -254,7 +254,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
               builder: (_, __) => CircularProgressIndicator(
                 value: 1.0 - _ringCtrl.value,
                 strokeWidth: 6,
-                backgroundColor: Colors.white.withValues(alpha: 0.10),
+                backgroundColor: Colors.white.withOpacity(0.10),
                 valueColor: AlwaysStoppedAnimation<Color>(
                   urgency ? const Color(0xFF1A6FDB) : _blue,
                 ),
@@ -330,14 +330,14 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             height: 140,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: accentColor.withValues(alpha: 0.07),
+              color: accentColor.withOpacity(0.07),
               border: Border.all(
-                color: accentColor.withValues(alpha: 0.20),
+                color: accentColor.withOpacity(0.20),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: accentColor.withValues(alpha: 0.12 + 0.10 * _pulseCtrl.value),
+                  color: accentColor.withOpacity(0.12 + 0.10 * _pulseCtrl.value),
                   blurRadius: 24 + 12 * _pulseCtrl.value,
                   spreadRadius: 2,
                 ),
@@ -372,7 +372,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
         border: Border.all(color: const Color(0xFFE5EDF7)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
               offset: const Offset(0, 4))
         ],
@@ -387,7 +387,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 shape: BoxShape.circle,
                 color: _blue,
                 boxShadow: [
-                  BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 6)
+                  BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 6)
                 ],
               ),
             ),
@@ -409,7 +409,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
                 borderRadius: BorderRadius.circular(3),
                 boxShadow: [
                   BoxShadow(
-                      color: const Color(0xFF1A6FDB).withValues(alpha: 0.28),
+                      color: const Color(0xFF1A6FDB).withOpacity(0.28),
                       blurRadius: 6)
                 ],
               ),
@@ -494,9 +494,9 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, color: color, size: 16),
@@ -514,16 +514,16 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.12)),
+        border: Border.all(color: color.withOpacity(0.12)),
       ),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Container(
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+              color: color.withOpacity(0.12), shape: BoxShape.circle),
           child: Icon(icon, color: color, size: 17),
         ),
         const SizedBox(height: 6),
@@ -563,7 +563,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: _blue.withValues(alpha: 0.14),
+                color: _blue.withOpacity(0.14),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),

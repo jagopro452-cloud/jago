@@ -208,8 +208,8 @@ class HeatmapService {
       circleId: CircleId('heatmap_${z.key}'),
       center: LatLng(z.lat, z.lng),
       radius: z.radiusMeters,
-      fillColor: z.color.withValues(alpha: 0.28),
-      strokeColor: z.color.withValues(alpha: 0.65),
+      fillColor: z.color.withOpacity(0.28),
+      strokeColor: z.color.withOpacity(0.65),
       strokeWidth: 1,
       consumeTapEvents: false,
     )).toSet();

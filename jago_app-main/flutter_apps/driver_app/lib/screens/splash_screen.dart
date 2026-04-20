@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               height: size.width * 0.72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.06),
+                color: Colors.white.withOpacity(0.06),
               ),
             ),
           ),
@@ -153,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               height: size.width * 0.55,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.05),
+                color: Colors.white.withOpacity(0.05),
               ),
             ),
           ),
@@ -198,7 +198,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: Colors.white.withOpacity(0.72),
                       ),
                     ),
                   ]),
@@ -217,7 +217,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   animation: _progressCtrl,
                   builder: (_, __) => LinearProgressIndicator(
                     value: _progressCtrl.value,
-                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    backgroundColor: Colors.white.withOpacity(0.15),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                     minHeight: 2,
                   ),
@@ -226,7 +226,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 Text(
                   'Mindwhile IT Solutions Pvt Ltd',
                   style: GoogleFonts.poppins(
-                    color: Colors.white.withValues(alpha: 0.45),
+                    color: Colors.white.withOpacity(0.45),
                     fontSize: 11,
                     letterSpacing: 0.8,
                   ),

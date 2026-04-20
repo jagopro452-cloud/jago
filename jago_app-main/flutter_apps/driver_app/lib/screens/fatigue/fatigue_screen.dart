@@ -140,14 +140,14 @@ class _FatigueScreenState extends State<FatigueScreen> {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _scoreColor.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: _scoreColor.withOpacity(0.3), width: 1.5),
       ),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('Safety Score', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w400)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(color: _scoreColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(color: _scoreColor.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
             child: Text(_scoreLabel, style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w400, fontSize: 12)),
           ),
         ]),
@@ -158,28 +158,28 @@ class _FatigueScreenState extends State<FatigueScreen> {
             child: CircularProgressIndicator(
               value: _safetyScore / 100,
               strokeWidth: 10,
-              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              backgroundColor: Colors.white.withOpacity(0.08),
               valueColor: AlwaysStoppedAnimation(_scoreColor),
             ),
           ),
           Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('${_safetyScore.toInt()}', style: TextStyle(color: _scoreColor, fontSize: 36, fontWeight: FontWeight.w500)),
-            Text('/100', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+            Text('/100', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
           ]),
         ]),
         const SizedBox(height: 16),
         LinearProgressIndicator(
           value: _safetyScore / 100,
-          backgroundColor: Colors.white.withValues(alpha: 0.06),
+          backgroundColor: Colors.white.withOpacity(0.06),
           valueColor: AlwaysStoppedAnimation(_scoreColor),
           minHeight: 6,
           borderRadius: BorderRadius.circular(3),
         ),
         const SizedBox(height: 8),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('0', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
-          Text('50', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
-          Text('100', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
+          Text('0', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
+          Text('50', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
+          Text('100', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
         ]),
       ]),
     );
@@ -192,15 +192,15 @@ class _FatigueScreenState extends State<FatigueScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _scoreColor.withValues(alpha: 0.1),
+        color: _scoreColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _scoreColor.withValues(alpha: 0.25)),
+        border: Border.all(color: _scoreColor.withOpacity(0.25)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(icon, color: _scoreColor, size: 22),
         const SizedBox(width: 12),
         Expanded(child: Text(_recommendation,
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13, height: 1.5))),
+          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5))),
       ]),
     );
   }
@@ -232,11 +232,11 @@ class _FatigueScreenState extends State<FatigueScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1)),
+        border: Border.all(color: color.withOpacity(0.2), width: 1)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(width: 36, height: 36,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: color, size: 18)),
           const Spacer(),
         ]),
@@ -245,7 +245,7 @@ class _FatigueScreenState extends State<FatigueScreen> {
         const SizedBox(height: 2),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w400)),
         const SizedBox(height: 4),
-        Text(sub, style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
       ]),
     );
   }
@@ -265,14 +265,14 @@ class _FatigueScreenState extends State<FatigueScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+          border: Border.all(color: Colors.white.withOpacity(0.06))),
         child: Row(children: [
           Text(t.$1, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(t.$2, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
             const SizedBox(height: 2),
-            Text(t.$3, style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11)),
+            Text(t.$3, style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11)),
           ])),
         ]),
       )),

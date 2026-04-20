@@ -198,7 +198,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       duration: const Duration(milliseconds: 220),
       width: size, height: size,
       decoration: BoxDecoration(
-        color: isSelected ? accent.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+        color: isSelected ? accent.withOpacity(0.08) : const Color(0xFFF8FAFC),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(14), bottomLeft: Radius.circular(14)),
       ),
@@ -212,12 +212,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Icon(
                   icon, size: size * 0.44,
-                  color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
+                  color: accent.withOpacity(isSelected ? 0.85 : 0.60),
                 ),
               )
             : Icon(
                 icon, size: size * 0.44,
-                color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
+                color: accent.withOpacity(isSelected ? 0.85 : 0.60),
               ),
         ),
         // DELIVERY / RIDE badge at bottom
@@ -226,7 +226,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: isSelected ? accent : accent.withValues(alpha: 0.65),
+              color: isSelected ? accent : accent.withOpacity(0.65),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -264,13 +264,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [accent, accent.withValues(alpha: 0.75)],
+            colors: [accent, accent.withOpacity(0.75)],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 6)),
+            BoxShadow(color: accent.withOpacity(0.35), blurRadius: 18, offset: const Offset(0, 6)),
           ],
         ),
         child: Row(children: [
@@ -278,7 +278,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8)),
               child: Text('SELECTED', style: const TextStyle(
                 color: Colors.white, fontSize: 9, fontWeight: FontWeight.w500, letterSpacing: 1.5)),
@@ -289,7 +289,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             const SizedBox(height: 4),
             Text('₹${displayMin.floor()} – ₹${displayMax.ceil()}',
               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w400)),
-            Text('estimated fare', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
+            Text('estimated fare', style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11)),
           ])),
           // Real vehicle image — emoji fallback if network fails
           Builder(builder: (_) {
@@ -301,7 +301,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 ? Image.network(
                     imgUrl,
                     fit: BoxFit.contain,
-                    color: Colors.white.withValues(alpha: 0.92),
+                    color: Colors.white.withOpacity(0.92),
                     colorBlendMode: BlendMode.modulate,
                     errorBuilder: (_, __, ___) =>
                         Text(emoji, style: const TextStyle(fontSize: 64)),
@@ -720,7 +720,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 30)],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 30)],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
@@ -728,7 +728,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF16A34A), Color(0xFF15803D)]),
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withValues(alpha: 0.35), blurRadius: 16)],
+              boxShadow: [BoxShadow(color: const Color(0xFF16A34A).withOpacity(0.35), blurRadius: 16)],
             ),
             child: const Icon(Icons.check_rounded, color: Colors.white, size: 28),
           ),
@@ -784,7 +784,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(colors: [JT.primary, Color(0xFF1244A2)]),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.35), blurRadius: 12)],
+                    boxShadow: [BoxShadow(color: JT.primary.withOpacity(0.35), blurRadius: 12)],
                   ),
                   child: const Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
@@ -1104,7 +1104,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               decoration: BoxDecoration(
                 color: const Color(0xFFF7FAFF), // Very soft lavender/white
                 borderRadius: BorderRadius.circular(30),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4))],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))],
               ),
               child: Row(
                 children: [
@@ -1144,7 +1144,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             decoration: BoxDecoration(
               color: panelBg,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, -4))],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, -4))],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1165,7 +1165,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), offset: const Offset(0, -4), blurRadius: 10)],
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), offset: const Offset(0, -4), blurRadius: 10)],
                   ),
                   child: Column(
                     children: [
@@ -1195,7 +1195,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             color: const Color(0xFF6366F1), // vibrant indigo
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
-                               BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                               BoxShadow(color: const Color(0xFF6366F1).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
                             ],
                           ),
                           child: Center(
@@ -1273,7 +1273,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           decoration: BoxDecoration(
             color: const Color(0xFFF0F7FF),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _blue.withValues(alpha: 0.2)),
+            border: Border.all(color: _blue.withOpacity(0.2)),
           ),
           child: Row(children: [
             const Icon(Icons.lock_rounded, color: _blue, size: 15),
@@ -1310,7 +1310,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             color: selected ? selBorder : unselBorder,
             width: 1,
           ),
-          boxShadow: selected ? [BoxShadow(color: selBorder.withValues(alpha: 0.1), blurRadius: 8)] : [],
+          boxShadow: selected ? [BoxShadow(color: selBorder.withOpacity(0.1), blurRadius: 8)] : [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 14, color: selected ? selText : unselText),
@@ -1330,16 +1330,16 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         Container(
           width: 28, height: 28,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
+            color: color.withOpacity(0.1),
             shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
+            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
           ),
           child: Icon(icon, color: color, size: isPickup ? 10 : 16),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(isPickup ? 'PICKUP' : 'DROP',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: color.withValues(alpha: 0.8), letterSpacing: 0.8)),
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: color.withOpacity(0.8), letterSpacing: 0.8)),
           const SizedBox(height: 2),
           Text(text,
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: tColor),
@@ -1370,7 +1370,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w400))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: JT.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
             child: Text('1.25x', style: TextStyle(color: JT.primary, fontSize: 12, fontWeight: FontWeight.w400)),
           ),
         ]),
@@ -1422,9 +1422,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+        border: Border.all(color: color.withOpacity(0.35), width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, color: color, size: 10),
@@ -1653,7 +1653,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         Container(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           decoration: BoxDecoration(
-            color: _jagoPrimary.withValues(alpha: 0.06),
+            color: _jagoPrimary.withOpacity(0.06),
             borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
             border: Border(bottom: BorderSide(color: borderCol)),
           ),
@@ -1667,9 +1667,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: JT.primary.withValues(alpha: 0.12),
+                  color: JT.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: JT.primary.withValues(alpha: 0.3)),
+                  border: Border.all(color: JT.primary.withOpacity(0.3)),
                 ),
                 child: const Text('Min fare', style: TextStyle(
                   fontSize: 10, color: JT.primary, fontWeight: FontWeight.w400)),
@@ -1678,9 +1678,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                  color: const Color(0xFF8B5CF6).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3)),
+                  border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
                 ),
                 child: const Text('Night fare', style: TextStyle(
                   fontSize: 10, color: Color(0xFF8B5CF6), fontWeight: FontWeight.w400)),
@@ -1714,9 +1714,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.08),
+                  color: const Color(0xFF10B981).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.2)),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.person_2_rounded, size: 13, color: Color(0xFF10B981)),

@@ -161,7 +161,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           color: _card,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           border: Border(
-            top: BorderSide(color: statusColor.withValues(alpha: 0.3), width: 1),
+            top: BorderSide(color: statusColor.withOpacity(0.3), width: 1),
           ),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
@@ -177,10 +177,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             Container(
               width: 52, height: 52,
               decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
+                color: statusColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.2), blurRadius: 16)],
+                border: Border.all(color: statusColor.withOpacity(0.3)),
+                boxShadow: [BoxShadow(color: statusColor.withOpacity(0.2), blurRadius: 16)],
               ),
               child: Icon(
                 type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded,
@@ -199,9 +199,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
+                color: statusColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                border: Border.all(color: statusColor.withOpacity(0.3)),
               ),
               child: Text(_statusLabel(status),
                 style: GoogleFonts.poppins(color: statusColor, fontSize: 12, fontWeight: FontWeight.w500)),
@@ -311,7 +311,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         decoration: BoxDecoration(
           color: _card,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(top: BorderSide(color: _green.withValues(alpha: 0.3), width: 1)),
+          border: Border(top: BorderSide(color: _green.withOpacity(0.3), width: 1)),
         ),
         padding: EdgeInsets.only(
           left: 22, right: 22, top: 20,
@@ -392,9 +392,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       Container(
         width: 36, height: 36,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          border: Border.all(color: color.withOpacity(0.25)),
         ),
         child: Icon(icon, color: color, size: 18),
       ),
@@ -412,9 +412,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
       Container(
         width: 36, height: 36,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: color.withOpacity(0.1),
           shape: BoxShape.circle,
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          border: Border.all(color: color.withOpacity(0.25)),
         ),
         child: Icon(icon, color: color, size: 18),
       ),
@@ -605,9 +605,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                               decoration: BoxDecoration(
                                 color: _card,
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: statusColor.withValues(alpha: 0.15), width: 1),
+                                border: Border.all(color: statusColor.withOpacity(0.15), width: 1),
                                 boxShadow: [
-                                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4)),
+                                  BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4)),
                                 ],
                               ),
                               child: Padding(
@@ -617,9 +617,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Container(
                                       width: 46, height: 46,
                                       decoration: BoxDecoration(
-                                        color: statusColor.withValues(alpha: 0.1),
+                                        color: statusColor.withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+                                        border: Border.all(color: statusColor.withOpacity(0.25)),
                                       ),
                                       child: Icon(
                                         type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded,
@@ -639,7 +639,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                           width: 8, height: 8,
                                           decoration: BoxDecoration(
                                             color: _green, shape: BoxShape.circle,
-                                            boxShadow: [BoxShadow(color: _green.withValues(alpha: 0.5), blurRadius: 4)],
+                                            boxShadow: [BoxShadow(color: _green.withOpacity(0.5), blurRadius: 4)],
                                           ),
                                         ),
                                         const SizedBox(width: 6),
@@ -660,9 +660,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withValues(alpha: 0.1),
+                                          color: statusColor.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+                                          border: Border.all(color: statusColor.withOpacity(0.25)),
                                         ),
                                         child: Text(_statusLabel(status),
                                           style: GoogleFonts.poppins(
@@ -684,10 +684,10 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: (isPaid ? _green : _amber).withValues(alpha: 0.1),
+                                        color: (isPaid ? _green : _amber).withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(7),
                                         border: Border.all(
-                                            color: (isPaid ? _green : _amber).withValues(alpha: 0.3)),
+                                            color: (isPaid ? _green : _amber).withOpacity(0.3)),
                                       ),
                                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                                         Icon(
@@ -707,9 +707,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: _primary.withValues(alpha: 0.1),
+                                        color: _primary.withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(7),
-                                        border: Border.all(color: _primary.withValues(alpha: 0.25)),
+                                        border: Border.all(color: _primary.withOpacity(0.25)),
                                       ),
                                       child: Text(
                                         type == 'parcel' ? 'Parcel' : 'Ride',
@@ -722,9 +722,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: _red.withValues(alpha: 0.1),
+                                          color: _red.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(7),
-                                          border: Border.all(color: _red.withValues(alpha: 0.35)),
+                                          border: Border.all(color: _red.withOpacity(0.35)),
                                         ),
                                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                                           Icon(Icons.warning_amber_rounded, size: 10, color: _red),
@@ -756,16 +756,16 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         decoration: BoxDecoration(
           color: _card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 16)],
+          border: Border.all(color: color.withOpacity(0.25), width: 1),
+          boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 16)],
         ),
         child: Column(children: [
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withOpacity(0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.3)),
+              border: Border.all(color: color.withOpacity(0.3)),
             ),
             child: Icon(icon, color: color, size: 18),
           ),

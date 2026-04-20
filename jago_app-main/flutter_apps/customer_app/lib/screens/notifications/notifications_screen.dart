@@ -152,7 +152,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           leading: Container(
                             width: 42, height: 42,
-                            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
                             child: Icon(_iconForType(type), color: color, size: 22),
                           ),
                           title: Text(

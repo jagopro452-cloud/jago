@@ -422,7 +422,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
 
     final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.18)
+      ..color = Colors.black.withOpacity(0.18)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
     canvas.drawCircle(
         const Offset(size / 2, size / 2 + 3), size / 2 - 10, shadowPaint);
@@ -873,7 +873,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              color: const Color(0xFFF59E0B).withOpacity(0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.timer_outlined,
@@ -1002,7 +1002,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15), blurRadius: 30)
+                color: Colors.black.withOpacity(0.15), blurRadius: 30)
           ],
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
@@ -1020,7 +1020,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFF2F7BFF).withValues(alpha: 0.1),
+                color: const Color(0xFF2F7BFF).withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.bolt_rounded,
@@ -1079,7 +1079,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                  color: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
+                  color: const Color(0xFF2F7BFF).withOpacity(0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4))
             ],
@@ -1289,7 +1289,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                    color: JT.primary.withValues(alpha: 0.08),
+                    color: JT.primary.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10)),
                 child: const Icon(Icons.cancel_rounded,
                     color: JT.primaryDark, size: 20)),
@@ -1377,8 +1377,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                       double.tryParse(_trip?['pickupLng']?.toString() ?? '0') ??
                           0),
                   radius: 400,
-                  fillColor: const Color(0xFF2F7BFF).withValues(alpha: 0.05),
-                  strokeColor: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
+                  fillColor: const Color(0xFF2F7BFF).withOpacity(0.05),
+                  strokeColor: const Color(0xFF2F7BFF).withOpacity(0.3),
                   strokeWidth: 2,
                 ),
             },
@@ -1617,7 +1617,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                          color: const Color(0xFF6366F1).withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.stars_rounded,
@@ -1660,7 +1660,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                          color: const Color(0xFF10B981).withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.timer_rounded,
@@ -1706,7 +1706,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFF),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: JT.primary.withValues(alpha: 0.08), width: 1),
+        border: Border.all(color: JT.primary.withOpacity(0.08), width: 1),
       ),
       child: Row(
         children: [
@@ -1856,7 +1856,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: JT.primary.withValues(alpha: 0.1),
+              color: JT.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: JT.primary, width: 1.2),
             ),
@@ -1870,7 +1870,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+              color: const Color(0xFFDC2626).withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFDC2626), width: 1.2),
             ),
@@ -1886,9 +1886,9 @@ class _TrackingScreenState extends State<TrackingScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
+        color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.1), width: 1),
+        border: Border.all(color: color.withOpacity(0.1), width: 1),
       ),
       child: Column(
         children: [
@@ -1903,7 +1903,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           Text(
             'Confirming nearest pilot availability',
             style: GoogleFonts.poppins(
-                fontSize: 12, color: color.withValues(alpha: 0.6)),
+                fontSize: 12, color: color.withOpacity(0.6)),
           ),
           const SizedBox(height: 20),
           Row(
@@ -1954,7 +1954,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               height: 48,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.1),
+                color: color.withOpacity(0.1),
               ),
               child: Icon(Icons.electric_bike_rounded, color: color, size: 24),
             ),
@@ -2052,9 +2052,9 @@ class _TrackingScreenState extends State<TrackingScreen>
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
+        border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: color),
@@ -2084,7 +2084,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 30,
               offset: const Offset(0, 15),
             )
@@ -2095,7 +2095,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.1),
+              color: const Color(0xFF10B981).withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.check_circle_rounded,
@@ -2384,7 +2384,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: _bannerColor.withValues(alpha: 0.3),
+            color: _bannerColor.withOpacity(0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -2395,7 +2395,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
             child:
@@ -2416,7 +2416,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           GestureDetector(
             onTap: () => setState(() => _bannerMessage = null),
             child: Icon(Icons.close_rounded,
-                color: Colors.white.withValues(alpha: 0.7), size: 18),
+                color: Colors.white.withOpacity(0.7), size: 18),
           ),
         ],
       ),
@@ -2438,7 +2438,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFF),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.1)),
+        border: Border.all(color: Colors.blue.withOpacity(0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2448,7 +2448,7 @@ class _TrackingScreenState extends State<TrackingScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.12),
+                    color: Colors.blue.withOpacity(0.12),
                     shape: BoxShape.circle),
                 child: const Icon(Icons.navigation_rounded,
                     color: Colors.blue, size: 20),

@@ -68,7 +68,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
         title: Row(children: [
           Container(
             padding: EdgeInsets.all(JT.spacing6),
-            decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: JT.primary.withOpacity(0.1), shape: BoxShape.circle),
             child: Icon(Icons.monetization_on, color: JT.primary, size: 20),
           ),
           SizedBox(width: JT.spacing8),
@@ -99,7 +99,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                         SizedBox(height: JT.spacing8),
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing6),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(JT.radiusXl)),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(JT.radiusXl)),
                           child: Text('= ₹$rupeeValue cashback', style: JT.subtitle1.copyWith(color: Colors.white)),
                         ),
                       ],
@@ -179,7 +179,7 @@ class _CoinsScreenState extends State<CoinsScreen> {
                           Container(
                             padding: EdgeInsets.all(JT.spacing8),
                             decoration: BoxDecoration(
-                              color: (isPositive ? JT.success : JT.error).withValues(alpha: 0.1),
+                              color: (isPositive ? JT.success : JT.error).withOpacity(0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(isPositive ? Icons.add : Icons.remove,

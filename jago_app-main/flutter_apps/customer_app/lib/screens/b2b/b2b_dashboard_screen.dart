@@ -135,7 +135,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: JT.primary.withValues(alpha: 0.08),
+                    color: JT.primary.withOpacity(0.08),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.business_center_rounded, color: JT.primary, size: 52),
@@ -213,9 +213,9 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: JT.warning.withValues(alpha: 0.12),
+                    color: JT.warning.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: JT.warning.withValues(alpha: 0.3)),
+                    border: Border.all(color: JT.warning.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
@@ -247,7 +247,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.business_rounded, color: Colors.white, size: 24),
@@ -273,8 +273,8 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: isPending
-                                ? JT.warning.withValues(alpha: 0.2)
-                                : Colors.green.withValues(alpha: 0.2),
+                                ? JT.warning.withOpacity(0.2)
+                                : Colors.green.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: isPending ? JT.warning : Colors.green, width: 1),
                           ),
@@ -336,7 +336,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: JT.primary.withValues(alpha: 0.1),
+                        color: JT.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.currency_rupee_rounded, color: JT.primary, size: 22),
@@ -389,7 +389,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: _statusColor(status).withValues(alpha: 0.1),
+                            color: _statusColor(status).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(Icons.local_shipping_rounded, color: _statusColor(status), size: 20),
@@ -409,7 +409,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: _statusColor(status).withValues(alpha: 0.12),
+                                    color: _statusColor(status).withOpacity(0.12),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -477,7 +477,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
   Widget _walletChip(String label, String value, IconData icon) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.15),
+      color: Colors.white.withOpacity(0.15),
       borderRadius: BorderRadius.circular(10),
       border: Border.all(color: Colors.white24),
     ),
@@ -510,7 +510,7 @@ class _B2BDashboardScreenState extends State<B2BDashboardScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
+            color: color.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color, size: 20),

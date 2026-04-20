@@ -131,7 +131,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
                           width: i == _current ? 24 : 6,
                           height: 6,
                           decoration: BoxDecoration(
-                            color: i == _current ? Colors.white : Colors.white.withValues(alpha: 0.25),
+                            color: i == _current ? Colors.white : Colors.white.withOpacity(0.25),
                             borderRadius: BorderRadius.circular(3),
                           ),
                         )),
@@ -140,7 +140,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with TickerProvider
                         TextButton(
                           onPressed: _finish,
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.white.withValues(alpha: 0.7),
+                            foregroundColor: Colors.white.withOpacity(0.7),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
                           child: Text('Skip', style: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 14)),
@@ -233,9 +233,9 @@ class _SlidePage extends StatelessWidget {
                 width: 88,
                 height: 88,
                 decoration: BoxDecoration(
-                  color: slide.iconBg.withValues(alpha: 0.2),
+                  color: slide.iconBg.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: slide.iconBg.withValues(alpha: 0.4), width: 1.5),
+                  border: Border.all(color: slide.iconBg.withOpacity(0.4), width: 1.5),
                 ),
                 child: Icon(slide.icon, color: Colors.white, size: 40),
               ),
@@ -246,13 +246,13 @@ class _SlidePage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: slide.iconBg.withValues(alpha: 0.25),
+                  color: slide.iconBg.withOpacity(0.25),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   slide.label,
                   style: GoogleFonts.poppins(
-                    color: Colors.white.withValues(alpha: 0.85),
+                    color: Colors.white.withOpacity(0.85),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 2,
@@ -279,7 +279,7 @@ class _SlidePage extends StatelessWidget {
               Text(
                 slide.subtitle,
                 style: GoogleFonts.poppins(
-                  color: Colors.white.withValues(alpha: 0.65),
+                  color: Colors.white.withOpacity(0.65),
                   fontSize: 15,
                   fontWeight: FontWeight.w400,
                   height: 1.6,
@@ -295,14 +295,14 @@ class _SlidePage extends StatelessWidget {
                   Container(
                     width: 28, height: 28,
                     decoration: BoxDecoration(
-                      color: slide.iconBg.withValues(alpha: 0.2),
+                      color: slide.iconBg.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
                   ),
                   const SizedBox(width: 12),
                   Text(f, style: GoogleFonts.poppins(
-                    color: Colors.white.withValues(alpha: 0.85),
+                    color: Colors.white.withOpacity(0.85),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   )),

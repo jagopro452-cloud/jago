@@ -139,18 +139,18 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                     Positioned(top: -50, right: -50,
                       child: Container(width: 180, height: 180,
                         decoration: BoxDecoration(shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.04)))),
+                          color: Colors.white.withOpacity(0.04)))),
                     Positioned(bottom: 10, left: -40,
                       child: Container(width: 140, height: 140,
                         decoration: BoxDecoration(shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.03)))),
+                          color: Colors.white.withOpacity(0.03)))),
                     // Back button
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 8,
                       child: IconButton(
                         icon: Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white.withValues(alpha: 0.85), size: 22),
+                          color: Colors.white.withOpacity(0.85), size: 22),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
@@ -171,7 +171,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: _blue.withValues(alpha: 0.4),
+                                  color: _blue.withOpacity(0.4),
                                   blurRadius: 20,
                                   offset: const Offset(0, 6),
                                 ),
@@ -192,7 +192,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           Text(
                             'Code sent to +91 ${widget.phone}',
                             style: GoogleFonts.poppins(
-                              color: Colors.white.withValues(alpha: 0.6),
+                              color: Colors.white.withOpacity(0.6),
                               fontSize: 13,
                             ),
                           ),
@@ -229,7 +229,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             width: 40, height: 4,
                             margin: const EdgeInsets.only(bottom: 24),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
+                              color: Colors.white.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -239,7 +239,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                           decoration: BoxDecoration(
-                            color: _blue.withValues(alpha: 0.12),
+                            color: _blue.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -263,7 +263,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           'Check your SMS for the verification code',
                           style: GoogleFonts.poppins(
                             fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.45),
+                            color: Colors.white.withOpacity(0.45),
                           ),
                         ),
 
@@ -281,13 +281,13 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             borderRadius: BorderRadius.circular(14),
                             fieldHeight: 56,
                             fieldWidth: 48,
-                            activeFillColor: Colors.white.withValues(alpha: 0.08),
-                            inactiveFillColor: Colors.white.withValues(alpha: 0.05),
-                            selectedFillColor: _blue.withValues(alpha: 0.15),
+                            activeFillColor: Colors.white.withOpacity(0.08),
+                            inactiveFillColor: Colors.white.withOpacity(0.05),
+                            selectedFillColor: _blue.withOpacity(0.15),
                             activeColor: _blue,
                             inactiveColor: _hasError
                               ? const Color(0xFFEF4444)
-                              : Colors.white.withValues(alpha: 0.15),
+                              : Colors.white.withOpacity(0.15),
                             selectedColor: _blue,
                             errorBorderColor: const Color(0xFFEF4444),
                             borderWidth: 1.5,
@@ -311,7 +311,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           child: _seconds > 0
                             ? RichText(
                                 text: TextSpan(
-                                  style: GoogleFonts.poppins(fontSize: 13, color: Colors.white.withValues(alpha: 0.4)),
+                                  style: GoogleFonts.poppins(fontSize: 13, color: Colors.white.withOpacity(0.4)),
                                   children: [
                                     const TextSpan(text: 'Resend OTP in '),
                                     TextSpan(
@@ -363,11 +363,11 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                 begin: Alignment.centerLeft,
                                 end: Alignment.centerRight,
                               ),
-                              color: _loading ? _blue.withValues(alpha: 0.4) : null,
+                              color: _loading ? _blue.withOpacity(0.4) : null,
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: _loading ? [] : [
                                 BoxShadow(
-                                  color: _blue.withValues(alpha: 0.45),
+                                  color: _blue.withOpacity(0.45),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),
@@ -406,7 +406,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             child: Text(
                               '← Change Phone Number',
                               style: GoogleFonts.poppins(
-                                color: Colors.white.withValues(alpha: 0.4),
+                                color: Colors.white.withOpacity(0.4),
                                 fontWeight: FontWeight.w400,
                                 fontSize: 13,
                               ),

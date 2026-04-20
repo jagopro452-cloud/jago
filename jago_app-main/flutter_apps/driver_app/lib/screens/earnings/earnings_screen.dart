@@ -206,9 +206,9 @@ class _EarningsScreenState extends State<EarningsScreen>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
                 ),
                 child: const Icon(Icons.arrow_back_ios_new_rounded,
                     color: Colors.white, size: 18),
@@ -223,15 +223,15 @@ class _EarningsScreenState extends State<EarningsScreen>
                       fontWeight: FontWeight.w500)),
               Text('Track your income & trips',
                   style: GoogleFonts.poppins(
-                      color: Colors.white.withValues(alpha: 0.75), fontSize: 12)),
+                      color: Colors.white.withOpacity(0.75), fontSize: 12)),
             ]),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                border: Border.all(color: Colors.white.withOpacity(0.4)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
@@ -316,15 +316,15 @@ class _EarningsScreenState extends State<EarningsScreen>
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withOpacity(0.2),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+            border: Border.all(color: Colors.white.withOpacity(0.4)),
           ),
           child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 30),
         ),
         const SizedBox(height: 16),
         Text('Net Earnings',
-            style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 13, fontWeight: FontWeight.w400)),
+            style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.8), fontSize: 13, fontWeight: FontWeight.w400)),
         const SizedBox(height: 8),
         Text('₹${net.toStringAsFixed(2)}',
             style: GoogleFonts.poppins(
@@ -337,9 +337,9 @@ class _EarningsScreenState extends State<EarningsScreen>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withOpacity(0.2),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
           ),
           child: Text(periodLabel,
               style: GoogleFonts.poppins(
@@ -357,16 +357,16 @@ class _EarningsScreenState extends State<EarningsScreen>
       decoration: BoxDecoration(
         color: JT.bgSoft,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
         boxShadow: JT.cardShadow,
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            color: color.withOpacity(0.12),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
+            border: Border.all(color: color.withOpacity(0.2)),
           ),
           child: Icon(icon, color: color, size: 18),
         ),
@@ -479,8 +479,8 @@ class _EarningsScreenState extends State<EarningsScreen>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: isToday
-                                  ? [JT.secondary.withValues(alpha: 0.6), JT.primary]
-                                  : [JT.border, JT.secondary.withValues(alpha: 0.4)],
+                                  ? [JT.secondary.withOpacity(0.6), JT.primary]
+                                  : [JT.border, JT.secondary.withOpacity(0.4)],
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                             ),

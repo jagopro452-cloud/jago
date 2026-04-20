@@ -150,7 +150,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
+                        color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.business_rounded, color: Colors.white, size: 28),
@@ -272,7 +272,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
                         filled: true, fillColor: JT.bgSoft,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         labelStyle: TextStyle(color: JT.textSecondary, fontSize: 13),
-                        hintStyle: TextStyle(color: JT.textSecondary.withValues(alpha: 0.6), fontSize: 13),
+                        hintStyle: TextStyle(color: JT.textSecondary.withOpacity(0.6), fontSize: 13),
                       ),
                       validator: (v) {
                         if (v != null && v.isNotEmpty && v.length < 6) return 'Password must be at least 6 characters';
@@ -379,7 +379,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
         fillColor: JT.bgSoft,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         labelStyle: TextStyle(color: JT.textSecondary, fontSize: 13),
-        hintStyle: TextStyle(color: JT.textSecondary.withValues(alpha: 0.6), fontSize: 13),
+        hintStyle: TextStyle(color: JT.textSecondary.withOpacity(0.6), fontSize: 13),
       ),
     );
   }
@@ -392,7 +392,7 @@ class _B2BRegisterScreenState extends State<B2BRegisterScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? JT.primary.withValues(alpha: 0.06) : Colors.white,
+          color: selected ? JT.primary.withOpacity(0.06) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: selected ? JT.primary : JT.border, width: selected ? 1.5 : 1),
           boxShadow: selected ? [] : JT.cardShadow,

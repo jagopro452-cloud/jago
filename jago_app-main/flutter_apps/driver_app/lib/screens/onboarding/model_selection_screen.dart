@@ -77,7 +77,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  _primary.withValues(alpha: 0.8),
+                  _primary.withOpacity(0.8),
                   _darkBg,
                 ],
               ),
@@ -105,7 +105,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                       Text(
                         'How would you like to earn with JAGO Pro Pilot?',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Colors.white.withOpacity(0.7),
                           fontSize: 16,
                         ),
                       ),
@@ -177,7 +177,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: _primary.withValues(alpha: 0.3),
+                          color: _primary.withOpacity(0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -231,7 +231,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected && isSubscription 
-              ? _primary.withValues(alpha: 0.1) 
+              ? _primary.withOpacity(0.1) 
               : _surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
@@ -240,7 +240,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
           ),
           boxShadow: isSelected ? [
             BoxShadow(
-              color: _primary.withValues(alpha: 0.1),
+              color: _primary.withOpacity(0.1),
               blurRadius: 20,
               offset: const Offset(0, 10),
             )
@@ -256,7 +256,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _primary.withValues(alpha: 0.1),
+                        color: _primary.withOpacity(0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(icon, color: _primary, size: 28),
@@ -279,7 +279,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: badgeColor.withValues(alpha: 0.2),
+                              color: badgeColor.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -300,7 +300,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
+                    color: Colors.white.withOpacity(0.9),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -318,7 +318,7 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
                           Text(
                             f,
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
+                              color: Colors.white.withOpacity(0.6),
                               fontSize: 13,
                             ),
                           ),

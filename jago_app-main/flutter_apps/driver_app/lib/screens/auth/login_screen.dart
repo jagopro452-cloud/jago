@@ -283,11 +283,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         width: 76, height: 76,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(20),
-                          color: Colors.white.withValues(alpha: 0.2),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
+                          color: Colors.white.withOpacity(0.2),
+                          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
+                              color: Colors.black.withOpacity(0.15),
                               blurRadius: 24,
                               offset: const Offset(0, 8),
                             ),
@@ -303,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       const SizedBox(height: 6),
                       Text('Earn. Drive. Grow.', style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.75),
+                        color: Colors.white.withOpacity(0.75),
                         letterSpacing: 0.5,
                       )),
                     ],
@@ -432,10 +432,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _blue.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: _blue.withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: _blue.withValues(alpha: 0.06),
+            color: _blue.withOpacity(0.06),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -445,12 +445,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.08),
+            color: _blue.withOpacity(0.08),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(14),
               bottomLeft: Radius.circular(14),
             ),
-            border: Border(right: BorderSide(color: _blue.withValues(alpha: 0.2), width: 1.5)),
+            border: Border(right: BorderSide(color: _blue.withOpacity(0.2), width: 1.5)),
           ),
           child: Text('+91', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: _blue)),
         ),
@@ -505,7 +505,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _blue.withValues(alpha: 0.4), width: 2),
+        border: Border.all(color: _blue.withOpacity(0.4), width: 2),
       ),
       child: TextField(
         controller: _otpCtrl,
@@ -543,10 +543,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: ElevatedButton(
         onPressed: _loading ? null : onTap,
         style: ElevatedButton.styleFrom(
-          backgroundColor: _loading ? _blue.withValues(alpha: 0.4) : _blue,
+          backgroundColor: _loading ? _blue.withOpacity(0.4) : _blue,
           foregroundColor: Colors.white,
           elevation: _loading ? 0 : 6,
-          shadowColor: _blue.withValues(alpha: 0.4),
+          shadowColor: _blue.withOpacity(0.4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
         child: _loading

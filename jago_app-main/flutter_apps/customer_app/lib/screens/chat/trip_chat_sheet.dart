@@ -279,7 +279,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
                   color: JT.primary,
                   boxShadow: [
                     BoxShadow(
-                      color: JT.primary.withValues(alpha: 0.3),
+                      color: JT.primary.withOpacity(0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -339,7 +339,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
                 boxShadow: [
                   BoxShadow(
                     color: (isMe ? JT.primary : Colors.black)
-                        .withValues(alpha: 0.08),
+                        .withOpacity(0.08),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),

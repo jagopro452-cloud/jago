@@ -608,7 +608,7 @@ class _LocationScreenState extends State<LocationScreen>
           decoration: BoxDecoration(
             color: _accentLight,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _accent.withValues(alpha: 0.25)),
+            border: Border.all(color: _accent.withOpacity(0.25)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(
@@ -645,7 +645,7 @@ class _LocationScreenState extends State<LocationScreen>
           border: Border.all(color: const Color(0xFFE8EFFF)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withOpacity(0.06),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -665,12 +665,12 @@ class _LocationScreenState extends State<LocationScreen>
                   color: const Color(0xFF16A34A),
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: const Color(0xFF16A34A).withValues(alpha: 0.3),
+                      color: const Color(0xFF16A34A).withOpacity(0.3),
                       width: 3),
                   boxShadow: [
                     BoxShadow(
                         color:
-                            const Color(0xFF16A34A).withValues(alpha: 0.3),
+                            const Color(0xFF16A34A).withOpacity(0.3),
                         blurRadius: 6)
                   ],
                 ),
@@ -755,10 +755,10 @@ class _LocationScreenState extends State<LocationScreen>
                   color: _accent,
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: _accent.withValues(alpha: 0.3), width: 3),
+                      color: _accent.withOpacity(0.3), width: 3),
                   boxShadow: [
                     BoxShadow(
-                        color: _accent.withValues(alpha: 0.35),
+                        color: _accent.withOpacity(0.35),
                         blurRadius: 6)
                   ],
                 ),
@@ -859,14 +859,14 @@ class _LocationScreenState extends State<LocationScreen>
                         horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_accent, _accent.withValues(alpha: 0.8)],
+                        colors: [_accent, _accent.withOpacity(0.8)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: _accent.withValues(alpha: 0.35),
+                          color: _accent.withOpacity(0.35),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -946,7 +946,7 @@ class _LocationScreenState extends State<LocationScreen>
         border: Border.all(color: const Color(0xFFE8EFFF)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -960,7 +960,7 @@ class _LocationScreenState extends State<LocationScreen>
             color: const Color(0xFFF59E0B),
             shape: BoxShape.circle,
             border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                color: const Color(0xFFF59E0B).withOpacity(0.3),
                 width: 3),
           ),
         ),
@@ -1093,7 +1093,7 @@ class _LocationScreenState extends State<LocationScreen>
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: JT.textSecondary.withValues(alpha: 0.1),
+            color: JT.textSecondary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Icon(icon, size: 12, color: JT.textSecondary),
@@ -1109,7 +1109,7 @@ class _LocationScreenState extends State<LocationScreen>
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(child: Divider(color: JT.textSecondary.withValues(alpha: 0.1), thickness: 1)),
+        Expanded(child: Divider(color: JT.textSecondary.withOpacity(0.1), thickness: 1)),
       ]),
     );
   }
@@ -1134,7 +1134,7 @@ class _LocationScreenState extends State<LocationScreen>
           border: Border.all(color: const Color(0xFFF1F5FA)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
+              color: Colors.black.withOpacity(0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -1148,8 +1148,8 @@ class _LocationScreenState extends State<LocationScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  iconColor.withValues(alpha: 0.15),
-                  iconColor.withValues(alpha: 0.05),
+                  iconColor.withOpacity(0.15),
+                  iconColor.withOpacity(0.05),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -1184,7 +1184,7 @@ class _LocationScreenState extends State<LocationScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: iconColor.withValues(alpha: 0.1),
+                          color: iconColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(

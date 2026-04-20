@@ -118,14 +118,14 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _blue.withValues(alpha: 0.1),
+              color: _blue.withOpacity(0.1),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _blue.withValues(alpha: 0.3)),
+              border: Border.all(color: _blue.withOpacity(0.3)),
             ),
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _blue.withValues(alpha: 0.2), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: _blue.withOpacity(0.2), shape: BoxShape.circle),
                 child: const Icon(Icons.support_agent, color: _blue, size: 28),
               ),
               const SizedBox(width: 12),
@@ -143,7 +143,7 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
             ? const Center(child: CircularProgressIndicator(color: _blue))
             : _messages.isEmpty
               ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white.withValues(alpha: 0.1)),
+                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white.withOpacity(0.1)),
                   const SizedBox(height: 12),
                   const Text('Meeru first message nadavachu!', style: TextStyle(color: Colors.grey)),
                 ]))
@@ -167,7 +167,7 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
                   hintText: 'Issue type cheyyandi...',
                   hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.07),
+                  fillColor: Colors.white.withOpacity(0.07),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 ),
@@ -223,7 +223,7 @@ class _DriverSupportChatScreenState extends State<DriverSupportChatScreen> {
                     bottomLeft: Radius.circular(isUser ? 18 : 4),
                     bottomRight: Radius.circular(isUser ? 4 : 18),
                   ),
-                  border: isUser ? null : Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border: isUser ? null : Border.all(color: Colors.white.withOpacity(0.08)),
                 ),
                 child: Text(
                   msg['message'] ?? '',
