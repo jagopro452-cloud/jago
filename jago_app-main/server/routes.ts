@@ -1969,7 +1969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool: dbPool } = await import("./db");
       const r = await dbPool.query(
-        "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY') LIMIT 1"
+        "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY','google_maps_api_key') LIMIT 1"
       );
       dbKey = !!(r.rows[0]?.value && String(r.rows[0].value).trim());
     } catch {}
@@ -2021,8 +2021,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dbKey = String((keyR.rows[0] as any)?.value || "").trim();
       } catch {}
 
-      const resolvedKey = dbKey || envKey;
-      const resolvedSource = dbKey ? "db" : envKey ? "env" : null;
+      const resolvedKey = envKey || dbKey;
+      const resolvedSource = envKey ? "env" : dbKey ? "db" : null;
 
       const probeKey = async (apiKey: string) => {
         if (!apiKey) {
