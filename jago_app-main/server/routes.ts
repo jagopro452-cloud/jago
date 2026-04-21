@@ -21,7 +21,7 @@ const rawSql = sql;
 import bcrypt from "bcryptjs";
 import { hashPassword, verifyPassword } from "./utils/crypto";
 import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
-import { getConf } from "./config-db";
+import { getConf, getConfAny } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
   initAiTables,
@@ -10655,10 +10655,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const dLat = parseFloat(destLat), dLng = parseFloat(destLng);
 
       // Try Google Distance Matrix first
-      const gmapsKeyR = await rawDb.execute(rawSql`
-        SELECT value FROM business_settings WHERE key_name='google_maps_api_key' LIMIT 1
-      `).catch(() => ({ rows: [] as any[] }));
-      const gmapsKey = (gmapsKeyR.rows[0] as any)?.value || process.env.GOOGLE_MAPS_API_KEY || '';
+      const gmapsKey = await getConfAny("GOOGLE_MAPS_API_KEY", [
+        "google_maps_key",
+        "GOOGLE_MAPS_API_KEY",
+        "google_maps_api_key",
+      ]) || "";
 
       let etaMinutes: number;
       let distanceKm: number;
@@ -10841,7 +10842,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let pickupGeo: any = null;
       let destGeo: any = null;
 
-      const apiKey = await getConf("GOOGLE_MAPS_API_KEY", "google_maps_key");
+      const apiKey = await getConfAny("GOOGLE_MAPS_API_KEY", [
+        "google_maps_key",
+        "GOOGLE_MAPS_API_KEY",
+        "google_maps_api_key",
+      ]);
 
       // Check if pickup is current location
       const isCurrentLocation = !parsed.pickup ||

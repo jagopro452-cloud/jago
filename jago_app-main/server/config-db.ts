@@ -26,3 +26,15 @@ export async function getConf(envKey: string, dbKey?: string): Promise<string | 
     return undefined;
   }
 }
+
+export async function getConfAny(envKey: string, dbKeys: string[]): Promise<string | undefined> {
+  const envVal = process.env[envKey];
+  if (envVal && envVal.trim().length > 0) return envVal.trim();
+
+  for (const dbKey of dbKeys) {
+    const val = await getConf(envKey, dbKey);
+    if (val) return val;
+  }
+
+  return undefined;
+}
