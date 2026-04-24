@@ -172,10 +172,11 @@ export default function Dashboard() {
 
   /* ── Top stat cards ── */
   const topStats = [
-    { label: "Total Customers", val: stats?.totalCustomers, icon: "bi-people-fill", color: "#2F7BFF", bg: "#EBF4FF", link: "/admin/customers", trend: "+12%", trendUp: true },
-    { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers", trend: "+5%", trendUp: true },
-    { label: "Total Revenue", val: `₹${revenue}`, icon: "bi-currency-rupee", color: "#b45309", bg: "#fefce8", link: "/admin/reports", trend: "+18%", trendUp: true },
-    { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips", trend: "+8%", trendUp: true },
+    { label: "Total Users", val: stats?.totalUsers ?? ((stats?.totalCustomers || 0) + (stats?.totalDrivers || 0)), icon: "bi-people-fill", color: "#2F7BFF", bg: "#EBF4FF", link: "/admin/customers" },
+    { label: "Total Drivers", val: stats?.totalDrivers, icon: "bi-person-badge-fill", color: "#16a34a", bg: "#f0fdf4", link: "/admin/drivers" },
+    { label: "Connections", val: stats?.liveConnections ?? svcData?.drivers?.online ?? 0, icon: "bi-broadcast-pin", color: "#b45309", bg: "#fefce8", link: "/admin/system-health" },
+    { label: "Total Revenue", val: `₹${revenue}`, icon: "bi-currency-rupee", color: "#b45309", bg: "#fefce8", link: "/admin/reports" },
+    { label: "Total Trips", val: stats?.totalTrips, icon: "bi-car-front-fill", color: "#7e22ce", bg: "#f5f3ff", link: "/admin/trips" },
   ];
 
   /* ── Pie data ── */
@@ -268,7 +269,7 @@ export default function Dashboard() {
           </div>
           <div className="jd-kpi-sep"></div>
           <div className="jd-kpi">
-            <span className="jd-kpi-n">{svcData?.drivers?.online ?? Math.round((stats?.totalDrivers ?? 0) * 0.7)}</span>
+            <span className="jd-kpi-n">{svcData?.drivers?.online ?? "—"}</span>
             <span className="jd-kpi-l">Online Pilots</span>
           </div>
           <div className="jd-kpi-sep"></div>

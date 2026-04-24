@@ -54,8 +54,8 @@ android {
         applicationId "com.mindwhile.jago_pilot"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 61
-        versionName "1.0.61"
+        versionCode 73
+        versionName "1.0.73"
         multiDexEnabled true
         manifestPlaceholders = [googleMapsApiKey: localProperties.getProperty('GOOGLE_MAPS_KEY', '')]
     }
