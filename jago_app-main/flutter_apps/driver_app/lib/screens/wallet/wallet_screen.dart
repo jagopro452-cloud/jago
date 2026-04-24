@@ -88,9 +88,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
               Container(
                 width: 44, height: 44,
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.1),
+                  color: JT.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: JT.primary.withOpacity(0.3)),
+                  border: Border.all(color: JT.primary.withValues(alpha: 0.3)),
                 ),
                 child: Icon(Icons.account_balance_wallet, color: JT.primary, size: 22)),
               const SizedBox(width: 14),
@@ -141,13 +141,13 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
                   decoration: BoxDecoration(
-                    color: isCustom ? JT.warning.withOpacity(0.12) : JT.bgSoft,
+                    color: isCustom ? JT.warning.withValues(alpha: 0.12) : JT.bgSoft,
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
                       color: isCustom ? JT.warning : JT.border,
                       width: isCustom ? 1.5 : 1),
                     boxShadow: isCustom ? [
-                      BoxShadow(color: JT.warning.withOpacity(0.2), blurRadius: 12),
+                      BoxShadow(color: JT.warning.withValues(alpha: 0.2), blurRadius: 12),
                     ] : [],
                   ),
                   child: Text('Custom',
@@ -192,9 +192,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.06),
+                color: JT.primary.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: JT.primary.withOpacity(0.25))),
+                border: Border.all(color: JT.primary.withValues(alpha: 0.25))),
               child: Row(children: [
                 Icon(Icons.info_outline_rounded, color: JT.primary, size: 16),
                 const SizedBox(width: 10),
@@ -333,15 +333,15 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
         backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: JT.success.withOpacity(0.3), width: 1),
+          side: BorderSide(color: JT.success.withValues(alpha: 0.3), width: 1),
         ),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 80, height: 80,
             decoration: BoxDecoration(
-              color: JT.success.withOpacity(0.1),
+              color: JT.success.withValues(alpha: 0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: JT.success.withOpacity(0.4)),
+              border: Border.all(color: JT.success.withValues(alpha: 0.4)),
             ),
             child: Icon(Icons.check_rounded, color: JT.success, size: 44)),
           const SizedBox(height: 18),
@@ -358,9 +358,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: JT.success.withOpacity(0.1),
+                color: JT.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: JT.success.withOpacity(0.3)),
+                border: Border.all(color: JT.success.withValues(alpha: 0.3)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.lock_open_rounded, color: JT.success, size: 16),
@@ -646,9 +646,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         child: Container(
                           width: 44, height: 44,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                           ),
                           child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                         ),
@@ -662,9 +662,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         child: Container(
                           width: 44, height: 44,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                           ),
                           child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
                         ),
@@ -685,10 +685,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         Container(
                           width: 72, height: 72,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             shape: BoxShape.circle,
                             border: Border.all(
-                                color: Colors.white.withOpacity(0.4)),
+                                color: Colors.white.withValues(alpha: 0.4)),
                           ),
                           child: Icon(
                             isLocked ? Icons.lock_rounded : Icons.account_balance_wallet_rounded,
@@ -704,7 +704,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                         Text(
                           isLocked ? 'Account Locked — Recharge to unlock' : 'Available Balance',
                           style: GoogleFonts.poppins(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 13, fontWeight: FontWeight.w400,
                           )),
                         const SizedBox(height: 20),
@@ -735,7 +735,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                             height: 48,
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               ),
                               icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
@@ -753,9 +753,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withOpacity(0.3))),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.3))),
                             child: Row(children: [
                               const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
                               const SizedBox(width: 10),
@@ -776,7 +776,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                       indicatorColor: Colors.white,
                       indicatorWeight: 2,
                       labelColor: Colors.white,
-                      unselectedLabelColor: Colors.white.withOpacity(0.6),
+                      unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
                       labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 13),
                       unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 13),
                       tabs: const [Tab(text: 'Transactions'), Tab(text: 'Withdrawals')],
@@ -840,10 +840,10 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               Container(
                                 width: 44, height: 44,
                                 decoration: BoxDecoration(
-                                  color: (isCredit ? JT.success : JT.error).withOpacity(0.1),
+                                  color: (isCredit ? JT.success : JT.error).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                      color: (isCredit ? JT.success : JT.error).withOpacity(0.3)),
+                                      color: (isCredit ? JT.success : JT.error).withValues(alpha: 0.3)),
                                 ),
                                 child: Icon(
                                   isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
@@ -898,16 +898,16 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                             decoration: BoxDecoration(
                               color: JT.bgSoft,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: statusColor.withOpacity(0.2), width: 1),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.2), width: 1),
                               boxShadow: JT.cardShadow,
                             ),
                             child: Row(children: [
                               Container(
                                 width: 44, height: 44,
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
+                                  color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                                 ),
                                 child: Icon(Icons.account_balance_rounded, color: statusColor, size: 20)),
                               const SizedBox(width: 14),
@@ -925,9 +925,9 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
+                                  color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                                 ),
                                 child: Text(status.toUpperCase(),
                                   style: GoogleFonts.poppins(

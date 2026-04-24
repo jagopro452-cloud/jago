@@ -388,7 +388,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Container(
               width: 64, height: 64,
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.15),
+                color: JT.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.check_circle_rounded, color: JT.primary, size: 36),
@@ -503,7 +503,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'Subscribe and start accepting rides today',
-                        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
                       ),
                     ],
                   ),
@@ -556,7 +556,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: borderColor, width: 1.5),
           boxShadow: isSelected
-              ? [BoxShadow(color: accentColor.withOpacity(0.12), blurRadius: 16, offset: const Offset(0, 6))]
+              ? [BoxShadow(color: accentColor.withValues(alpha: 0.12), blurRadius: 16, offset: const Offset(0, 6))]
               : [],
         ),
         child: Stack(
@@ -572,7 +572,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.15),
+                          color: accentColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -584,7 +584,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: accentColor.withOpacity(0.1),
+                            color: accentColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -607,12 +607,12 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Text(
                           '+ GST  ·  per $durationDays days',
-                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11),
                         ),
                       ),
                       const Spacer(),
                       Text('≈ ₹$dailyRate/day',
-                          style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 12)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12)),
                     ],
                   ),
                   if (features.isNotEmpty) ...[
@@ -627,7 +627,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(f,
-                                    style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 13)),
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 13)),
                               ),
                             ],
                           ),
@@ -670,7 +670,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
         const SizedBox(height: 4),
         Text(
           'Protect yourself and your vehicle',
-          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
         ),
         const SizedBox(height: 12),
         // None option
@@ -768,7 +768,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                   if (description.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(description,
-                        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
                         maxLines: 2),
                   ],
                 ],
@@ -778,7 +778,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.12),
+                color: JT.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -814,9 +814,9 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
   Widget _benefitItem(IconData icon, String label) {
     return Column(
       children: [
-        Icon(icon, color: _cyan.withOpacity(0.6), size: 22),
+        Icon(icon, color: _cyan.withValues(alpha: 0.6), size: 22),
         const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 10)),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 10)),
       ],
     );
   }
@@ -843,7 +843,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 '₹${approxTotal.toStringAsFixed(0)} + GST  ·  Exact total shown before payment',
-                style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12),
               ),
             ),
           SizedBox(
@@ -855,7 +855,7 @@ class _SubscriptionPlansScreenState extends State<SubscriptionPlansScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: JT.primary.withOpacity(0.25),
+                    color: JT.primary.withValues(alpha: 0.25),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),

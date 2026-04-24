@@ -53,6 +53,11 @@ class _CallScreenState extends State<CallScreen> {
       _state = CallState.incoming;
     } else {
       _state = CallState.outgoing;
+      _callService.startCall(
+        targetUserId: widget.targetUserId,
+        tripId: widget.tripId,
+        callerName: 'Customer',
+      );
     }
   }
 
@@ -108,7 +113,7 @@ class _CallScreenState extends State<CallScreen> {
               width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: JT.primary.withOpacity(0.2),
+                color: JT.primary.withValues(alpha: 0.2),
                 border: Border.all(color: JT.primary, width: 3),
               ),
               child: Icon(Icons.person, size: 50, color: JT.primary),

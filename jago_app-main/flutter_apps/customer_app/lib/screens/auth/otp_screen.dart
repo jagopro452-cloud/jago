@@ -145,11 +145,11 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                     Positioned(top: -40, right: -40,
                       child: Container(width: 160, height: 160,
                         decoration: BoxDecoration(shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.06)))),
+                          color: Colors.white.withValues(alpha: 0.06)))),
                     Positioned(bottom: 20, left: -30,
                       child: Container(width: 120, height: 120,
                         decoration: BoxDecoration(shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.04)))),
+                          color: Colors.white.withValues(alpha: 0.04)))),
                     // Back button
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
@@ -168,7 +168,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           Container(
                             width: 72, height: 72,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Icon(Icons.lock_open_rounded, color: Colors.white, size: 36),
@@ -186,7 +186,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           Text(
                             'Code sent to +91 ${widget.phone}',
                             style: GoogleFonts.poppins(
-                              color: Colors.white.withOpacity(0.75),
+                              color: Colors.white.withValues(alpha: 0.75),
                               fontSize: 13,
                               fontWeight: FontWeight.w400,
                             ),
@@ -339,11 +339,11 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                 begin: Alignment.centerLeft,
                                 end: Alignment.centerRight,
                               ),
-                              color: _loading ? _blue.withOpacity(0.4) : null,
+                              color: _loading ? _blue.withValues(alpha: 0.4) : null,
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: _loading ? [] : [
                                 BoxShadow(
-                                  color: _blue.withOpacity(0.4),
+                                  color: _blue.withValues(alpha: 0.4),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),

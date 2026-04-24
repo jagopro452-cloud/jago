@@ -260,7 +260,7 @@ class _WalletScreenState extends State<WalletScreen>
                           color: sel ? const Color(0xFF7C3AED) : const Color(0xFFF9FAFB),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: sel ? const Color(0xFF7C3AED) : const Color(0xFFE5E7EB)),
-                          boxShadow: sel ? [BoxShadow(color: const Color(0xFF7C3AED).withOpacity(0.2), blurRadius: 10)] : [],
+                          boxShadow: sel ? [BoxShadow(color: const Color(0xFF7C3AED).withValues(alpha: 0.2), blurRadius: 10)] : [],
                         ),
                         child: Text('₹$amt',
                             style: GoogleFonts.poppins(
@@ -485,7 +485,7 @@ class _WalletScreenState extends State<WalletScreen>
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(36),
                 boxShadow: [
-                  BoxShadow(color: Colors.purple.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 12)),
+                  BoxShadow(color: Colors.purple.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 12)),
                 ],
               ),
               child: Container(
@@ -549,7 +549,7 @@ class _WalletScreenState extends State<WalletScreen>
                               ),
                               borderRadius: BorderRadius.circular(24),
                               boxShadow: [
-                                BoxShadow(color: const Color(0xFF7C3AED).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 6)),
+                                BoxShadow(color: const Color(0xFF7C3AED).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 6)),
                               ],
                             ),
                             child: _paying
@@ -595,7 +595,7 @@ class _WalletScreenState extends State<WalletScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15, offset: const Offset(0, 8)),
         ],
         border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
       ),
@@ -688,7 +688,7 @@ class _WalletScreenState extends State<WalletScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 4)),
         ],
         border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
       ),
@@ -696,7 +696,7 @@ class _WalletScreenState extends State<WalletScreen>
         Container(
           width: 48, height: 48,
           decoration: BoxDecoration(
-            color: accent.withOpacity(0.08),
+            color: accent.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(

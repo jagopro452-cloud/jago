@@ -77,28 +77,28 @@ class JT {
   // ── SHADOWS — Premium Elevation System ──
   static List<BoxShadow> get shadowXs => [
         BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 2,
             offset: const Offset(0, 1)),
       ];
 
   static List<BoxShadow> get shadowSm => [
         BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 8,
             offset: const Offset(0, 2)),
       ];
 
   static List<BoxShadow> get shadowMd => [
         BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 4)),
       ];
 
   static List<BoxShadow> get shadowLg => [
         BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 24,
             offset: const Offset(0, 8)),
       ];
@@ -107,14 +107,14 @@ class JT {
 
   static List<BoxShadow> get btnShadow => [
         BoxShadow(
-            color: primary.withOpacity(0.14),
+            color: primary.withValues(alpha: 0.14),
             blurRadius: 14,
             offset: const Offset(0, 4)),
       ];
 
   static List<BoxShadow> get btnShadowHover => [
         BoxShadow(
-            color: primary.withOpacity(0.35),
+            color: primary.withValues(alpha: 0.35),
             blurRadius: 20,
             offset: const Offset(0, 8)),
       ];
@@ -422,7 +422,7 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
         CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
       ),
       child: Container(
-        color: JT.borderLight.withOpacity(0.5),
+        color: JT.borderLight.withValues(alpha: 0.5),
       ),
     );
   }

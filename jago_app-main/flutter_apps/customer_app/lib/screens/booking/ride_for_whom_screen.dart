@@ -72,7 +72,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
         curve: Curves.easeInOut,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? JT.primary.withOpacity(0.05) : JT.surface,
+          color: isSelected ? JT.primary.withValues(alpha: 0.05) : JT.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? JT.primary : JT.borderLight,
@@ -80,13 +80,13 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
           ),
           boxShadow: isSelected ? [
             BoxShadow(
-              color: JT.primary.withOpacity(0.12),
+              color: JT.primary.withValues(alpha: 0.12),
               blurRadius: 20,
               offset: const Offset(0, 8),
             )
           ] : [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -100,7 +100,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
                 gradient: isSelected ? JT.grad : LinearGradient(colors: [JT.bgSoft, JT.borderLight]),
                 shape: BoxShape.circle,
                 boxShadow: isSelected ? [
-                  BoxShadow(color: JT.primary.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))
+                  BoxShadow(color: JT.primary.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))
                 ] : [],
               ),
               child: Icon(icon, color: isSelected ? Colors.white : JT.textTertiary, size: 24),
@@ -116,7 +116,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
                   )),
                   const SizedBox(height: 4),
                   Text(subtitle, style: JT.caption.copyWith(
-                    color: isSelected ? JT.primary.withOpacity(0.7) : JT.textSecondary,
+                    color: isSelected ? JT.primary.withValues(alpha: 0.7) : JT.textSecondary,
                   )),
                 ],
               ),
@@ -160,7 +160,7 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
           decoration: JT.modernInputDecoration(
             labelText: '',
             hintText: hint,
-            prefixIcon: Icon(icon, size: 20, color: JT.primary.withOpacity(0.6)),
+            prefixIcon: Icon(icon, size: 20, color: JT.primary.withValues(alpha: 0.6)),
           ).copyWith(
             contentPadding: const EdgeInsets.all(18),
             fillColor: Colors.white,
@@ -173,143 +173,226 @@ class _RideForWhomScreenState extends State<RideForWhomScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: JT.bgSoft,
-      body: Stack(
+      backgroundColor: const Color(0xFFF5F3FF),
+      body: Column(
         children: [
-          // Background accent
-          Positioned(
-            top: -100, right: -100,
-            child: Container(
-              width: 300, height: 300,
-              decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.04),
-                shape: BoxShape.circle,
+          // Global Header
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: JT.logoBlue(height: 56),
+                  ),
+                  Row(
+                    children: [
+                      _headerAction(Icons.account_balance_wallet_outlined),
+                      const SizedBox(width: 12),
+                      _headerAction(Icons.notifications_none_rounded),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
-          
-          SafeArea(
-            child: Column(
-              children: [
-                // Custom App Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: JT.textPrimary),
-                      ),
-                      Expanded(
-                        child: Text('Confirm Booking Details', 
-                          textAlign: TextAlign.center,
-                          style: JT.h4.copyWith(letterSpacing: -0.5)),
-                      ),
-                      const SizedBox(width: 48), // for balance
-                    ],
-                  ),
-                ),
-                
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Who is this ride for?', 
-                          style: JT.h2.copyWith(fontSize: 22, height: 1.2)),
-                        const SizedBox(height: 8),
-                        Text('Manage ride details for you or your friends', 
-                          style: JT.subtitle2),
-                        const SizedBox(height: 32),
-                        
-                        _buildOptionCard(
-                          value: 1,
-                          title: 'For Myself',
-                          subtitle: 'Primary account holder',
-                          icon: Icons.person_rounded,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildOptionCard(
-                          value: 2,
-                          title: 'Someone Else',
-                          subtitle: 'Book for family or colleagues',
-                          icon: Icons.people_alt_rounded,
-                        ),
-                        
-                        AnimatedSwitcher(
-                          duration: JT.animationMedium,
-                          transitionBuilder: (child, animation) => FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(animation),
-                              child: child,
+
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Who is this ride for?', 
+                              style: JT.h2.copyWith(fontSize: 22, height: 1.2)),
+                            const SizedBox(height: 8),
+                            Text('Manage ride details for you or your friends', 
+                              style: JT.subtitle2),
+                            const SizedBox(height: 32),
+                            
+                            _buildOptionCard(
+                              value: 1,
+                              title: 'For Myself',
+                              subtitle: 'Primary account holder',
+                              icon: Icons.person_rounded,
                             ),
-                          ),
-                          child: _selectedOption == 2 ? Padding(
-                            key: const ValueKey('second_option_details'),
-                            padding: const EdgeInsets.only(top: 40),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                            const SizedBox(height: 16),
+                            _buildOptionCard(
+                              value: 2,
+                              title: 'Someone Else',
+                              subtitle: 'Book for family or colleagues',
+                              icon: Icons.people_alt_rounded,
+                            ),
+                            
+                            AnimatedSwitcher(
+                              duration: JT.animationMedium,
+                              transitionBuilder: (child, animation) => FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(animation),
+                                  child: child,
+                                ),
+                              ),
+                              child: _selectedOption == 2 ? Padding(
+                                key: const ValueKey('second_option_details'),
+                                padding: const EdgeInsets.only(top: 40),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.badge_rounded, color: JT.primary, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text('Passenger Information', style: JT.h5),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.badge_rounded, color: JT.primary, size: 20),
+                                        const SizedBox(width: 8),
+                                        Text('Passenger Information', style: JT.h5),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 24),
+                                    _buildInputField(
+                                      controller: _nameCtrl,
+                                      label: 'Passenger Name',
+                                      hint: 'Enter full name',
+                                      icon: Icons.person_outline_rounded,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    _buildInputField(
+                                      controller: _phoneCtrl,
+                                      label: 'Mobile Number',
+                                      hint: '+91 99999 99999',
+                                      icon: Icons.phone_outlined,
+                                      keyboardType: TextInputType.phone,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    _buildInputField(
+                                      controller: _noteCtrl,
+                                      label: 'Add a Note (Optional)',
+                                      hint: 'Pickup landmarks / special instructions',
+                                      icon: Icons.notes_rounded,
+                                    ),
                                   ],
                                 ),
-                                const SizedBox(height: 24),
-                                _buildInputField(
-                                  controller: _nameCtrl,
-                                  label: 'Passenger Name',
-                                  hint: 'Enter full name',
-                                  icon: Icons.person_outline_rounded,
-                                ),
-                                const SizedBox(height: 20),
-                                _buildInputField(
-                                  controller: _phoneCtrl,
-                                  label: 'Mobile Number',
-                                  hint: '+91 99999 99999',
-                                  icon: Icons.phone_outlined,
-                                  keyboardType: TextInputType.phone,
-                                ),
-                                const SizedBox(height: 20),
-                                _buildInputField(
-                                  controller: _noteCtrl,
-                                  label: 'Add a Note (Optional)',
-                                  hint: 'Pickup landmarks / special instructions',
-                                  icon: Icons.notes_rounded,
-                                ),
-                              ],
-                            ),
-                          ) : const SizedBox.shrink(),
-                        )
-                      ],
+                              ) : const SizedBox.shrink(),
+                            )
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    
+                    // Bottom Button Action
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -10), blurRadius: 20),
+                        ],
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                      ),
+                      child: JT.gradientButton(
+                        label: _selectedOption == 1 ? 'Book My Ride' : 'Book for Passenger',
+                        onTap: _onBookRide,
+                      ),
+                    ),
+                  ],
                 ),
-                
-                // Bottom Button Action
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), offset: const Offset(0, -10), blurRadius: 20),
-                    ],
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                  ),
-                  child: JT.gradientButton(
-                    label: _selectedOption == 1 ? 'Book My Ride' : 'Book for Passenger',
-                    onTap: _onBookRide,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _headerAction(IconData icon) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Icon(icon, color: const Color(0xFF64748B), size: 24),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade100, width: 1)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _navItem(0, Icons.home_rounded, Icons.home_outlined, 'Home'),
+              _navItem(1, Icons.receipt_long_rounded, Icons.receipt_long_outlined, 'Trips'),
+              _navItem(2, Icons.account_balance_wallet_rounded, Icons.account_balance_wallet_outlined, 'Wallet'),
+              _navItem(3, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(int index, IconData activeIcon, IconData inactiveIcon, String label) {
+    bool isSelected = index == 0;
+    return GestureDetector(
+      onTap: () => Navigator.pop(context),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: isSelected
+            ? BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF7C3AED), Color(0xFF6366F1)], 
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFF7C3AED).withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              )
+            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : inactiveIcon,
+              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+              size: 22,
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ]
+          ],
+        ),
       ),
     );
   }

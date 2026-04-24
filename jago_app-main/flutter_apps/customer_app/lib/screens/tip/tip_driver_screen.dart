@@ -100,7 +100,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
         SizedBox(height: JT.spacing12),
         Container(
           padding: EdgeInsets.all(JT.spacing12 + 2),
-          decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusMd), border: Border.all(color: JT.warning.withOpacity(0.3))),
+          decoration: BoxDecoration(color: JT.warningLight, borderRadius: BorderRadius.circular(JT.radiusMd), border: Border.all(color: JT.warning.withValues(alpha: 0.3))),
           child: Row(children: [
             Icon(Icons.stars, color: JT.warning, size: 18),
             SizedBox(width: JT.spacing8),

@@ -29,7 +29,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
     _subs.add(_socket.onChatMessage.listen((msg) {
       if (!mounted) return;
       // Skip echo of own messages (already added locally in _send)
-      if (msg['senderType'] == 'driver') return;
+      if (msg['senderType']?.toString().toLowerCase() == 'driver') return;
       setState(() => _messages.add(msg));
       _scrollToBottom();
     }));
@@ -44,6 +44,7 @@ class _TripChatSheetState extends State<TripChatSheet> {
       _scrollToBottom();
     }));
 
+    _socket.setActiveTrip(widget.tripId);
     _socket.loadChatHistory(widget.tripId);
   }
 

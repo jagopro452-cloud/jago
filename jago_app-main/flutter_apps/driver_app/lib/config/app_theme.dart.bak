@@ -230,7 +230,7 @@ class AppCard {
     border: Border.all(color: AppColors.borderLight, width: 1),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         blurRadius: 16,
         offset: const Offset(0, 4),
       ),
@@ -248,10 +248,10 @@ class AppCard {
       BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: color.withOpacity(0.35), width: borderWidth),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: borderWidth),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -265,15 +265,15 @@ class AppCard {
       BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: color.withOpacity(0.5), width: 2),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.25),
+            color: color.withValues(alpha: 0.25),
             blurRadius: 20,
             spreadRadius: 2,
           ),
           BoxShadow(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             blurRadius: 30,
             spreadRadius: 4,
           ),
@@ -292,7 +292,7 @@ class AppCard {
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.25),
+            color: AppColors.primary.withValues(alpha: 0.25),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -323,7 +323,7 @@ class AppCard {
     border: Border.all(color: AppColors.lightBorder, width: 1),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.08),
+        color: Colors.black.withValues(alpha: 0.08),
         blurRadius: 12,
         offset: const Offset(0, 2),
       ),
@@ -341,12 +341,12 @@ class AppGlow {
   // ──────────────────────────────────────────────────────────────────────────
   static List<BoxShadow> neon(Color color, {double blur = 20, double spread = 0}) => [
     BoxShadow(
-      color: color.withOpacity(0.4),
+      color: color.withValues(alpha: 0.4),
       blurRadius: blur,
       spreadRadius: spread,
     ),
     BoxShadow(
-      color: color.withOpacity(0.15),
+      color: color.withValues(alpha: 0.15),
       blurRadius: blur * 2.5,
       spreadRadius: spread,
     ),
@@ -354,12 +354,12 @@ class AppGlow {
 
   static List<BoxShadow> neonIntense(Color color) => [
     BoxShadow(
-      color: color.withOpacity(0.5),
+      color: color.withValues(alpha: 0.5),
       blurRadius: 30,
       spreadRadius: 2,
     ),
     BoxShadow(
-      color: color.withOpacity(0.25),
+      color: color.withValues(alpha: 0.25),
       blurRadius: 50,
       spreadRadius: 4,
     ),
@@ -370,7 +370,7 @@ class AppGlow {
   // ──────────────────────────────────────────────────────────────────────────
   static List<BoxShadow> soft(Color color) => [
     BoxShadow(
-      color: color.withOpacity(0.22),
+      color: color.withValues(alpha: 0.22),
       blurRadius: 12,
       offset: const Offset(0, 4),
     ),
@@ -378,7 +378,7 @@ class AppGlow {
 
   static List<BoxShadow> softMedium() => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.15),
+      color: Colors.black.withValues(alpha: 0.15),
       blurRadius: 16,
       offset: const Offset(0, 6),
     ),
@@ -386,7 +386,7 @@ class AppGlow {
 
   static List<BoxShadow> softSmall() => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.08),
+      color: Colors.black.withValues(alpha: 0.08),
       blurRadius: 8,
       offset: const Offset(0, 2),
     ),
@@ -412,14 +412,14 @@ class AppButton {
         height: height,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [neonColor, neonColor.withOpacity(0.8)],
+            colors: [neonColor, neonColor.withValues(alpha: 0.8)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(radius),
           boxShadow: [
             BoxShadow(
-              color: neonColor.withOpacity(0.35),
+              color: neonColor.withValues(alpha: 0.35),
               blurRadius: 20,
               offset: const Offset(0, 4),
             ),

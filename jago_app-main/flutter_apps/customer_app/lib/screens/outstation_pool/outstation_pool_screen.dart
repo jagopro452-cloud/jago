@@ -241,7 +241,7 @@ class _SearchTabState extends State<_SearchTab> {
               padding: const EdgeInsets.all(32),
               child: Column(
                 children: [
-                  Icon(Icons.directions_car_rounded, size: 64, color: JT.textSecondary.withOpacity(0.4)),
+                  Icon(Icons.directions_car_rounded, size: 64, color: JT.textSecondary.withValues(alpha: 0.4)),
                   const SizedBox(height: 16),
                   Text('No rides found', style: TextStyle(fontSize: 16, color: JT.textSecondary)),
                   const SizedBox(height: 6),
@@ -320,7 +320,7 @@ class _RideCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text('₹${fare.toStringAsFixed(0)}/seat',
@@ -349,7 +349,7 @@ class _RideCard extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 16,
-                      backgroundColor: JT.primary.withOpacity(0.1),
+                      backgroundColor: JT.primary.withValues(alpha: 0.1),
                       child: Text(driverName.isNotEmpty ? driverName[0].toUpperCase() : 'D',
                           style: TextStyle(color: JT.primary, fontWeight: FontWeight.w500, fontSize: 12)),
                     ),
@@ -619,7 +619,7 @@ class _BookBottomSheetState extends State<_BookBottomSheet> {
     child: Container(
       width: 36, height: 36,
       decoration: BoxDecoration(
-        color: JT.primary.withOpacity(0.1),
+        color: JT.primary.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: JT.primary, size: 18),
@@ -736,7 +736,7 @@ class _BookingsTabState extends State<_BookingsTab> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.confirmation_number_rounded, size: 64, color: JT.textSecondary.withOpacity(0.4)),
+              Icon(Icons.confirmation_number_rounded, size: 64, color: JT.textSecondary.withValues(alpha: 0.4)),
               const SizedBox(height: 16),
               Text('No bookings yet', style: TextStyle(fontSize: 16, color: JT.textSecondary)),
               const SizedBox(height: 6),
@@ -790,7 +790,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _statusColor(status).withOpacity(0.1),
+                        color: _statusColor(status).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(status.toUpperCase(),
@@ -824,7 +824,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                 ),
                 if (formattedCreated.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text('Booked: $formattedCreated', style: TextStyle(fontSize: 11, color: JT.textSecondary.withOpacity(0.7))),
+                  Text('Booked: $formattedCreated', style: TextStyle(fontSize: 11, color: JT.textSecondary.withValues(alpha: 0.7))),
                 ],
               ],
             ),

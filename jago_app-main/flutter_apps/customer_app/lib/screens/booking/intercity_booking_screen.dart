@@ -337,9 +337,9 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
   Widget _routeInfoCard() => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: _blue.withOpacity(0.05),
+      color: _blue.withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: _blue.withOpacity(0.2)),
+      border: Border.all(color: _blue.withValues(alpha: 0.2)),
     ),
     child: Column(children: [
       Row(children: [
@@ -444,7 +444,7 @@ class _IntercityBookingScreenState extends State<IntercityBookingScreen> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, -4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
       ),
       child: Row(children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

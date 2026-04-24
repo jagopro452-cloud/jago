@@ -104,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: _card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(top: BorderSide(color: _primary.withOpacity(0.3), width: 1)),
+            border: Border(top: BorderSide(color: _primary.withValues(alpha: 0.3), width: 1)),
           ),
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -229,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _card,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(top: BorderSide(color: _red.withOpacity(0.3), width: 1)),
+          border: Border(top: BorderSide(color: _red.withValues(alpha: 0.3), width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 44),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -242,9 +242,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: _red.withOpacity(0.1),
+                color: _red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _red.withOpacity(0.3)),
+                border: Border.all(color: _red.withValues(alpha: 0.3)),
               ),
               child: const Icon(Icons.warning_rounded, color: _red, size: 22),
             ),
@@ -266,7 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   backgroundColor: _card,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: _amber.withOpacity(0.3)),
+                    side: BorderSide(color: _amber.withValues(alpha: 0.3)),
                   ),
                   title: Text('Deactivate Account?',
                     style: GoogleFonts.poppins(color: const Color(0xFF1A1A2E), fontWeight: FontWeight.w400)),
@@ -288,9 +288,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color: _amber.withOpacity(0.06),
+                color: _amber.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _amber.withOpacity(0.25)),
+                border: Border.all(color: _amber.withValues(alpha: 0.25)),
               ),
               child: Row(children: [
                 Icon(Icons.pause_circle_outline_rounded, color: _amber, size: 24),
@@ -302,7 +302,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text('Recoverable — contact support to reactivate',
                       style: GoogleFonts.poppins(color: _textSecondary, fontSize: 11)),
                 ])),
-                Icon(Icons.chevron_right_rounded, color: _amber.withOpacity(0.5)),
+                Icon(Icons.chevron_right_rounded, color: _amber.withValues(alpha: 0.5)),
               ]),
             ),
           ),
@@ -316,7 +316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   backgroundColor: _card,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: _red.withOpacity(0.3)),
+                    side: BorderSide(color: _red.withValues(alpha: 0.3)),
                   ),
                   title: Text('Delete Permanently?',
                     style: GoogleFonts.poppins(color: _red, fontWeight: FontWeight.w400)),
@@ -337,9 +337,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _red.withOpacity(0.06),
+                color: _red.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _red.withOpacity(0.25)),
+                border: Border.all(color: _red.withValues(alpha: 0.25)),
               ),
               child: Row(children: [
                 const Icon(Icons.delete_forever_rounded, color: _red, size: 24),
@@ -351,7 +351,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text('All data deleted forever — cannot be undone',
                       style: GoogleFonts.poppins(color: _textSecondary, fontSize: 11)),
                 ])),
-                Icon(Icons.chevron_right_rounded, color: _red.withOpacity(0.5)),
+                Icon(Icons.chevron_right_rounded, color: _red.withValues(alpha: 0.5)),
               ]),
             ),
           ),
@@ -368,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _card,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(top: BorderSide(color: _primary.withOpacity(0.3), width: 1)),
+          border: Border(top: BorderSide(color: _primary.withValues(alpha: 0.3), width: 1)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -381,9 +381,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               width: 44, height: 44,
               decoration: BoxDecoration(
-                color: _primary.withOpacity(0.1),
+                color: _primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _primary.withOpacity(0.3)),
+                border: Border.all(color: _primary.withValues(alpha: 0.3)),
               ),
               child: const Icon(Icons.headset_mic_rounded, color: _primary, size: 22),
             ),
@@ -429,18 +429,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
+          color: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Row(children: [
           Container(
             width: 48, height: 48,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.3)),
-              boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 12)],
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 12)],
             ),
             child: Icon(icon, color: color, size: 22),
           ),
@@ -525,9 +525,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   margin: const EdgeInsets.only(right: 16),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _primary.withOpacity(0.1),
+                    color: _primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _primary.withOpacity(0.3)),
+                    border: Border.all(color: _primary.withValues(alpha: 0.3)),
                   ),
                   child: const Icon(Icons.edit_rounded, color: _primary, size: 18),
                 ),
@@ -553,10 +553,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             width: 100, height: 100,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: _primary.withOpacity(0.6), width: 2),
+                              border: Border.all(color: _primary.withValues(alpha: 0.6), width: 2),
                               boxShadow: [
-                                BoxShadow(color: _primary.withOpacity(0.4), blurRadius: 24, spreadRadius: 2),
-                                BoxShadow(color: _primary.withOpacity(0.15), blurRadius: 50, spreadRadius: 6),
+                                BoxShadow(color: _primary.withValues(alpha: 0.4), blurRadius: 24, spreadRadius: 2),
+                                BoxShadow(color: _primary.withValues(alpha: 0.15), blurRadius: 50, spreadRadius: 6),
                               ],
                             ),
                             child: CircleAvatar(
@@ -603,10 +603,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: sColor.withOpacity(0.1),
+                          color: sColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: sColor.withOpacity(0.35)),
-                          boxShadow: [BoxShadow(color: sColor.withOpacity(0.2), blurRadius: 12)],
+                          border: Border.all(color: sColor.withValues(alpha: 0.35)),
+                          boxShadow: [BoxShadow(color: sColor.withValues(alpha: 0.2), blurRadius: 12)],
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(
@@ -728,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     leading: Container(
                       width: 40, height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.12),
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.settings_outlined,
@@ -757,7 +757,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         backgroundColor: _card,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: _red.withOpacity(0.3)),
+                          side: BorderSide(color: _red.withValues(alpha: 0.3)),
                         ),
                         title: Text('Logout', style: GoogleFonts.poppins(
                             color: Colors.white, fontWeight: FontWeight.w400)),
@@ -806,8 +806,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: _card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.25), width: 1),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 16)],
+          border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 16)],
         ),
         child: Column(children: [
           Icon(icon, color: color, size: 22),
@@ -841,7 +841,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 width: 28, height: 28,
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
+                  color: iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: iconColor, size: 15),
@@ -889,9 +889,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: _primary.withOpacity(0.1),
+          color: _primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _primary.withOpacity(0.25)),
+          border: Border.all(color: _primary.withValues(alpha: 0.25)),
         ),
         child: const Icon(Icons.translate_rounded, color: _primary, size: 20),
       ),
@@ -930,9 +930,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Icon(icon, color: color, size: 20),
       ),

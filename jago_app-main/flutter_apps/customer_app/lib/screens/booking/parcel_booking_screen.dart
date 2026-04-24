@@ -629,7 +629,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                       Text(
                         'Parcel Delivery',
                         style: GoogleFonts.poppins(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
@@ -640,7 +640,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -774,15 +774,15 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isSelected ? logisticsOrange.withOpacity(0.03) : Colors.white,
+                  color: isSelected ? logisticsOrange.withValues(alpha: 0.03) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected ? logisticsOrange : const Color(0xFFE5E7EB).withOpacity(0.8),
+                    color: isSelected ? logisticsOrange : const Color(0xFFE5E7EB).withValues(alpha: 0.8),
                     width: isSelected ? 1.5 : 1,
                   ),
                   boxShadow: isSelected 
-                    ? [BoxShadow(color: logisticsOrange.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))]
-                    : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                    ? [BoxShadow(color: logisticsOrange.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))]
+                    : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2))],
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,7 +845,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: v.accentColor.withOpacity(0.1),
+                                  color: v.accentColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -985,8 +985,8 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.8)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            border: Border.all(color: const Color(0xFFE5E7EB).withValues(alpha: 0.8)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Column(
             children: [
@@ -1002,7 +1002,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFF7ED), 
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: logisticsOrange.withOpacity(0.2)),
+                          border: Border.all(color: logisticsOrange.withValues(alpha: 0.2)),
                         ),
                         child: Row(
                           children: [
@@ -1035,7 +1035,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
@@ -1124,10 +1124,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         Container(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
           decoration: BoxDecoration(
-            color: _destLat != 0 ? logisticsOrange.withOpacity(0.01) : Colors.white,
+            color: _destLat != 0 ? logisticsOrange.withValues(alpha: 0.01) : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _destLat != 0 ? logisticsOrange.withOpacity(0.3) : const Color(0xFFE5E7EB).withOpacity(0.8)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            border: Border.all(color: _destLat != 0 ? logisticsOrange.withValues(alpha: 0.3) : const Color(0xFFE5E7EB).withValues(alpha: 0.8)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Column(
             children: [
@@ -1162,7 +1162,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     blurRadius: 10,
                                     offset: const Offset(0, 4),
                                   ),
@@ -1286,7 +1286,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: logisticsOrange.withOpacity(0.8)),
+            Icon(icon, size: 18, color: logisticsOrange.withValues(alpha: 0.8)),
             const SizedBox(width: 8),
             Text(label, style: GoogleFonts.poppins(
               fontSize: 13, color: const Color(0xFF4B5563), fontWeight: FontWeight.w600)),
@@ -1349,7 +1349,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: sel ? logisticsOrange.withOpacity(0.05) : Colors.white,
+                  color: sel ? logisticsOrange.withValues(alpha: 0.05) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: sel ? logisticsOrange : const Color(0xFFE5E7EB)),
                 ),
@@ -1425,9 +1425,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: logisticsOrange.withOpacity(0.05),
+        color: logisticsOrange.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: logisticsOrange.withOpacity(0.2))),
+        border: Border.all(color: logisticsOrange.withValues(alpha: 0.2))),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('Total Bill Amount', style: GoogleFonts.poppins(fontSize: 15, color: const Color(0xFF1F2937))),
@@ -1478,7 +1478,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -1494,7 +1494,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: canGoNext ? [
               BoxShadow(
-                color: logisticsOrange.withOpacity(0.3),
+                color: logisticsOrange.withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               )

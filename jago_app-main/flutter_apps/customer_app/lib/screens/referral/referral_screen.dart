@@ -135,7 +135,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.white30),
                             ),
@@ -241,7 +241,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Color statusColor = status == 'paid' ? Colors.green : status == 'expired' ? Colors.red : Colors.orange;
                             return ListTile(
                               leading: CircleAvatar(
-                                backgroundColor: (type == 'driver' ? Colors.blue : Colors.purple).withOpacity(0.1),
+                                backgroundColor: (type == 'driver' ? Colors.blue : Colors.purple).withValues(alpha: 0.1),
                                 child: Icon(type == 'driver' ? Icons.drive_eta : Icons.person, color: type == 'driver' ? Colors.blue : Colors.purple, size: 20),
                               ),
                               title: Text(type == 'driver' ? 'Driver Referral' : 'Customer Referral',
@@ -271,7 +271,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(width: 12),
@@ -294,7 +294,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           Container(
             width: 32, height: 32,
-            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Center(child: Text(num, style: TextStyle(color: color, fontWeight: FontWeight.w500, fontSize: 14))),
           ),
           const SizedBox(width: 14),
@@ -309,6 +309,6 @@ class _ReferralScreenState extends State<ReferralScreen> {
   Widget _dividerLine(Color cardBg) => Container(
     margin: const EdgeInsets.only(left: 46),
     height: 1,
-    color: Colors.grey.withOpacity(0.15),
+    color: Colors.grey.withValues(alpha: 0.15),
   );
 }

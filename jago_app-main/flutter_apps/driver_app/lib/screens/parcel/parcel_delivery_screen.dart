@@ -429,7 +429,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         decoration: BoxDecoration(
           color: JT.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: JT.primary.withOpacity(0.3)),
+          border: Border.all(color: JT.primary.withValues(alpha: 0.3)),
           boxShadow: JT.cardShadow,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -437,7 +437,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.1),
+                color: JT.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.lock_open_rounded, color: JT.primary, size: 20),
@@ -563,7 +563,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         decoration: BoxDecoration(
           color: JT.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: JT.warning.withOpacity(0.4)),
+          border: Border.all(color: JT.warning.withValues(alpha: 0.4)),
           boxShadow: JT.cardShadow,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -571,7 +571,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: JT.warning.withOpacity(0.1),
+                color: JT.warning.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(Icons.lock_open_rounded, color: JT.warning, size: 20),
@@ -643,7 +643,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             decoration: BoxDecoration(
               gradient: JT.grad,
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: JT.primary.withOpacity(0.35), blurRadius: 32)],
+              boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.35), blurRadius: 32)],
             ),
             child: const Icon(Icons.check_rounded, color: Colors.white, size: 52),
           ),
@@ -661,7 +661,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
             decoration: BoxDecoration(
               gradient: JT.grad,
               borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: JT.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 6))],
+              boxShadow: [BoxShadow(color: JT.primary.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6))],
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -708,14 +708,14 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
       decoration: BoxDecoration(
         color: JT.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
         boxShadow: JT.cardShadow,
       ),
       child: Row(children: [
         Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: color, size: 22),

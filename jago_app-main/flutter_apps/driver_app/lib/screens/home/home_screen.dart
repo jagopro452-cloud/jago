@@ -15,6 +15,7 @@ import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/vehicle_status_service.dart';
 import '../../services/alarm_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../widgets/incoming_parcel_sheet.dart';
@@ -73,6 +74,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   int _navIndex = 0;
   bool _inFreePeriod = false;
   int _freeDaysRemaining = 0;
+  final VehicleStatusService _vehicleStatusService = VehicleStatusService();
+  Map<String, VehicleStatus> _vehicleStatuses = {
+    for (final status in VehicleStatusService.fallbackStatuses) status.key: status,
+  };
+  StreamSubscription<Map<String, VehicleStatus>>? _vehicleStatusSub;
+  bool _serviceUnavailableNoticeShown = false;
 
   // ── Heatmap ────────────────────────────────────────────────────────────
   final HeatmapService _heatmap = HeatmapService();
@@ -130,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _fetchLaunchBenefit();
       _fetchEligibleServices();
       _fetchRevenueConfig();
+      _watchVehicleAvailability();
       _connectSocket();
       
       await _recoverActiveTrip();
@@ -203,6 +211,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (pendingTripStr != null && pendingTripStr.isNotEmpty) {
         await prefs.remove('pending_trip_data');
         final tripData = jsonDecode(pendingTripStr) as Map<String, dynamic>;
+        if (!_canReceiveTripPayload(tripData)) {
+          _showUnavailableByAdminOnce();
+          return;
+        }
         if (mounted && _incomingTrip == null) {
           await Future.delayed(const Duration(milliseconds: 300));
           if (!mounted) return;
@@ -227,6 +239,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     } catch (_) {}
   }
 
+  bool _canReceiveTripPayload(Map<String, dynamic> trip) {
+    final tripVehicle = (trip['vehicleCategory'] ??
+            trip['vehicleCategoryName'] ??
+            trip['vehicle_type'] ??
+            trip['vehicleType'] ??
+            _vehicleCategory)
+        .toString();
+    return VehicleStatusService.isActive(_vehicleStatuses, tripVehicle);
+  }
+
+  void _showUnavailableByAdminOnce() {
+    if (_serviceUnavailableNoticeShown) return;
+    _serviceUnavailableNoticeShown = true;
+    _showSnack('Your service is temporarily unavailable by admin', error: true);
+    Future.delayed(const Duration(seconds: 4), () {
+      _serviceUnavailableNoticeShown = false;
+    });
+  }
+
   Future<void> _connectSocket() async {
     await _socket.connect(ApiConfig.socketUrl);
 
@@ -236,6 +267,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     _subs.add(_socket.onNewTrip.listen((trip) {
       if (!mounted) return;
+      if (!_canReceiveTripPayload(trip)) {
+        _showUnavailableByAdminOnce();
+        return;
+      }
       if (_incomingTrip == null) {
         setState(() => _incomingTrip = trip);
         _showIncomingTrip();
@@ -322,6 +357,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (!mounted || !_isOnline) return;
       final type = data['type'] ?? '';
       if (type == 'new_trip' && _incomingTrip == null && _incomingParcel == null) {
+        if (!_canReceiveTripPayload(data)) {
+          _showUnavailableByAdminOnce();
+          return;
+        }
         setState(() => _incomingTrip = data);
         _showIncomingTrip();
       } else if (type == 'new_parcel' && _incomingParcel == null && _incomingTrip == null) {
@@ -335,6 +374,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) s.cancel();
+    _vehicleStatusSub?.cancel();
     _locationTimer?.cancel();
     _posStream?.cancel();
     _idleTimer?.cancel();
@@ -423,6 +463,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _userName = prefs.getString('user_name') ?? 'Pilot';
       _userPhone = prefs.getString('user_phone') ?? '';
     });
+  }
+
+  bool get _isDriverVehicleActive {
+    if (_vehicleCategory.trim().isEmpty) return true;
+    return VehicleStatusService.isActive(_vehicleStatuses, _vehicleCategory);
+  }
+
+  void _watchVehicleAvailability() {
+    _vehicleStatusSub?.cancel();
+    _vehicleStatusSub = _vehicleStatusService.watchVehicleStatuses().listen((statuses) {
+      if (!mounted) return;
+      setState(() => _vehicleStatuses = statuses);
+      if (_isOnline && !_isDriverVehicleActive) {
+        _forceOfflineForInactiveService();
+      }
+    });
+  }
+
+  Future<void> _forceOfflineForInactiveService() async {
+    if (!mounted) return;
+    setState(() => _isOnline = false);
+    _stopLocationStreaming();
+    _stopHeatmap();
+    _socket.setOnlineStatus(
+      isOnline: false,
+      lat: _center.latitude,
+      lng: _center.longitude,
+    );
+    _showSnack('Your service is temporarily unavailable by admin', error: true);
+    try {
+      final headers = await AuthService.getHeaders();
+      await http.patch(
+        Uri.parse(ApiConfig.driverOnlineStatus),
+        headers: headers,
+        body: jsonEncode({
+          'isOnline': false,
+          'lat': _center.latitude,
+          'lng': _center.longitude,
+        }),
+      ).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   Future<void> _getLocation() async {
@@ -701,6 +782,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             if (trip != null && stage == 'new_request' && _incomingTrip == null) {
               final tripMap = Map<String, dynamic>.from(trip as Map);
               tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+              if (!_canReceiveTripPayload(tripMap)) {
+                _showUnavailableByAdminOnce();
+                return;
+              }
               setState(() => _incomingTrip = tripMap);
               _showIncomingTrip();
             }
@@ -792,8 +877,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: sugg.demandLevel == 'high'
-                  ? JT.error.withOpacity(0.10)
-                  : JT.warning.withOpacity(0.10),
+                  ? JT.error.withValues(alpha: 0.10)
+                  : JT.warning.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.local_fire_department_rounded,
@@ -814,9 +899,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: JT.success.withOpacity(0.08),
+              color: JT.success.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: JT.success.withOpacity(0.25)),
+              border: Border.all(color: JT.success.withValues(alpha: 0.25)),
             ),
             child: Row(children: [
               const Icon(Icons.currency_rupee_rounded, color: JT.success, size: 18),
@@ -879,6 +964,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     Map<String, dynamic> trip, {
     bool closePopup = false,
   }) async {
+    if (!_canReceiveTripPayload(trip)) {
+      if (closePopup && mounted) {
+        Navigator.pop(context);
+      }
+      if (mounted) setState(() => _incomingTrip = null);
+      await FcmService().dismissTripNotification();
+      _showUnavailableByAdminOnce();
+      return;
+    }
     if (closePopup && mounted) {
       Navigator.pop(context);
     }
@@ -932,16 +1026,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       }
     } catch (_) {}
     if (!mounted) return;
+    if (fullTrip == null && accepted) {
+      // Fallback: use what we have from the socket/notification payload
+      fullTrip = Map<String, dynamic>.from(trip);
+    }
+    
     if (fullTrip == null) {
       _showSnack(
-        accepted
-            ? 'Trip accepted but server did not confirm full trip data yet. Please wait for refresh.'
-            : 'Could not accept this trip. Please try the next request.',
+        'Could not accept this trip. Please try the next request.',
         error: true,
       );
       return;
     }
-    Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip!)));
   }
 
   Future<void> _rejectIncomingTrip(
@@ -1027,15 +1124,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         backgroundColor: JT.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: JT.error.withOpacity(0.3), width: 1),
+          side: BorderSide(color: JT.error.withValues(alpha: 0.3), width: 1),
         ),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 70, height: 70,
             decoration: BoxDecoration(
-              color: JT.error.withOpacity(0.08),
+              color: JT.error.withValues(alpha: 0.08),
               shape: BoxShape.circle,
-              border: Border.all(color: JT.error.withOpacity(0.25)),
+              border: Border.all(color: JT.error.withValues(alpha: 0.25)),
             ),
             child: const Icon(Icons.account_balance_wallet_rounded, color: JT.error, size: 34),
           ),
@@ -1092,6 +1189,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Future<void> _toggleOnline() async {
     HapticFeedback.mediumImpact();
     final newStatus = !_isOnline;
+    if (newStatus && !_isDriverVehicleActive) {
+      _showSnack('Your service is temporarily unavailable by admin', error: true);
+      return;
+    }
 
     // 1. INSTANT OPTIMISTIC UI UPDATE
     setState(() {
@@ -1192,7 +1293,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.95),
+                      Colors.white.withValues(alpha: 0.95),
                       Colors.transparent,
                     ],
                   ),
@@ -1227,7 +1328,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1), 
+                              color: Colors.black.withValues(alpha: 0.1), 
                               blurRadius: 15, 
                               offset: const Offset(0, 5),
                             )
@@ -1279,7 +1380,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         child: Row(children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 10),
@@ -1321,7 +1422,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           border: Border.all(
             color: _showHeatmap ? AppColors.primary : AppColors.border,
             width: 1.5),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Icon(
           Icons.layers_rounded,
@@ -1355,7 +1456,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
                         ),
                         child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 24),
                       ),
@@ -1382,7 +1483,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Center(
                     child: Container(
@@ -1421,7 +1522,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Icon(icon, color: const Color(0xFF0F172A), size: 24),
       ),
@@ -1435,7 +1536,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, -4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1477,7 +1578,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: (_isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444)).withOpacity(0.3),
+                        color: (_isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444)).withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -1603,7 +1704,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 10, offset: const Offset(0, 4),
             ),
           ],
@@ -1614,7 +1715,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             Container(
               width: 34, height: 34,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
+                color: Colors.white.withValues(alpha: 0.25),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: Colors.white, size: 18),
@@ -1633,7 +1734,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             Text(
               label,
               style: GoogleFonts.poppins(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: 12,
                 fontWeight: FontWeight.w400,
               ),
@@ -1740,7 +1841,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       decoration: BoxDecoration(
         color: Colors.white,
         border: const Border(top: BorderSide(color: Color(0xFFF1F5F9), width: 1.5)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, -4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, -4))],
       ),
       child: SafeArea(
         top: false,
@@ -1814,7 +1915,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: const Color(0xFF2D8CFF).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+              boxShadow: [BoxShadow(color: const Color(0xFF2D8CFF).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
             ),
             child: Row(children: [
               Container(
@@ -1840,15 +1941,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   const SizedBox(height: 4),
                   Text(
                     '+91 $_userPhone',
-                    style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.8), fontSize: 13, fontWeight: FontWeight.w400),
+                    style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 13, fontWeight: FontWeight.w400),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.verified_rounded, color: Colors.white, size: 14),
@@ -1916,9 +2017,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3), width: 1.5),
+                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 1.5),
                   boxShadow: [
-                    BoxShadow(color: const Color(0xFFEF4444).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                    BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -1958,8 +2059,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
-          splashColor: const Color(0xFF2D8CFF).withOpacity(0.05),
-          highlightColor: const Color(0xFF2D8CFF).withOpacity(0.05),
+          splashColor: const Color(0xFF2D8CFF).withValues(alpha: 0.05),
+          highlightColor: const Color(0xFF2D8CFF).withValues(alpha: 0.05),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
@@ -1987,7 +2088,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.1),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -2136,7 +2237,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20)],
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2146,9 +2247,9 @@ class _InlineTripsViewState extends State<InlineTripsView> {
             Container(
               width: 56, height: 56,
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
+                color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: statusColor.withOpacity(0.2)),
+                border: Border.all(color: statusColor.withValues(alpha: 0.2)),
               ),
               child: Icon(type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded, color: statusColor, size: 28),
             ),
@@ -2160,7 +2261,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
             ])),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
               child: Text(_statusLabel(status), style: GoogleFonts.poppins(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
             ),
           ]),
@@ -2201,7 +2302,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
 
   Widget _detailRow(IconData icon, String label, String value, Color color) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
+      Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
       const SizedBox(width: 14),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: GoogleFonts.poppins(color: AppColors.textTertiary, fontSize: 11, fontWeight: FontWeight.w500)),
@@ -2230,7 +2331,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: bgColor.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 5))],
+          boxShadow: [BoxShadow(color: bgColor.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 5))],
         ),
         child: Column(
           children: [
@@ -2242,7 +2343,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
             const SizedBox(height: 10),
             Text(value, style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
             const SizedBox(height: 2),
-            Text(title, style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 10, fontWeight: FontWeight.w600)),
+            Text(title, style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 10, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -2284,7 +2385,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
                               color: Colors.white,
                               shape: BoxShape.circle,
                               border: Border.all(color: AppColors.border),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)],
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10)],
                             ),
                             child: const Icon(Icons.refresh_rounded, color: AppColors.textPrimary, size: 20),
                           ),
@@ -2353,7 +2454,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.border, width: 1.2),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15, offset: const Offset(0, 5))],
         ),
         child: Column(
           children: [
@@ -2361,7 +2462,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: Icon(type == 'parcel' ? Icons.inventory_2_rounded : Icons.route_rounded, color: statusColor, size: 16),
                 ),
                 const SizedBox(width: 12),
@@ -2446,7 +2547,7 @@ class _InlineTripsViewState extends State<InlineTripsView> {
           decoration: BoxDecoration(
             color: active ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 2))] : [],
+            boxShadow: active ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 2))] : [],
           ),
           child: Text(label, style: GoogleFonts.poppins(color: active ? AppColors.textPrimary : AppColors.textTertiary, fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
         ),
@@ -2549,7 +2650,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [BoxShadow(color: const Color(0xFF3B82F6).withOpacity(0.35), blurRadius: 20, offset: const Offset(0, 10))],
+                boxShadow: [BoxShadow(color: const Color(0xFF3B82F6).withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 10))],
               ),
               child: Column(
                 children: [
@@ -2557,7 +2658,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Net Earnings', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 13, fontWeight: FontWeight.w500)),
+                        Text('Net Earnings', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 4),
                         Text(
                           '₹${net.toStringAsFixed(2)}',
@@ -2566,7 +2667,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                       ]),
                       Container(
                         width: 60, height: 60,
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.4))),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.4))),
                         child: const Icon(Icons.trending_up_rounded, color: Colors.white, size: 30),
                       ),
                     ],
@@ -2575,7 +2676,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                   // Period tabs
                   Container(
                     padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
                     child: Row(
                       children: _tabs.map((t) {
                         final active = _period == t['value'];
@@ -2588,7 +2689,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                               decoration: BoxDecoration(
                                 color: active ? Colors.white : Colors.transparent,
                                 borderRadius: BorderRadius.circular(11),
-                                boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)] : [],
+                                boxShadow: active ? [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)] : [],
                               ),
                               child: Text(t['label']!, textAlign: TextAlign.center,
                                 style: GoogleFonts.poppins(
@@ -2638,7 +2739,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(22),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
                         ),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -2687,7 +2788,7 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
                                               end: Alignment.topCenter,
                                             ),
                                             borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                                            boxShadow: isToday ? [BoxShadow(color: const Color(0xFF3B82F6).withOpacity(0.3), blurRadius: 6)] : [],
+                                            boxShadow: isToday ? [BoxShadow(color: const Color(0xFF3B82F6).withValues(alpha: 0.3), blurRadius: 6)] : [],
                                           ),
                                         ),
                                         const SizedBox(height: 8),
@@ -2718,18 +2819,18 @@ class _InlineEarningsViewState extends State<InlineEarningsView>
         decoration: BoxDecoration(
           color: color, // fully solid vibrant background
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 6))],
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 6))],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.25), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle),
             child: Icon(icon, color: Colors.white, size: 16),
           ),
           const SizedBox(height: 8),
           Text(value, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
-          Text(label, style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.9), fontSize: 10, fontWeight: FontWeight.w600)),
+          Text(label, style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.9), fontSize: 10, fontWeight: FontWeight.w600)),
         ]),
       ),
     );
@@ -2869,7 +2970,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                     decoration: BoxDecoration(
                       color: (!isCustom && selectedAmount == amt) ? const Color(0xFF2D8CFF) : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(26),
-                      boxShadow: (!isCustom && selectedAmount == amt) ? [BoxShadow(color: const Color(0xFF2D8CFF).withOpacity(0.3), blurRadius: 8)] : [],
+                      boxShadow: (!isCustom && selectedAmount == amt) ? [BoxShadow(color: const Color(0xFF2D8CFF).withValues(alpha: 0.3), blurRadius: 8)] : [],
                     ),
                     child: Text('₹${amt.toInt()}', style: GoogleFonts.poppins(color: (!isCustom && selectedAmount == amt) ? Colors.white : const Color(0xFF64748B), fontWeight: FontWeight.w600, fontSize: 15)),
                   ),
@@ -2914,7 +3015,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(colors: [Color(0xFF2D8CFF), Color(0xFF1E40AF)]),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: const Color(0xFF2D8CFF).withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 6))],
+                  boxShadow: [BoxShadow(color: const Color(0xFF2D8CFF).withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 6))],
                 ),
                 child: Center(child: Text('Pay ₹${selectedAmount.toInt()} via Razorpay', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15))),
               ),
@@ -2947,20 +3048,20 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: const Color(0xFF10B981).withOpacity(0.35), blurRadius: 18, offset: const Offset(0, 8))],
+              boxShadow: [BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
             ),
             child: Column(children: [
               // Top row: icon + balance
               Row(children: [
                 Container(
                   width: 52, height: 52,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.4))),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.4))),
                   child: Icon(isLocked ? Icons.lock_rounded : Icons.account_balance_wallet_rounded, color: Colors.white, size: 26),
                 ),
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(isLocked ? 'Account Locked' : 'Available Balance',
-                    style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.85), fontSize: 12, fontWeight: FontWeight.w500)),
+                    style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w500)),
                   Text('₹${balance.toStringAsFixed(2)}',
                     style: GoogleFonts.poppins(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.1)),
                 ])),
@@ -2968,7 +3069,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                   onTap: () { setState(() => _loading = true); _fetchWallet(); },
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
                     child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
                   ),
                 ),
@@ -2981,7 +3082,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                     onTap: _showRechargeSheet,
                     child: Container(
                       height: 42,
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6)]),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6)]),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         const Icon(Icons.add_circle_rounded, color: Color(0xFF10B981), size: 18),
                         const SizedBox(width: 6),
@@ -2995,7 +3096,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                   Expanded(
                     child: Container(
                       height: 42,
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.5))),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.5))),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
                         const SizedBox(width: 6),
@@ -3009,7 +3110,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                   child: Row(children: [
                     const Icon(Icons.info_outline_rounded, color: Colors.white, size: 14),
                     const SizedBox(width: 7),
@@ -3040,7 +3141,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
               decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(16)),
               child: TabBar(
                 controller: _tabController,
-                indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)]),
+                indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)]),
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 labelColor: const Color(0xFF0F172A),
@@ -3092,11 +3193,11 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.15)),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 3))],
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
         ),
         child: Column(children: [
-          Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 14)),
+          Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 14)),
           const SizedBox(height: 6),
           Text(value, style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w700)),
           Text(label, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 9.5, fontWeight: FontWeight.w500)),
@@ -3114,9 +3215,9 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 6)]),
       child: Row(children: [
-        Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
+        Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(txn['description'] ?? txn['type'] ?? 'Transaction', style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600)),
@@ -3136,7 +3237,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
       child: Row(children: [
-        Container(width: 40, height: 40, decoration: BoxDecoration(color: statusColor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(Icons.account_balance_rounded, color: statusColor, size: 18)),
+        Container(width: 40, height: 40, decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(Icons.account_balance_rounded, color: statusColor, size: 18)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('₹${amt.toStringAsFixed(2)} Withdrawal', style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600)),
@@ -3144,7 +3245,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
           child: Text(status.toUpperCase(), style: GoogleFonts.poppins(color: statusColor, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
         ),
       ]),
@@ -3156,7 +3257,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
       child: Padding(
         padding: const EdgeInsets.all(40),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(width: 80, height: 80, decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle, border: Border.all(color: color.withOpacity(0.2))),
+          Container(width: 80, height: 80, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle, border: Border.all(color: color.withValues(alpha: 0.2))),
             child: Icon(icon, color: color, size: 36)),
           const SizedBox(height: 20),
           Text(title, style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.w700)),
@@ -3223,7 +3324,7 @@ class _InlineRatingsViewState extends State<InlineRatingsView> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF2D8CFF).withOpacity(0.3),
+                      color: const Color(0xFF2D8CFF).withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     )
@@ -3232,7 +3333,7 @@ class _InlineRatingsViewState extends State<InlineRatingsView> {
                 child: Column(children: [
                   Text(
                     'Overall Rating',
-                    style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.9), fontSize: 14, fontWeight: FontWeight.w500),
+                    style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -3242,7 +3343,7 @@ class _InlineRatingsViewState extends State<InlineRatingsView> {
                     ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8, left: 4),
-                      child: Text('/ 5.0', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.8), fontSize: 18, fontWeight: FontWeight.w600)),
+                      child: Text('/ 5.0', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.w600)),
                     ),
                   ]),
                   const SizedBox(height: 12),
@@ -3313,7 +3414,7 @@ class _InlineRatingsViewState extends State<InlineRatingsView> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

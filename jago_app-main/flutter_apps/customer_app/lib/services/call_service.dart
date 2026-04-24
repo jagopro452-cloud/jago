@@ -35,6 +35,7 @@ class CallService {
   /// Initialize call service and attach socket listeners.
   void init() {
     if (_subs.isNotEmpty) return;
+    _subs.add(_socket.onCallIncoming.listen(_handleIncoming));
     _subs.add(_socket.onCallOffer.listen(_handleOffer));
     _subs.add(_socket.onCallAnswer.listen(_handleAnswer));
     _subs.add(_socket.onCallIce.listen(_handleIce));
@@ -61,11 +62,13 @@ class CallService {
       callerName: callerName,
     );
 
-    // For audio-only, we just need to notify ready
-    // No need to create peer connection
+    // For audio-only/relay, we also send a dummy offer to trigger state on other end
+    _socket.sendCallOffer(
+      targetUserId: targetUserId,
+      sdp: {'type': 'offer', 'audio': true},
+    );
+
     _callStartTime = DateTime.now();
-    await Future.delayed(const Duration(milliseconds: 500));
-    _setState(CallState.connected);
   }
 
   /// Accept an incoming call.
@@ -73,6 +76,13 @@ class CallService {
     required String callerId,
     required String tripId,
   }) async {
+    // If state is idle but we have a callerId, force it to incoming to allow answering
+    if (_state == CallState.idle && callerId.isNotEmpty) {
+      activeCallTargetId = callerId;
+      activeCallTripId = tripId;
+      _setState(CallState.incoming);
+    }
+    
     if (_state != CallState.incoming) return;
     _isCaller = false;
     activeCallTargetId = callerId;
@@ -135,9 +145,17 @@ class CallService {
 
   // ── Private handlers ───────────────────────────────────────────────────────
 
+  void _handleIncoming(Map<String, dynamic> data) {
+    if (_state == CallState.connected || _state == CallState.outgoing) return;
+    activeCallTargetId = (data['callerId'] ?? data['senderId'] ?? data['userId'])?.toString();
+    activeCallTripId = data['tripId']?.toString();
+    _setState(CallState.incoming);
+  }
+
   Future<void> _handleOffer(Map<String, dynamic> data) async {
     if (_state == CallState.connected || _state == CallState.outgoing) return;
     activeCallTargetId = data['callerId']?.toString();
+    activeCallTripId = data['tripId']?.toString();
     // Show incoming call UI
     _setState(CallState.incoming);
   }

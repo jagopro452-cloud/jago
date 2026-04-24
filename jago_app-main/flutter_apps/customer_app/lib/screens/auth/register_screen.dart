@@ -193,11 +193,11 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
-                      color: _loading ? _blue.withOpacity(0.4) : null,
+                      color: _loading ? _blue.withValues(alpha: 0.4) : null,
                       borderRadius: BorderRadius.circular(18),
                       boxShadow: _loading ? [] : [
                         BoxShadow(
-                          color: _blue.withOpacity(0.4),
+                          color: _blue.withValues(alpha: 0.4),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),

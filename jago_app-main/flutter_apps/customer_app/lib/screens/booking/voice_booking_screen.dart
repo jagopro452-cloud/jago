@@ -754,7 +754,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
           builder: (_, __) {
             final scale = _isListening ? 1.0 + _pulseCtrl.value * 0.08 : 1.0;
             final glow = BoxShadow(
-              color: micColor.withOpacity(_isListening ? 0.35 + 0.15 * _pulseCtrl.value : 0.2),
+              color: micColor.withValues(alpha: _isListening ? 0.35 + 0.15 * _pulseCtrl.value : 0.2),
               blurRadius: _isListening ? 32 + 12 * _pulseCtrl.value : 16,
               spreadRadius: _isListening ? 4 : 0,
             );
@@ -766,9 +766,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: _awaitingConfirmation
-                        ? [JT.success, JT.success.withOpacity(0.8)]
+                        ? [JT.success, JT.success.withValues(alpha: 0.8)]
                         : _isListening
-                            ? [JT.error, JT.error.withOpacity(0.8)]
+                            ? [JT.error, JT.error.withValues(alpha: 0.8)]
                             : [JT.primary, const Color(0xFF4FA9FF)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -836,9 +836,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     return Center(child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Text(label, style: GoogleFonts.poppins(
           color: color, fontWeight: FontWeight.w500, fontSize: 13)),
@@ -882,9 +882,9 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
             builder: (_, __) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: JT.success.withOpacity(0.08 + 0.04 * _pulseCtrl.value),
+                color: JT.success.withValues(alpha: 0.08 + 0.04 * _pulseCtrl.value),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: JT.success.withOpacity(0.25)),
+                border: Border.all(color: JT.success.withValues(alpha: 0.25)),
               ),
               child: Row(children: [
                 Container(
@@ -892,7 +892,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: JT.success,
-                    boxShadow: [BoxShadow(color: JT.success.withOpacity(0.5 + _pulseCtrl.value * 0.3), blurRadius: 6)],
+                    boxShadow: [BoxShadow(color: JT.success.withValues(alpha: 0.5 + _pulseCtrl.value * 0.3), blurRadius: 6)],
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -936,7 +936,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: isSelected ? JT.primary.withOpacity(0.06) : JT.surface,
+              color: isSelected ? JT.primary.withValues(alpha: 0.06) : JT.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: isSelected ? JT.primary : JT.border, width: isSelected ? 2 : 1),
               boxShadow: isSelected ? JT.btnShadow : JT.cardShadow,
@@ -945,7 +945,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
               Container(
                 width: 44, height: 44,
                 decoration: BoxDecoration(
-                  color: isSelected ? JT.primary.withOpacity(0.12) : JT.bgSoft,
+                  color: isSelected ? JT.primary.withValues(alpha: 0.12) : JT.bgSoft,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(_iconForVehicle(name),

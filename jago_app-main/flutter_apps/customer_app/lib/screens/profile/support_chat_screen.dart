@@ -118,14 +118,14 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
             margin: EdgeInsets.all(JT.spacing16),
             padding: EdgeInsets.all(JT.spacing16),
             decoration: BoxDecoration(
-              color: _blue.withOpacity(0.07),
+              color: _blue.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(JT.radiusLg),
-              border: Border.all(color: _blue.withOpacity(0.2)),
+              border: Border.all(color: _blue.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
               Container(
                 padding: EdgeInsets.all(JT.spacing8 + 2),
-                decoration: BoxDecoration(color: _blue.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: _blue.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: Icon(Icons.support_agent, color: _blue, size: 28),
               ),
               SizedBox(width: JT.spacing12),

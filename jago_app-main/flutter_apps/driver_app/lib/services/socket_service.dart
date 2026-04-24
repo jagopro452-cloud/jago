@@ -226,9 +226,13 @@ class SocketService {
     });
   }
 
-  /// Call when driver enters/exits a trip so socket can rejoin room on reconnect
+  /// Call when driver enters/exits a trip so socket can rejoin room on reconnect.
+  /// Also joins the room immediately if connected.
   void setActiveTrip(String? tripId) {
     _activeTripId = tripId;
+    if (tripId != null && _isConnected && _socket != null) {
+      _socket!.emit('driver:rejoin_trip', {'tripId': tripId});
+    }
   }
 
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {

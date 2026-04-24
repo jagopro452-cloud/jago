@@ -189,7 +189,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(
         padding: EdgeInsets.all(JT.spacing24),
-        decoration: BoxDecoration(color: JT.primary.withOpacity(0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: JT.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
         child: Icon(Icons.search, size: 64, color: JT.primary),
       ),
       SizedBox(height: JT.spacing16),
@@ -217,7 +217,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
             Expanded(child: Text(r['description'] ?? '', style: JT.bodyPrimary, maxLines: 2, overflow: TextOverflow.ellipsis)),
             Container(
               padding: EdgeInsets.symmetric(horizontal: JT.spacing8 + 2, vertical: JT.spacing4),
-              decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(JT.radiusXl)),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(JT.radiusXl)),
               child: Text(status.toUpperCase(), style: JT.caption.copyWith(color: statusColor, fontWeight: FontWeight.w500, fontSize: 11)),
             ),
           ]),

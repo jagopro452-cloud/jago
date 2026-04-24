@@ -511,7 +511,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 12, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -543,7 +543,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 12, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -599,7 +599,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: ListView.separated(
         shrinkWrap: true,
@@ -612,7 +612,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
             leading: Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.1),
+                color: JT.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.location_on_outlined, color: JT.primary, size: 20),
@@ -665,7 +665,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.1),
+                  color: JT.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.location_on_rounded, color: JT.primary, size: 22),

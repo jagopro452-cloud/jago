@@ -239,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Shadow
     final shadowPaint = Paint()
-      ..color = bg.withOpacity(0.35)
+      ..color = bg.withValues(alpha: 0.35)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
     canvas.drawCircle(
         const Offset(size / 2, size / 2 + 2), size / 2 - 6, shadowPaint);
@@ -499,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.75),
+      barrierColor: Colors.black.withValues(alpha: 0.75),
       builder: (ctx) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(20),
@@ -532,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     fontSize: 18)),
                             Text('Here\'s a quick guide to get you started',
                                 style: GoogleFonts.poppins(
-                                    color: Colors.white.withOpacity(0.85),
+                                    color: Colors.white.withValues(alpha: 0.85),
                                     fontSize: 12)),
                           ]),
                     ),
@@ -1666,7 +1666,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 12,
                 offset: const Offset(0, 4)),
           ],
@@ -1684,7 +1684,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 18,
               offset: const Offset(0, -4)),
         ],
@@ -1897,7 +1897,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                          color: JT.primaryDark.withOpacity(0.26),
+                          color: JT.primaryDark.withValues(alpha: 0.26),
                           blurRadius: 4)
                     ],
                   ),
@@ -2017,7 +2017,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 12,
                     offset: const Offset(0, 3)),
               ],
@@ -2072,7 +2072,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           width: 10, height: 10,
                           child: CircularProgressIndicator(
                               strokeWidth: 1.5,
-                              color: JT.primary.withOpacity(0.5)),
+                              color: JT.primary.withValues(alpha: 0.5)),
                         ),
                         const SizedBox(width: 5),
                         Text('Detecting location...',
@@ -2117,12 +2117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ── FEATURED SERVICES — RIDE + PARCEL (admin-controlled) ────────────────
   // Only shows cards for services that have active vehicle categories in DB.
   Widget _buildFeaturedGrid(bool isDark) {
-    final hasRide =
-        _vehicleCategories.any((v) => v['type']?.toString() == 'ride');
-    final hasParcel =
-        _vehicleCategories.any((v) => v['type']?.toString() == 'parcel');
-
-    if (!hasRide && !hasParcel) {
+    if (_vehicleCategories.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2145,48 +2140,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.08),
+                  color: JT.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(22),
                 ),
                 child: const Icon(Icons.wifi_tethering_error_rounded,
                     color: JT.primary, size: 34),
               ),
               const SizedBox(height: 14),
-              Text('Could not load services',
+              Text('Services Unavailable',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                       color: JT.textPrimary)),
               const SizedBox(height: 6),
-              Text('Check your connection and tap retry',
+              Text('We are currently setting up in your area',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                       fontSize: 12, color: JT.textSecondary, height: 1.4)),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  setState(() => _homeLoading = true);
-                  await Future.wait([_fetchHome(), _fetchActiveServices()]);
-                },
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: Text('Retry',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w400)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: JT.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(140, 50),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
             ]),
           ),
         ]),
       );
     }
+
+    final rideCats = _vehicleCategories.where((v) => v['type']?.toString() == 'ride').toList();
+    final parcelCats = _vehicleCategories.where((v) => v['type']?.toString() == 'parcel' || v['type']?.toString() == 'cargo').toList();
+    
+    final isRideActive = rideCats.any((v) => v['isActive'] == true);
+    final isParcelActive = parcelCats.any((v) => v['isActive'] == true);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -2198,8 +2180,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 color: JT.textPrimary)),
         const SizedBox(height: 14),
         Row(children: [
-          // ── Ride card — only if admin has active ride vehicles ──
-          if (hasRide)
+          // ── Ride card — reflect admin toggle ──
+          if (rideCats.isNotEmpty)
             Expanded(
                 child: _buildServiceCard(
               imageUrl: 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/auto.png',
@@ -2207,6 +2189,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'Ride',
               subtitle: 'Bike · Auto · Car',
               accent: const Color(0xFF2563EB),
+              isActive: isRideActive,
               onTap: () {
                 HapticFeedback.selectionClick();
                 Navigator.push(
@@ -2221,9 +2204,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             )));
               },
             )),
-          if (hasRide && hasParcel) const SizedBox(width: 14),
-          // ── Parcel card — only if admin has active parcel vehicles ──
-          if (hasParcel)
+          if (rideCats.isNotEmpty && parcelCats.isNotEmpty) const SizedBox(width: 14),
+          // ── Parcel card — reflect admin toggle ──
+          if (parcelCats.isNotEmpty)
             Expanded(
                 child: _buildServiceCard(
               imageUrl: 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_bike.png',
@@ -2231,6 +2214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'Parcel',
               subtitle: 'Bike · Truck · Van',
               accent: const Color(0xFF059669),
+              isActive: isParcelActive,
               onTap: () {
                 HapticFeedback.selectionClick();
                 Navigator.push(
@@ -2257,18 +2241,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required String subtitle,
     required Color accent,
     required VoidCallback onTap,
+    bool isActive = true,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isActive ? onTap : () {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$title service is currently under maintenance or unavailable in your area.'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ));
+      },
       child: Container(
         height: 158,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: accent.withOpacity(0.12), width: 1),
+          border: Border.all(color: isActive ? accent.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.2), width: 1),
           boxShadow: [
-            BoxShadow(color: accent.withOpacity(0.10), blurRadius: 20, offset: const Offset(0, 8)),
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
+            if (isActive) BoxShadow(color: accent.withValues(alpha: 0.10), blurRadius: 20, offset: const Offset(0, 8)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2)),
           ],
         ),
         child: ClipRRect(
@@ -2277,9 +2269,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Subtle tinted background
             Positioned.fill(
               child: Container(
+                foregroundDecoration: !isActive ? const BoxDecoration(color: Colors.white60, backgroundBlendMode: BlendMode.saturation) : null,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.white, accent.withOpacity(0.04)],
+                    colors: [Colors.white, isActive ? accent.withValues(alpha: 0.04) : Colors.grey.withValues(alpha: 0.05)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -2290,16 +2283,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Positioned(
               right: -6,
               bottom: -4,
-              child: SizedBox(
-                width: 118,
-                height: 118,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    fallbackIcon,
-                    size: 88,
-                    color: accent.withOpacity(0.10),
+              child: Opacity(
+                opacity: isActive ? 1.0 : 0.4,
+                child: SizedBox(
+                  width: 118,
+                  height: 118,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      fallbackIcon,
+                      size: 88,
+                      color: accent.withValues(alpha: 0.10),
+                    ),
                   ),
                 ),
               ),
@@ -2314,7 +2310,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(0.10),
+                      color: accent.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -2344,7 +2340,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [accent, accent.withOpacity(0.80)],
+                        colors: [accent, accent.withValues(alpha: 0.80)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -2409,7 +2405,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           border: Border.all(color: const Color(0xFFDCE7F5)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 16,
                 offset: const Offset(0, 5))
           ],
@@ -2427,16 +2423,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Icon(iconData,
                             size: 72,
-                            color: Colors.white.withOpacity(0.1))))
+                            color: Colors.white.withValues(alpha: 0.1))))
                 : Icon(iconData,
-                    size: 72, color: gradColors.first.withOpacity(0.08)),
+                    size: 72, color: gradColors.first.withValues(alpha: 0.08)),
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: gradColors.first.withOpacity(0.10),
+                color: gradColors.first.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(iconData, size: 19, color: gradColors.first),
@@ -2485,7 +2481,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           border: Border.all(color: const Color(0xFFDCE7F5)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 18,
                 offset: const Offset(0, 6))
           ],
@@ -2495,13 +2491,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               right: -10,
               top: -10,
               child: Icon(icon,
-                  size: 90, color: gradient.first.withOpacity(0.08))),
+                  size: 90, color: gradient.first.withValues(alpha: 0.08))),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: gradient.first.withOpacity(0.10),
+                color: gradient.first.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(icon, size: 20, color: gradient.first),
@@ -2621,10 +2617,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.10),
+                      color: color.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                          color: color.withOpacity(0.25), width: 1.5),
+                          color: color.withValues(alpha: 0.25), width: 1.5),
                     ),
                     child: Icon(icon, color: color, size: 26),
                   ),
@@ -2695,7 +2691,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               decoration: BoxDecoration(
                                 color: _bannerIndex == i
                                     ? JT.primary
-                                    : JT.primary.withOpacity(0.3),
+                                    : JT.primary.withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                             ))),
@@ -2767,7 +2763,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ])),
         Icon(Icons.directions_car_filled_rounded,
-            size: 72, color: JT.primary.withOpacity(0.12)),
+            size: 72, color: JT.primary.withValues(alpha: 0.12)),
       ]),
     );
   }
@@ -2934,10 +2930,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: bannerColor.withOpacity(0.20)),
+        border: Border.all(color: bannerColor.withValues(alpha: 0.20)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 16,
               offset: const Offset(0, 4))
         ],
@@ -2947,7 +2943,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-              color: bannerColor.withOpacity(0.10),
+              color: bannerColor.withValues(alpha: 0.10),
               shape: BoxShape.circle),
           child: Icon(
               isSearching ? Icons.search_rounded : Icons.navigation_rounded,
@@ -3024,7 +3020,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: JT.primaryDark.withOpacity(0.08),
+                color: JT.primaryDark.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('Cancel',
@@ -3046,7 +3042,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: JT.primary.withOpacity(0.10),
+                color: JT.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('Track →',
@@ -3739,7 +3735,7 @@ class _AllServicesSheet extends StatelessWidget {
               border: Border.all(color: const Color(0xFFDCE9FF)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),

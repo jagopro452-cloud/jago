@@ -241,7 +241,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [JT.primary, Color(0xFF56CCF2)]),
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [BoxShadow(color: _blue.withOpacity(0.4), blurRadius: 20, spreadRadius: 2)],
+                boxShadow: [BoxShadow(color: _blue.withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 2)],
               ),
               child: Center(
                 child: _spinning
@@ -255,7 +255,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Row(mainAxisSize: MainAxisSize.min, children: [
@@ -276,9 +276,9 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Ela Ga?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15)),
@@ -326,7 +326,7 @@ class _WheelPainter extends CustomPainter {
 
       // Draw border
       final borderPaint = Paint()
-        ..color = Colors.white.withOpacity(0.15)
+        ..color = Colors.white.withValues(alpha: 0.15)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5;
       canvas.drawArc(Rect.fromCircle(center: center, radius: radius),

@@ -52,6 +52,11 @@ class _CallScreenState extends State<CallScreen> {
       _state = CallState.incoming;
     } else {
       _state = CallState.outgoing;
+      _callService.startCall(
+        targetUserId: widget.targetUserId,
+        tripId: widget.tripId,
+        callerName: 'Pilot',
+      );
     }
   }
 
@@ -106,7 +111,7 @@ class _CallScreenState extends State<CallScreen> {
               width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF2F7BFF).withOpacity(0.2),
+                color: const Color(0xFF2F7BFF).withValues(alpha: 0.2),
                 border: Border.all(color: const Color(0xFF2F7BFF), width: 3),
               ),
               child: const Icon(Icons.person, size: 50, color: Color(0xFF2F7BFF)),

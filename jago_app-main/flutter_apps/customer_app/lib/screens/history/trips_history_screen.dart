@@ -164,7 +164,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.1),
+                  color: JT.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.receipt_long_rounded,
@@ -188,7 +188,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: JT.primary.withOpacity(0.1),
+                  color: JT.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('PAID',
@@ -366,7 +366,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                                color: _blue.withOpacity(0.35),
+                                color: _blue.withValues(alpha: 0.35),
                                 blurRadius: 14,
                                 offset: const Offset(0, 6))
                           ],
@@ -400,9 +400,9 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
         Icon(icon, color: color, size: 15),
@@ -623,7 +623,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
           color: active ? _blue : Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: active ? _blue : const Color(0xFFE2E8F0)),
-          boxShadow: active ? [BoxShadow(color: _blue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
+          boxShadow: active ? [BoxShadow(color: _blue.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
         ),
         child: Text(
           label,
@@ -755,7 +755,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: const Color(0xFF0F172A).withOpacity(0.04),
+              color: const Color(0xFF0F172A).withValues(alpha: 0.04),
               blurRadius: 16,
               offset: const Offset(0, 4))
         ],
@@ -771,7 +771,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
+                color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
@@ -874,7 +874,7 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(statusLabel,

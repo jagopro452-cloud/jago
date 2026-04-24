@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
-import { notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
+import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
 import { notifyNearbyDriversNewTrip, io } from "./socket";
 import type { Server } from "http";
@@ -21,7 +21,7 @@ const rawSql = sql;
 import bcrypt from "bcryptjs";
 import { hashPassword, verifyPassword } from "./utils/crypto";
 import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
-import { getConf, getConfAny } from "./config-db";
+import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
   initAiTables,
@@ -948,6 +948,45 @@ async function ensureOperationalSchema() {
         END
       WHERE user_type = 'driver' AND verification_status = 'approved' AND onboard_date IS NULL;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS completed_rides_count INTEGER NOT NULL DEFAULT 0;
+
+      -- Dynamic Platform Services Table
+      CREATE TABLE IF NOT EXISTS platform_services (
+        id SERIAL PRIMARY KEY,
+        service_key VARCHAR(100) UNIQUE NOT NULL,
+        service_name VARCHAR(255) NOT NULL,
+        service_status VARCHAR(50) DEFAULT 'active',
+        revenue_model VARCHAR(50) DEFAULT 'commission',
+        commission_rate NUMERIC(10,2) DEFAULT 15,
+        icon VARCHAR(100),
+        color VARCHAR(100),
+        description TEXT,
+        short_description TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        eta_label VARCHAR(50) DEFAULT '',
+        service_category VARCHAR(50) DEFAULT 'rides',
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Seed defaults if table is empty
+    const { rows: existingSvcs } = await rawDb.execute(rawSql`SELECT COUNT(*)::int FROM platform_services`);
+    if (parseInt((existingSvcs[0] as any).count) === 0) {
+      await rawDb.execute(rawSql`
+        INSERT INTO platform_services (service_key, service_name, service_status, revenue_model, commission_rate, sort_order, icon, color, service_category)
+        VALUES 
+          ('bike_ride', 'Bike Ride', 'active', 'commission', 15.0, 1, '🏍️', '#2F7BFF', 'rides'),
+          ('parcel_delivery', 'Parcel Delivery', 'active', 'commission', 18.0, 2, '📦', '#10B981', 'parcel'),
+          ('auto_ride', 'Auto Ride', 'active', 'commission', 12.0, 3, '🛺', '#F59E0B', 'rides'),
+          ('mini_car', 'Mini Car', 'active', 'commission', 10.0, 4, '🚗', '#2563EB', 'rides'),
+          ('sedan', 'Sedan Car', 'active', 'commission', 10.0, 5, '🚕', '#4F46E5', 'rides'),
+          ('suv', 'SUV Car', 'active', 'commission', 10.0, 6, '🚙', '#7C3AED', 'rides')
+      `);
+    }
+
+    await rawDb.execute(rawSql`
+      ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+      ALTER TABLE trip_fares ADD COLUMN IF NOT EXISTS helper_charge NUMERIC(23,3) DEFAULT 0;
 
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS ride_full_fare NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS user_discount NUMERIC(23,3) DEFAULT 0;
@@ -1969,7 +2008,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool: dbPool } = await import("./db");
       const r = await dbPool.query(
-        "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY','google_maps_api_key') LIMIT 1"
+        "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY') LIMIT 1"
       );
       dbKey = !!(r.rows[0]?.value && String(r.rows[0].value).trim());
     } catch {}
@@ -2021,8 +2060,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dbKey = String((keyR.rows[0] as any)?.value || "").trim();
       } catch {}
 
-      const resolvedKey = envKey || dbKey;
-      const resolvedSource = envKey ? "env" : dbKey ? "db" : null;
+      const resolvedKey = dbKey || envKey;
+      const resolvedSource = dbKey ? "db" : envKey ? "env" : null;
 
       const probeKey = async (apiKey: string) => {
         if (!apiKey) {
@@ -10534,10 +10573,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           vc.minimum_fare  as vc_minimum_fare,
           vc.waiting_charge_per_min as vc_waiting_charge,
           COALESCE(vc.total_seats, 0) as vc_total_seats,
-          COALESCE(vc.is_carpool, false) as vc_is_carpool
+          COALESCE(vc.is_carpool, false) as vc_is_carpool,
+          vc.is_active as is_active
         FROM trip_fares f
         JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
-        WHERE vc.is_active = true
+        WHERE 1=1
         ${vehicleCategoryId ? rawSql`AND f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
         ${category ? rawSql`AND vc.type = ${category}` : rawSql``}
         ORDER BY f.vehicle_category_id, vc.name
@@ -10606,6 +10646,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           estimatedFare: grandTotal,
           fareMin,
           fareMax,
+          isActive: f.isActive === true || f.isActive === 'true',
           minimumFare: +minFare.toFixed(2),
           cancellationFee: +cancelFee.toFixed(2),
           waitingChargePerMin: +waitPerMin.toFixed(2),
@@ -10655,11 +10696,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const dLat = parseFloat(destLat), dLng = parseFloat(destLng);
 
       // Try Google Distance Matrix first
-      const gmapsKey = await getConfAny("GOOGLE_MAPS_API_KEY", [
-        "google_maps_key",
-        "GOOGLE_MAPS_API_KEY",
-        "google_maps_api_key",
-      ]) || "";
+      const gmapsKeyR = await rawDb.execute(rawSql`
+        SELECT value FROM business_settings WHERE key_name='google_maps_api_key' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const gmapsKey = (gmapsKeyR.rows[0] as any)?.value || process.env.GOOGLE_MAPS_API_KEY || '';
 
       let etaMinutes: number;
       let distanceKm: number;
@@ -10842,11 +10882,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let pickupGeo: any = null;
       let destGeo: any = null;
 
-      const apiKey = await getConfAny("GOOGLE_MAPS_API_KEY", [
-        "google_maps_key",
-        "GOOGLE_MAPS_API_KEY",
-        "google_maps_api_key",
-      ]);
+      const apiKey = await getConf("GOOGLE_MAPS_API_KEY", "google_maps_key");
 
       // Check if pickup is current location
       const isCurrentLocation = !parsed.pickup ||
@@ -12824,13 +12860,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM trip_requests WHERE customer_id=${user.id}::uuid AND current_status='completed'
         `),
         rawDb.execute(rawSql`
-          SELECT vc.id, vc.name, vc.type, vc.icon,
+          SELECT vc.id, vc.name, vc.type, vc.icon, vc.is_active,
             MIN(tf.minimum_fare) as minimum_fare, MIN(tf.base_fare) as base_fare,
             MIN(tf.fare_per_km) as fare_per_km, MIN(tf.helper_charge) as helper_charge
           FROM vehicle_categories vc
           LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
-          WHERE vc.is_active = true
-          GROUP BY vc.id, vc.name, vc.type, vc.icon
+          GROUP BY vc.id, vc.name, vc.type, vc.icon, vc.is_active
           ORDER BY CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, vc.name
         `),
         rawDb.execute(rawSql`SELECT * FROM banners WHERE is_active=true ORDER BY created_at DESC LIMIT 6`).catch(() => ({ rows: [] })),
@@ -15468,8 +15503,132 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     }
   }, 2 * 60 * 1000);
 
+  const vehicleControlDefaults = [
+    { key: "bike", name: "Bike", active: true, icon: "bike" },
+    { key: "auto", name: "Auto", active: true, icon: "auto" },
+    { key: "cab", name: "Cab", active: false, icon: "car" },
+    { key: "premium", name: "Premium", active: false, icon: "premium" },
+  ];
+
+  function normalizeVehicleKey(value: string) {
+    const v = String(value || "").trim().toLowerCase();
+    if (v.includes("bike")) return "bike";
+    if (v.includes("auto")) return "auto";
+    if (v.includes("premium")) return "premium";
+    if (v.includes("cab") || v.includes("car") || v.includes("sedan") || v.includes("suv") || v.includes("mini")) return "cab";
+    return v;
+  }
+
+  async function getVehicleControlCollection() {
+    const admin = await getFirebaseAdminAsync();
+    if (!admin) return null;
+    return admin.firestore().collection("vehicle_status");
+  }
+
+  async function ensureVehicleStatusDocs() {
+    const collection = await getVehicleControlCollection();
+    if (!collection) return null;
+    await Promise.all(vehicleControlDefaults.map(async (vehicle) => {
+      const ref = collection.doc(vehicle.key);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        await ref.set({
+          active: vehicle.active,
+          name: vehicle.name,
+          icon: vehicle.icon,
+          updatedAt: new Date(),
+          updatedBy: "system",
+        }, { merge: true });
+      }
+    }));
+    return collection;
+  }
+
+  async function readVehicleStatuses() {
+    const collection = await ensureVehicleStatusDocs();
+    if (!collection) throw new Error("Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_KEY or firebase_service_account.");
+    const snap = await collection.get();
+    const docs = new Map(snap.docs.map((doc: any) => [doc.id, doc.data() || {}]));
+    return vehicleControlDefaults.map((vehicle) => {
+      const data: any = docs.get(vehicle.key) || {};
+      const updatedAt = data.updatedAt?.toDate?.() || data.updated_at?.toDate?.() || data.updatedAt || data.updated_at || null;
+      return {
+        key: vehicle.key,
+        name: String(data.name || vehicle.name),
+        active: typeof data.active === "boolean" ? data.active : vehicle.active,
+        icon: String(data.icon || vehicle.icon),
+        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
+        updatedBy: data.updatedBy || data.updated_by || null,
+      };
+    });
+  }
+
+  app.get("/api/admin/vehicle-status", requireAdminAuth, async (_req, res) => {
+    try {
+      res.json({ vehicles: await readVehicleStatuses() });
+    } catch (e: any) {
+      res.status(503).json({ message: safeErrMsg(e) });
+    }
+  });
+
+  app.get("/api/app/vehicle-status", async (_req, res) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ vehicles: await readVehicleStatuses() });
+    } catch (_e: any) {
+      res.json({
+        vehicles: vehicleControlDefaults.map((v) => ({
+          key: v.key,
+          name: v.name,
+          active: v.active,
+          icon: v.icon,
+          updatedAt: null,
+        })),
+      });
+    }
+  });
+
+  app.patch("/api/admin/vehicle-status/:vehicleKey", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const vehicleKey = normalizeVehicleKey(req.params.vehicleKey);
+      const allowed = vehicleControlDefaults.find((v) => v.key === vehicleKey);
+      if (!allowed) return res.status(400).json({ message: "Invalid vehicle type" });
+      if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });
+
+      const collection = await ensureVehicleStatusDocs();
+      if (!collection) return res.status(503).json({ message: "Firebase Admin is not configured" });
+
+      const active = Boolean(req.body.active);
+      const adminUser = (req as any).adminUser;
+      await collection.doc(vehicleKey).set({
+        active,
+        name: allowed.name,
+        icon: allowed.icon,
+        updatedAt: new Date(),
+        updatedBy: adminUser?.email || adminUser?.name || "admin",
+      }, { merge: true });
+      await collection.doc(vehicleKey).collection("activity_logs").add({
+        message: `Admin changed ${allowed.name} to ${active ? "Active" : "Inactive"}`,
+        active,
+        vehicleKey,
+        vehicleName: allowed.name,
+        adminId: adminUser?.id || null,
+        adminEmail: adminUser?.email || null,
+        createdAt: new Date(),
+      });
+      await logAdminAction("vehicle_status_change", "vehicle_status", vehicleKey, {
+        message: `Admin changed ${allowed.name} to ${active ? "Active" : "Inactive"}`,
+        active,
+      }, adminUser?.email);
+
+      res.json({ success: true, vehicle: (await readVehicleStatuses()).find((v) => v.key === vehicleKey) });
+    } catch (e: any) {
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
+  });
+
   // -- SYSTEM HEALTH CHECK ---------------------------------------------------
-  app.get("/api/admin/system-health", async (_req, res) => {
+  app.get("/api/admin/system-health", requireAdminAuth, async (_req, res) => {
     try {
       const [services, tripStats, parcelStats, driverStats, gstWallet] = await Promise.all([
         rawDb.execute(rawSql`SELECT service_key, service_name, service_status, revenue_model, commission_rate FROM platform_services ORDER BY sort_order ASC`)
@@ -15542,6 +15701,47 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         },
         status: 'ok',
       });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
+  });
+
+  app.post("/api/admin/services/toggle", requireAdminAuth, async (req, res) => {
+    try {
+      const { serviceKey, status } = req.body;
+      if (!serviceKey || !["active", "inactive"].includes(status)) {
+        return res.status(400).json({ message: "Invalid service key or status" });
+      }
+
+      await rawDb.execute(rawSql`
+        UPDATE platform_services 
+        SET service_status = ${status} 
+        WHERE LOWER(service_key) = LOWER(${serviceKey})
+      `);
+
+      // Sync with vehicle categories to reflect in customer app
+      const isActive = status === "active";
+      if (serviceKey === 'bike_ride') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'bike' OR name ILIKE '%bike%'`);
+      } else if (serviceKey === 'parcel_delivery') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE type = 'parcel' OR type = 'cargo'`);
+      } else if (serviceKey === 'auto_ride') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'auto' OR name ILIKE '%auto%'`);
+      } else if (serviceKey === 'mini_car') {
+         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'mini_car' OR name ILIKE '%mini%'`);
+      } else if (serviceKey === 'sedan') {
+         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'sedan' OR name ILIKE '%sedan%'`);
+      } else if (serviceKey === 'suv') {
+         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'suv' OR name ILIKE '%suv%'`);
+      } else if (serviceKey === 'city_pool') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%city%pool%' OR name ILIKE '%car%pool%'`);
+      } else if (serviceKey === 'intercity_pool') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%intercity%'`);
+      } else if (serviceKey === 'outstation_pool') {
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%outstation%'`);
+      }
+
+      await logAdminAction("toggle_service", "platform_services", null, { serviceKey, status }, (req as any).adminUser?.email);
+
+      res.json({ success: true, serviceKey, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
   });
 

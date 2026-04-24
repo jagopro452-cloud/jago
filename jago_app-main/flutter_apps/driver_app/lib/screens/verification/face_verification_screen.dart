@@ -122,7 +122,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
         backgroundColor: JT.textPrimary,
         body: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withOpacity(0.2), shape: BoxShape.circle),
+            Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF16A34A).withValues(alpha: 0.2), shape: BoxShape.circle),
               child: const Icon(Icons.verified_user, color: Color(0xFF22C55E), size: 56)),
             const SizedBox(height: 20),
             const Text('Verified! ✅', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w500)),
@@ -148,9 +148,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F).withOpacity(0.5),
+                color: const Color(0xFF1E3A5F).withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.5)),
+                border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.5)),
               ),
               child: Row(children: [
                 const Icon(Icons.shield_outlined, color: Color(0xFF3B82F6), size: 22),
@@ -216,7 +216,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen> with Si
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: const Color(0xFF3B82F6), width: 3),
-                  color: const Color(0xFF2563EB).withOpacity(0.2),
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.2),
                 ),
                 child: Center(
                   child: Container(

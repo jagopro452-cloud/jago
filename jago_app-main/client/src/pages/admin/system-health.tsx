@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import AdminLayout from "./layout";
+import { useToast } from "@/hooks/use-toast";
 
 interface HealthData {
   timestamp: string;
@@ -37,6 +39,15 @@ interface HealthData {
   };
 }
 
+interface VehicleStatus {
+  key: "bike" | "auto" | "cab" | "premium";
+  name: string;
+  active: boolean;
+  icon: string;
+  updatedAt: string | null;
+  updatedBy?: string | null;
+}
+
 const SERVICE_ICONS: Record<string, string> = {
   bike_ride:       "🏍️",
   auto_ride:       "🛺",
@@ -47,6 +58,20 @@ const SERVICE_ICONS: Record<string, string> = {
   intercity_pool:  "🛣️",
   outstation_pool: "🗺️",
   parcel_delivery: "📦",
+};
+
+const VEHICLE_ICONS: Record<string, string> = {
+  bike: "🏍️",
+  auto: "🛺",
+  cab: "🚗",
+  premium: "✨",
+};
+
+const VEHICLE_COLORS: Record<string, string> = {
+  bike: "#2563EB",
+  auto: "#F59E0B",
+  cab: "#10B981",
+  premium: "#111827",
 };
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
@@ -85,6 +110,7 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
 
 export default function SystemHealthPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const { toast } = useToast();
 
   const { data, isLoading, error, refetch, dataUpdatedAt } = useQuery<HealthData>({
     queryKey: ["/api/admin/system-health"],
@@ -94,6 +120,59 @@ export default function SystemHealthPage() {
     }).then(d => (d && !d.message && !d.error) ? d : (() => { throw new Error("Invalid health data"); })()),
     refetchInterval: autoRefresh ? 15000 : false,
   });
+
+  const {
+    data: vehicleData,
+    isLoading: vehiclesLoading,
+    error: vehiclesError,
+    refetch: refetchVehicles,
+  } = useQuery<{ vehicles: VehicleStatus[] }>({
+    queryKey: ["/api/admin/vehicle-status"],
+    queryFn: () => fetch("/api/admin/vehicle-status").then(r => {
+      if (!r.ok) throw new Error("Vehicle status unavailable");
+      return r.json();
+    }),
+    refetchInterval: 5000,
+  });
+
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
+
+  const toggleService = async (serviceKey: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "inactive" : "active";
+    if (!confirm(`Are you sure you want to ${newStatus === "active" ? "ACTIVATE" : "INACTIVATE"} ${serviceKey.replace('_', ' ')}?`)) return;
+    
+    setToggling(serviceKey);
+    try {
+      await apiRequest("POST", "/api/admin/services/toggle", { serviceKey, status: newStatus });
+      await refetch();
+    } catch (e: any) {
+      alert("Action Failed: " + e.message);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const toggleVehicle = async (vehicle: VehicleStatus) => {
+    const active = !vehicle.active;
+    setVehicleToggling(vehicle.key);
+    try {
+      await apiRequest("PATCH", `/api/admin/vehicle-status/${vehicle.key}`, { active });
+      await refetchVehicles();
+      toast({
+        title: "Vehicle availability updated",
+        description: `${vehicle.name} is now ${active ? "Active" : "Inactive"}. Customer and driver apps sync live.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Update failed",
+        description: e.message || "Could not update vehicle status",
+        variant: "destructive",
+      });
+    } finally {
+      setVehicleToggling(null);
+    }
+  };
 
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -173,31 +252,172 @@ export default function SystemHealthPage() {
                   {isOk && !hasStaleTrips ? "All Systems Operational" : hasStaleTrips ? "Warning: Stale searching trips detected" : "System Error Detected"}
                 </div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
-                  Bike Ride + Parcel Delivery active · Subscription gate enforced · Commission model active
+                  Live Platform Control active · Individual service toggles enabled · Real-time Flutter sync
+                </div>
+              </div>
+            </div>
+
+            {/* Vehicle Control Management */}
+            <div style={{
+              background: "linear-gradient(135deg,#0F172A 0%,#1E3A8A 52%,#0891B2 100%)",
+              borderRadius: 22,
+              padding: 1,
+              marginBottom: 28,
+              boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
+            }}>
+              <div style={{
+                background: "rgba(255,255,255,0.96)",
+                borderRadius: 21,
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  padding: "22px 24px",
+                  background: "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(30,58,138,0.92))",
+                  color: "#fff",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 14,
+                  flexWrap: "wrap",
+                }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                      <span style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(255,255,255,0.16)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                        ⚙️
+                      </span>
+                      <h5 style={{ margin: 0, fontWeight: 900, letterSpacing: -0.4 }}>Vehicle Control Management</h5>
+                    </div>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,0.74)", fontSize: 13 }}>
+                      Firestore live controls for Customer Booking and Driver ride eligibility.
+                    </p>
+                  </div>
+                  <StatusPill ok={!vehiclesError} label={vehiclesError ? "Firebase Offline" : "Realtime Sync"} />
+                </div>
+
+                {vehiclesError && (
+                  <div style={{ margin: 18, padding: 14, borderRadius: 14, background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", fontWeight: 700 }}>
+                    <i className="bi bi-exclamation-triangle-fill me-2" />
+                    {(vehiclesError as Error).message}
+                  </div>
+                )}
+
+                <div style={{ padding: 18, display: "grid", gap: 12 }}>
+                  {vehiclesLoading && !vehicleData?.vehicles?.length ? (
+                    <div style={{ padding: 36, textAlign: "center", color: "#64748B" }}>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Loading vehicle controls...
+                    </div>
+                  ) : (
+                    (vehicleData?.vehicles || []).map(vehicle => {
+                      const accent = VEHICLE_COLORS[vehicle.key] || "#2563EB";
+                      const updated = vehicle.updatedAt
+                        ? new Date(vehicle.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+                        : "Not updated yet";
+                      const disabled = vehicleToggling === vehicle.key;
+                      return (
+                        <div key={vehicle.key} style={{
+                          display: "grid",
+                          gridTemplateColumns: "52px minmax(130px,1.2fr) 120px minmax(160px,1fr) 86px",
+                          gap: 14,
+                          alignItems: "center",
+                          padding: "14px 16px",
+                          borderRadius: 18,
+                          background: vehicle.active ? `linear-gradient(135deg,${accent}10,#fff)` : "#F8FAFC",
+                          border: `1px solid ${vehicle.active ? `${accent}33` : "#E2E8F0"}`,
+                          boxShadow: "0 8px 22px rgba(15,23,42,0.05)",
+                        }}>
+                          <div style={{
+                            width: 52, height: 52, borderRadius: 16,
+                            background: vehicle.active ? `${accent}18` : "#E2E8F0",
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25,
+                          }}>
+                            {VEHICLE_ICONS[vehicle.key] || "🚘"}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: "#0F172A" }}>{vehicle.name}</div>
+                            <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>vehicle_status/{vehicle.key}</div>
+                          </div>
+                          <StatusPill ok={vehicle.active} label={vehicle.active ? "Active" : "Inactive"} />
+                          <div style={{ fontSize: 12, color: "#64748B" }}>
+                            <div style={{ fontWeight: 800, color: "#334155" }}>Updated Time</div>
+                            <div>{updated}</div>
+                          </div>
+                          <label style={{
+                            width: 64, height: 34, borderRadius: 999, padding: 4,
+                            background: vehicle.active ? accent : "#CBD5E1",
+                            cursor: disabled ? "wait" : "pointer",
+                            position: "relative",
+                            transition: "all 180ms ease",
+                            opacity: disabled ? 0.65 : 1,
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={vehicle.active}
+                              disabled={disabled}
+                              onChange={() => toggleVehicle(vehicle)}
+                              style={{ display: "none" }}
+                            />
+                            <span style={{
+                              width: 26, height: 26, borderRadius: "50%",
+                              background: "#fff",
+                              position: "absolute",
+                              top: 4,
+                              left: vehicle.active ? 34 : 4,
+                              transition: "all 180ms ease",
+                              boxShadow: "0 4px 10px rgba(15,23,42,0.18)",
+                            }} />
+                          </label>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Platform Services */}
             <h6 style={{ fontWeight: 800, fontSize: 13, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 12 }}>
-              Platform Services
+              Platform Services (Admin Control)
             </h6>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 28 }}>
               {data.services.map(s => (
                 <div key={s.service_key} style={{
-                  background: "#fff", borderRadius: 12, padding: "14px 16px",
-                  border: `1px solid ${s.service_status === "active" ? "#d1fae5" : "#F3F4F6"}`,
-                  boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
+                  background: "#fff", borderRadius: 14, padding: "16px 18px",
+                  border: `1px solid ${s.service_status === "active" ? "#d1fae5" : "#F1F5F9"}`,
+                  boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)",
+                  transition: "all 0.3s ease",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 22 }}>{SERVICE_ICONS[s.service_key] ?? "🔧"}</span>
-                    <StatusPill ok={s.service_status === "active"} label={s.service_status === "active" ? "Active" : "Inactive"} />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: s.service_status === "active" ? "#F0FDF4" : "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                      {SERVICE_ICONS[s.service_key] ?? "🔧"}
+                    </div>
+                    <StatusPill ok={s.service_status === "active"} label={s.service_status === "active" ? "Live" : "Stopped"} />
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{s.service_name}</div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", textTransform: "capitalize" }}>
-                    {s.revenue_model}
-                    {s.revenue_model === "commission" ? ` · ${s.commission_rate}%` : ""}
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2, color: "#1E293B" }}>{s.service_name}</div>
+                  <div style={{ fontSize: 11, color: "#64748B", textTransform: "capitalize", marginBottom: 14 }}>
+                    {s.revenue_model} {s.revenue_model === "commission" ? `· ${s.commission_rate}%` : ""}
                   </div>
+                  
+                  <button
+                    disabled={toggling === s.service_key}
+                    onClick={() => toggleService(s.service_key, s.service_status)}
+                    style={{
+                      width: "100%", padding: "8px 0", borderRadius: 10, fontSize: 12, fontWeight: 700,
+                      border: "none", cursor: "pointer",
+                      background: s.service_status === "active" ? "#FEF2F2" : "#ECFDF5",
+                      color: s.service_status === "active" ? "#DC2626" : "#059669",
+                      boxShadow: s.service_status === "active" ? "0 2px 4px rgba(220,38,38,0.1)" : "0 2px 4px rgba(5,150,105,0.1)",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    {toggling === s.service_key ? (
+                      <span className="spinner-border spinner-border-sm me-1" />
+                    ) : s.service_status === "active" ? (
+                      <><i className="bi bi-power me-1" /> Inactivate</>
+                    ) : (
+                      <><i className="bi bi-play-fill me-1" /> Activate Service</>
+                    )}
+                  </button>
                 </div>
               ))}
             </div>
