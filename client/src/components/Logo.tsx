@@ -34,9 +34,9 @@ export function Logo({
   style = {},
 }: LogoProps) {
   const logoMap: Record<LogoVariant, string> = {
-    blue: '/jago-logo-new.png',
-    white: '/jago-logo-new-white.png',
-    default: '/jago-logo-new.png',
+    blue: '/jago-logo-blue.png',
+    white: '/jago-logo-white.png',
+    default: '/jago-logo.png',
     pilot: '/pilot-logo.png',
   };
 

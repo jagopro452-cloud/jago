@@ -306,21 +306,16 @@ export class DatabaseStorage implements IStorage {
 
     const [totalCustomers] = await safe(() => db.select({ count: count() }).from(users).where(eq(users.userType, 'customer')), [{ count: 0 }]);
     const [totalDrivers]   = await safe(() => db.select({ count: count() }).from(users).where(eq(users.userType, 'driver')), [{ count: 0 }]);
-    const [totalUsers]     = await safe(() => db.select({ count: count() }).from(users), [{ count: 0 }]);
     const [totalTrips]     = await safe(() => db.select({ count: count() }).from(tripRequests), [{ count: 0 }]);
     const [completedTrips] = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed')), [{ count: 0 }]);
     const [cancelledTrips] = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'cancelled')), [{ count: 0 }]);
-    const [ongoingTrips]   = await safe(() => db.select({ count: count() }).from(tripRequests).where(sql`${tripRequests.currentStatus} IN ('searching', 'driver_assigned', 'accepted', 'arrived', 'on_the_way')`), [{ count: 0 }]);
+    const [ongoingTrips]   = await safe(() => db.select({ count: count() }).from(tripRequests).where(eq(tripRequests.currentStatus, 'ongoing')), [{ count: 0 }]);
     const [totalRevenue]   = await safe(() => db.select({ total: sum(tripRequests.actualFare) }).from(tripRequests).where(eq(tripRequests.currentStatus, 'completed')), [{ total: "0" }]);
     const [txRevenue]      = await safe(() => db.select({ total: sum(transactions.debit) }).from(transactions).where(eq(transactions.transactionType, 'ride_payment') as any), [{ total: "0" }]);
     const [pendingWithdrawals] = await safe(() => db.select({ count: count() }).from(withdrawRequests).where(eq(withdrawRequests.status, 'pending')), [{ count: 0 }]);
     const [totalReviews]   = await safe(() => db.select({ count: count() }).from(reviews), [{ count: 0 }]);
     const [totalZones]     = await safe(() => db.select({ count: count() }).from(zones).where(eq(zones.isActive, true)), [{ count: 0 }]);
     const [totalVehicleCategories] = await safe(() => db.select({ count: count() }).from(vehicleCategories).where(eq(vehicleCategories.isActive, true)), [{ count: 0 }]);
-    const [liveConnections] = await safe(async () => {
-      const result = await db.execute(sql`SELECT COUNT(*)::int AS count FROM driver_locations WHERE is_online = true`);
-      return result.rows as Array<{ count: number }>;
-    }, [{ count: 0 }]);
 
     const recentTrips = await safe(() => db.select({
       id: tripRequests.id,
@@ -346,12 +341,10 @@ export class DatabaseStorage implements IStorage {
     return {
       totalCustomers: Number(totalCustomers.count),
       totalDrivers: Number(totalDrivers.count),
-      totalUsers: Number(totalUsers.count),
       totalTrips: Number(totalTrips.count),
       completedTrips: Number(completedTrips.count),
       cancelledTrips: Number(cancelledTrips.count),
       ongoingTrips: Number(ongoingTrips.count),
-      liveConnections: Number(liveConnections.count),
       totalRevenue: tripRev + txRev,
       pendingWithdrawals: Number(pendingWithdrawals.count),
       totalReviews: Number(totalReviews.count),
