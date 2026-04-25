@@ -223,6 +223,7 @@ class JT {
   static Widget gradientButton({
     required String label,
     required VoidCallback onTap,
+    IconData? icon,
     bool loading = false,
     double height = 54,
     double radius = 16,
@@ -248,7 +249,16 @@ class JT {
                     strokeWidth: 2.5,
                   ),
                 )
-              : Text(label, style: btnText),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                    ],
+                    Text(label, style: btnText),
+                  ],
+                ),
         ),
       ),
     );

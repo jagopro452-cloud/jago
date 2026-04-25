@@ -27,13 +27,13 @@ export interface DispatchConfig {
 
 const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   // driverTimeoutMs=60s: extended for local testing
-  bike:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
-  auto:       { radiusStepsKm: [5, 8, 12, 15],    driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
-  cab:        { radiusStepsKm: [5, 8, 12, 15, 20],driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  parcel:     { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 240000, driversPerStep: 8 },
-  b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
-  carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
+  bike: { radiusStepsKm: [5, 8, 12, 15], driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  auto: { radiusStepsKm: [5, 8, 12, 15], driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 10 },
+  cab: { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  parcel: { radiusStepsKm: [5, 10, 15], driverTimeoutMs: 60000, maxTotalTimeMs: 240000, driversPerStep: 8 },
+  b2b_parcel: { radiusStepsKm: [5, 10, 15], driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
+  carpool: { radiusStepsKm: [5, 8, 12, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  outstation: { radiusStepsKm: [5, 10, 15, 25], driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
 function getConfig(serviceType: string): DispatchConfig {
@@ -193,12 +193,12 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
 
   activeDispatches.delete(tripId);
   console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId}`);
-  
+
   // ─────────────────────────────────────────────────────────────────────────────
   // FIX #1: Verify driver is still online 5 seconds after accepting
   // If driver is ghost/offline → reassign to next driver
   // ─────────────────────────────────────────────────────────────────────────────
-  
+
   (async () => {
     try {
       const { verifyDriverAfterAccept, logInfo } = await import("./hardening");
@@ -619,14 +619,14 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET payment_status='refunded_to_wallet'
           WHERE id=${session.tripId}::uuid
-        `).catch(() => {});
+        `).catch(() => { });
         await rawDb.execute(rawSql`
           INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
           SELECT ${t.customer_id}::uuid, 'Refund — no driver available', ${refundAmt}, 0,
                  wallet_balance, 'ride_refund', ${session.tripId}
           FROM users WHERE id=${t.customer_id}::uuid
           ON CONFLICT DO NOTHING
-        `).catch(() => {});
+        `).catch(() => { });
         if (io) {
           io.to(`user:${session.customerId}`).emit("trip:refunded", {
             tripId: session.tripId,
@@ -672,11 +672,11 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
     );
     if (!available) {
       const reasons: string[] = [];
-      if (!d.is_active)                  reasons.push("not active");
-      if (d.is_locked)                   reasons.push("locked");
-      if (!d.is_online && !d.dl_online)  reasons.push("offline (both is_online flags false)");
-      if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
-      if (!['approved','verified','pending'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
+      if (!d.is_active) reasons.push("not active");
+      if (d.is_locked) reasons.push("locked");
+      if (!d.is_online && !d.dl_online) reasons.push("offline (both is_online flags false)");
+      if (d.current_trip_id !== null) reasons.push(`on trip ${d.current_trip_id}`);
+      if (!['approved', 'verified', 'pending'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;
@@ -778,19 +778,19 @@ async function findDriversInRadius(
       for (const row of nearbyAll.rows) {
         const r = row as any;
         const reasons: string[] = [];
-        if (!r.is_active)                        reasons.push("is_active=false");
-        if (r.is_locked)                          reasons.push("is_locked=true");
-        if (!r.dl_online)                         reasons.push("dl.is_online=false");
-        if (r.current_trip_id)                    reasons.push(`on trip ${r.current_trip_id}`);
+        if (!r.is_active) reasons.push("is_active=false");
+        if (r.is_locked) reasons.push("is_locked=true");
+        if (!r.dl_online) reasons.push("dl.is_online=false");
+        if (r.current_trip_id) reasons.push(`on trip ${r.current_trip_id}`);
         if (!['approved', 'verified', 'pending'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified/pending)`);
-        if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
+        if (r.lat == 0 && r.lng == 0) reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
-        if (isStale)                               reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
+        if (isStale) reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
         if (vehicleCategoryId && r.vehicle_category_id !== vehicleCategoryId)
           reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${vehicleCategoryId})`);
         const distKm = Number(r.distance_km).toFixed(1);
-        if (Number(distKm) > radiusKm)            reasons.push(`outside radius (${distKm}km > ${radiusKm}km)`);
+        if (Number(distKm) > radiusKm) reasons.push(`outside radius (${distKm}km > ${radiusKm}km)`);
         console.log(`[DISPATCH] ⚠ Nearby driver ${r.id} (${r.full_name || "?"}, ${distKm}km away) EXCLUDED — ${reasons.length ? reasons.join(", ") : "in exclude list or already notified"}`);
       }
     } catch (e: any) {
@@ -981,6 +981,12 @@ export function startDispatchCleanup(): void {
   }, 60000);
 
   console.log("[DISPATCH] Stale session cleanup started (60s interval)");
+}
+
+
+
+
+console.log("[DISPATCH] Stale session cleanup started (60s interval)");
 }
 
 

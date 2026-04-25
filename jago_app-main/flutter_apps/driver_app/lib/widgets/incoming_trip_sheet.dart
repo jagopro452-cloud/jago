@@ -101,8 +101,18 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     final trip = widget.trip;
     final pickup = trip['pickupAddress'] ?? 'Pickup location';
     final dest = trip['destinationAddress'] ?? 'Destination';
-    final pickupDist = trip['driverDistanceKm'] ?? '1.4';
-    final tripDist = trip['estimatedDistance'] ?? '4.8';
+    final pickupShort = trip['pickupShortName'] ?? trip['pickup_short_name'] ?? '';
+    final destShort = trip['destinationShortName'] ?? trip['destination_short_name'] ?? '';
+
+    // Format distances to 2 decimal places
+    String formatDist(dynamic d) {
+      if (d == null) return '0.0';
+      final val = double.tryParse(d.toString()) ?? 0.0;
+      return val.toStringAsFixed(2);
+    }
+
+    final pickupDist = formatDist(trip['driverDistanceKm'] ?? '1.4');
+    final tripDist = formatDist(trip['estimatedDistance'] ?? '4.8');
     final fare = trip['estimatedFare'] ?? '121';
     final extra = trip['incentive'] ?? '13';
     final vehicleType = (trip['vehicleCategoryName'] ?? 'Bike').toString();
@@ -136,6 +146,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
                             fare: fare,
                             pickup: pickup,
                             dest: dest,
+                            pickupShort: pickupShort,
+                            destShort: destShort,
                             pickupDist: pickupDist,
                             tripDist: tripDist,
                           ),
@@ -263,6 +275,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     required dynamic fare,
     required String pickup,
     required String dest,
+    required String pickupShort,
+    required String destShort,
     required dynamic pickupDist,
     required dynamic tripDist,
   }) {
@@ -362,7 +376,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
               // Card Body: Address Timeline
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildAddressTimeline(pickup, dest, pickupDist, tripDist),
+                child: _buildAddressTimeline(pickup, dest, pickupShort, destShort, pickupDist, tripDist),
               ),
 
               const SizedBox(height: 24),
@@ -461,7 +475,8 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
     );
   }
 
-  Widget _buildAddressTimeline(String pickup, String dest, dynamic pickupDist, dynamic tripDist) {
+  Widget _buildAddressTimeline(
+      String pickup, String dest, String pickupShort, String destShort, dynamic pickupDist, dynamic tripDist) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -482,7 +497,7 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
             // Dynamic connector
             Container(
               width: 2,
-              height: 40,
+              height: 48,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -500,27 +515,53 @@ class _IncomingTripSheetState extends State<IncomingTripSheet> with TickerProvid
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '$pickupDist Km away',
-                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: _textDark),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      pickupShort.isNotEmpty ? pickupShort : pickup,
+                      style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w800, color: _textDark),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$pickupDist Km',
+                    style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: _jagoBlue),
+                  ),
+                ],
               ),
               const SizedBox(height: 2),
               Text(
-                pickup,
-                style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w400, color: _textGrey),
-                maxLines: 2,
+                pickupShort.isNotEmpty ? pickup : 'Pickup location',
+                style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w400, color: _textGrey),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 24),
-              Text(
-                '$tripDist Km trip',
-                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: _textDark),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      destShort.isNotEmpty ? destShort : dest,
+                      style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w800, color: _textDark),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$tripDist Km',
+                    style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: _jagoLavender),
+                  ),
+                ],
               ),
               const SizedBox(height: 2),
               Text(
-                dest,
-                style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w400, color: _textGrey),
-                maxLines: 2,
+                destShort.isNotEmpty ? dest : 'Destination',
+                style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w400, color: _textGrey),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],

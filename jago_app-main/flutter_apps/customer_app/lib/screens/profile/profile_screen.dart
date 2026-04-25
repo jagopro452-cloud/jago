@@ -499,9 +499,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _premiumTile(Icons.tune_rounded, 'Ride Preferences',
                         const Color(0xFF6366F1), () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const RidePreferencesScreen()))),
-                    _premiumTile(Icons.card_membership_rounded, 'Monthly Pass',
-                        const Color(0xFFF59E0B), () => Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => const MonthlyPassScreen()))),
+                    // _premiumTile(Icons.card_membership_rounded, 'Monthly Pass',
+                    //     const Color(0xFFF59E0B), () => Navigator.push(context, MaterialPageRoute(
+                    //         builder: (_) => const MonthlyPassScreen()))),
                     _premiumTile(Icons.wallet_giftcard_rounded, 'Refer & Earn',
                         const Color(0xFFEC4899), () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const ReferralScreen()))),
