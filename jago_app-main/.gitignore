@@ -22,9 +22,6 @@ key.properties
 
 # Build outputs
 *.apk
-!public/apks/
-!public/apks/jago-customer-v1.0.72-release.apk
-!public/apks/jago-pilot-v1.0.73-release.apk
 flutter_apps/customer_app/build/
 flutter_apps/driver_app/build/
 flutter_apps/customer_app/.dart_tool/
@@ -47,9 +44,7 @@ do-spec.yaml
 .claude/
 
 # Public APK downloads (served at runtime, not version controlled)
-public/apks/*
-!public/apks/jago-customer-v1.0.72-release.apk
-!public/apks/jago-pilot-v1.0.73-release.apk
+public/apks/
 .env.*
 
 # Sensitive artifacts and prompt dumps
