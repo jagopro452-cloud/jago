@@ -44,7 +44,6 @@ do-spec.yaml
 .claude/
 
 # Public APK downloads (served at runtime, not version controlled)
-public/apks/
 .env.*
 
 # Sensitive artifacts and prompt dumps
