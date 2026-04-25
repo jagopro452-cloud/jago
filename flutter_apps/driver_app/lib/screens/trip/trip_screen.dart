@@ -652,7 +652,12 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           .toList();
         if (mounted) setState(() => _cancelReasons = reasons);
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showSnack('Network error while cancelling. Please try again.', error: true);
+      return;
+    }
   }
 
   // ── Trip actions ──────────────────────────────────────────────────────────
@@ -735,9 +740,19 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     final cancelHeaders = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
-      await http.post(Uri.parse(ApiConfig.driverCancelTrip),
+      final res = await http.post(Uri.parse(ApiConfig.driverCancelTrip),
         headers: {...cancelHeaders, 'Content-Type': 'application/json'},
         body: jsonEncode({'tripId': tripId, 'reason': reason}));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        String message = 'Unable to cancel this trip right now.';
+        try {
+          message = (jsonDecode(res.body) as Map<String, dynamic>)['message']?.toString() ?? message;
+        } catch (_) {}
+        if (!mounted) return;
+        setState(() => _loading = false);
+        _showSnack(message, error: true);
+        return;
+      }
     } catch (_) {}
     _socket.setActiveTrip(null); // clear trip room tracking
     _locationTimer?.cancel();

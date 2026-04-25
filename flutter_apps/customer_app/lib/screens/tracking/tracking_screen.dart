@@ -828,23 +828,40 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Future<void> _cancelTrip(String reason) async {
-    // Cancel via socket first
-    _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
-    // Also HTTP for persistence
+    setState(() => _boostLoading = true);
     double? walletRefund;
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.post(Uri.parse(ApiConfig.cancelTrip),
-          headers: headers,
+          headers: {...headers, 'Content-Type': 'application/json'},
           body: jsonEncode(
               {'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         walletRefund =
             double.tryParse(data['walletRefund']?.toString() ?? '');
+        _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
+      } else {
+        String message = 'Unable to cancel this trip right now.';
+        try {
+          message =
+              (jsonDecode(res.body) as Map<String, dynamic>)['message']
+                      ?.toString() ??
+                  message;
+        } catch (_) {}
+        if (!mounted) return;
+        setState(() => _boostLoading = false);
+        _showInlineSnack(message, error: true);
+        return;
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _boostLoading = false);
+      _showInlineSnack('Network error while cancelling. Please try again.', error: true);
+      return;
+    }
     if (!mounted) return;
+    setState(() => _boostLoading = false);
     if (walletRefund != null && walletRefund > 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
@@ -1038,36 +1055,44 @@ class _TrackingScreenState extends State<TrackingScreen>
                           ] else ...[
                             const SizedBox(height: 16),
                             Row(children: [
-                              Expanded(
-                                  child: GestureDetector(
-                                onTap: _showCancelDialog,
-                                child: Container(
-                                  height: 52,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        JT.primaryDark.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                        color: JT.primaryDark
-                                            .withValues(alpha: 0.20)),
-                                    boxShadow: JT.shadowXs,
+                              if (_status == 'searching' ||
+                                  _status == 'driver_assigned' ||
+                                  _status == 'accepted' ||
+                                  _status == 'arrived') ...[
+                                Expanded(
+                                    child: GestureDetector(
+                                  onTap: _boostLoading ? null : _showCancelDialog,
+                                  child: Container(
+                                    height: 52,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          JT.primaryDark.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                          color: JT.primaryDark
+                                              .withValues(alpha: 0.20)),
+                                      boxShadow: JT.shadowXs,
+                                    ),
+                                    child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.cancel_rounded,
+                                              size: 16, color: JT.primaryDark),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                              _boostLoading
+                                                  ? 'Cancelling...'
+                                                  : 'Cancel',
+                                              style: const TextStyle(
+                                                  color: JT.primaryDark,
+                                                  fontWeight: FontWeight.w400,
+                                                  fontSize: 13)),
+                                        ]),
                                   ),
-                                  child: const Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.cancel_rounded,
-                                            size: 16, color: JT.primaryDark),
-                                        SizedBox(width: 6),
-                                        Text('Cancel',
-                                            style: TextStyle(
-                                                color: JT.primaryDark,
-                                                fontWeight: FontWeight.w400,
-                                                fontSize: 13)),
-                                      ]),
-                                ),
-                              )),
-                              const SizedBox(width: 10),
+                                )),
+                                const SizedBox(width: 10),
+                              ],
                               Expanded(
                                   child: GestureDetector(
                                 onTap: () async {
@@ -1123,6 +1148,28 @@ class _TrackingScreenState extends State<TrackingScreen>
       }
     } catch (_) {}
     return '+916303000000';
+  }
+
+  String? _resolveNetworkImage(String? rawUrl) {
+    final value = rawUrl?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    final base = ApiConfig.assetBaseUrl;
+    return value.startsWith('/') ? '$base$value' : '$base/$value';
+  }
+
+  void _showInlineSnack(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message,
+          style: GoogleFonts.poppins(
+              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+      backgroundColor: error ? const Color(0xFFDC2626) : JT.primary,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
   }
 
   Widget _buildStatusHeader(Map<String, dynamic> info) {
@@ -1325,6 +1372,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     final driverModel = _trip?['driverVehicleModel'] ?? '';
     final driverVehicle = _trip?['driverVehicleNumber'] ?? '';
     final vehicleName = _trip?['vehicleName'] ?? '';
+    final resolvedPhotoUrl = _resolveNetworkImage(photoUrl);
     return Container(
       decoration: BoxDecoration(
         color: JT.surface,
@@ -1344,11 +1392,11 @@ class _TrackingScreenState extends State<TrackingScreen>
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: JT.btnShadow,
               ),
-              child: photoUrl != null && photoUrl.isNotEmpty
+              child: resolvedPhotoUrl != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Image.network(
-                        photoUrl,
+                        resolvedPhotoUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Center(
                             child: Text(

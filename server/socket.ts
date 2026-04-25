@@ -387,7 +387,9 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Get driver info
           const driverR = await rawDb.execute(rawSql`
-            SELECT full_name, phone, rating, profile_photo FROM users WHERE id=${userId}::uuid
+            SELECT full_name, phone, rating, COALESCE(profile_photo, profile_image) as profile_photo
+            FROM users
+            WHERE id=${userId}::uuid
           `);
           const driver = camelize(driverR.rows[0]) as any;
 
@@ -1187,4 +1189,3 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
     console.error("[SOCKET] notifyDriverNearbyTrips error:", e.message);
   }
 }
-

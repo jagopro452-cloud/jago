@@ -1166,6 +1166,9 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(120);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(30);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;
+      UPDATE users
+      SET profile_photo = profile_image
+      WHERE profile_photo IS NULL AND profile_image IS NOT NULL;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS jago_coins INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS break_until TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) NOT NULL DEFAULT 5.0;
@@ -10295,7 +10298,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { tripId } = req.params;
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
-          d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
+          d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, COALESCE(d.profile_photo, d.profile_image) as driver_photo,
           d.vehicle_number as driver_vehicle_number,
           d.vehicle_model as driver_vehicle_model,
           vc.name as vehicle_name,
@@ -10351,7 +10354,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
-          d.profile_photo as driver_photo,
+          COALESCE(d.profile_photo, d.profile_image) as driver_photo,
           d.vehicle_number as driver_vehicle_number,
           d.vehicle_model as driver_vehicle_model,
           COALESCE(dl.lat, d.current_lat) as driver_lat,
@@ -10686,7 +10689,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const customer = (req as any).currentUser;
       const { limit = 20, offset = 0 } = req.query;
       const r = await rawDb.execute(rawSql`
-        SELECT t.*, d.full_name as driver_name, d.phone as driver_phone, d.profile_photo as driver_photo,
+        SELECT t.*, d.full_name as driver_name, d.phone as driver_phone, COALESCE(d.profile_photo, d.profile_image) as driver_photo,
           vc.name as vehicle_name
         FROM trip_requests t
         LEFT JOIN users d ON d.id = t.driver_id
@@ -10708,7 +10711,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone,
-          d.profile_photo as driver_photo, d.rating as driver_rating,
+          COALESCE(d.profile_photo, d.profile_image) as driver_photo, d.rating as driver_rating,
           vc.name as vehicle_name, vc.type as vehicle_type, vc.icon as vehicle_icon,
           d.vehicle_number, d.vehicle_model, d.vehicle_color
         FROM trip_requests t
@@ -12195,7 +12198,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!fullName && !email && !profileImage && !gender && !phone) return res.status(400).json({ message: "Nothing to update" });
       if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${customer.id}::uuid`);
       if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${customer.id}::uuid`);
-      if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${customer.id}::uuid`);
+      if (profileImage) await rawDb.execute(rawSql`
+        UPDATE users
+        SET profile_image=${profileImage}, profile_photo=${profileImage}, updated_at=now()
+        WHERE id=${customer.id}::uuid
+      `);
       if (gender) await rawDb.execute(rawSql`UPDATE users SET gender=${gender}, updated_at=now() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Profile updated" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -12209,7 +12216,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Update user fields
       if (fullName) await rawDb.execute(rawSql`UPDATE users SET full_name=${fullName}, updated_at=now() WHERE id=${driver.id}::uuid`);
       if (email) await rawDb.execute(rawSql`UPDATE users SET email=${email}, updated_at=now() WHERE id=${driver.id}::uuid`);
-      if (profileImage) await rawDb.execute(rawSql`UPDATE users SET profile_image=${profileImage}, updated_at=now() WHERE id=${driver.id}::uuid`);
+      if (profileImage) await rawDb.execute(rawSql`
+        UPDATE users
+        SET profile_image=${profileImage}, profile_photo=${profileImage}, updated_at=now()
+        WHERE id=${driver.id}::uuid
+      `);
       if (gender) await rawDb.execute(rawSql`UPDATE users SET gender=${gender}, updated_at=now() WHERE id=${driver.id}::uuid`);
       if (vehicleNumber) await rawDb.execute(rawSql`UPDATE users SET vehicle_number=${vehicleNumber}, updated_at=now() WHERE id=${driver.id}::uuid`);
       if (vehicleModel) await rawDb.execute(rawSql`UPDATE users SET vehicle_model=${vehicleModel}, updated_at=now() WHERE id=${driver.id}::uuid`);
