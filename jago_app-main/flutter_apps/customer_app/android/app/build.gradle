@@ -53,9 +53,9 @@ android {
     defaultConfig {
         applicationId "com.mindwhile.jago_customer"
         minSdkVersion 24
-        targetSdkVersion 35
-        versionCode 59
-        versionName "1.0.59"
+        targetSdkVersion 36
+        versionCode 72
+        versionName "1.0.72"
         multiDexEnabled true
         manifestPlaceholders = [googleMapsApiKey: localProperties.getProperty('GOOGLE_MAPS_KEY', '')]
     }
