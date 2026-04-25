@@ -40,6 +40,29 @@ function camelize(obj: any): any {
   );
 }
 
+async function logSocketTripTrace(tripId: string, stage: string, actorId?: string | null, actorType?: string) {
+  try {
+    if (!tripId) return;
+    const tR = await rawDb.execute(rawSql`
+      SELECT id, current_status, driver_id, customer_id,
+             created_at, driver_accepted_at, driver_arrived_at, ride_started_at, ride_ended_at
+      FROM trip_requests
+      WHERE id=${tripId}::uuid
+      LIMIT 1
+    `);
+    if (!tR.rows.length) {
+      console.log(`[SOCKET-TRACE] stage=${stage} tripId=${tripId} not-found actorType=${actorType || '-'} actorId=${actorId || '-'}`);
+      return;
+    }
+    const t = tR.rows[0] as any;
+    console.log(
+      `[SOCKET-TRACE] stage=${stage} tripId=${t.id} status=${t.current_status} driverId=${t.driver_id || '-'} customerId=${t.customer_id || '-'} createdAt=${t.created_at || '-'} acceptedAt=${t.driver_accepted_at || '-'} arrivedAt=${t.driver_arrived_at || '-'} startedAt=${t.ride_started_at || '-'} completedAt=${t.ride_ended_at || '-'} actorType=${actorType || '-'} actorId=${actorId || '-'}`,
+    );
+  } catch (e: any) {
+    console.log(`[SOCKET-TRACE] stage=${stage} tripId=${tripId} trace-error=${e?.message || e}`);
+  }
+}
+
 async function persistSafetyAlert(alert: any, driverId: string) {
   try {
     await rawDb.execute(rawSql`
@@ -145,7 +168,7 @@ export function setupSocket(httpServer: HttpServer) {
         WHERE driver_id=${userId}::uuid
           AND (SELECT is_online FROM users WHERE id=${userId}::uuid LIMIT 1) = true
           AND is_online = false
-      `).catch(() => { });
+      `).catch(() => {});
 
       console.log(`[SOCKET] Driver ${userId} connected`);
 
@@ -204,7 +227,7 @@ export function setupSocket(httpServer: HttpServer) {
                     }
                   }
                 }
-              } catch { }
+              } catch {}
             }
           }
         } catch (e: any) {
@@ -228,7 +251,7 @@ export function setupSocket(httpServer: HttpServer) {
             socket.join(`trip:${tripId}`);
             console.log(`[SOCKET] Driver ${userId} rejoined trip room trip:${tripId} after reconnect`);
           }
-        } catch (_) { }
+        } catch (_) {}
       });
 
       // ── Driver: go online/offline ──────────────────────────────────────────
@@ -278,7 +301,7 @@ export function setupSocket(httpServer: HttpServer) {
               if (suggestion) {
                 socket.emit("driver:rebalancing_suggestion", suggestion);
               }
-            }).catch(() => { });
+            }).catch(() => {});
           }
         } catch (e: any) {
           console.error("[SOCKET] driver:online error:", e.message);
@@ -287,7 +310,6 @@ export function setupSocket(httpServer: HttpServer) {
 
       // ── Driver: accept trip ────────────────────────────────────────────────
       socket.on("driver:accept_trip", async (data: { tripId: string }) => {
-        console.log(`[SOCKET] driver:accept_trip received for trip ${data.tripId} from driver ${userId}`);
         try {
           const { tripId } = data;
           const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -304,9 +326,8 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           if (driverState.is_locked) {
-            // socket.emit("driver:accept_trip_error", { message: "Account locked. Clear dues to continue" });
-            // return;
-            console.log(`[SOCKET_ACCEPT] Driver ${userId} - Locked, but ALLOWING for test`);
+            socket.emit("driver:accept_trip_error", { message: "Account locked. Clear dues to continue" });
+            return;
           }
           if (driverState.current_trip_id) {
             socket.emit("driver:accept_trip_error", { message: "You already have an active trip" });
@@ -366,9 +387,11 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Get driver info
           const driverR = await rawDb.execute(rawSql`
-            SELECT full_name, phone, rating, profile_photo FROM users WHERE id=${userId}::uuid
+            SELECT full_name, phone, rating, COALESCE(profile_photo, profile_image) as profile_photo
+            FROM users
+            WHERE id=${userId}::uuid
           `);
-          const driver = (camelize(driverR.rows[0]) || {}) as any;
+          const driver = camelize(driverR.rows[0]) as any;
 
           // Get driver vehicle details
           const vehicleR = await rawDb.execute(rawSql`
@@ -430,18 +453,6 @@ export function setupSocket(httpServer: HttpServer) {
             status: "accepted",
             currentStatus: "accepted",
             otp: pickupOtp,
-            driver: {
-              id: userId,
-              fullName: driver.fullName,
-              phone: driver.phone,
-              rating: driver.rating,
-              photo: driver.profilePhoto,
-              vehicleNumber: vehicle.vehicle_number || '',
-              vehicleModel: vehicle.vehicle_model || '',
-              vehicleCategory: vehicle.vehicle_category || '',
-              lat: trip.driverLat,
-              lng: trip.driverLng,
-            },
           });
 
           // Notify all other nearby drivers that the trip has been taken
@@ -456,7 +467,7 @@ export function setupSocket(httpServer: HttpServer) {
               const dId = (row as any).driver_id;
               io.to(`user:${dId}`).emit("trip:request_taken", { tripId });
             }
-          } catch { }
+          } catch {}
 
           // FCM fallback (customer may be in background)
           try {
@@ -469,12 +480,13 @@ export function setupSocket(httpServer: HttpServer) {
                 fcmToken: custFcm,
                 driverName: driver.fullName,
                 tripId,
-              }).catch(() => { });
+              }).catch(() => {});
             }
-          } catch { }
+          } catch {}
 
           // Driver joins the trip room so they receive real-time events (cancellation, status changes)
           socket.join(`trip:${tripId}`);
+          await logSocketTripTrace(tripId, "driver_accept_socket", userId, "driver");
           socket.emit("driver:accept_trip_ok", { tripId, trip });
           console.log(`[SOCKET] Driver ${userId} accepted trip ${tripId}`);
         } catch (e: any) {
@@ -574,40 +586,16 @@ export function setupSocket(httpServer: HttpServer) {
             await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${userId}::uuid`);
           }
 
+          await logSocketTripTrace(tripId, `driver_trip_status_socket:${status}`, userId, "driver");
+
           // Get customer id + fare for FCM
           const tripR = await rawDb.execute(rawSql`SELECT customer_id, estimated_fare, actual_fare FROM trip_requests WHERE id=${tripId}::uuid`);
           if (tripR.rows.length) {
             const customerId = (tripR.rows[0] as any).customer_id;
             const fare = (tripR.rows[0] as any).actual_fare || (tripR.rows[0] as any).estimated_fare || 0;
             // Socket notify (foreground)
-            const dObjR = await rawDb.execute(rawSql`
-              SELECT u.full_name, u.phone, u.rating, u.profile_photo, 
-                dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category,
-                dl.lat, dl.lng
-              FROM users u
-              LEFT JOIN driver_details dd ON dd.user_id = u.id
-              LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-              LEFT JOIN driver_locations dl ON dl.driver_id = u.id
-              WHERE u.id = (SELECT driver_id FROM trip_requests WHERE id=${tripId}::uuid)
-              LIMIT 1
-            `).catch(() => ({ rows: [] }));
-            const dObjRaw = dObjR.rows[0] as any;
-            const driver = dObjRaw ? {
-              id: dObjRaw.id,
-              fullName: dObjRaw.full_name,
-              phone: dObjRaw.phone,
-              rating: dObjRaw.rating,
-              photo: dObjRaw.profile_photo,
-              vehicleNumber: dObjRaw.vehicle_number || '',
-              vehicleModel: dObjRaw.vehicle_model || '',
-              vehicleCategory: dObjRaw.vehicle_category || '',
-              lat: dObjRaw.lat,
-              lng: dObjRaw.lng,
-            } : undefined;
-
-            const payload = { tripId, status, otp, driver };
-            io.to(`user:${customerId}`).emit("trip:status_update", payload);
-            io.to(`trip:${tripId}`).emit("trip:status_update", payload);
+            io.to(`user:${customerId}`).emit("trip:status_update", { tripId, status, otp });
+            io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status, otp });
             // FCM fallback (background) for key status changes
             if (status === "completed" || status === "cancelled") {
               try {
@@ -617,12 +605,12 @@ export function setupSocket(httpServer: HttpServer) {
                 const custFcm = (custDevR.rows[0] as any)?.fcm_token;
                 if (custFcm) {
                   if (status === "completed") {
-                    notifyCustomerTripCompleted({ fcmToken: custFcm, fare: Number(fare), tripId }).catch(() => { });
+                    notifyCustomerTripCompleted({ fcmToken: custFcm, fare: Number(fare), tripId }).catch(() => {});
                   } else {
-                    notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => { });
+                    notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(() => {});
                   }
                 }
-              } catch { }
+              } catch {}
             }
           }
 
@@ -697,7 +685,7 @@ export function setupSocket(httpServer: HttpServer) {
           if (status === "picked_up") {
             emitParcelLifecycle(orderId, order.customer_id, userId, "pickup_started", { driverName });
             // Notify all receivers that parcel has been picked up
-            notifyAllReceivers(orderId, drops, "pickup_started", driverName).catch(() => { });
+            notifyAllReceivers(orderId, drops, "pickup_started", driverName).catch(() => {});
           } else if (status === "delivery_approaching") {
             emitParcelLifecycle(orderId, order.customer_id, userId, "delivery_approaching", { driverName });
             // Notify current drop receiver
@@ -710,7 +698,7 @@ export function setupSocket(httpServer: HttpServer) {
                 orderId,
                 otp: currentDrop.deliveryOtp,
                 driverName,
-              }).catch(() => { });
+              }).catch(() => {});
             }
           } else if (status === "cancelled") {
             emitParcelLifecycle(orderId, order.customer_id, userId, "cancelled", { reason: "Driver cancelled" });
@@ -737,7 +725,7 @@ export function setupSocket(httpServer: HttpServer) {
           if (!r.rows.length) return;
           const customerId = (r.rows[0] as any).customer_id;
           io.to(`user:${customerId}`).emit("parcel:driver_location", { orderId, lat, lng, timestamp: new Date().toISOString() });
-        } catch { }
+        } catch {}
       });
 
     } else if (userType === "customer") {
@@ -922,7 +910,7 @@ export function setupSocket(httpServer: HttpServer) {
           INSERT INTO call_logs (caller_id, receiver_id, trip_id, status, initiated_at)
           VALUES (${userId}::uuid, ${targetUserId}::uuid, ${tripId}::uuid, 'initiated', NOW())
           ON CONFLICT DO NOTHING
-        `).catch(() => { });
+        `).catch(() => {});
 
         activeCallSessions.set(tripId, { callerId: userId, targetId: targetUserId, startedAt: Date.now() });
 
@@ -955,7 +943,7 @@ export function setupSocket(httpServer: HttpServer) {
               },
             });
           }
-        } catch (_) { }
+        } catch (_) {}
 
         console.log(`[CALL] ${userId} → ${targetUserId} for trip ${tripId}`);
       } catch (e: any) {
@@ -984,7 +972,7 @@ export function setupSocket(httpServer: HttpServer) {
         await rawDb.execute(rawSql`
           UPDATE call_logs SET status='completed', ended_at=NOW(), duration_sec=${durationSec || 0}
           WHERE caller_id=${userId}::uuid AND trip_id=${tripId}::uuid AND status='initiated'
-        `).catch(() => { });
+        `).catch(() => {});
       }
       console.log(`[CALL] Call ended by ${userId}${durationSec ? ` (${durationSec}s)` : ''}`);
     });
@@ -997,7 +985,7 @@ export function setupSocket(httpServer: HttpServer) {
         await rawDb.execute(rawSql`
           UPDATE call_logs SET status='rejected', ended_at=NOW()
           WHERE caller_id=${userId}::uuid AND trip_id=${tripId}::uuid AND status='initiated'
-        `).catch(() => { });
+        `).catch(() => {});
       }
     });
 
@@ -1015,10 +1003,10 @@ export function setupSocket(httpServer: HttpServer) {
             rawDb.execute(rawSql`
               UPDATE driver_locations SET is_online=false, updated_at=NOW()
               WHERE driver_id=${userId}::uuid
-            `).catch(() => { });
+            `).catch(() => {});
             rawDb.execute(rawSql`
               UPDATE users SET is_online=false WHERE id=${userId}::uuid
-            `).catch(() => { });
+            `).catch(() => {});
             console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
           }
         }, DRIVER_OFFLINE_GRACE_MS);
@@ -1069,8 +1057,8 @@ export async function notifyNearbyDriversNewTrip(
         AND dl.is_online=true AND u.current_trip_id IS NULL
         AND u.verification_status IN ('approved', 'verified', 'pending')
         ${matchingCategoryIds?.length
-        ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : vehicleCategoryId
+          ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+          : vehicleCategoryId
           ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
           : rawSql``}
         ${excludeClause}
@@ -1136,7 +1124,7 @@ export async function notifyNearbyDriversNewTrip(
           pickupAddress: trip.pickupAddress,
           estimatedFare: trip.estimatedFare,
           tripId,
-        }).catch(() => { });
+        }).catch(() => {});
       }
     }
     console.log(`[SOCKET] New trip ${tripId} notified to ${drivers.rows.length} nearby drivers`);
@@ -1172,8 +1160,8 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         AND t.driver_id IS NULL
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
         ${matchingCategoryIds?.length
-        ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : driverVehicleCategoryId
+          ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+          : driverVehicleCategoryId
           ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`
           : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06
@@ -1201,4 +1189,3 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
     console.error("[SOCKET] notifyDriverNearbyTrips error:", e.message);
   }
 }
-
