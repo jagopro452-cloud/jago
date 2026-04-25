@@ -172,6 +172,50 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     if (_destLat != 0) {
       _step = 1; // Start at location step if drop is provided
     }
+    // Caller (e.g. home screen) may pass 0,0 if GPS hasn't resolved yet —
+    // fetch device location so dispatch isn't sent for the Atlantic Ocean.
+    if (_pickupLat == 0.0 || _pickupLng == 0.0) {
+      _resolvePickupFromGps();
+    }
+  }
+
+  Future<void> _resolvePickupFromGps() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null && last.latitude != 0 && last.longitude != 0 && mounted) {
+        setState(() {
+          _pickupLat = last.latitude;
+          _pickupLng = last.longitude;
+          if (_pickupAddr == 'Getting location...') _pickupAddr = 'Current location';
+          _pickupAddressCtrl.text = _pickupAddr;
+        });
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (!mounted) return;
+      if (pos.latitude != 0 && pos.longitude != 0) {
+        setState(() {
+          _pickupLat = pos.latitude;
+          _pickupLng = pos.longitude;
+          if (_pickupAddr == 'Getting location...') _pickupAddr = 'Current location';
+          _pickupAddressCtrl.text = _pickupAddr;
+        });
+        _fetchDynamicVehicles();
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchDynamicVehicles() async {
@@ -416,6 +460,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   Future<void> _book() async {
     if (!_step3Valid || _booking) return;
+    if (_pickupLat == 0.0 || _pickupLng == 0.0) {
+      _showSnack('Pickup location not detected. Please tap pickup field and select on map.', error: true);
+      return;
+    }
+    if (_destLat == 0.0 || _destLng == 0.0) {
+      _showSnack('Delivery location is missing. Please re-select drop location.', error: true);
+      return;
+    }
     setState(() => _booking = true);
     try {
       final dist = _haversine(_pickupLat, _pickupLng, _destLat, _destLng);

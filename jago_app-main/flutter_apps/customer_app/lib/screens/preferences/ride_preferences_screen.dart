@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
@@ -28,6 +29,7 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
@@ -43,7 +45,9 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
           _preferredGender = d['preferredGender'] ?? 'any';
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error loading preferences: $e');
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -65,161 +69,333 @@ class _RidePreferencesScreenState extends State<RidePreferencesScreen> {
       );
       if (!mounted) return;
       final body = jsonDecode(res.body);
+      
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(body['message'] ?? 'Saved!'),
-        backgroundColor: res.statusCode == 200 ? JT.success : JT.error,
+        content: Row(
+          children: [
+            Icon(res.statusCode == 200 ? Icons.check_circle_outline : Icons.error_outline, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Text(body['message'] ?? 'Saved Successfully', style: GoogleFonts.poppins()),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: res.statusCode == 200 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(20),
       ));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error saving preferences: $e');
+    }
     if (mounted) setState(() => _saving = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: JT.surfaceAlt,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: JT.bg,
-        foregroundColor: JT.textPrimary,
+        backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('Ride Preferences', style: JT.h4),
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1E293B), size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Ride Preferences',
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1E293B),
+          ),
+        ),
         actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text('Save', style: JT.h5.copyWith(color: JT.primary)),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TextButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2D8CFF)))
+                  : Text(
+                      'Save',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF2D8CFF),
+                      ),
+                    ),
+            ),
           ),
         ],
       ),
       body: _loading
-          ? Center(child: CircularProgressIndicator(color: JT.primary))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2D8CFF)))
           : SingleChildScrollView(
-              padding: EdgeInsets.all(JT.spacing16),
+              padding: const EdgeInsets.all(24),
+              physics: const BouncingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _banner(),
-                  SizedBox(height: JT.spacing16),
-                  Text('Comfort Preferences', style: JT.h5),
-                  SizedBox(height: JT.spacing8),
-                  _prefCard('Quiet Ride', 'No unnecessary conversation', Icons.volume_off, _quietRide, (v) => setState(() => _quietRide = v)),
-                  _prefCard('AC Preferred', 'AC on during ride', Icons.ac_unit, _acPreferred, (v) => setState(() => _acPreferred = v)),
-                  _prefCard('Music Off', 'Prefer silence during ride', Icons.music_off, _musicOff, (v) => setState(() => _musicOff = v)),
-                  SizedBox(height: JT.spacing16),
-                  Text('Special Requirements', style: JT.h5),
-                  SizedBox(height: JT.spacing8),
-                  _prefCard('Wheelchair Accessible', 'Need accessible vehicle', Icons.accessible, _wheelchairAccessible, (v) => setState(() => _wheelchairAccessible = v)),
-                  _prefCard('Extra Luggage', 'Have large bags / extra luggage', Icons.luggage, _extraLuggage, (v) => setState(() => _extraLuggage = v)),
-                  SizedBox(height: JT.spacing16),
-                  Text('Driver Preference', style: JT.h5),
-                  SizedBox(height: JT.spacing8),
-                  Container(
-                    padding: EdgeInsets.all(JT.spacing16),
-                    decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusLg)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Preferred Driver Gender', style: JT.bodyPrimary),
-                        SizedBox(height: JT.spacing12),
-                        Row(children: [
-                          _genderChoice('any', 'No Preference', Icons.people),
-                          SizedBox(width: JT.spacing8),
-                          _genderChoice('female', 'Women Driver', Icons.female),
-                          SizedBox(width: JT.spacing8),
-                          _genderChoice('male', 'Male Driver', Icons.male),
-                        ]),
-                        if (_preferredGender == 'female') ...[
-                          SizedBox(height: JT.spacing8),
-                          Container(
-                            padding: EdgeInsets.all(JT.spacing8 + 2),
-                            decoration: BoxDecoration(color: Colors.pink.shade50, borderRadius: BorderRadius.circular(JT.radiusSm)),
-                            child: Row(children: [
-                              const Icon(Icons.shield, color: Colors.pink, size: 16),
-                              SizedBox(width: JT.spacing6),
-                              Expanded(child: Text('Best effort to assign women driver.\nAvailability may vary.', style: JT.caption.copyWith(color: Colors.pink))),
-                            ]),
-                          ),
-                        ],
-                      ],
-                    ),
+                  _buildHeaderCard(),
+                  const SizedBox(height: 32),
+                  
+                  _sectionHeader('Comfort Preferences'),
+                  const SizedBox(height: 12),
+                  _buildPrefCard('Quiet Ride', 'No unnecessary conversation', Icons.volume_off_rounded, _quietRide, (v) => setState(() => _quietRide = v)),
+                  _buildPrefCard('AC Preferred', 'AC on during ride', Icons.ac_unit_rounded, _acPreferred, (v) => setState(() => _acPreferred = v)),
+                  _buildPrefCard('Music Off', 'Prefer silence during ride', Icons.music_off_rounded, _musicOff, (v) => setState(() => _musicOff = v)),
+                  
+                  const SizedBox(height: 32),
+                  _sectionHeader('Special Requirements'),
+                  const SizedBox(height: 12),
+                  _buildPrefCard('Wheelchair Accessible', 'Need accessible vehicle', Icons.accessible_rounded, _wheelchairAccessible, (v) => setState(() => _wheelchairAccessible = v)),
+                  _buildPrefCard('Extra Luggage', 'Have large bags / extra luggage', Icons.luggage_rounded, _extraLuggage, (v) => setState(() => _extraLuggage = v)),
+                  
+                  const SizedBox(height: 32),
+                  _sectionHeader('Driver Gender Preference'),
+                  const SizedBox(height: 12),
+                  _buildGenderSelector(),
+                  
+                  const SizedBox(height: 48),
+                  JT.gradientButton(
+                    label: 'Save Preferences',
+                    onTap: () => _save(),
+                    loading: _saving,
                   ),
-                  SizedBox(height: JT.spacing24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _saving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: JT.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(JT.radiusMd + 2)),
-                        padding: EdgeInsets.symmetric(vertical: JT.spacing16),
-                      ),
-                      child: _saving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : Text('Save Preferences', style: JT.btnText),
-                    ),
-                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
     );
   }
 
-  Widget _banner() => Container(
-    padding: EdgeInsets.all(JT.spacing12 + 2),
-    decoration: BoxDecoration(
-      color: JT.primaryLight,
-      borderRadius: BorderRadius.circular(JT.radiusMd),
-      border: Border.all(color: JT.primary.withValues(alpha: 0.2)),
-    ),
-    child: Row(children: [
-      Icon(Icons.tune, color: JT.primary),
-      SizedBox(width: JT.spacing8 + 2),
-      Expanded(child: Text('Your preferences are shared with the driver before every ride. We\'ll match your preferences as much as possible.',
-          style: JT.caption.copyWith(height: 1.4))),
-    ]),
-  );
-
-  Widget _prefCard(String title, String subtitle, IconData icon, bool val, Function(bool) onChanged) => Container(
-    margin: EdgeInsets.only(bottom: JT.spacing8),
-    padding: EdgeInsets.symmetric(horizontal: JT.spacing16, vertical: JT.spacing12),
-    decoration: BoxDecoration(color: JT.bg, borderRadius: BorderRadius.circular(JT.radiusLg)),
-    child: Row(children: [
-      Container(
-        padding: EdgeInsets.all(JT.spacing8),
-        decoration: BoxDecoration(color: val ? JT.primary.withValues(alpha: 0.1) : JT.borderLight, shape: BoxShape.circle),
-        child: Icon(icon, color: val ? JT.primary : JT.textTertiary, size: 20),
-      ),
-      SizedBox(width: JT.spacing12),
-      Expanded(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: JT.bodyPrimary),
-          Text(subtitle, style: JT.caption),
-        ],
-      )),
-      Switch(value: val, onChanged: onChanged, activeThumbColor: JT.primary),
-    ]),
-  );
-
-  Widget _genderChoice(String value, String label, IconData icon) => Expanded(
-    child: GestureDetector(
-      onTap: () => setState(() => _preferredGender = value),
-      child: Container(
-        padding: EdgeInsets.all(JT.spacing8 + 2),
-        decoration: BoxDecoration(
-          color: _preferredGender == value ? JT.primary.withValues(alpha: 0.1) : JT.borderLight,
-          borderRadius: BorderRadius.circular(JT.radiusSm + 2),
-          border: Border.all(color: _preferredGender == value ? JT.primary : Colors.transparent),
+  Widget _buildHeaderCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2D8CFF), Color(0xFF6366F1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Column(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2D8CFF).withValues(alpha: 0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.tune_rounded, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Custom Experience',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'We\'ll share these with your Pilot before every trip.',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.poppins(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF1E293B),
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  Widget _buildPrefCard(String title, String subtitle, IconData icon, bool val, Function(bool) onChanged) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: val ? const Color(0xFF2D8CFF).withValues(alpha: 0.3) : Colors.transparent,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
           children: [
-            Icon(icon, color: _preferredGender == value ? JT.primary : JT.textTertiary, size: 20),
-            SizedBox(height: JT.spacing4),
-            Text(label, style: JT.caption.copyWith(fontSize: 10, color: _preferredGender == value ? JT.primary : JT.textTertiary), textAlign: TextAlign.center),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: val ? const Color(0xFF2D8CFF).withValues(alpha: 0.1) : const Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: val ? const Color(0xFF2D8CFF) : const Color(0xFF94A3B8), size: 20),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: val,
+              activeColor: const Color(0xFF2D8CFF),
+              onChanged: onChanged,
+            ),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildGenderSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _genderOption('any', 'No Preference', Icons.people_rounded),
+              const SizedBox(width: 12),
+              _genderOption('female', 'Women Only', Icons.female_rounded),
+              const SizedBox(width: 12),
+              _genderOption('male', 'Men Only', Icons.male_rounded),
+            ],
+          ),
+          if (_preferredGender == 'female') ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFDA4AF).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.shield_rounded, color: Color(0xFFE11D48), size: 18),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'We\'ll prioritize matching you with a female Pilot for safety and comfort.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF9F1239),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _genderOption(String value, String label, IconData icon) {
+    bool isSelected = _preferredGender == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _preferredGender = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFF1F5FE) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF2D8CFF) : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? const Color(0xFF2D8CFF) : const Color(0xFF94A3B8),
+                size: 22,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? const Color(0xFF2D8CFF) : const Color(0xFF64748B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

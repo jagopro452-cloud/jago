@@ -2011,7 +2011,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         "SELECT value FROM business_settings WHERE key_name IN ('google_maps_key','GOOGLE_MAPS_API_KEY') LIMIT 1"
       );
       dbKey = !!(r.rows[0]?.value && String(r.rows[0].value).trim());
-    } catch {}
+    } catch { }
     res.json({
       status: "ok",
       ts: new Date().toISOString(),
@@ -2058,7 +2058,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           LIMIT 1
         `);
         dbKey = String((keyR.rows[0] as any)?.value || "").trim();
-      } catch {}
+      } catch { }
 
       const resolvedKey = dbKey || envKey;
       const resolvedSource = dbKey ? "db" : envKey ? "env" : null;
@@ -15726,11 +15726,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       } else if (serviceKey === 'auto_ride') {
         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'auto' OR name ILIKE '%auto%'`);
       } else if (serviceKey === 'mini_car') {
-         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'mini_car' OR name ILIKE '%mini%'`);
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'mini_car' OR name ILIKE '%mini%'`);
       } else if (serviceKey === 'sedan') {
-         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'sedan' OR name ILIKE '%sedan%'`);
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'sedan' OR name ILIKE '%sedan%'`);
       } else if (serviceKey === 'suv') {
-         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'suv' OR name ILIKE '%suv%'`);
+        await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE vehicle_type = 'suv' OR name ILIKE '%suv%'`);
       } else if (serviceKey === 'city_pool') {
         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%city%pool%' OR name ILIKE '%car%pool%'`);
       } else if (serviceKey === 'intercity_pool') {

@@ -188,8 +188,8 @@ export async function findBestDrivers(
   const vcFilter = matchingCategoryIds?.length
     ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
     : vehicleCategoryId
-    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-    : rawSql``;
+      ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+      : rawSql``;
 
   const drivers = await rawDb.execute(rawSql`
     SELECT
@@ -364,7 +364,7 @@ export async function getSmartSuggestions(userId: string, currentHour?: number):
       const alreadyExists = suggestions.some(s => s.destLat === Number(r.lat) && s.destLng === Number(r.lng));
       if (!alreadyExists && r.label) {
         const isRelevant = (r.label === "Work" && hour >= 7 && hour <= 10) ||
-                          (r.label === "Home" && hour >= 17 && hour <= 22);
+          (r.label === "Home" && hour >= 17 && hour <= 22);
         if (isRelevant) {
           suggestions.push({
             type: "time_based",
@@ -793,7 +793,7 @@ export async function autoOfflineInactiveDrivers(): Promise<void> {
       for (const driverId of ids) {
         await rawDb.execute(rawSql`
           UPDATE users SET is_online = false WHERE id = ${driverId}::uuid
-        `).catch(() => {});
+        `).catch(() => { });
       }
       console.log(`[AI] Auto-offlined ${r.rows.length} inactive drivers: ${ids.join(', ')}`);
     }

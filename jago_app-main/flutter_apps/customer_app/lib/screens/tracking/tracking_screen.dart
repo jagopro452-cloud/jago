@@ -1355,6 +1355,9 @@ class _TrackingScreenState extends State<TrackingScreen>
     final driverRating = trip?['driverRating'] ?? trip?['driver_rating'];
     final driverPhoto =
         trip?['driverPhoto']?.toString() ?? trip?['driver_photo']?.toString();
+    final vehicleName = trip?['vehicleName']?.toString() ?? trip?['vehicle_name']?.toString() ?? '';
+    final vehicleNum = trip?['driverVehicleNumber']?.toString() ?? trip?['driver_vehicle_number']?.toString() ?? '';
+    final vehicleModel = trip?['driverVehicleModel']?.toString() ?? trip?['driver_vehicle_model']?.toString() ?? '';
     final actualFare = trip?['actualFare'] ?? trip?['actual_fare'];
     final estimatedFare = trip?['estimatedFare'] ?? trip?['estimated_fare'];
 
@@ -1485,8 +1488,9 @@ class _TrackingScreenState extends State<TrackingScreen>
                                           name: driverName,
                                           rating: driverRating,
                                           photo: driverPhoto,
-                                          vehicleNum: trip?['driverVehicleNumber'] ?? '',
-                                          vehicleModel: trip?['driverVehicleModel'] ?? '',
+                                          vehicleName: vehicleName,
+                                          vehicleNum: vehicleNum,
+                                          vehicleModel: vehicleModel,
                                           phone: driverPhone,
                                         )
                                       else
@@ -1522,8 +1526,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                     ] else if (_status == 'cancelled') ...[
                                       const SizedBox(height: 16),
                                       _buildCancelledCard(),
-                                    ] else if (_status != 'arrived' && 
-                                               _status != 'in_progress' && 
+                                    ] else if (_status != 'in_progress' && 
                                                _status != 'on_the_way') ...[
                                       const SizedBox(height: 20),
                                       Center(
@@ -1766,6 +1769,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     required String name,
     required dynamic rating,
     required String? photo,
+    required String vehicleName,
     required String vehicleNum,
     required String vehicleModel,
     required String? phone,
@@ -1842,7 +1846,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  vehicleModel.isNotEmpty ? vehicleModel : 'Jago Pilot',
+                  '${vehicleName.isNotEmpty ? vehicleName : "Jago Pilot"} ${vehicleModel.isNotEmpty ? "• $vehicleModel" : ""}',
                   style: GoogleFonts.poppins(
                       fontSize: 12, color: JT.textSecondary),
                   maxLines: 1,
@@ -2102,15 +2106,27 @@ class _TrackingScreenState extends State<TrackingScreen>
 
   Widget _buildFareRow(
       Map<String, dynamic> trip, dynamic actualFare, dynamic estimatedFare) {
-    final fareVal = actualFare ?? estimatedFare;
-    final dist = trip['estimatedDistance'] ?? trip['estimated_distance'];
+    final fareValRaw = actualFare ?? estimatedFare;
+    String fareLabel = '';
+    if (fareValRaw != null) {
+      final f = double.tryParse(fareValRaw.toString()) ?? 0.0;
+      fareLabel = '₹${f % 1 == 0 ? f.toInt() : f.toStringAsFixed(2)}';
+    }
+
+    final distRaw = trip['estimatedDistance'] ?? trip['estimated_distance'];
+    String distLabel = '';
+    if (distRaw != null) {
+      final d = double.tryParse(distRaw.toString()) ?? 0.0;
+      distLabel = '${d.toStringAsFixed(2)} km';
+    }
+
     final vehicle = trip['vehicleName'] ?? trip['vehicle_name'];
+
     return Wrap(spacing: 8, children: [
-      if (fareVal != null)
-        _chip(
-            Icons.currency_rupee_rounded, '₹$fareVal', const Color(0xFF10B981)),
-      if (dist != null)
-        _chip(Icons.route_rounded, '$dist km', const Color(0xFF6B7280)),
+      if (fareLabel.isNotEmpty)
+        _chip(Icons.currency_rupee_rounded, fareLabel, const Color(0xFF10B981)),
+      if (distLabel.isNotEmpty)
+        _chip(Icons.route_rounded, distLabel, const Color(0xFF6B7280)),
       if (vehicle != null)
         _chip(Icons.electric_bike, vehicle.toString(), const Color(0xFF6B7280)),
     ]);
@@ -2365,7 +2381,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: JT.border)),
-                  child: Text('$dist km',
+                  child: Text(
+                      '${(double.tryParse(dist.toString()) ?? 0.0).toStringAsFixed(2)} km',
                       style: GoogleFonts.poppins(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

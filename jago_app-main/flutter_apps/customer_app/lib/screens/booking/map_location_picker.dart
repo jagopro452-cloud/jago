@@ -125,7 +125,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialLat != null && widget.initialLng != null) {
+    final hasValidInitial = widget.initialLat != null &&
+        widget.initialLng != null &&
+        widget.initialLat != 0.0 &&
+        widget.initialLng != 0.0;
+    if (hasValidInitial) {
       _lat = widget.initialLat!;
       _lng = widget.initialLng!;
       _locationLoading = false;

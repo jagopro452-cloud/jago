@@ -21,7 +21,7 @@ if (!databaseUrl) {
 (async () => {
   const pool = new Pool({
     connectionString: databaseUrl,
-    ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1') ? false : { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: false },
     max: 1,
     idleTimeoutMillis: 5000,
     connectionTimeoutMillis: 5000,

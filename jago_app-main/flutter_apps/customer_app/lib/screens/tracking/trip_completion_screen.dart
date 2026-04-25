@@ -23,13 +23,49 @@ class TripCompletionScreen extends StatefulWidget {
 }
 
 class _TripCompletionScreenState extends State<TripCompletionScreen> {
+  late Map<String, dynamic> _trip;
+  bool _isFetchingDetails = false;
   int _rated = 0;
   bool _isRatingSubmitted = false;
   int _currentIndex = 0; // For bottom nav mock consistency
 
   @override
+  void initState() {
+    super.initState();
+    _trip = widget.trip;
+    _fetchFullTripDetails();
+  }
+
+  Future<void> _fetchFullTripDetails() async {
+    final tripId = _trip['id']?.toString() ?? _trip['tripId']?.toString();
+    if (tripId == null) return;
+
+    setState(() => _isFetchingDetails = true);
+    try {
+      final headers = await AuthService.getHeaders();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.trackTrip}/$tripId'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['trip'] != null && mounted) {
+          setState(() {
+            _trip = data['trip'];
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching final trip details: $e');
+    } finally {
+      if (mounted) setState(() => _isFetchingDetails = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final trip = widget.trip;
+    final trip = _trip;
     final driverName = trip['driverName']?.toString() ?? 
                        trip['driver_name']?.toString() ?? 
                        trip['pilot_name']?.toString() ?? 'Pilot';
@@ -38,20 +74,23 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
     final driverRating = trip['driverRating'] ?? trip['driver_rating'] ?? '5.00';
     
     final from = trip['pickupShortName'] ?? trip['pickup_short_name'] ?? 
-                 trip['pickupAddress'] ?? trip['pickup_address'] ?? 'Pickup';
+                 trip['pickupAddress'] ?? trip['pickup_address'] ?? 
+                 trip['pickup'] ?? 'Location not available';
     final to = trip['destinationShortName'] ?? trip['dest_short_name'] ?? 
-               trip['destinationAddress'] ?? trip['destination_address'] ?? 'Destination';
+               trip['destinationAddress'] ?? trip['destination_address'] ?? 
+               trip['destination'] ?? 'Location not available';
     
     // Detailed fare extraction logic
     final fare = trip['actualFare'] ?? trip['actual_fare'] ?? 
                  trip['totalFare'] ?? trip['total_fare'] ??
                  trip['payableAmount'] ?? trip['payable_amount'] ??
                  trip['estimatedFare'] ?? trip['estimated_fare'] ?? 
-                 trip['fare'] ?? '0.00';
+                 trip['fare'] ?? 0;
     
     final actualFare = fare.toString();
     final distance = trip['estimatedDistance'] ?? trip['estimated_distance'] ?? 
-                     trip['distanceKm'] ?? trip['distance_km'] ?? '';
+                     trip['distanceKm'] ?? trip['distance_km'] ?? 
+                     trip['distance'] ?? '';
     final pendingAmount = widget.walletPendingAmount;
 
     return Scaffold(
@@ -150,14 +189,14 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                                   child: const Icon(Icons.check, color: Colors.white, size: 16),
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  'Your ride is ended',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF1E293B),
+                                  Text(
+                                    _isFetchingDetails ? 'Finalizing details...' : 'Your ride is ended',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1E293B),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                             const SizedBox(height: 24),
@@ -482,6 +521,31 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
   }
 
   Widget _buildFareDisplay(dynamic actualFare, dynamic distance) {
+    String fareLabel = '0';
+    try {
+      final f = double.parse(actualFare.toString());
+      if (f > 0) {
+        fareLabel = f % 1 == 0 ? f.toInt().toString() : f.toStringAsFixed(2);
+      } else {
+        // Fallback if fare is 0 but might be in other keys (already handled in extraction but double check)
+        fareLabel = '0';
+      }
+    } catch (_) {
+      fareLabel = actualFare.toString();
+    }
+
+    String? distLabel;
+    if (distance != null && distance.toString().isNotEmpty) {
+      try {
+        final d = double.parse(distance.toString());
+        if (d > 0) {
+          distLabel = d.toStringAsFixed(2);
+        }
+      } catch (_) {
+        distLabel = distance.toString();
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
       decoration: BoxDecoration(
@@ -502,7 +566,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                 ),
               ),
               Text(
-                '₹${actualFare.toString()}',
+                '₹${fareLabel == '0' ? ' --' : fareLabel}',
                 style: GoogleFonts.outfit(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
@@ -511,7 +575,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
               ),
             ],
           ),
-          if (distance.toString().isNotEmpty) ...[
+          if (distLabel != null) ...[
             const Divider(height: 24, color: Color(0xFFE2E8F0)),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -524,7 +588,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                   ),
                 ),
                 Text(
-                  '${distance.toString()} km',
+                  '$distLabel km',
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
