@@ -104,15 +104,26 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     Map<String, VehicleStatus> statuses,
   ) {
     return _allFares.asMap().entries.where((entry) {
-      final name = _fareVehicleName(entry.value);
-      return VehicleStatusService.isActive(statuses, name);
+      return _isFareAvailable(entry.value, statuses);
     }).toList();
+  }
+
+  bool _isFareAvailable(
+    Map<String, dynamic> fare,
+    Map<String, VehicleStatus> statuses,
+  ) {
+    final backendFlag = fare['isActive'];
+    if (backendFlag is bool) return backendFlag;
+    if (backendFlag != null) {
+      return backendFlag.toString().toLowerCase() == 'true';
+    }
+    final name = _fareVehicleName(fare);
+    return VehicleStatusService.isActive(statuses, name);
   }
 
   void _syncSelectedFareToVisible(Map<String, VehicleStatus> statuses) {
     if (_allFares.isEmpty) return;
-    final selectedName = _fareVehicleName(_allFares[_selectedFareIndex]);
-    if (VehicleStatusService.isActive(statuses, selectedName)) return;
+    if (_isFareAvailable(_allFares[_selectedFareIndex], statuses)) return;
     final visible = _visibleFareEntries(statuses);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || visible.isEmpty) return;
@@ -833,7 +844,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   Future<void> _goToRideForWhomScreen() async {
     try {
       final statuses = await _vehicleStatusService.watchVehicleStatuses().first;
-      if (!VehicleStatusService.isActive(statuses, _vehicleName)) {
+      final currentFare = (_selectedFareIndex >= 0 && _selectedFareIndex < _allFares.length)
+          ? _allFares[_selectedFareIndex]
+          : <String, dynamic>{'vehicleName': _vehicleName, 'isActive': true};
+      if (!_isFareAvailable(currentFare, statuses)) {
         _showSnack('$_vehicleName is temporarily unavailable by admin.', error: true);
         return;
       }

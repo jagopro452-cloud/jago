@@ -10960,29 +10960,112 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- SHARED: Nearby drivers (for customer map) ------------------------------
   app.get("/api/app/nearby-drivers", nearbyDriversLimiter, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
       const latNum = Number(lat); const lngNum = Number(lng);
+      const radiusKm = Number(radius);
       if (!lat || !lng || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
         return res.status(400).json({ message: "Valid lat and lng required" });
+      }
+      if (!Number.isFinite(radiusKm) || radiusKm <= 0 || radiusKm > 50) {
+        return res.status(400).json({ message: "Valid radius required" });
       }
       const vcFilter = vehicleCategoryId
         ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid`
         : rawSql``;
       const r = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.rating, dl.lat, dl.lng, dl.heading,
+        SELECT u.id, u.full_name, u.rating, u.is_online AS user_is_online, u.current_trip_id,
+          u.verification_status, u.is_active, u.is_locked,
+          dl.is_online AS dl_is_online, dl.lat, dl.lng, dl.heading, dl.updated_at,
           vc.name as vehicle_name, vc.id as vehicle_category_id
+          ,
+          SQRT(
+            POW((dl.lat - ${latNum}) * 111.32, 2) +
+            POW((dl.lng - ${lngNum}) * 111.32 * COS(RADIANS(${latNum})), 2)
+          ) AS distance_km
         FROM driver_locations dl
         JOIN users u ON u.id = dl.driver_id
-        JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-        WHERE dl.is_online=true AND u.is_active=true AND u.is_locked=false
+        WHERE u.user_type = 'driver'
+          AND dl.is_online=true
+          AND u.is_active=true
+          AND u.is_locked=false
           AND u.current_trip_id IS NULL
           AND u.verification_status IN ('approved', 'verified', 'pending')
+          AND dl.updated_at > NOW() - INTERVAL '2 minutes'
+          AND dl.lat != 0 AND dl.lng != 0
           ${vcFilter}
-          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${Number(radius) * Number(radius) / 10000}
+          AND SQRT(
+            POW((dl.lat - ${latNum}) * 111.32, 2) +
+            POW((dl.lng - ${lngNum}) * 111.32 * COS(RADIANS(${latNum})), 2)
+          ) <= ${radiusKm}
+        ORDER BY distance_km ASC
         LIMIT 20
       `);
-      res.json({ drivers: camelize(r.rows) });
+      const drivers = camelize(r.rows);
+      console.log(`[NEARBY_DRIVERS] rider=(${latNum},${lngNum}) radiusKm=${radiusKm} vehicleCategoryId=${vehicleCategoryId || 'any'} matched=${drivers.length}`);
+      for (const row of r.rows as any[]) {
+        console.log(
+          `[NEARBY_DRIVERS] MATCH driver=${row.id} ` +
+          `driverLat=${row.lat} driverLng=${row.lng} distanceKm=${Number(row.distance_km || 0).toFixed(3)} ` +
+          `dlOnline=${row.dl_is_online} userOnline=${row.user_is_online} updatedAt=${row.updated_at?.toISOString?.() || row.updated_at || 'n/a'} ` +
+          `vehicleCategoryId=${row.vehicle_category_id || 'none'} vehicle=${row.vehicle_name || 'unknown'}`
+        );
+      }
+      if (!drivers.length) {
+        const debugR = await rawDb.execute(rawSql`
+          SELECT
+            u.id, u.full_name, u.is_online, u.current_trip_id, u.verification_status, u.is_active, u.is_locked,
+            dl.is_online AS dl_is_online, dl.lat, dl.lng, dl.updated_at,
+            dd.vehicle_category_id, vc.name as vehicle_name,
+            SQRT(
+              POW((dl.lat - ${latNum}) * 111.32, 2) +
+              POW((dl.lng - ${lngNum}) * 111.32 * COS(RADIANS(${latNum})), 2)
+            ) AS distance_km
+          FROM users u
+          JOIN driver_locations dl ON dl.driver_id = u.id
+          LEFT JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type = 'driver'
+          ORDER BY distance_km ASC
+          LIMIT 10
+        `);
+        for (const row of debugR.rows as any[]) {
+          const reasons: string[] = [];
+          const distanceKm = Number(row.distance_km || 0);
+          const updatedAtMs = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+          const secsSinceUpdate = updatedAtMs ? Math.round((Date.now() - updatedAtMs) / 1000) : null;
+          if (!row.dl_is_online) reasons.push("dl.is_online=false");
+          if (!row.is_active) reasons.push("user.is_active=false");
+          if (row.is_locked) reasons.push("user.is_locked=true");
+          if (row.current_trip_id) reasons.push(`current_trip_id=${row.current_trip_id}`);
+          if (!['approved', 'verified', 'pending'].includes(String(row.verification_status || ''))) {
+            reasons.push(`verification=${row.verification_status || 'null'}`);
+          }
+          if (row.lat == null || row.lng == null || (Number(row.lat) === 0 && Number(row.lng) === 0)) {
+            reasons.push("gps_invalid");
+          }
+          if (secsSinceUpdate == null || secsSinceUpdate > 120) {
+            reasons.push(`stale_location=${secsSinceUpdate ?? 'unknown'}s`);
+          }
+          if (vehicleCategoryId && String(row.vehicle_category_id || '') !== String(vehicleCategoryId)) {
+            reasons.push(`vehicle_mismatch=${row.vehicle_category_id || 'none'}`);
+          }
+          if (distanceKm > radiusKm) {
+            reasons.push(`outside_radius=${distanceKm.toFixed(3)}km`);
+          }
+          console.log(
+            `[NEARBY_DRIVERS] EXCLUDED driver=${row.id} ` +
+            `driverLat=${row.lat} driverLng=${row.lng} distanceKm=${distanceKm.toFixed(3)} ` +
+            `vehicleCategoryId=${row.vehicle_category_id || 'none'} vehicle=${row.vehicle_name || 'unknown'} ` +
+            `reasons=${reasons.length ? reasons.join(",") : "none"}`
+          );
+        }
+      }
+      res.json({ drivers });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
