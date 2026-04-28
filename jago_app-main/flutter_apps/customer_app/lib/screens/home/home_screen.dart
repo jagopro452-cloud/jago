@@ -1252,7 +1252,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 
                 const SizedBox(height: 16),
-                
+
+                // Live preview map — user location + nearby drivers
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: SizedBox(
+                      height: 220,
+                      child: Stack(
+                        children: [
+                          GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: _locationReady && _pickupLat != 0
+                                  ? LatLng(_pickupLat, _pickupLng)
+                                  : const LatLng(16.5062, 80.6480),
+                              zoom: 14,
+                            ),
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: false,
+                            zoomControlsEnabled: false,
+                            mapToolbarEnabled: false,
+                            liteModeEnabled: false,
+                            markers: _mapMarkers,
+                            onMapCreated: (controller) {
+                              _mapController = controller;
+                              _mapReady = true;
+                              if (_locationReady && _pickupLat != 0) {
+                                controller.animateCamera(
+                                  CameraUpdate.newLatLngZoom(
+                                    LatLng(_pickupLat, _pickupLng), 15),
+                                );
+                              }
+                            },
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: _buildRecenterButton(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
                 // Action Buttons (Modern Rectangle Cards)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),

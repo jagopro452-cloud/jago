@@ -140,14 +140,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         firebaseSent = true;
       },
       onError: (error) { firebaseError = error; },
-      onAutoVerify: (idToken) async {
-        // Auto-verified (Android only) — log in immediately
-        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
-        if (mounted && (res['success'] == true || res['token'] != null)) {
-          Navigator.pushAndRemoveUntil(context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-        }
-      },
+      // No auto-verify — see customer_app/lib/screens/auth/login_screen.dart
+      // for the rationale (avoids credential-consumed-then-network-fail race).
+      // SMS still auto-fills the textfield via CodeAutoFill below.
     );
 
     if (!mounted) return;

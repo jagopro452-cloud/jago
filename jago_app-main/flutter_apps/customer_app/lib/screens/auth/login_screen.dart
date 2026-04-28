@@ -140,18 +140,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         firebaseSent = true;
       },
       onError: (error) { firebaseError = error; },
-      onAutoVerify: (idToken) async {
-        try {
-          // Auto-verified (Android only) — log in immediately
-          final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
-          if (mounted && (res['success'] == true || res['token'] != null)) {
-            Navigator.pushAndRemoveUntil(context,
-              MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
-          }
-        } catch (e) {
-          debugPrint('Auto-verify error: $e');
-        }
-      },
+      // No auto-verify — passing a callback would make firebase_otp_service
+      // consume the PhoneAuthCredential inside verificationCompleted. If the
+      // network call after consumption then fails (or the user is already
+      // typing manually), the next manual verifyOtp throws "session expired".
+      // SMS still auto-fills the OTP TextField via the CodeAutoFill mixin
+      // below, so the user-visible UX stays the same.
     );
 
     if (!mounted) return;
