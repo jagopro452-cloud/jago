@@ -42,12 +42,16 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
   const serviceType = normalizeVehicleKey(meta.serviceType);
 
   if (serviceType === "parcel" || key.includes("parcel") || key.includes("truck") || key.includes("pickup") || key.includes("tempo")) {
+    // Strict separation: parcel bookings must NEVER reach ride-only drivers.
+    // Previously bike_parcel fell back to plain "bike" and auto_parcel fell
+    // back to plain "auto", which meant a parcel booking would notify regular
+    // ride drivers — confusing for them and against rider/pilot expectations.
     switch (key) {
       case "bike_parcel":
-        return ["bike_parcel", "bike"];
+        return ["bike_parcel"];
       case "auto_parcel":
       case "mini_cargo_auto":
-        return ["auto_parcel", "auto", "mini_cargo_auto"];
+        return ["auto_parcel", "mini_cargo_auto"];
       case "tata_ace":
       case "mini_truck":
         return ["tata_ace", "mini_truck"];
