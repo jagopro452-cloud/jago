@@ -209,8 +209,9 @@ export async function findBestDrivers(
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
     WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
       AND dl.is_online=true AND u.current_trip_id IS NULL
-      AND u.verification_status='approved'
-      AND dl.updated_at > NOW() - INTERVAL '30 seconds'
+      AND u.verification_status IN ('approved','verified','pending')
+      AND dl.updated_at > NOW() - INTERVAL '2 minutes'
+      AND (dl.lat <> 0 OR dl.lng <> 0)
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
@@ -221,7 +222,24 @@ export async function findBestDrivers(
     LIMIT ${limit * 2}
   `);
 
-  if (!drivers.rows.length) return [];
+  if (!drivers.rows.length) {
+    try {
+      const diag = await rawDb.execute(rawSql`
+        SELECT
+          (SELECT COUNT(*) FROM users WHERE user_type='driver' AND is_active=true AND is_locked=false) as total_active_drivers,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true) as online_drivers,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND updated_at > NOW() - INTERVAL '2 minutes') as recent_online,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND (lat <> 0 OR lng <> 0)) as online_with_gps,
+          (SELECT COUNT(*) FROM users u JOIN driver_details dd ON dd.user_id=u.id
+            WHERE u.user_type='driver' AND u.verification_status IN ('approved','verified','pending')
+              ${matchingCategoryIds?.length ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])` : vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+          ) as matching_category
+      `);
+      const d = (diag.rows[0] as any) || {};
+      console.log(`[DISPATCH_NO_MATCH] pickup=${pickupLat},${pickupLng} vehicleCategoryId=${vehicleCategoryId || 'any'} totals=${JSON.stringify(d)}`);
+    } catch (_) {}
+    return [];
+  }
 
   const scored: DriverMatchScore[] = drivers.rows.map((row: any) => {
     const d = camelize(row);

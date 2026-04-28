@@ -8,6 +8,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
+import 'services/socket_service.dart';
+import 'config/api_config.dart';
 
 // Global navigator key — used by FCM service to navigate after notification tap
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -34,7 +36,9 @@ void main() async {
     await Firebase.initializeApp();
     await FcmService().init();
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-  } catch (_) {}
+  } catch (e, st) {
+    debugPrint('[Firebase init] FAILED: $e\n$st');
+  }
   // Forward Flutter framework errors to Crashlytics
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -71,8 +75,11 @@ void main() async {
   runApp(const JagoPilotApp());
 }
 
-class JagoPilotApp extends StatelessWidget {
+class JagoPilotApp extends StatefulWidget {
   const JagoPilotApp({super.key});
+
+  @override
+  State<JagoPilotApp> createState() => _JagoPilotAppState();
 
   static ThemeData _lightTheme() {
     const primary = Color(0xFF1677FF);
@@ -181,6 +188,40 @@ class JagoPilotApp extends StatelessWidget {
     return _lightTheme();
   }
 
+}
+
+class _JagoPilotAppState extends State<JagoPilotApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Force the socket back up when the app returns to foreground. Android may
+    // have suspended the websocket while the app was minimized; without this
+    // the driver could miss trip events until something triggers a manual
+    // reconnect.
+    if (state == AppLifecycleState.resumed) {
+      _ensureSocketAlive();
+    }
+  }
+
+  Future<void> _ensureSocketAlive() async {
+    try {
+      final socket = SocketService();
+      if (socket.isConnected) return;
+      await socket.connect(ApiConfig.baseUrl);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<String>(
@@ -193,8 +234,8 @@ class JagoPilotApp extends StatelessWidget {
             title: 'JAGO Pro Pilot',
             debugShowCheckedModeBanner: false,
             themeMode: ThemeMode.light,
-            theme: _lightTheme(),
-            darkTheme: _lightTheme(),
+            theme: JagoPilotApp._lightTheme(),
+            darkTheme: JagoPilotApp._lightTheme(),
             home: const SplashScreen(),
           ),
         );

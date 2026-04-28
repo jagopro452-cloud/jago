@@ -705,12 +705,19 @@ async function findDriversInRadius(
     ? rawSql.raw(`AND NOT (u.id = ANY(ARRAY[${safeIds.map(id => `'${id}'::uuid`).join(',')}]))`)
     : rawSql``;
 
-  // LEFT JOIN driver_details so pilots without a details row are still found
-  // vehicle_category filter: match OR driver has no category set (new/incomplete profile)
-  const vcFilter = vehicleCategoryId
-    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-    : rawSql``;
+  // Expand the customer's chosen category UUID into all driver-category UUIDs
+  // that share the same vehicle_type ("bike" -> all bike-typed UUIDs).
+  // Strict UUID equality used to drop drivers whose category row has the same
+  // type but a different UUID (e.g. customer "Bike Premium" vs driver "Bike Standard").
+  const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
+  const vcFilter = matchingCategoryIds && matchingCategoryIds.length
+    ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+    : vehicleCategoryId
+      ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+      : rawSql``;
 
+  // Rapido-style ranking: distance first, then idle time (longest-waiting driver
+  // gets next ride — fairness + reduces ghost drivers), then rating.
   const drivers = await rawDb.execute(rawSql`
     SELECT
       u.id, u.full_name, u.phone, u.rating,
@@ -719,6 +726,7 @@ async function findDriversInRadius(
       COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,
       COALESCE(ds.completion_rate, 0.8) as completion_rate,
       COALESCE(dbs.overall_score, 50) as behavior_score,
+      EXTRACT(EPOCH FROM (NOW() - COALESCE(ds.updated_at, dl.updated_at))) as idle_seconds,
       (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token,
       SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -740,13 +748,14 @@ async function findDriversInRadius(
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
       AND u.verification_status IN ('approved', 'verified', 'pending')
+      AND COALESCE(ds.completion_rate, 0.8) >= 0.5
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
         POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
       ) <= ${radiusKm}
-    ORDER BY distance_km ASC
+    ORDER BY distance_km ASC, idle_seconds DESC NULLS LAST, COALESCE(u.rating, 4.0) DESC
     LIMIT ${limit}
   `);
 

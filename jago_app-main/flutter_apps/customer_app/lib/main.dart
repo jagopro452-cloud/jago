@@ -10,6 +10,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
+import 'services/socket_service.dart';
+import 'config/api_config.dart';
 import 'screens/booking/voice_booking_screen.dart';
 
 // Global navigator key — used for 401 auto-logout and deep-link navigation
@@ -37,7 +39,9 @@ void main() async {
     await Firebase.initializeApp();
     await FcmService().init();
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-  } catch (_) {}
+  } catch (e, st) {
+    debugPrint('[Firebase init] FAILED: $e\n$st');
+  }
   // Forward Flutter framework errors to Crashlytics
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -87,7 +91,7 @@ class JagoCustomerApp extends StatefulWidget {
   State<JagoCustomerApp> createState() => _JagoCustomerAppState();
 }
 
-class _JagoCustomerAppState extends State<JagoCustomerApp> {
+class _JagoCustomerAppState extends State<JagoCustomerApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navKey = navigatorKey;
   StreamSubscription<Uri>? _linkSub;
   bool _voiceRouteOpen = false;
@@ -95,13 +99,34 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the app comes back from background, Android may have suspended the
+    // socket connection. Force a reconnect so trip events resume immediately
+    // instead of waiting for the user to tap something that triggers an HTTP
+    // request first.
+    if (state == AppLifecycleState.resumed) {
+      _ensureSocketAlive();
+    }
+  }
+
+  Future<void> _ensureSocketAlive() async {
+    try {
+      final socket = SocketService();
+      if (socket.isConnected) return;
+      await socket.connect(ApiConfig.baseUrl);
+    } catch (_) {}
   }
 
   bool _isVoiceBookingUri(Uri uri) {

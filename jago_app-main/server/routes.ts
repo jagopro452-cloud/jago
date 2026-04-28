@@ -8046,11 +8046,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ON CONFLICT (driver_id) DO UPDATE SET lat=${Number(lat)}, lng=${Number(lng)}, is_online=${isOnline}, updated_at=NOW()
         `);
       } else {
-        await rawDb.execute(rawSql`
-          INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
-          VALUES (${driver.id}::uuid, 0, 0, ${isOnline}, NOW())
-          ON CONFLICT (driver_id) DO UPDATE SET is_online=${isOnline}, updated_at=NOW()
+        // No GPS fix yet — only update is_online for an existing row.
+        // Never INSERT (0,0); a driver at (0,0) is in the Atlantic Ocean and
+        // gets excluded from dispatch by the radius filter, making them invisible
+        // to riders. The driver's first valid location ping will create the row.
+        const upd = await rawDb.execute(rawSql`
+          UPDATE driver_locations SET is_online=${isOnline}, updated_at=NOW()
+          WHERE driver_id=${driver.id}::uuid
         `);
+        const updated = (upd as any).rowCount ?? (upd as any).rowsAffected ?? 0;
+        if (!updated && isOnline) {
+          console.log(`[DRIVER_STATUS] Driver ${driver.id} toggled ONLINE without GPS fix; awaiting first /driver/location ping to create driver_locations row`);
+        }
       }
       res.json({ success: true, isOnline });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
