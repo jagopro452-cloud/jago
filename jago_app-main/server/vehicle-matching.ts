@@ -238,7 +238,6 @@ async function findVehicleCategoryMetaByHint(params: {
 
   return bestScore >= 0 ? bestMeta : null;
 }
-
 function deriveServiceType(row: any): string {
   const explicit = String(row.service_type || "").trim().toLowerCase();
   if (explicit) return explicit;
