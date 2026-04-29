@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:app_links/app_links.dart';
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -30,8 +33,25 @@ Future<void> saveThemePreference(String pref) async {
   themeNotifier.value = ThemeMode.light;
 }
 
+Future<void> configureAndroidGoogleMaps() async {
+  if (!Platform.isAndroid) return;
+  final mapsImplementation = GoogleMapsFlutterPlatform.instance;
+  if (mapsImplementation is GoogleMapsFlutterAndroid) {
+    mapsImplementation.useAndroidViewSurface = true;
+    try {
+      final renderer =
+          await mapsImplementation.initializeWithRenderer(AndroidMapRenderer.platformDefault);
+      debugPrint('[MAP] Customer Android renderer initialized: $renderer useAndroidViewSurface=${mapsImplementation.useAndroidViewSurface}');
+      await mapsImplementation.warmup();
+    } catch (e, st) {
+      debugPrint('[MAP] Customer Android renderer init failed: $e\n$st');
+    }
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await configureAndroidGoogleMaps();
   await loadThemePreference();
   await L.init();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
