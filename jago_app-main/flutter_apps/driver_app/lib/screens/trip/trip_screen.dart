@@ -1715,13 +1715,15 @@ class _TripScreenState extends State<TripScreen>
               initialCameraPosition: CameraPosition(target: _center, zoom: 15),
               onMapCreated: (c) {
                 _mapController = c;
+                debugPrint(
+                    '[MAP] Driver trip map created center=${_center.latitude},${_center.longitude} liveAccess=$_hasLiveLocationAccess');
                 c.animateCamera(CameraUpdate.newLatLng(_center));
                 _initMapMarkers();
               },
               markers: _markers,
               polylines: _polylines,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
+              myLocationEnabled: _hasLiveLocationAccess,
+              myLocationButtonEnabled: _hasLiveLocationAccess,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: false,

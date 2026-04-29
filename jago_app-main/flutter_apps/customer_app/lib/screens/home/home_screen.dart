@@ -278,10 +278,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final uri = Uri.parse(ApiConfig.nearbyDrivers).replace(queryParameters: {
         'lat': _pickupLat.toString(),
         'lng': _pickupLng.toString(),
-        'radius': '5',
+        'radius': '10',
+        'ts': DateTime.now().millisecondsSinceEpoch.toString(),
       });
       final r = await http
-          .get(uri, headers: headers)
+          .get(uri, headers: {
+            ...headers,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          })
           .timeout(const Duration(seconds: 5));
       if (!mounted || r.statusCode != 200) return;
 
@@ -289,6 +294,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final drivers =
           (data['drivers'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
               [];
+      debugPrint(
+          '[NEARBY_DRIVERS][HOME] status=${r.statusCode} radiusKm=10 count=${drivers.length} pickup=$_pickupLat,$_pickupLng');
 
       final Set<Marker> newMarkers = {};
       for (final d in drivers) {

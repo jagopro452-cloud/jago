@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -55,6 +56,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   List<Map<String, dynamic>> _nearbyDrivers = [];
 
   bool _isConnected = true;
+  bool _hasMapLocationPermission = false;
   StreamSubscription? _connSub;
   Timer? _pollTimer;
 
@@ -100,6 +102,38 @@ class _TrackingScreenState extends State<TrackingScreen>
     // Start 90-second timeout warning for searching state
     _startSearchTimeoutTimer();
     _startNearbyDriversPolling();
+    _ensureMapLocationPermission();
+  }
+
+  Future<void> _ensureMapLocationPermission() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() => _hasMapLocationPermission = false);
+        }
+        debugPrint('[MAP] Location service disabled on tracking screen');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      final allowed = permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      if (mounted) {
+        setState(() => _hasMapLocationPermission = allowed);
+      }
+      debugPrint(
+          '[MAP] Tracking screen location permission=$permission allowed=$allowed');
+    } catch (e) {
+      debugPrint('[MAP] Tracking screen permission check failed: $e');
+      if (mounted) {
+        setState(() => _hasMapLocationPermission = false);
+      }
+    }
   }
 
   void _connectSocket() {
@@ -398,10 +432,14 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (pLat == null || pLng == null) return;
 
       final headers = await AuthService.getHeaders();
+      final vehicleCategoryId = _trip?['vehicleCategoryId']?.toString() ??
+          _trip?['vehicle_category_id']?.toString();
       final uri = Uri.parse(ApiConfig.nearbyDrivers).replace(queryParameters: {
         'lat': pLat.toString(),
         'lng': pLng.toString(),
-        'radius': '3',
+        'radius': '10',
+        if (vehicleCategoryId != null && vehicleCategoryId.isNotEmpty)
+          'vehicleCategoryId': vehicleCategoryId,
       });
       final r = await http
           .get(uri, headers: headers)
@@ -412,6 +450,8 @@ class _TrackingScreenState extends State<TrackingScreen>
       final drivers =
           (data['drivers'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
               [];
+      debugPrint(
+          '[NEARBY_DRIVERS][TRACKING] status=${r.statusCode} trip=${widget.tripId} radiusKm=10 count=${drivers.length} vehicleCategoryId=${vehicleCategoryId ?? 'any'}');
       setState(() => _nearbyDrivers = drivers);
       _updateMapMarkers();
     } catch (_) {}
@@ -806,6 +846,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _ensureMapLocationPermission();
       if (!_socket.isConnected) {
         _socket.connect(ApiConfig.socketUrl);
       }
@@ -1423,6 +1464,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                       initialCameraPosition: CameraPosition(target: _center, zoom: 15),
                       onMapCreated: (c) {
                         _mapController = c;
+                        debugPrint(
+                            '[MAP] Tracking map created center=${_center.latitude},${_center.longitude} status=$_status');
                         if (_driverLatLng != null) {
                           _updateMapMarkers();
                           _fetchRouteForStatus();
@@ -1439,13 +1482,14 @@ class _TrackingScreenState extends State<TrackingScreen>
                                     0,
                                 double.tryParse(_trip?['pickupLng']?.toString() ?? '0') ??
                                     0),
-                            radius: 400,
+                            radius: 10000,
                             fillColor: const Color(0xFF2F7BFF).withValues(alpha: 0.05),
                             strokeColor: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
                             strokeWidth: 2,
                           ),
                       },
-                      myLocationEnabled: true,
+                      myLocationEnabled: _hasMapLocationPermission,
+                      myLocationButtonEnabled: _hasMapLocationPermission,
                       zoomControlsEnabled: false,
                       mapToolbarEnabled: false,
                     ),

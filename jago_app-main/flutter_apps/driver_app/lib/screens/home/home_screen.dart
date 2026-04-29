@@ -420,6 +420,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void _applyLocationFix(Position pos, {bool animate = true}) {
     _lastPosition = pos;
     _hasValidLocationFix = true;
+    debugPrint(
+      '[GPS] Driver location fix lat=${pos.latitude} lng=${pos.longitude} accuracy=${pos.accuracy} speed=${pos.speed}',
+    );
     if (!mounted) return;
     setState(() => _center = LatLng(pos.latitude, pos.longitude));
     if (animate) {
@@ -753,7 +756,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }, onError: (_) {});
 
     // ── Server-update timer: every 5 s (was 3 s) — sends cached position ──
-    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       final pos = _lastPosition;
       if (pos == null || !mounted) return;
 
@@ -761,7 +764,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final lng = pos.longitude;
       final reqHeaders = await AuthService.getHeaders();
 
+      debugPrint('[GPS] Driver heartbeat send lat=$lat lng=$lng speed=${pos.speed}');
       _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+      _socket.refreshOnlinePresence(lat: lat, lng: lng);
       // Fire-and-forget — don't await; avoids blocking the timer tick
       http.post(
         Uri.parse(ApiConfig.driverLocation),
@@ -1262,9 +1267,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Positioned.fill(
                 child: GoogleMap(
                   initialCameraPosition: CameraPosition(target: _center, zoom: 14),
-                  onMapCreated: (c) { _mapController = c; },
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
+                  onMapCreated: (c) {
+                    _mapController = c;
+                    debugPrint(
+                        '[MAP] Driver home map created center=${_center.latitude},${_center.longitude} liveAccess=$_hasLiveLocationAccess');
+                  },
+                  myLocationEnabled: _hasLiveLocationAccess,
+                  myLocationButtonEnabled: _hasLiveLocationAccess,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   markers: {

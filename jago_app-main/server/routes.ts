@@ -10970,7 +10970,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
-      const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
+      const { lat, lng, radius = 10, vehicleCategoryId } = req.query;
       const latNum = Number(lat); const lngNum = Number(lng);
       const radiusKm = Number(radius);
       if (!lat || !lng || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
@@ -11072,6 +11072,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           );
         }
       }
+      console.log(
+        `[NEARBY_DRIVERS] response matched=${drivers.length} radiusKm=${radiusKm} vehicleCategoryId=${vehicleCategoryId || 'any'}`
+      );
       res.json({ drivers });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

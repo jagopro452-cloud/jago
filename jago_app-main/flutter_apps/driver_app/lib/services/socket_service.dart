@@ -98,10 +98,12 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
+      print('[SOCKET][DRIVER] connected');
     });
 
     // On reconnect after server restart: restore online status so driver stays visible
     _socket!.on('reconnect', (_) {
+      print('[SOCKET][DRIVER] reconnected wasOnline=$_wasOnline activeTrip=$_activeTripId');
       if (_wasOnline) {
         _socket!.emit('driver:online', {
           'isOnline': true,
@@ -122,6 +124,11 @@ class SocketService {
     _socket!.on('disconnect', (_) {
       _isConnected = false;
       _connectedController.add(false);
+      print('[SOCKET][DRIVER] disconnected');
+    });
+
+    _socket!.on('driver:online_ack', (data) {
+      print('[SOCKET][DRIVER] online_ack $data');
     });
 
     _socket!.on('trip:new_request', (data) {
@@ -239,6 +246,7 @@ class SocketService {
     _lastLat = lat;
     _lastLng = lng;
     _lastLocationSentAt = DateTime.now();
+    print('[SOCKET][DRIVER] sendLocation lat=$lat lng=$lng heading=$heading speed=$speed connected=$_isConnected');
     if (_isConnected) {
       _socket!.emit('driver:location', {
         'lat': lat,
@@ -288,6 +296,10 @@ class SocketService {
     _wasOnline = isOnline;
     if (lat != null) _lastLat = lat;
     if (lng != null) _lastLng = lng;
+    if (isOnline) {
+      _lastLocationSentAt = DateTime.now();
+    }
+    print('[SOCKET][DRIVER] setOnlineStatus isOnline=$isOnline lat=$lat lng=$lng connected=$_isConnected');
     if (_isConnected) {
       _socket!.emit('driver:online', {
         'isOnline': isOnline,
@@ -315,6 +327,16 @@ class SocketService {
         }),
       ).timeout(const Duration(seconds: 10));
     } catch (_) {}
+  }
+
+  void refreshOnlinePresence({double? lat, double? lng}) {
+    if (!_wasOnline) return;
+    print('[SOCKET][DRIVER] refreshOnlinePresence lat=${lat ?? _lastLat} lng=${lng ?? _lastLng}');
+    setOnlineStatus(
+      isOnline: true,
+      lat: lat ?? _lastLat,
+      lng: lng ?? _lastLng,
+    );
   }
 
   Future<bool> acceptTrip(String tripId) async {

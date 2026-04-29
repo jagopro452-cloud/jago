@@ -248,11 +248,11 @@ export function setupSocket(httpServer: HttpServer) {
             `);
           } else {
             await rawDb.execute(rawSql`
-              INSERT INTO driver_locations (driver_id, lat, lng, is_online, updated_at)
-              VALUES (${userId}::uuid, 0, 0, ${isOnline}, NOW())
-              ON CONFLICT (driver_id) DO UPDATE
-                SET is_online=${isOnline}, updated_at=NOW()
+              UPDATE driver_locations
+              SET is_online=${isOnline}, updated_at=NOW()
+              WHERE driver_id=${userId}::uuid
             `);
+            console.log(`[SOCKET] Driver ${userId} online toggle waiting for first GPS fix`);
           }
           await rawDb.execute(rawSql`
             UPDATE users
