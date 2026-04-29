@@ -164,6 +164,11 @@ export interface DriverMatchScore {
   fcmToken?: string;
 }
 
+interface FindBestDriversOptions {
+  allowUnfiltered?: boolean;
+  debugContext?: string;
+}
+
 const MATCH_WEIGHTS = {
   distance: 0.40,
   rating: 0.25,
@@ -176,8 +181,17 @@ export async function findBestDrivers(
   pickupLng: number,
   vehicleCategoryId?: string,
   excludeDriverIds: string[] = [],
-  limit: number = 5
+  limit: number = 5,
+  options: FindBestDriversOptions = {},
 ): Promise<DriverMatchScore[]> {
+  if (!vehicleCategoryId && !options.allowUnfiltered) {
+    console.error(
+      `[AI_MATCH] Refusing unfiltered driver query context=${options.debugContext || "default"} ` +
+        `pickup=${pickupLat},${pickupLng}`,
+    );
+    return [];
+  }
+
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter(id => uuidRe.test(id));
   const excludeClause = safeIds.length > 0
@@ -206,9 +220,11 @@ export async function findBestDrivers(
     FROM users u
     JOIN driver_locations dl ON dl.driver_id = u.id
     JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
     WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
       AND dl.is_online=true AND u.current_trip_id IS NULL
+      AND COALESCE(dd.availability_status, 'offline') = 'online'
       AND u.verification_status IN ('approved','verified','pending')
       AND dl.updated_at > NOW() - INTERVAL '2 minutes'
       AND (dl.lat <> 0 OR dl.lng <> 0)

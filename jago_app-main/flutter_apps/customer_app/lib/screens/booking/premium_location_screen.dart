@@ -52,13 +52,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
   Timer? _debounce;
   bool _isTyping = false;
   bool _detectingLocation = false;
-
-  final String _googleKey = ApiConfig.googleMapsApiKey;
-  
-  final Map<String, String> _googleHeaders = {
-    "X-Android-Package": "com.mindwhile.jago_customer",
-    "X-Android-Cert": "6268DAF7E1B51A673E0F9B4D9570997B8B1ED1B2",
-  };
+  String _placesSessionToken = DateTime.now().millisecondsSinceEpoch.toString();
 
   @override
   void initState() {
@@ -116,13 +110,17 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
 
   Future<String> _reverseGeocode(double lat, double lng) async {
     try {
-      final url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+      final headers = await AuthService.getHeaders();
+      final uri =
+          Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng');
+      final res = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'] ?? "Selected Location";
-        }
+        final data = json.decode(res.body) as Map<String, dynamic>;
+        final address =
+            data['formattedAddress']?.toString() ?? data['address']?.toString();
+        if (address != null && address.isNotEmpty) return address;
       }
     } catch (_) {}
     return "Selected Location";
@@ -137,15 +135,42 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
         return;
       }
       try {
-        String bias = "";
-        if (_pickupLat != 0 && _pickupLng != 0) {
-          bias = "&locationbias=circle:10000@$_pickupLat,$_pickupLng";
-        }
-        final url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(q)}&key=$_googleKey$bias";
-        final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+        final headers = await AuthService.getHeaders();
+        final uri = Uri.parse(ApiConfig.placesAutocomplete).replace(
+          queryParameters: {
+            'query': q,
+            'sessionToken': _placesSessionToken,
+            if (_pickupLat != 0) 'lat': _pickupLat.toString(),
+            if (_pickupLng != 0) 'lng': _pickupLng.toString(),
+          },
+        );
+        final res = await http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 6));
         if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          if (mounted) setState(() => _searchResults = data['predictions'] ?? []);
+          final data = json.decode(res.body) as Map<String, dynamic>;
+          final predictions = (data['predictions'] as List<dynamic>?) ?? [];
+          if (mounted) {
+            setState(() {
+              _searchResults = predictions
+                  .map<Map<String, dynamic>>((p) => {
+                        'description': p['fullDescription']?.toString() ??
+                            p['description']?.toString() ??
+                            '',
+                        'place_id': p['placeId']?.toString() ??
+                            p['place_id']?.toString() ??
+                            '',
+                        'main_text':
+                            p['mainText']?.toString() ?? p['main_text']?.toString() ?? '',
+                        'secondary_text': p['secondaryText']?.toString() ??
+                            p['secondary_text']?.toString() ??
+                            '',
+                        'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
+                        'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
+                      })
+                  .toList();
+            });
+          }
         }
       } catch (_) {}
     });
@@ -155,27 +180,46 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     final placeId = p['place_id'];
     if (placeId == null) return;
     try {
-      final url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['result'] != null) {
-          final loc = data['result']['geometry']['location'];
-          final double lat = (loc['lat'] as num).toDouble();
-          final double lng = (loc['lng'] as num).toDouble();
-          String addr = data['result']['formatted_address'] ?? p['description'] ?? "Selected Location";
-          if (mounted) {
-            setState(() {
-              if (_pickupFocus.hasFocus) {
-                _pickup = addr; _pickupLat = lat; _pickupLng = lng; _pickupCtrl.text = addr;
-              } else {
-                _drop = addr; _dropLat = lat; _dropLng = lng; _dropCtrl.text = addr;
-              }
-              _searchResults = [];
-              FocusScope.of(context).unfocus();
-            });
-          }
+      double lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+      double lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+      String addr = p['description']?.toString() ?? "Selected Location";
+
+      if (lat == 0.0 || lng == 0.0) {
+        final headers = await AuthService.getHeaders();
+        final uri = Uri.parse(ApiConfig.placeDetails).replace(
+          queryParameters: {
+            'placeId': placeId.toString(),
+            'sessionToken': _placesSessionToken,
+          },
+        );
+        final res = await http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 6));
+        _placesSessionToken = DateTime.now().millisecondsSinceEpoch.toString();
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body) as Map<String, dynamic>;
+          lat = (data['lat'] as num?)?.toDouble() ?? 0.0;
+          lng = (data['lng'] as num?)?.toDouble() ?? 0.0;
+          addr = data['address']?.toString() ?? addr;
         }
+      }
+
+      if (lat != 0.0 && lng != 0.0 && mounted) {
+        setState(() {
+          if (_pickupFocus.hasFocus) {
+            _pickup = addr;
+            _pickupLat = lat;
+            _pickupLng = lng;
+            _pickupCtrl.text = addr;
+          } else {
+            _drop = addr;
+            _dropLat = lat;
+            _dropLng = lng;
+            _dropCtrl.text = addr;
+          }
+          _searchResults = [];
+          FocusScope.of(context).unfocus();
+        });
       }
     } catch (_) {}
   }

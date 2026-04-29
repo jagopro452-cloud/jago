@@ -21,6 +21,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   String _locationStatus = 'Detecting location...';
   bool _isFollowing = true;
   double _mapPadding = 0;
+  bool _hasLocationPermission = false;
 
   @override
   void initState() {
@@ -38,8 +39,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       setState(() {
         _locationStatus = 'Location permission denied';
         _locationLoading = false;
+        _hasLocationPermission = false;
       });
       return;
+    }
+    if (mounted) {
+      setState(() => _hasLocationPermission = true);
     }
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -106,8 +111,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 target: _currentLatLng ?? const LatLng(20.5937, 78.9629),
                 zoom: 15,
               ),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
+              myLocationEnabled: _hasLocationPermission,
+              myLocationButtonEnabled: _hasLocationPermission,
               padding: EdgeInsets.only(bottom: _mapPadding + 20, top: 100),
               zoomControlsEnabled: false,
               onCameraMoveStarted: () {

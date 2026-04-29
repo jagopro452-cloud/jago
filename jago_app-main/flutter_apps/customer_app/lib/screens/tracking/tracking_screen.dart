@@ -1457,42 +1457,40 @@ class _TrackingScreenState extends State<TrackingScreen>
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                  child: Stack(children: [
-                    GoogleMap(
-                      initialCameraPosition: CameraPosition(target: _center, zoom: 15),
-                      onMapCreated: (c) {
-                        _mapController = c;
-                        debugPrint(
-                            '[MAP] Tracking map created center=${_center.latitude},${_center.longitude} status=$_status');
-                        if (_driverLatLng != null) {
-                          _updateMapMarkers();
-                          _fetchRouteForStatus();
-                        }
-                      },
-                      markers: _markers,
-                      polylines: _polylines,
-                      circles: {
-                        if (_status == 'searching' && _trip != null)
-                          Circle(
-                            circleId: const CircleId('search_radius'),
-                            center: LatLng(
-                                double.tryParse(_trip?['pickupLat']?.toString() ?? '0') ??
-                                    0,
-                                double.tryParse(_trip?['pickupLng']?.toString() ?? '0') ??
-                                    0),
-                            radius: 10000,
-                            fillColor: const Color(0xFF2F7BFF).withValues(alpha: 0.05),
-                            strokeColor: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
-                            strokeWidth: 2,
-                          ),
-                      },
-                      myLocationEnabled: _hasMapLocationPermission,
-                      myLocationButtonEnabled: _hasMapLocationPermission,
-                      zoomControlsEnabled: false,
-                      mapToolbarEnabled: false,
-                    ),
+                child: Stack(children: [
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _center, zoom: 15),
+                    onMapCreated: (c) {
+                      _mapController = c;
+                      debugPrint(
+                          '[MAP] Tracking map created center=${_center.latitude},${_center.longitude} status=$_status');
+                      if (_driverLatLng != null) {
+                        _updateMapMarkers();
+                        _fetchRouteForStatus();
+                      }
+                    },
+                    markers: _markers,
+                    polylines: _polylines,
+                    circles: {
+                      if (_status == 'searching' && _trip != null)
+                        Circle(
+                          circleId: const CircleId('search_radius'),
+                          center: LatLng(
+                              double.tryParse(_trip?['pickupLat']?.toString() ?? '0') ??
+                                  0,
+                              double.tryParse(_trip?['pickupLng']?.toString() ?? '0') ??
+                                  0),
+                          radius: 10000,
+                          fillColor: const Color(0xFF2F7BFF).withValues(alpha: 0.05),
+                          strokeColor: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
+                          strokeWidth: 2,
+                        ),
+                    },
+                    myLocationEnabled: _hasMapLocationPermission,
+                    myLocationButtonEnabled: _hasMapLocationPermission,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                  ),
                     Positioned(
                       bottom: 0,
                       left: 0,
@@ -1604,7 +1602,6 @@ class _TrackingScreenState extends State<TrackingScreen>
                         child: _buildTopBannerWidget(),
                       ),
                   ]),
-                ),
               ),
             ),
           ],

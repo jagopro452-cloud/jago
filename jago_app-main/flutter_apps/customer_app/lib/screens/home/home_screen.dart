@@ -74,13 +74,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final PageController _bannerPageCtrl = PageController();
 
   // ── Live Map state ────────────────────────────────────────────────────────
+
+  // Brand colors — mapped to JT design system
   GoogleMapController? _mapController;
   Set<Marker> _mapMarkers = {};
   Timer? _nearbyDriversTimer;
   final Map<String, BitmapDescriptor> _markerIconCache = {};
   bool _mapReady = false;
-
-  // Brand colors — mapped to JT design system
   static const Color _primary = JT.primary;
   static const Color _darkBg = JT.textPrimary;
   static const Color _darkCard = JT.surface;
@@ -115,10 +115,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .addPostFrameCallback((_) => _checkPendingFcmNotification());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveTrip());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
-    // Start nearby drivers polling (10s — battery-optimised, still smooth enough)
-    _nearbyDriversTimer = Timer.periodic(
-        const Duration(seconds: 10), (_) => _fetchNearbyDrivers());
-    _fetchNearbyDrivers(); // fetch immediately
   }
 
   Future<void> _fetchUnreadCount() async {
@@ -648,27 +644,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _driverAssignedSub?.cancel();
     _tripCancelledSub?.cancel();
     _tripStatusSub?.cancel();
-    _nearbyDriversTimer?.cancel();
-    _mapController?.dispose();
     // Don't disconnect socket — it's a shared singleton used by other screens
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.resumed) {
       // App went to background — pause the nearby-drivers poll to save battery
-      _nearbyDriversTimer?.cancel();
-      _nearbyDriversTimer = null;
-    } else if (state == AppLifecycleState.resumed) {
-      // App came back to foreground — refresh pickup location and restart polling
       _getLocation();
-      if (_nearbyDriversTimer == null) {
-        _nearbyDriversTimer = Timer.periodic(
-            const Duration(seconds: 10), (_) => _fetchNearbyDrivers());
-        _fetchNearbyDrivers(); // refresh immediately on resume
-      }
+      // App came back to foreground — refresh pickup location and restart polling
     }
   }
 
@@ -724,13 +709,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           });
           _reverseGeocode(
               fallbackPosition.latitude, fallbackPosition.longitude);
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(
-              LatLng(fallbackPosition.latitude, fallbackPosition.longitude),
-              15,
-            ),
-          );
-          _fetchNearbyDrivers();
         } else if (mounted) {
           setState(() {
             _pickup = 'Turn on location services to detect pickup';
@@ -820,10 +798,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
       _reverseGeocode(pos.latitude, pos.longitude);
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 16),
-      );
-      _fetchNearbyDrivers();
     } catch (_) {
       // Unexpected error — try last known position before giving up
       try {
@@ -836,10 +810,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _pickup = 'Current Location';
           });
           _reverseGeocode(last.latitude, last.longitude);
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(LatLng(last.latitude, last.longitude), 15),
-          );
-          _fetchNearbyDrivers();
           return;
         }
       } catch (_) {}
@@ -1261,50 +1231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 const SizedBox(height: 16),
 
                 // Live preview map — user location + nearby drivers
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: SizedBox(
-                      height: 220,
-                      child: Stack(
-                        children: [
-                          GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: _locationReady && _pickupLat != 0
-                                  ? LatLng(_pickupLat, _pickupLng)
-                                  : const LatLng(16.5062, 80.6480),
-                              zoom: 14,
-                            ),
-                            myLocationEnabled: true,
-                            myLocationButtonEnabled: false,
-                            zoomControlsEnabled: false,
-                            mapToolbarEnabled: false,
-                            liteModeEnabled: false,
-                            markers: _mapMarkers,
-                            onMapCreated: (controller) {
-                              _mapController = controller;
-                              _mapReady = true;
-                              if (_locationReady && _pickupLat != 0) {
-                                controller.animateCamera(
-                                  CameraUpdate.newLatLngZoom(
-                                    LatLng(_pickupLat, _pickupLng), 15),
-                                );
-                              }
-                            },
-                          ),
-                          Positioned(
-                            right: 12,
-                            bottom: 12,
-                            child: _buildRecenterButton(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
 
                 // Action Buttons (Modern Rectangle Cards)
                 Padding(

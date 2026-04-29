@@ -15,7 +15,11 @@ import {
   checkSpeedAnomaly,
 } from "./ai";
 import { parseEnv } from "./config/env";
-import { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import {
+  getDriverDbVehicleType,
+  getDriverSocketRoomKeyForCategoryId,
+  getMatchingDriverCategoryIds,
+} from "./vehicle-matching";
 
 export let io: SocketIOServer;
 
@@ -29,6 +33,7 @@ const customerSockets = new Map<string, string>();
 // This prevents momentary network blips from removing drivers from active dispatch searches.
 const pendingOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DRIVER_OFFLINE_GRACE_MS = 90_000; // 90 seconds
+const DRIVER_ROOM_PREFIX = "drivers_";
 
 function camelize(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
@@ -38,6 +43,47 @@ function camelize(obj: any): any {
       v,
     ])
   );
+}
+
+function getDriverRoomName(vehicleType: string): string {
+  return `${DRIVER_ROOM_PREFIX}${vehicleType}`;
+}
+
+async function loadDriverVehicleProfile(driverId: string): Promise<{
+  vehicleCategoryId: string | null;
+  vehicleType: string | null;
+  driverRoom: string | null;
+}> {
+  const result = await rawDb.execute(rawSql`
+    SELECT dd.vehicle_category_id
+    FROM driver_details dd
+    WHERE dd.user_id=${driverId}::uuid
+    LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  const vehicleCategoryId = ((result.rows[0] as any)?.vehicle_category_id || null) as string | null;
+  const vehicleType = await getDriverSocketRoomKeyForCategoryId(vehicleCategoryId);
+  return {
+    vehicleCategoryId,
+    vehicleType,
+    driverRoom: vehicleType ? getDriverRoomName(vehicleType) : null,
+  };
+}
+
+async function syncDriverVehicleRoom(socket: Socket, driverId: string) {
+  const profile = await loadDriverVehicleProfile(driverId);
+  for (const room of Array.from(socket.rooms)) {
+    if (room.startsWith(DRIVER_ROOM_PREFIX) && room !== profile.driverRoom) {
+      socket.leave(room);
+    }
+  }
+  if (profile.driverRoom && !socket.rooms.has(profile.driverRoom)) {
+    socket.join(profile.driverRoom);
+  }
+  console.log(
+    `[SOCKET_MATCH] driver=${driverId} driver.vehicleType=${profile.vehicleType || "missing"} ` +
+      `vehicleCategoryId=${profile.vehicleCategoryId || "missing"} room=${profile.driverRoom || "none"}`,
+  );
+  return profile;
 }
 
 async function persistSafetyAlert(alert: any, driverId: string) {
@@ -126,7 +172,7 @@ export function setupSocket(httpServer: HttpServer) {
 
     if (userType === "driver") {
       driverSockets.set(userId, socket.id);
-      socket.join(`drivers`);
+      await syncDriverVehicleRoom(socket, userId);
 
       // Cancel any pending offline timer (driver reconnected within grace window)
       const pendingTimer = pendingOfflineTimers.get(userId);
@@ -261,13 +307,17 @@ export function setupSocket(httpServer: HttpServer) {
                 current_lng=COALESCE(${lng ?? null}, current_lng)
             WHERE id=${userId}::uuid
           `);
+          const driverProfile = await syncDriverVehicleRoom(socket, userId);
           socket.emit("driver:online_ack", { isOnline });
           // If driver explicitly went offline, cancel any pending grace-period timer
           if (!isOnline) {
             const pending = pendingOfflineTimers.get(userId);
             if (pending) { clearTimeout(pending); pendingOfflineTimers.delete(userId); }
           }
-          console.log(`[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng}`);
+          console.log(
+            `[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng} ` +
+              `driver.vehicleType=${driverProfile.vehicleType || "missing"}`,
+          );
 
           // If driver just came online, check for searching trips nearby
           if (isOnline && hasValidCoords && lat != null && lng != null) {
@@ -1053,26 +1103,33 @@ export async function notifyNearbyDriversNewTrip(
 ) {
   if (!io) return;
   try {
+    if (!vehicleCategoryId) {
+      console.error(`[SOCKET_MATCH] Refusing unfiltered new trip notify trip=${tripId} vehicleCategoryId=missing`);
+      return;
+    }
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
     const excludeClause = safeIds.length > 0
       ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
       : rawSql``;
     const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
+    const driverRoomKey = await getDriverSocketRoomKeyForCategoryId(vehicleCategoryId);
+    const driverDbVehicleType = getDriverDbVehicleType(driverRoomKey);
 
     const drivers = await rawDb.execute(rawSql`
-      SELECT u.id, dl.lat, dl.lng
+      SELECT u.id, dl.lat, dl.lng, COALESCE(vc.vehicle_type, vc.name, '') as driver_vehicle_type
       FROM users u
       JOIN driver_locations dl ON dl.driver_id = u.id
       JOIN driver_details dd ON dd.user_id = u.id
+      LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
       WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
         AND dl.is_online=true AND u.current_trip_id IS NULL
+        AND COALESCE(dd.availability_status, 'offline') = 'online'
         AND u.verification_status IN ('approved', 'verified', 'pending')
         ${matchingCategoryIds?.length
         ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : vehicleCategoryId
-          ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-          : rawSql``}
+        : rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`}
+        ${driverDbVehicleType ? rawSql`AND vc.type = ${driverDbVehicleType}` : rawSql``}
         ${excludeClause}
         AND ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) < 0.06
       ORDER BY ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) ASC
@@ -1085,7 +1142,7 @@ export async function notifyNearbyDriversNewTrip(
         u.full_name as customer_name,
         vc.name as vehicle_name,
         vc.icon as vehicle_icon,
-        COALESCE(vc.vehicle_type, '') as vehicle_type_field
+        COALESCE(NULLIF(t.vehicle_type, ''), COALESCE(vc.vehicle_type, '')) as vehicle_type_field
       FROM trip_requests t
       JOIN users u ON u.id=t.customer_id
       LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
@@ -1093,6 +1150,14 @@ export async function notifyNearbyDriversNewTrip(
     `);
     if (!tripR.rows.length) return;
     const trip = camelize(tripR.rows[0]) as any;
+    const bookingVehicleType = String(driverRoomKey || trip.vehicleTypeField || "").trim().toLowerCase();
+    if (!bookingVehicleType) {
+      console.error(`[SOCKET_MATCH] Refusing segmented emit trip=${tripId} booking.vehicleType=missing`);
+      return;
+    }
+    const matchedDriverTypes = Array.from(
+      new Set((drivers.rows as any[]).map((row) => String(row.driver_vehicle_type || "unknown"))),
+    );
 
     // Get driver FCM tokens for background push
     const driverIds = drivers.rows.map((r: any) => r.id);
@@ -1106,6 +1171,12 @@ export async function notifyNearbyDriversNewTrip(
         fcmMap[(r as any).user_id] = (r as any).fcm_token;
       }
     }
+
+    io.to(getDriverRoomName(bookingVehicleType)).emit("new_booking", {
+      tripId,
+      bookingVehicleType,
+      matchedDriversCount: drivers.rows.length,
+    });
 
     for (const row of drivers.rows) {
       const driverId = (row as any).id;
@@ -1123,7 +1194,7 @@ export async function notifyNearbyDriversNewTrip(
         tripType: trip.tripType,
         vehicleCategoryName: trip.vehicleName || trip.vehicleTypeName || null,
         vehicleIcon: trip.vehicleIcon || null,
-        vehicleType: trip.vehicleTypeField || null,
+        vehicleType: bookingVehicleType || trip.vehicleTypeField || null,
       };
       // Socket (foreground) + FCM (background)
       io.to(`user:${driverId}`).emit("trip:new_request", payload);
@@ -1139,7 +1210,10 @@ export async function notifyNearbyDriversNewTrip(
         }).catch(() => { });
       }
     }
-    console.log(`[SOCKET] New trip ${tripId} notified to ${drivers.rows.length} nearby drivers`);
+    console.log(
+      `[SOCKET_MATCH] trip=${tripId} booking.vehicleType=${bookingVehicleType} matchedDrivers=${drivers.rows.length} ` +
+        `driverTypes=${matchedDriverTypes.join(",") || "none"}`,
+    );
   } catch (e: any) {
     console.error("[SOCKET] notifyNearbyDriversNewTrip error:", e.message);
   }
@@ -1150,13 +1224,25 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
   if (!io) return;
   try {
     const driverProfile = await rawDb.execute(rawSql`
-      SELECT dd.vehicle_category_id
+      SELECT dd.vehicle_category_id, COALESCE(vc.vehicle_type, '') as vehicle_type
       FROM driver_details dd
+      LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
       WHERE dd.user_id=${driverId}::uuid
       LIMIT 1
     `);
     const driverVehicleCategoryId = (driverProfile.rows[0] as any)?.vehicle_category_id || null;
+    const driverVehicleType =
+      await getDriverSocketRoomKeyForCategoryId(driverVehicleCategoryId) ||
+      (String((driverProfile.rows[0] as any)?.vehicle_type || "").trim().toLowerCase() || null);
+    if (!driverVehicleCategoryId || !driverVehicleType) {
+      console.error(
+        `[SOCKET_MATCH] Refusing nearby trip scan driver=${driverId} driver.vehicleType=${driverVehicleType || "missing"} ` +
+          `vehicleCategoryId=${driverVehicleCategoryId || "missing"}`,
+      );
+      return;
+    }
     const matchingCategoryIds = await getMatchingDriverCategoryIds(driverVehicleCategoryId);
+    const driverDbVehicleType = getDriverDbVehicleType(driverVehicleType);
 
     const trips = await rawDb.execute(rawSql`
       SELECT
@@ -1164,7 +1250,7 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         u.full_name as customer_name,
         vc.name as vehicle_name,
         vc.icon as vehicle_icon,
-        COALESCE(vc.vehicle_type, '') as vehicle_type_field
+        COALESCE(NULLIF(t.vehicle_type, ''), COALESCE(vc.vehicle_type, '')) as vehicle_type_field
       FROM trip_requests t
       JOIN users u ON u.id=t.customer_id
       LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
@@ -1173,12 +1259,15 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
         ${matchingCategoryIds?.length
         ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : driverVehicleCategoryId
-          ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`
-          : rawSql``}
+        : rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`}
+        AND (NULLIF(t.vehicle_type, '') IS NULL OR t.vehicle_type = ${driverVehicleType})
+        ${driverDbVehicleType ? rawSql`AND vc.type = ${driverDbVehicleType}` : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06
       LIMIT 3
     `);
+    console.log(
+      `[SOCKET_MATCH] driver=${driverId} driver.vehicleType=${driverVehicleType} matchedTrips=${trips.rows.length}`,
+    );
     for (const row of trips.rows) {
       const trip = camelize(row) as any;
       io.to(`user:${driverId}`).emit("trip:new_request", {
@@ -1194,7 +1283,7 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         paymentMethod: trip.paymentMethod,
         vehicleCategoryName: trip.vehicleName || trip.vehicleTypeName || null,
         vehicleIcon: trip.vehicleIcon || null,
-        vehicleType: trip.vehicleTypeField || null,
+        vehicleType: driverVehicleType,
       });
     }
   } catch (e: any) {

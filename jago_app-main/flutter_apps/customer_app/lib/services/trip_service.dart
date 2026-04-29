@@ -39,6 +39,7 @@ class TripService {
     required double destLat,
     required double destLng,
     required String vehicleCategoryId,
+    required String vehicleType,
     required double estimatedFare,
     required double estimatedDistance,
     required String paymentMethod,
@@ -50,7 +51,7 @@ class TripService {
         body: jsonEncode({
           'pickupAddress': pickupAddress, 'pickupLat': pickupLat, 'pickupLng': pickupLng,
           'destinationAddress': destAddress, 'destinationLat': destLat, 'destinationLng': destLng,
-          'vehicleCategoryId': vehicleCategoryId, 'estimatedFare': estimatedFare,
+          'vehicleCategoryId': vehicleCategoryId, 'vehicleType': vehicleType, 'estimatedFare': estimatedFare,
           'estimatedDistance': estimatedDistance, 'paymentMethod': paymentMethod,
         }));
       return _safeJson(res);
@@ -66,6 +67,16 @@ class TripService {
       return _safeJson(res);
     } catch (_) {
       return {'trip': null};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getActiveBooking() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.activeBooking), headers: headers);
+      return _safeJson(res);
+    } catch (_) {
+      return {'booking': null, 'bookingType': null};
     }
   }
 
@@ -85,6 +96,20 @@ class TripService {
       final res = await http.post(Uri.parse(ApiConfig.cancelTrip),
         headers: headers,
         body: jsonEncode({'tripId': tripId, 'reason': reason}));
+      return _safeJson(res);
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> cancelParcelOrder(String orderId, {String reason = 'Customer cancelled'}) async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.post(
+        Uri.parse(ApiConfig.parcelCancel(orderId)),
+        headers: headers,
+        body: jsonEncode({'reason': reason}),
+      );
       return _safeJson(res);
     } catch (e) {
       return {'error': e.toString()};

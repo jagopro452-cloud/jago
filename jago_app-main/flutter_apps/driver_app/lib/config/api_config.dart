@@ -23,7 +23,7 @@ class ApiConfig {
 
   // Set at build time: --dart-define=GOOGLE_MAPS_KEY=AIzaSy...
   // Never hardcode — key must be rotated in Google Cloud Console
-  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY', defaultValue: 'AIzaSyDj3UNBM04zhLbnKrYQa_8WQ9anNXhOcY4');
+  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY');
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;

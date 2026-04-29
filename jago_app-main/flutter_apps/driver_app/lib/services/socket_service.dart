@@ -9,6 +9,8 @@ class SocketService {
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
   SocketService._internal();
+  static const Duration _gpsStaleOfflineAfter = Duration(minutes: 2);
+  static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   IO.Socket? _socket;
   bool _isConnected = false;
@@ -220,15 +222,17 @@ class SocketService {
   /// Prevents ghost-online drivers who have GPS failures.
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       if (!_wasOnline) return;
+      if (_activeTripId != null) return;
       final last = _lastLocationSentAt;
       if (last == null) return;
-      final stale = DateTime.now().difference(last).inSeconds >= 15;
+      final stale = DateTime.now().difference(last) >= _gpsStaleOfflineAfter;
       if (stale && _isConnected) {
         // GPS failed or app went background — mark driver offline
         _socket!.emit('driver:online', {'isOnline': false});
         _wasOnline = false;
+        print('[SOCKET][DRIVER] auto-offline after stale GPS > ${_gpsStaleOfflineAfter.inSeconds}s');
       }
     });
   }

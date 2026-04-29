@@ -12,7 +12,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/trip_service.dart';
 import '../../services/vehicle_status_service.dart';
+import '../tracking/parcel_tracking_screen.dart';
 import '../tracking/tracking_screen.dart';
 import 'ride_for_whom_screen.dart';
 
@@ -43,6 +45,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   bool _estimating = true;
   List<Map<String, dynamic>> _allFares = [];
   int _selectedFareIndex = 0;
+  List<Map<String, dynamic>> _bookableVehicleCategories = [];
+  Map<String, dynamic>? _selectedVehicleSelection;
   String _paymentMethod = 'cash';
   double _walletBalance = 0;
   final TextEditingController _promoCtrl = TextEditingController();
@@ -100,6 +104,184 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'Bike';
   }
 
+  String _normalizeVehicleLookupKey(String? raw) {
+    return (raw ?? '')
+        .trim()
+        .toLowerCase()
+        .replaceAll('&', 'and')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  String? _normalizeVehicleType(String? raw) {
+    final key = (raw ?? '').trim().toLowerCase();
+    if (key.isEmpty) return null;
+    if (key.contains('bike parcel')) return 'bike_parcel';
+    if (key.contains('parcel auto')) return 'auto_parcel';
+    if (key.contains('mini truck') || key.contains('tata ace')) return 'mini_truck';
+    if (key.contains('pickup')) return 'pickup_truck';
+    if (key.contains('tempo')) return 'tempo_407';
+    if (key.contains('bike')) return 'bike';
+    if (key.contains('auto')) return 'auto';
+    if (key.contains('cab') ||
+        key.contains('car') ||
+        key.contains('sedan') ||
+        key.contains('suv') ||
+        key.contains('premium')) {
+      return 'car';
+    }
+    return null;
+  }
+
+  bool _isParcelVehicleType(String? value) {
+    final normalized = _normalizeVehicleType(value) ?? _normalizeVehicleLookupKey(value);
+    return normalized.contains('parcel') ||
+        normalized.contains('truck') ||
+        normalized.contains('pickup') ||
+        normalized.contains('tempo');
+  }
+
+  bool _isBookableCategoryActive(Map<String, dynamic> category) {
+    final raw = category['isActive'] ?? category['is_active'];
+    if (raw is bool) return raw;
+    return raw?.toString().toLowerCase() != 'false';
+  }
+
+  int _categoryMatchScore(
+    Map<String, dynamic> category,
+    String? requestedType,
+    String requestedName,
+  ) {
+    if (!_isBookableCategoryActive(category)) return -1;
+
+    final categoryType = category['type']?.toString().toLowerCase() ?? '';
+    final name = category['name']?.toString() ?? '';
+    final nameKey = _normalizeVehicleLookupKey(name);
+    final isParcel = _isParcelVehicleType(requestedType) || requestedName.contains('parcel');
+
+    if (isParcel) {
+      if (categoryType != 'parcel' && categoryType != 'cargo') return -1;
+    } else if (categoryType == 'parcel' || categoryType == 'cargo') {
+      return -1;
+    }
+
+    final requestedKey = _normalizeVehicleLookupKey(requestedName);
+    var score = 0;
+
+    if (requestedType == 'bike' && nameKey.contains('bike')) score += 120;
+    if (requestedType == 'auto' && nameKey.contains('auto')) score += 120;
+    if (requestedType == 'car') {
+      if (requestedKey.contains('premium') && nameKey.contains('premium')) score += 180;
+      if (requestedKey.contains('sedan') && nameKey.contains('sedan')) score += 170;
+      if (requestedKey.contains('suv') && nameKey.contains('suv')) score += 170;
+      if (nameKey.contains('cab') || nameKey.contains('car') || nameKey.contains('sedan') || nameKey.contains('suv')) {
+        score += 110;
+      }
+    }
+    if (requestedType == 'bike_parcel' && nameKey.contains('bike') && nameKey.contains('parcel')) score += 180;
+    if (requestedType == 'auto_parcel' && nameKey.contains('auto') && nameKey.contains('parcel')) score += 180;
+    if (requestedType == 'mini_truck' && (nameKey.contains('mini') || nameKey.contains('tata'))) score += 180;
+    if (requestedType == 'pickup_truck' && nameKey.contains('pickup')) score += 180;
+
+    if (requestedKey.isNotEmpty) {
+      if (requestedKey == nameKey) score += 240;
+      if (requestedKey.contains('bike') && nameKey.contains('bike')) score += 90;
+      if (requestedKey.contains('auto') && nameKey.contains('auto')) score += 90;
+      if (requestedKey.contains('cab') && (nameKey.contains('cab') || nameKey.contains('car'))) score += 80;
+      if (requestedKey.contains('premium') && nameKey.contains('premium')) score += 90;
+      if (requestedKey.contains('parcel') && nameKey.contains('parcel')) score += 100;
+      if (requestedKey.contains('truck') && nameKey.contains('truck')) score += 100;
+      if (requestedKey.contains('pickup') && nameKey.contains('pickup')) score += 100;
+    }
+
+    return score;
+  }
+
+  Map<String, dynamic>? _resolveVehicleCategoryForFare(Map<String, dynamic> fare) {
+    if (_bookableVehicleCategories.isEmpty) return null;
+    final requestedName = _fareVehicleName(fare);
+    final requestedType = _normalizeVehicleType(
+      fare['vehicleType']?.toString() ??
+          fare['type']?.toString() ??
+          requestedName,
+    );
+
+    Map<String, dynamic>? best;
+    var bestScore = -1;
+    for (final category in _bookableVehicleCategories) {
+      final score = _categoryMatchScore(category, requestedType, requestedName);
+      if (score > bestScore) {
+        bestScore = score;
+        best = category;
+      }
+    }
+    return bestScore >= 0 ? best : null;
+  }
+
+  List<Map<String, dynamic>> _hydrateFaresWithCatalog(List<Map<String, dynamic>> fares) {
+    return fares.map((fare) {
+      final existingId = fare['vehicleCategoryId']?.toString() ?? fare['id']?.toString() ?? '';
+      if (existingId.isNotEmpty) return fare;
+      final resolved = _resolveVehicleCategoryForFare(fare);
+      if (resolved == null) return fare;
+      return {
+        ...fare,
+        'vehicleCategoryId': resolved['id']?.toString(),
+        'vehicleCategoryName': fare['vehicleCategoryName'] ?? resolved['name'],
+      };
+    }).toList();
+  }
+
+  Map<String, dynamic>? _buildSelectionFromFare(Map<String, dynamic>? fare) {
+    if (fare == null) return null;
+    final resolvedCategory = _resolveVehicleCategoryForFare(fare);
+    final categoryId = fare['vehicleCategoryId']?.toString() ??
+        fare['id']?.toString() ??
+        resolvedCategory?['id']?.toString();
+    final vehicleName = _fareVehicleName({
+      ...fare,
+      if (resolvedCategory != null && fare['vehicleCategoryName'] == null) 'vehicleCategoryName': resolvedCategory['name'],
+    });
+    final vehicleType = _normalizeVehicleType(
+      fare['vehicleType']?.toString() ??
+          fare['type']?.toString() ??
+          vehicleName,
+    );
+    return {
+      'vehicleCategoryId': categoryId,
+      'vehicleType': vehicleType,
+      'vehicleName': vehicleName,
+      'resolved': categoryId != null && categoryId.isNotEmpty && vehicleType != null && vehicleType.isNotEmpty,
+    };
+  }
+
+  void _refreshSelectedVehicleSelection() {
+    final selection = _buildSelectionFromFare(_fare);
+    if (!mounted) {
+      _selectedVehicleSelection = selection;
+      return;
+    }
+    setState(() => _selectedVehicleSelection = selection);
+  }
+
+  bool get _hasResolvedVehicleSelection =>
+      _selectedVehicleSelection?['resolved'] == true;
+
+  bool get _hasBookingInputs =>
+      widget.pickup.trim().isNotEmpty &&
+      widget.destination.trim().isNotEmpty &&
+      widget.pickupLat != 0 &&
+      widget.pickupLng != 0 &&
+      widget.destLat != 0 &&
+      widget.destLng != 0;
+
+  bool get _canConfirmRide =>
+      !_loading &&
+      !_estimating &&
+      _allFares.isNotEmpty &&
+      _hasBookingInputs &&
+      _hasResolvedVehicleSelection;
+
   List<MapEntry<int, Map<String, dynamic>>> _visibleFareEntries(
     Map<String, VehicleStatus> statuses,
   ) {
@@ -128,6 +310,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || visible.isEmpty) return;
       setState(() => _selectedFareIndex = visible.first.key);
+      _refreshSelectedVehicleSelection();
     });
   }
 
@@ -440,10 +623,31 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handleRazorpaySuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handleRazorpayError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+    _loadBookableVehicleCategories();
     _estimateFare();
     _fetchWallet();
     _fetchPopularLocations();
     _fetchRoutePolyline();
+  }
+
+  Future<void> _loadBookableVehicleCategories() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.customerHomeData), headers: headers)
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200 || !mounted) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final categories =
+          (data['vehicleCategories'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .toList();
+      setState(() {
+        _bookableVehicleCategories = categories;
+        _allFares = _hydrateFaresWithCatalog(_allFares);
+      });
+      _refreshSelectedVehicleSelection();
+    } catch (_) {}
   }
 
   Future<void> _fetchPopularLocations() async {
@@ -580,7 +784,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 return true;
               }).toList();
             }
-            _allFares = filtered;
+            _allFares = _hydrateFaresWithCatalog(filtered);
             
             // Ensure we have at least the core categories (Bike, Auto, Cab)
             if (widget.category != 'parcel') {
@@ -592,13 +796,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   final name = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
                   return name.contains(fbName.split(' ').first.toLowerCase());
                 })) {
-                  _allFares.add(fb);
+                  _allFares.add(_hydrateFaresWithCatalog([fb]).first);
                 }
               }
             }
             
             // Final safety check: if still empty (shouldn't happen with fallbacks), use all fallbacks
-            if (_allFares.isEmpty) _allFares = _buildFallbackFares();
+            if (_allFares.isEmpty) _allFares = _hydrateFaresWithCatalog(_buildFallbackFares());
             if (widget.vehicleCategoryId != null || widget.vehicleCategoryName != null) {
               final targetName = (widget.vehicleCategoryName ?? '').toLowerCase();
               final idx = _allFares.indexWhere((f) {
@@ -610,17 +814,27 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               if (idx >= 0) _selectedFareIndex = idx;
             }
           });
+          _refreshSelectedVehicleSelection();
         } else {
           // Server returned 200 but body wasn't as expected — use fallbacks
-          if (mounted) setState(() => _allFares = _buildFallbackFares());
+          if (mounted) {
+            setState(() => _allFares = _hydrateFaresWithCatalog(_buildFallbackFares()));
+            _refreshSelectedVehicleSelection();
+          }
         }
       } else {
         // Server returned error status — use fallbacks
-        if (mounted) setState(() => _allFares = _buildFallbackFares());
+        if (mounted) {
+          setState(() => _allFares = _hydrateFaresWithCatalog(_buildFallbackFares()));
+          _refreshSelectedVehicleSelection();
+        }
       }
     } catch (_) {
       // Network error — show client-side estimates only on connectivity failure
-      if (mounted) setState(() => _allFares = _buildFallbackFares());
+      if (mounted) {
+        setState(() => _allFares = _hydrateFaresWithCatalog(_buildFallbackFares()));
+        _refreshSelectedVehicleSelection();
+      }
     }
     if (mounted) setState(() => _estimating = false);
   }
@@ -638,6 +852,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         'vehicleCategoryId': null,
         'vehicleCategoryName': name,
         'vehicleName': name,
+        'vehicleType': _normalizeVehicleType(name),
         'baseFare': base,
         'farePerKm': perKm,
         'billableKm': dist,
@@ -676,9 +891,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Future<void> _confirmBooking({String? razorpayPaymentId}) async {
+    if (!_validateBookingBeforeConfirm()) return;
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
+      final selection = _selectedVehicleSelection ?? _buildSelectionFromFare(_fare);
       final body = <String, dynamic>{
         'pickupAddress': widget.pickup,
         'destinationAddress': widget.destination,
@@ -709,8 +926,25 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (_bookForSomeone && _noteCtrl.text.trim().isNotEmpty)
           'note': _noteCtrl.text.trim(),
       };
-      final vcId = _fare?['vehicleCategoryId']?.toString() ?? _fare?['id']?.toString() ?? widget.vehicleCategoryId;
+      final vcId = selection?['vehicleCategoryId']?.toString() ??
+          _fare?['vehicleCategoryId']?.toString() ??
+          _fare?['id']?.toString() ??
+          widget.vehicleCategoryId;
       if (vcId != null && vcId.isNotEmpty) body['vehicleCategoryId'] = vcId;
+      final selectedVehicleType = selection?['vehicleType']?.toString() ??
+          _normalizeVehicleType(
+            _fare?['vehicleType']?.toString() ??
+                _fare?['type']?.toString() ??
+                _fareVehicleName(_fare ?? const <String, dynamic>{}),
+          );
+      if (selectedVehicleType != null) body['vehicleType'] = selectedVehicleType;
+      final selectedVehicleName =
+          selection?['vehicleName']?.toString() ?? _fareVehicleName(_fare ?? const <String, dynamic>{});
+      if (selectedVehicleName.isNotEmpty) {
+        body['vehicleCategoryName'] = selectedVehicleName;
+        body['vehicleName'] = selectedVehicleName;
+      }
+      debugPrint('[BOOK_RIDE] payload=${jsonEncode(body)}');
       final res = await http.post(Uri.parse(ApiConfig.bookRide),
         headers: headers,
         body: jsonEncode(body));
@@ -730,6 +964,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (!mounted) return;
         try {
           final err = jsonDecode(res.body);
+          if (err['tripId'] != null || err['orderId'] != null) {
+            await _ensureNoActiveBookingBeforeContinue();
+          }
           _showSnack(err['message'] ?? 'Booking failed', error: true);
         } catch (_) {
           _showSnack('Booking failed. Please try again.', error: true);
@@ -841,7 +1078,126 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     );
   }
 
+  bool _validateBookingBeforeConfirm() {
+    if (widget.pickup.trim().isEmpty || widget.pickupLat == 0 || widget.pickupLng == 0) {
+      _showSnack('Pickup location is missing. Please choose a valid pickup point.', error: true);
+      return false;
+    }
+    if (widget.destination.trim().isEmpty || widget.destLat == 0 || widget.destLng == 0) {
+      _showSnack('Drop location is missing. Please choose a valid destination.', error: true);
+      return false;
+    }
+    if (!_hasResolvedVehicleSelection) {
+      _showSnack('Please select a live vehicle option before confirming your ride.', error: true);
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _ensureNoActiveBookingBeforeContinue() async {
+    final active = await TripService.getActiveBooking();
+    final booking = active['booking'];
+    final bookingType = active['bookingType']?.toString();
+    if (booking is! Map<String, dynamic> || bookingType == null || bookingType.isEmpty) {
+      return true;
+    }
+
+    final canCancel = booking['canCancel'] == true;
+    final bookingId = booking['id']?.toString() ?? '';
+    final title = bookingType == 'parcel' ? 'Active parcel found' : 'Active ride found';
+    final subtitle = bookingType == 'parcel'
+        ? (booking['pickupAddress']?.toString() ?? 'Parcel booking in progress')
+        : (booking['destinationAddress']?.toString() ?? 'Ride booking in progress');
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, 'track'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JT.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Track Current Booking', style: TextStyle(color: Colors.white)),
+              ),
+            ),
+            if (canCancel) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, 'cancel'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Cancel Current Booking And Continue'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return false;
+    if (action == 'track' && bookingId.isNotEmpty) {
+      if (bookingType == 'parcel') {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ParcelTrackingScreen(orderId: bookingId)),
+        );
+      } else {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TrackingScreen(tripId: bookingId)),
+        );
+      }
+      return false;
+    }
+
+    if (action == 'cancel' && bookingId.isNotEmpty && canCancel) {
+      final result = bookingType == 'parcel'
+          ? await TripService.cancelParcelOrder(
+              bookingId,
+              reason: 'Customer cancelled to continue with a new ride booking',
+            )
+          : await TripService.cancelTrip(
+              bookingId,
+              'Customer cancelled to continue with a new ride booking',
+            );
+      if (result['success'] == true) {
+        _showSnack('Previous booking cancelled. Continue with your new ride.', error: false);
+        return true;
+      }
+      _showSnack(
+        result['message']?.toString() ?? result['error']?.toString() ?? 'Could not cancel current booking.',
+        error: true,
+      );
+    }
+
+    return false;
+  }
+
   Future<void> _goToRideForWhomScreen() async {
+    if (!_validateBookingBeforeConfirm()) return;
     try {
       final statuses = await _vehicleStatusService.watchVehicleStatuses().first;
       final currentFare = (_selectedFareIndex >= 0 && _selectedFareIndex < _allFares.length)
@@ -852,6 +1208,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         return;
       }
     } catch (_) {}
+    final canContinue = await _ensureNoActiveBookingBeforeContinue();
+    if (!canContinue) return;
     final result = await Navigator.push(context, MaterialPageRoute(
       builder: (_) => RideForWhomScreen(vehicleName: _vehicleName),
     ));
@@ -1012,70 +1370,58 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     List<LatLng> points = [];
     double fetchedDistMeters = 0.0;
 
-    // Attempt 1: OSRM Public Routing API (Highly reliable, no API key, returns distance)
+    // Attempt 1: backend route proxy using one controlled server-side Maps key
     try {
-      final uri = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/${widget.pickupLng},${widget.pickupLat};${widget.destLng},${widget.destLat}?overview=full&geometries=polyline'
-      );
-      final res = await http.get(uri).timeout(const Duration(seconds: 4));
+      final headers = await AuthService.getHeaders();
+      final res = await http.post(
+        Uri.parse(ApiConfig.routeMultiWaypoint),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'origin': {'lat': widget.pickupLat, 'lng': widget.pickupLng},
+          'destination': {'lat': widget.destLat, 'lng': widget.destLng},
+          'waypoints': [],
+          'optimize': false,
+        }),
+      ).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
-          final encoded = route['geometry'];
-          points = _decodePolyline(encoded);
-          fetchedDistMeters = (route['distance'] as num).toDouble();
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final overviewPolyline = data['overviewPolyline']?.toString() ?? '';
+        if (overviewPolyline.isNotEmpty) {
+          points = _decodePolyline(overviewPolyline);
+          final totalDistanceKm =
+              (data['totalDistanceKm'] as num?)?.toDouble() ??
+              (data['distanceKm'] as num?)?.toDouble() ??
+              0.0;
+          fetchedDistMeters = totalDistanceKm * 1000;
           success = points.isNotEmpty;
         }
       }
     } catch (_) {}
 
-    // Attempt 2: Direct Google Directions API
+    // Attempt 2: OSRM public routing fallback
     if (!success) {
       try {
         final uri = Uri.parse(
-          'https://maps.googleapis.com/maps/api/directions/json?origin=${widget.pickupLat},${widget.pickupLng}&destination=${widget.destLat},${widget.destLng}&key=${ApiConfig.googleMapsApiKey}'
+          'https://router.project-osrm.org/route/v1/driving/${widget.pickupLng},${widget.pickupLat};${widget.destLng},${widget.destLat}?overview=full&geometries=polyline'
         );
         final res = await http.get(uri).timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
-          if (data['routes'] != null && data['routes'].isNotEmpty) {
-            final encoded = data['routes'][0]['overview_polyline']['points'];
+          if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+            final route = data['routes'][0];
+            final encoded = route['geometry'];
             points = _decodePolyline(encoded);
-            final legs = data['routes'][0]['legs'];
-            if (legs != null && legs.isNotEmpty) {
-               fetchedDistMeters = (legs[0]['distance']['value'] as num).toDouble();
-            }
+            fetchedDistMeters = (route['distance'] as num).toDouble();
             success = points.isNotEmpty;
           }
         }
       } catch (_) {}
     }
 
-    // Attempt 3: Backend Navigation API
+    // Attempt 3: straight-line fallback so the map still renders a route
     if (!success) {
-      try {
-        final headers = await AuthService.getHeaders();
-        final res = await http.post(
-          Uri.parse(ApiConfig.routeMultiWaypoint),
-          headers: {...headers, 'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'origin': {'lat': widget.pickupLat, 'lng': widget.pickupLng},
-            'destination': {'lat': widget.destLat, 'lng': widget.destLng},
-            'waypoints': [],
-            'optimize': false,
-          }),
-        ).timeout(const Duration(seconds: 4));
-        
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body) as Map<String, dynamic>;
-          final overviewPolyline = data['overviewPolyline']?.toString();
-          if (overviewPolyline != null && overviewPolyline.isNotEmpty) {
-            points = _decodePolyline(overviewPolyline);
-            success = points.isNotEmpty;
-          }
-        }
-      } catch (_) {}
+      points = [_pickupLatLng, _destLatLng];
+      success = true;
     }
 
     if (!mounted) return;
@@ -1153,25 +1499,26 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                child: Stack(
-                  children: [
-                    GoogleMap(
-                      initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 14),
-                      onMapCreated: (c) {
-                        _mapController = c;
-                        _fitMapToRoute();
-                      },
-                      markers: {
-                        Marker(markerId: const MarkerId('p'), position: _pickupLatLng, icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)),
-                        Marker(markerId: const MarkerId('d'), position: _destLatLng, icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)),
-                      },
-                      polylines: _polylines,
-                      zoomControlsEnabled: false,
-                      myLocationButtonEnabled: false,
-                      mapToolbarEnabled: false,
-                    ),
+              child: Stack(
+                children: [
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 14),
+                    onMapCreated: (c) {
+                      _mapController = c;
+                      debugPrint(
+                        '[MAP] Booking map created pickup=${_pickupLatLng.latitude},${_pickupLatLng.longitude} dest=${_destLatLng.latitude},${_destLatLng.longitude}',
+                      );
+                      _fitMapToRoute();
+                    },
+                    markers: {
+                      Marker(markerId: const MarkerId('p'), position: _pickupLatLng, icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)),
+                      Marker(markerId: const MarkerId('d'), position: _destLatLng, icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)),
+                    },
+                    polylines: _polylines,
+                    zoomControlsEnabled: false,
+                    myLocationButtonEnabled: false,
+                    mapToolbarEnabled: false,
+                  ),
                     
                     // Floating Address Card
                     Positioned(
@@ -1193,12 +1540,12 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     ),
 
                     // Draggable Sheet
-                    DraggableScrollableSheet(
-                      initialChildSize: 0.45,
-                      minChildSize: 0.35,
-                      maxChildSize: 0.9,
-                      builder: (context, scrollController) {
-                        return Container(
+                  DraggableScrollableSheet(
+                    initialChildSize: 0.45,
+                    minChildSize: 0.35,
+                    maxChildSize: 0.9,
+                    builder: (context, scrollController) {
+                      return Container(
                           decoration: const BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -1209,7 +1556,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             builder: (context, snapshot) {
                               final statuses = snapshot.data ?? {};
                               final visibleFares = _allFares;
-                              final canBook = !_loading && !_estimating && visibleFares.isNotEmpty;
+                              final canBook = _canConfirmRide;
 
                               return Container(
                                 decoration: BoxDecoration(
@@ -1242,6 +1589,33 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                                         children: [
                                           _buildVehicleSelector(statuses),
+                                          if (!_hasResolvedVehicleSelection && !_estimating) ...[
+                                            const SizedBox(height: 12),
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFEF2F2),
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(color: const Color(0xFFFCA5A5)),
+                                              ),
+                                              child: const Row(
+                                                children: [
+                                                  Icon(Icons.info_outline, color: Color(0xFFDC2626), size: 18),
+                                                  SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      'Live vehicle selection not resolved yet. Please wait or reselect a vehicle before confirming.',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Color(0xFF991B1B),
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
                                           const SizedBox(height: 24),
                                           _buildPaymentSection(),
                                           const SizedBox(height: 24),
@@ -1274,10 +1648,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             },
                           ),
                         );
-                      },
-                    ),
-                  ],
-                ),
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -1567,6 +1940,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         ),
       );
     }
+    _syncSelectedFareToVisible(statuses);
     final visibleFares = _visibleFareEntries(statuses);
     if (visibleFares.isEmpty && !_estimating) {
       return Container(
@@ -1628,6 +2002,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             if (!isActive) return;
             HapticFeedback.selectionClick();
             setState(() => _selectedFareIndex = i);
+            _refreshSelectedVehicleSelection();
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),

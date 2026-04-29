@@ -16,7 +16,13 @@ def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
 }
-def googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_DRIVER_KEY')
+def googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_ANDROID_KEY')
+if (!googleMapsKey) {
+    googleMapsKey = System.getenv('GOOGLE_MAPS_ANDROID_KEY')
+}
+if (!googleMapsKey) {
+    googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_DRIVER_KEY')
+}
 if (!googleMapsKey) {
     googleMapsKey = System.getenv('GOOGLE_MAPS_DRIVER_KEY')
 }
@@ -27,7 +33,7 @@ if (!googleMapsKey) {
     googleMapsKey = System.getenv('GOOGLE_MAPS_KEY')
 }
 if (!googleMapsKey) {
-    throw new GradleException("Driver GOOGLE_MAPS key missing. Add GOOGLE_MAPS_DRIVER_KEY or GOOGLE_MAPS_KEY to android/local.properties or environment variables.")
+    throw new GradleException("Driver GOOGLE_MAPS key missing. Add GOOGLE_MAPS_ANDROID_KEY, GOOGLE_MAPS_DRIVER_KEY, or GOOGLE_MAPS_KEY to android/local.properties or environment variables.")
 }
 def releaseStoreFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
 def hasReleaseSigning = releaseStoreFile != null &&
@@ -76,8 +82,8 @@ android {
         applicationId "com.mindwhile.jago_pilot"
         minSdkVersion 24
         targetSdkVersion 34
-        versionCode 90
-        versionName "1.0.90"
+        versionCode 92
+        versionName "1.0.92"
         multiDexEnabled true
         manifestPlaceholders = [googleMapsApiKey: googleMapsKey]
     }

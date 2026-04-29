@@ -67,6 +67,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   String _address = 'Move the map to select location';
   bool _geocoding = false;
   bool _locationLoading = true;
+  bool _hasLocationPermission = false;
 
   // Search state
   final _searchCtrl = TextEditingController();
@@ -190,6 +191,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.denied) {
         setState(() {
           _locationLoading = false;
+          _hasLocationPermission = false;
           _lat = 16.5062;
           _lng = 80.6480;
           _address = 'Location permission is needed to detect your current location.';
@@ -199,11 +201,15 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.deniedForever) {
         setState(() {
           _locationLoading = false;
+          _hasLocationPermission = false;
           _lat = 16.5062;
           _lng = 80.6480;
           _address = 'Location permission is blocked. Enable it from settings.';
         });
         return;
+      }
+      if (mounted) {
+        setState(() => _hasLocationPermission = true);
       }
 
       if (lastPos != null && mounted) {
@@ -389,8 +395,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 target: LatLng(_lat!, _lng!),
                 zoom: 15,
               ),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
+              myLocationEnabled: _hasLocationPermission,
+              myLocationButtonEnabled: _hasLocationPermission,
               zoomControlsEnabled: false,
               padding: const EdgeInsets.only(bottom: 240),
               onMapCreated: (controller) {

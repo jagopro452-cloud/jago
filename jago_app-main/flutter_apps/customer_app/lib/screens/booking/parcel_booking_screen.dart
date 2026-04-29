@@ -8,8 +8,9 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/trip_service.dart';
 import 'package:geolocator/geolocator.dart';
-import '../tracking/tracking_screen.dart';
+import '../tracking/parcel_tracking_screen.dart';
 
 import 'map_location_picker.dart';
 
@@ -389,8 +390,11 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     if (currentLat == 0 && s['place_id'] != null && s['place_id'] != '') {
       try {
         final headers = await AuthService.getHeaders();
+        final placeId = s['place_id']?.toString() ?? '';
         final r = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?place_id=${s['place_id']}'),
+          Uri.parse(
+            '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId)}',
+          ),
           headers: headers,
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
@@ -458,6 +462,103 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   // ── Book ─────────────────────────────────────────────────────────────────────
 
+  Future<bool> _ensureNoActiveBookingBeforeContinue() async {
+    final active = await TripService.getActiveBooking();
+    final booking = active['booking'];
+    final bookingType = active['bookingType']?.toString();
+    if (booking is! Map<String, dynamic> || bookingType == null || bookingType.isEmpty) {
+      return true;
+    }
+
+    final canCancel = booking['canCancel'] == true;
+    final bookingId = booking['id']?.toString() ?? '';
+    final title = bookingType == 'parcel' ? 'Active parcel found' : 'Active ride found';
+    final subtitle = bookingType == 'parcel'
+        ? (booking['pickupAddress']?.toString() ?? 'Parcel booking in progress')
+        : (booking['destinationAddress']?.toString() ?? 'Ride booking in progress');
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, 'track'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JT.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Track Current Booking', style: TextStyle(color: Colors.white)),
+              ),
+            ),
+            if (canCancel) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, 'cancel'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Cancel Current Booking And Continue'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return false;
+    if (action == 'track' && bookingId.isNotEmpty) {
+      if (bookingType == 'parcel') {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ParcelTrackingScreen(orderId: bookingId)),
+        );
+      }
+      return false;
+    }
+
+    if (action == 'cancel' && bookingId.isNotEmpty && canCancel) {
+      final result = bookingType == 'parcel'
+          ? await TripService.cancelParcelOrder(
+              bookingId,
+              reason: 'Customer cancelled to continue with a new parcel booking',
+            )
+          : await TripService.cancelTrip(
+              bookingId,
+              'Customer cancelled to continue with a new parcel booking',
+            );
+      if (result['success'] == true) {
+        _showSnack('Previous booking cancelled. Continue with your new parcel.', error: false);
+        return true;
+      }
+      _showSnack(
+        result['message']?.toString() ?? result['error']?.toString() ?? 'Could not cancel current booking.',
+        error: true,
+      );
+    }
+
+    return false;
+  }
+
   Future<void> _book() async {
     if (!_step3Valid || _booking) return;
     if (_pickupLat == 0.0 || _pickupLng == 0.0) {
@@ -468,46 +569,55 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       _showSnack('Delivery location is missing. Please re-select drop location.', error: true);
       return;
     }
+    final canContinue = await _ensureNoActiveBookingBeforeContinue();
+    if (!canContinue) return;
     setState(() => _booking = true);
     try {
       final dist = _haversine(_pickupLat, _pickupLng, _destLat, _destLng);
       final headers = await AuthService.getHeaders();
-      final r = await http.post(
-        Uri.parse(ApiConfig.parcelBook),
-        headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'vehicleCategory': _vehicle.key,
-          'pickupAddress': _pickupAddr,
-          'pickupLat': _pickupLat,
-          'pickupLng': _pickupLng,
-          'pickupContactName': '',
-          'pickupContactPhone': '',
-          'dropLocations': [{
+      final payload = {
+        'vehicleCategory': _vehicle.key,
+        'pickupAddress': _pickupAddr,
+        'pickupLat': _pickupLat,
+        'pickupLng': _pickupLng,
+        'pickupContactName': '',
+        'pickupContactPhone': '',
+        'dropLocations': [
+          {
             'address': _dropAddressCtrl.text,
             'lat': _destLat,
             'lng': _destLng,
             'receiverName': _receiverNameCtrl.text.trim(),
             'receiverPhone': _receiverPhoneCtrl.text.trim(),
-          }],
-          'totalDistanceKm': dist,
-          'weightKg': _weightKg,
-          'paymentMethod': 'cash',
-          'notes': [
-            if (_itemType != null) 'Item: $_itemType',
-            if (_descCtrl.text.trim().isNotEmpty) 'Desc: ${_descCtrl.text.trim()}',
-            if (_instructionsCtrl.text.trim().isNotEmpty) 'Instructions: ${_instructionsCtrl.text.trim()}',
-          ].join(' | '),
-        }),
+          }
+        ],
+        'totalDistanceKm': dist,
+        'weightKg': _weightKg,
+        'paymentMethod': 'cash',
+        'notes': [
+          if (_itemType != null) 'Item: $_itemType',
+          if (_descCtrl.text.trim().isNotEmpty) 'Desc: ${_descCtrl.text.trim()}',
+          if (_instructionsCtrl.text.trim().isNotEmpty) 'Instructions: ${_instructionsCtrl.text.trim()}',
+        ].join(' | '),
+      };
+      debugPrint('[PARCEL_BOOKING] payload=${jsonEncode(payload)}');
+      final r = await http.post(
+        Uri.parse(ApiConfig.parcelBook),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 30));
       if (!mounted) return;
       if (r.statusCode == 200 || r.statusCode == 201) {
         final data = jsonDecode(r.body);
         final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
         Navigator.pushReplacement(context, MaterialPageRoute(
-          builder: (_) => TrackingScreen(tripId: orderId),
+          builder: (_) => ParcelTrackingScreen(orderId: orderId),
         ));
       } else {
         final e = jsonDecode(r.body);
+        if (e['orderId'] != null) {
+          await _ensureNoActiveBookingBeforeContinue();
+        }
         _showSnack(e['message'] ?? 'Booking failed. Try again.', error: true);
       }
     } catch (e) {

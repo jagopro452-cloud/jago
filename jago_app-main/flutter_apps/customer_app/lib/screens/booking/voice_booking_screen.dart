@@ -265,6 +265,26 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
     }
   }
 
+  String? _normalizeVehicleType(String? raw) {
+    final key = (raw ?? '').trim().toLowerCase();
+    if (key.isEmpty) return null;
+    if (key.contains('bike parcel')) return 'bike_parcel';
+    if (key.contains('parcel auto')) return 'auto_parcel';
+    if (key.contains('mini truck') || key.contains('tata ace')) return 'mini_truck';
+    if (key.contains('pickup')) return 'pickup_truck';
+    if (key.contains('tempo')) return 'tempo_407';
+    if (key.contains('bike')) return 'bike';
+    if (key.contains('auto')) return 'auto';
+    if (key.contains('cab') ||
+        key.contains('car') ||
+        key.contains('sedan') ||
+        key.contains('suv') ||
+        key.contains('premium')) {
+      return 'car';
+    }
+    return null;
+  }
+
   // ─── Listening ────────────────────────────────────────────────────────────
 
   Future<void> _startListening() async {
@@ -597,21 +617,46 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       final fare = _allFares[_selectedFareIndex];
       final vcId = fare['vehicleCategoryId']?.toString() ?? fare['id']?.toString()
           ?? _parsedIntent!['vehicleCategoryId']?.toString();
+      final vehicleType = _normalizeVehicleType(
+        fare['vehicleType']?.toString() ??
+            fare['type']?.toString() ??
+            fare['vehicleCategoryName']?.toString() ??
+            fare['name']?.toString() ??
+            _parsedIntent!['vehicleType']?.toString(),
+      );
+      final vehicleName =
+          fare['vehicleCategoryName']?.toString() ??
+          fare['vehicleName']?.toString() ??
+          fare['name']?.toString() ??
+          'Bike';
+      if ((vcId == null || vcId.isEmpty) && vehicleType == null) {
+        _showSnack('Vehicle selection not ready. Please pick a vehicle again.');
+        await _speak('Vehicle selection is not ready yet. Please try again.');
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
       final headers = await AuthService.getHeaders();
+      final payload = <String, dynamic>{
+        'pickupLat': _parsedIntent!['pickupLat'],
+        'pickupLng': _parsedIntent!['pickupLng'],
+        'destinationLat': _parsedIntent!['destLat'],
+        'destinationLng': _parsedIntent!['destLng'],
+        'pickupAddress': _parsedIntent!['pickup'],
+        'destinationAddress': _parsedIntent!['destination'],
+        if (vcId != null && vcId.isNotEmpty) 'vehicleCategoryId': vcId,
+        if (vehicleType != null) 'vehicleType': vehicleType,
+        'vehicleCategoryName': vehicleName,
+        'vehicleName': vehicleName,
+        'estimatedFare': fare['estimatedFare'] ?? 0,
+        'estimatedDistance': _distanceKm,
+        'paymentMethod': 'cash',
+        'tripType': 'normal',
+      };
+      debugPrint('[VOICE_BOOK_RIDE] payload=${jsonEncode(payload)}');
       final res = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/customer/book-ride'),
+        Uri.parse(ApiConfig.bookRide),
         headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'pickupLat': _parsedIntent!['pickupLat'],
-          'pickupLng': _parsedIntent!['pickupLng'],
-          'destinationLat': _parsedIntent!['destLat'],
-          'destinationLng': _parsedIntent!['destLng'],
-          'pickupAddress': _parsedIntent!['pickup'],
-          'destinationAddress': _parsedIntent!['destination'],
-          if (vcId != null && vcId.isNotEmpty) 'vehicleCategoryId': vcId,
-          'paymentMethod': 'cash',
-          'tripType': 'normal',
-        }),
+        body: jsonEncode(payload),
       );
       if (res.statusCode == 200) {
         HapticFeedback.heavyImpact();
