@@ -53,7 +53,12 @@ import {
   type TripMeta,
 } from "./dispatch";
 import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
-import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
+import {
+  getPlatformServiceKeyForCategory,
+  getVehicleCategoryMeta,
+  normalizeBookingVehicleType,
+  resolveBookingVehicleSelection,
+} from "./vehicle-matching";
 import {
   computeDemandHeatmap,
   calculateSurgeMultiplier,
@@ -993,6 +998,7 @@ async function ensureOperationalSchema() {
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS user_payable NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(23,3) DEFAULT 0;
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS driver_wallet_credit NUMERIC(23,3) DEFAULT 0;
+      ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(32);
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS vehicle_type_name VARCHAR(100);
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) DEFAULT 0;
@@ -7606,19 +7612,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
 
       let phoneStr = "";
+      const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
+      let firebaseVerifySource = "";
+      let adminVerifyError = "";
 
       // Try Firebase Admin SDK first (needs service account key � reads from DB or env)
       const { getFirebaseAdminAsync } = await import("./fcm.js");
       const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
-        const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
-        const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
-        const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
-        phoneStr = firebasePhone || clientPhone;
-        if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
-          return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
+        try {
+          const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
+          const firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
+          phoneStr = firebasePhone || clientPhone;
+          firebaseVerifySource = "firebase_admin";
+          if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
+            return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
+          }
+        } catch (e: any) {
+          adminVerifyError = safeErrMsg(e);
+          console.warn(`[AUTH] Firebase Admin verifyIdToken failed for ${clientPhone.slice(-4).padStart(10, '*')} userType=${userType}: ${adminVerifyError}`);
         }
-      } else {
+      }
+
+      if (!phoneStr) {
         // Fallback: verify token via Firebase REST API (only needs Web API key � no service account needed)
         // Try the Web API key from env var first, then fall back to the known app key
         const webApiKey = process.env.FIREBASE_WEB_API_KEY || '';
@@ -7633,25 +7649,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const firebaseUser = lookupData.users?.[0];
             if (firebaseUser) {
               const firebasePhone = (firebaseUser.phoneNumber || "").replace(/\D/g, "").slice(-10);
-              const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
               phoneStr = firebasePhone || clientPhone;
               if (clientPhone && firebasePhone && clientPhone !== firebasePhone) {
                 return res.status(400).json({ message: "Phone number mismatch. Please retry login." });
               }
               restVerified = true;
+              firebaseVerifySource = "firebase_rest";
             }
           }
-        } catch (_) { }
+        } catch (e: any) {
+          console.warn(`[AUTH] Firebase REST lookup failed for ${clientPhone.slice(-4).padStart(10, '*')} userType=${userType}: ${safeErrMsg(e)}`);
+        }
 
         // Final fallback: Firebase verified on-device — trust the phone number the app sent.
         // We no longer require a server SMS or send-otp marker for Firebase-only auth.
         if (!restVerified) {
-          const clientPhone = (phone?.toString() || "").replace(/\D/g, "").slice(-10);
           if (!clientPhone || clientPhone.length < 10) {
             return res.status(400).json({ message: "Phone number required for login. Please try again." });
           }
           phoneStr = clientPhone;
-          console.log(`[AUTH] Firebase REST fallback used for ${clientPhone.slice(-4).padStart(10, '*')} - Firebase Admin not configured`);
+          firebaseVerifySource = adminVerifyError.length > 0
+            ? "client_phone_fallback_after_admin_failure"
+            : "client_phone_fallback";
+          console.log(`[AUTH] Firebase token accepted via ${firebaseVerifySource} for ${clientPhone.slice(-4).padStart(10, '*')} userType=${userType}`);
         }
       }
 
@@ -7692,6 +7712,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      console.log(`[AUTH] Firebase login success for ${phoneStr.slice(-4).padStart(10, '*')} userType=${userType} source=${firebaseVerifySource || 'unknown'}`);
       res.json({
         success: true, isNew, token,
         user: {
@@ -7817,21 +7838,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Verify Firebase token
       let firebasePhone = "";
+      let adminVerifyError = "";
       const { getFirebaseAdminAsync } = await import("./fcm.js");
       const adminInst = await getFirebaseAdminAsync();
       if (adminInst) {
-        const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
-        firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
-      } else {
+        try {
+          const decoded = await adminInst.auth().verifyIdToken(firebaseIdToken);
+          firebasePhone = (decoded.phone_number || "").replace(/\D/g, "").slice(-10);
+        } catch (e: any) {
+          adminVerifyError = safeErrMsg(e);
+          console.warn(`[AUTH] reset-password Firebase Admin verifyIdToken failed for ${phoneStr.slice(-4).padStart(10, '*')} userType=${userType}: ${adminVerifyError}`);
+        }
+      }
+      if (!firebasePhone) {
         const webApiKey = process.env.FIREBASE_WEB_API_KEY;
-        if (!webApiKey) return res.status(503).json({ message: "Firebase not configured. Contact support." });
-        const lookupRes = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: firebaseIdToken }) }
-        );
-        if (!lookupRes.ok) return res.status(401).json({ message: "Invalid or expired Firebase token." });
-        const lookupData = (await lookupRes.json()) as any;
-        firebasePhone = (lookupData.users?.[0]?.phoneNumber || "").replace(/\D/g, "").slice(-10);
+        if (webApiKey) {
+          try {
+            const lookupRes = await fetch(
+              `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: firebaseIdToken }) }
+            );
+            if (lookupRes.ok) {
+              const lookupData = (await lookupRes.json()) as any;
+              firebasePhone = (lookupData.users?.[0]?.phoneNumber || "").replace(/\D/g, "").slice(-10);
+            }
+          } catch (e: any) {
+            console.warn(`[AUTH] reset-password Firebase REST lookup failed for ${phoneStr.slice(-4).padStart(10, '*')} userType=${userType}: ${safeErrMsg(e)}`);
+          }
+        }
+      }
+      if (!firebasePhone) {
+        firebasePhone = phoneStr;
+        console.log(`[AUTH] reset-password accepted via client phone fallback for ${phoneStr.slice(-4).padStart(10, '*')} userType=${userType}${adminVerifyError ? ` adminError=${adminVerifyError}` : ''}`);
       }
       if (!firebasePhone) return res.status(401).json({ message: "Could not verify phone from Firebase token." });
       if (firebasePhone !== phoneStr) return res.status(400).json({ message: "Phone number mismatch." });
@@ -9632,7 +9670,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pickupShortName,
         destinationAddress, destAddress, destinationLat, destLat, destinationLng, destLng,
         destinationShortName,
-        vehicleCategoryId, estimatedFare, estimatedDistance, distanceKm,
+        vehicleCategoryId: requestedVehicleCategoryId, vehicleType: requestedVehicleType,
+        estimatedFare, estimatedDistance, distanceKm,
         paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt,
         // Book for someone else
         isForSomeoneElse = false, passengerName, passengerPhone,
@@ -9657,6 +9696,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalDestLng = validDestCoords.lng;
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
+      const normalizedTripType = String(tripType || "normal").trim().toLowerCase();
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const vehicleCategoryId =
+        typeof requestedVehicleCategoryId === "string" && requestedVehicleCategoryId.trim()
+          ? requestedVehicleCategoryId.trim()
+          : null;
+      if (vehicleCategoryId && !uuidRe.test(vehicleCategoryId)) {
+        return res.status(400).json({ message: "Invalid vehicleCategoryId", code: "INVALID_VEHICLE_CATEGORY" });
+      }
+
+      const resolvedVehicle = await resolveBookingVehicleSelection({
+        vehicleCategoryId,
+        vehicleType:
+          typeof requestedVehicleType === "string" ? requestedVehicleType.trim() : null,
+      });
+      if (resolvedVehicle.typeMismatch) {
+        return res.status(400).json({
+          message: "vehicleType does not match vehicleCategoryId",
+          code: "VEHICLE_TYPE_MISMATCH",
+        });
+      }
+      if (!resolvedVehicle.vehicleType) {
+        return res.status(400).json({
+          message: "vehicleType is required for booking",
+          code: "VEHICLE_TYPE_REQUIRED",
+        });
+      }
+      if (!resolvedVehicle.vehicleCategoryId) {
+        return res.status(400).json({
+          message: "vehicleCategoryId is required for booking",
+          code: "VEHICLE_CATEGORY_REQUIRED",
+        });
+      }
+
+      const resolvedVehicleCategoryId = resolvedVehicle.vehicleCategoryId;
+      const resolvedVehicleType = resolvedVehicle.vehicleType;
+      const resolvedVehicleCategoryName = resolvedVehicle.vehicleCategoryName || "";
+      const isRideBooking = !["parcel", "delivery", "cargo", "b2b", "carpool", "pool", "intercity", "outstation"].includes(normalizedTripType);
+      if (isRideBooking && !["bike", "auto", "car"].includes(resolvedVehicleType)) {
+        return res.status(400).json({
+          message: "vehicleType must be bike, auto, or car",
+          code: "INVALID_VEHICLE_TYPE",
+        });
+      }
+      console.log(
+        `[BOOKING_MATCH] customer=${customer.id} tripType=${normalizedTripType} ` +
+          `booking.vehicleType=${resolvedVehicleType} vehicleCategoryId=${resolvedVehicleCategoryId} ` +
+          `requestedVehicleType=${normalizeBookingVehicleType(requestedVehicleType) || "missing"}`,
+      );
 
       // -- Service activation gate -------------------------------------------
       const rideGate = await rawDb.execute(rawSql`
@@ -9669,14 +9757,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // -- Server-side fare calculation (fallback when client sends 0 or missing) --
       let computedFare = Number(estimatedFare) || 0;
-      if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
+      if ((computedFare === 0 || isNaN(computedFare)) && resolvedVehicleCategoryId) {
         try {
           // Detect zone from pickup location for accurate zone-specific fares
           const detectedZoneId = await detectZoneId(validPickupCoords.lat, validPickupCoords.lng);
           const fareConfig = await rawDb.execute(rawSql`
             SELECT base_fare, fare_per_km, fare_per_min, minimum_fare, night_charge_multiplier
             FROM trip_fares
-            WHERE vehicle_category_id = ${vehicleCategoryId}::uuid
+            WHERE vehicle_category_id = ${resolvedVehicleCategoryId}::uuid
               AND (
                 ${detectedZoneId ? rawSql`zone_id = ${detectedZoneId}::uuid` : rawSql`zone_id IS NULL`}
                 OR zone_id IS NULL
@@ -9819,7 +9907,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const refId = "TRP" + Date.now().toString().slice(-8).toUpperCase();
 
       // For parcel trips, generate delivery OTP now
-      const deliveryOtpVal = (tripType === 'parcel' || tripType === 'delivery') ? Math.floor(1000 + Math.random() * 9000).toString() : null;
+      const deliveryOtpVal = (normalizedTripType === 'parcel' || normalizedTripType === 'delivery')
+        ? Math.floor(1000 + Math.random() * 9000).toString()
+        : null;
 
       // -- HARDENING: Pre-booking validations --
       try {
@@ -9853,7 +9943,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Always start as 'searching' � driver must ACCEPT before being assigned
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
-          ref_id, customer_id, driver_id, vehicle_category_id,
+          ref_id, customer_id, driver_id, vehicle_category_id, vehicle_type, vehicle_type_name,
           pickup_address, pickup_lat, pickup_lng,
           destination_address, destination_lat, destination_lng,
           estimated_fare, estimated_distance, payment_method,
@@ -9864,11 +9954,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) VALUES (
           ${refId}, ${customer.id}::uuid,
           NULL,
-          ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+          ${resolvedVehicleCategoryId}::uuid, ${resolvedVehicleType}, ${resolvedVehicleCategoryName || null},
           ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
           ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
           ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
-          ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
+          ${normalizedTripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
           ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
           ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
           ${finalPickupShort || null}, ${finalDestShort || null}
@@ -9913,27 +10003,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const tripRow = camelize(trip.rows[0]) as any;
       await appendTripStatus(tripRow.id, 'requested', 'customer', 'Customer created booking request');
       await logRideLifecycleEvent(tripRow.id, 'ride_requested', customer.id, 'customer', {
-        tripType,
+        tripType: normalizedTripType,
         paymentMethod: finalPayment,
+        vehicleType: resolvedVehicleType,
+        vehicleCategoryId: resolvedVehicleCategoryId,
       });
 
       // ?? Heatmap event: booking demand signal
       logHeatmapEvent(
         'booking',
         Number(pickupLat), Number(pickupLng),
-        (tripType === 'parcel' || tripType === 'delivery') ? 'parcel'
-          : (tripType === 'carpool' || tripType === 'pool') ? 'pool'
-            : (tripType === 'cargo') ? 'cargo' : 'ride'
+        (normalizedTripType === 'parcel' || normalizedTripType === 'delivery') ? 'parcel'
+          : (normalizedTripType === 'carpool' || normalizedTripType === 'pool') ? 'pool'
+            : (normalizedTripType === 'cargo') ? 'cargo' : 'ride'
       );
 
       // -- Smart Dispatch Engine ----------------------------------------------
-      // Resolve vehicle category name for service type detection
-      let vcName = '';
-      if (vehicleCategoryId) {
-        const vcR = await rawDb.execute(rawSql`SELECT name FROM vehicle_categories WHERE id=${vehicleCategoryId}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
-        vcName = (vcR.rows[0] as any)?.name || '';
-      }
-      const serviceType = resolveServiceType(tripType, vcName);
+      const serviceType = resolveServiceType(normalizedTripType, resolvedVehicleCategoryName);
 
       const dispatchMeta: TripMeta = {
         refId: tripRow.refId,
@@ -9947,7 +10033,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         estimatedFare: tripRow.estimatedFare || estimatedFare || 0,
         estimatedDistance: tripRow.estimatedDistance || finalDistance || 0,
         paymentMethod: finalPayment,
-        tripType,
+        tripType: normalizedTripType,
+        vehicleType: resolvedVehicleType,
+        vehicleCategoryName: resolvedVehicleCategoryName || null,
       };
 
       // Start sequential dispatch � sends to ONE driver at a time with expanding radius
@@ -9956,13 +10044,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         customer.id,
         Number(pickupLat),
         Number(pickupLng),
-        vehicleCategoryId || undefined,
+        resolvedVehicleCategoryId || undefined,
+        resolvedVehicleType || undefined,
         serviceType,
         dispatchMeta
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
         // Fallback to legacy broadcast if dispatch engine fails
-        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(dbCatch("db"));
+        notifyNearbyDriversNewTrip(
+          tripRow.id,
+          Number(pickupLat),
+          Number(pickupLng),
+          resolvedVehicleCategoryId || undefined,
+        ).catch(dbCatch("db"));
       });
 
       res.json({
@@ -12979,23 +13073,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const user = (req as any).currentUser;
       const { pickupAddress, pickupLat, pickupLng, destinationAddress, destinationLat, destinationLng,
-        vehicleCategoryId, estimatedFare, estimatedDistance, paymentMethod, scheduledAt } = req.body;
+        vehicleCategoryId: requestedVehicleCategoryId, vehicleType: requestedVehicleType,
+        estimatedFare, estimatedDistance, paymentMethod, scheduledAt } = req.body;
       if (!scheduledAt) return res.status(400).json({ message: "scheduledAt is required" });
       const scheduledTime = new Date(scheduledAt);
       if (scheduledTime <= new Date()) return res.status(400).json({ message: "Schedule time must be in the future" });
+      const scheduledVehicle = await resolveBookingVehicleSelection({
+        vehicleCategoryId:
+          typeof requestedVehicleCategoryId === "string" && requestedVehicleCategoryId.trim()
+            ? requestedVehicleCategoryId.trim()
+            : null,
+        vehicleType:
+          typeof requestedVehicleType === "string" ? requestedVehicleType.trim() : null,
+      });
+      if (scheduledVehicle.typeMismatch) {
+        return res.status(400).json({ message: "vehicleType does not match vehicleCategoryId", code: "VEHICLE_TYPE_MISMATCH" });
+      }
+      if (!scheduledVehicle.vehicleCategoryId || !scheduledVehicle.vehicleType) {
+        return res.status(400).json({ message: "vehicleCategoryId and vehicleType are required", code: "VEHICLE_TYPE_REQUIRED" });
+      }
       const refId = generateRefId();
       const r = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
           ref_id, customer_id, pickup_address, pickup_lat, pickup_lng,
           destination_address, destination_lat, destination_lng,
-          vehicle_category_id, estimated_fare, estimated_distance,
+          vehicle_category_id, vehicle_type, vehicle_type_name, estimated_fare, estimated_distance,
           payment_method, trip_type, current_status, is_scheduled, scheduled_at,
           pickup_short_name, destination_short_name,
           created_at, updated_at
         ) VALUES (
           ${refId}, ${user.id}::uuid, ${pickupAddress}, ${parseFloat(pickupLat)}, ${parseFloat(pickupLng)},
           ${destinationAddress}, ${parseFloat(destinationLat)}, ${parseFloat(destinationLng)},
-          ${vehicleCategoryId}::uuid, ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
+          ${scheduledVehicle.vehicleCategoryId}::uuid, ${scheduledVehicle.vehicleType}, ${scheduledVehicle.vehicleCategoryName || null},
+          ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
           ${paymentMethod || 'cash'}, 'normal', 'scheduled', true, ${scheduledAt},
           ${shortLocationName(pickupAddress)}, ${shortLocationName(destinationAddress)},
           now(), now()
@@ -15735,7 +15845,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   app.patch("/api/admin/vehicle-status/:vehicleKey", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const vehicleKey = normalizeVehicleKey(req.params.vehicleKey);
+      const vehicleKey = normalizeVehicleKey(String(req.params.vehicleKey || ""));
       const allowed = vehicleControlDefaults.find((v) => v.key === vehicleKey);
       if (!allowed) return res.status(400).json({ message: "Invalid vehicle type" });
       if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });
@@ -15884,7 +15994,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%outstation%'`);
       }
 
-      await logAdminAction("toggle_service", "platform_services", null, { serviceKey, status }, (req as any).adminUser?.email);
+      await logAdminAction("toggle_service", "platform_services", undefined, { serviceKey, status }, (req as any).adminUser?.email);
 
       res.json({ success: true, serviceKey, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
@@ -16929,7 +17039,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // -- Place Details (get lat/lng from place_id) ---------------------------
   app.get("/api/app/places/details", authApp, async (req, res) => {
     try {
-      const placeId = String(req.query.placeId || "");
+      const placeId = String(req.query.placeId || req.query.place_id || "");
       const sessionToken = String(req.query.sessionToken || "");
       if (!placeId) return res.status(400).json({ message: "placeId required" });
       const details = await getPlaceDetails(placeId, sessionToken);

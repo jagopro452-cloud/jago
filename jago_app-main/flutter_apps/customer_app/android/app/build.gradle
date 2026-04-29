@@ -16,12 +16,27 @@ def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
 }
-def googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_KEY')
+def googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_CUSTOMER_KEY')
+if (!googleMapsKey) {
+    googleMapsKey = System.getenv('GOOGLE_MAPS_CUSTOMER_KEY')
+}
+if (!googleMapsKey) {
+    googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_KEY')
+}
 if (!googleMapsKey) {
     googleMapsKey = System.getenv('GOOGLE_MAPS_KEY')
 }
 if (!googleMapsKey) {
-    throw new GradleException("GOOGLE_MAPS_KEY missing. Add it to android/local.properties or environment variables.")
+    throw new GradleException("Customer GOOGLE_MAPS key missing. Add GOOGLE_MAPS_CUSTOMER_KEY or GOOGLE_MAPS_KEY to android/local.properties or environment variables.")
+}
+def releaseStoreFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+def hasReleaseSigning = releaseStoreFile != null &&
+    releaseStoreFile.exists() &&
+    keystoreProperties['storePassword'] &&
+    keystoreProperties['keyPassword'] &&
+    keystoreProperties['keyAlias']
+if (!hasReleaseSigning) {
+    throw new GradleException("Release signing is required for Maps-restricted Android builds. Missing android/key.properties or keystore.")
 }
 
 android {
@@ -50,10 +65,10 @@ android {
 
     signingConfigs {
         release {
-            keyAlias keystoreProperties['keyAlias'] ?: 'jago'
-            keyPassword keystoreProperties['keyPassword'] ?: ''
-            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-            storePassword keystoreProperties['storePassword'] ?: ''
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile releaseStoreFile
+            storePassword keystoreProperties['storePassword']
         }
     }
 
@@ -61,21 +76,22 @@ android {
         applicationId "com.mindwhile.jago_customer"
         minSdkVersion 24
         targetSdkVersion 35
-        versionCode 83
-        versionName "1.0.83"
+        versionCode 90
+        versionName "1.0.90"
         multiDexEnabled true
         manifestPlaceholders = [googleMapsApiKey: googleMapsKey]
     }
 
     buildTypes {
         release {
-            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
             applicationIdSuffix ""
+            signingConfig signingConfigs.release
         }
     }
 }
