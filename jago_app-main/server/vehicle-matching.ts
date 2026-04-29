@@ -12,6 +12,15 @@ export interface VehicleCategoryMeta {
   isCarpool: boolean;
 }
 
+export interface ResolvedBookingVehicleSelection {
+  vehicleCategoryId: string | null;
+  vehicleCategoryName: string | null;
+  vehicleType: string | null;
+  driverRoom: string | null;
+  serviceType: string | null;
+  typeMismatch: boolean;
+}
+
 export function normalizeVehicleKey(value: string | null | undefined): string {
   return String(value || "")
     .trim()
@@ -19,6 +28,82 @@ export function normalizeVehicleKey(value: string | null | undefined): string {
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+export function normalizeBookingVehicleType(value: string | null | undefined): string | null {
+  const key = normalizeVehicleKey(value);
+  if (!key) return null;
+
+  if (key === "bike_parcel" || (key.includes("parcel") && key.includes("bike"))) return "bike_parcel";
+  if (
+    key === "auto_parcel" ||
+    key === "mini_cargo_auto" ||
+    (key.includes("parcel") && key.includes("auto"))
+  ) {
+    return "auto_parcel";
+  }
+  if (key === "tata_ace" || key === "mini_truck") return "mini_truck";
+  if (key === "pickup_truck" || key === "bolero_pickup" || key === "bolero_cargo") return "pickup_truck";
+  if (key === "tempo_407") return "tempo_407";
+
+  if (
+    key === "bike" ||
+    key === "bike_ride" ||
+    key === "motor_bike" ||
+    key === "motorbike" ||
+    key === "motor_cycle" ||
+    key === "motorcycle" ||
+    key === "two_wheeler" ||
+    key === "two_wheel"
+  ) {
+    return "bike";
+  }
+
+  if (
+    key === "auto" ||
+    key === "auto_ride" ||
+    key === "mini_auto" ||
+    key === "rickshaw" ||
+    key === "e_rickshaw" ||
+    key === "three_wheeler" ||
+    key === "three_wheel"
+  ) {
+    return "auto";
+  }
+
+  if (
+    key === "car" ||
+    key === "cab" ||
+    key === "cab_ride" ||
+    key === "mini_car" ||
+    key === "sedan" ||
+    key === "suv" ||
+    key === "suv_xl" ||
+    key === "pool_mini" ||
+    key === "pool_sedan" ||
+    key === "pool_suv" ||
+    key === "carpool" ||
+    key === "city_pool" ||
+    key === "intercity_pool" ||
+    key === "outstation_pool"
+  ) {
+    return "car";
+  }
+
+  return key;
+}
+
+export function getDriverSocketRoomKey(meta: VehicleCategoryMeta | null): string | null {
+  if (!meta) return null;
+  return normalizeBookingVehicleType(meta.vehicleType || meta.name || meta.type);
+}
+
+export function getDriverDbVehicleType(vehicleType: string | null | undefined): string | null {
+  const normalized = normalizeBookingVehicleType(vehicleType);
+  if (normalized === "bike") return "motor_bike";
+  if (normalized === "auto") return "auto";
+  if (normalized === "car") return "car";
+  return null;
 }
 
 function deriveServiceType(row: any): string {
@@ -132,6 +217,35 @@ export async function getVehicleCategoryMeta(categoryId?: string | null): Promis
     type: String(row.type || "").toLowerCase(),
     description: row.description || "",
     isCarpool: row.is_carpool === true || row.is_carpool === "true",
+  };
+}
+
+export async function getDriverSocketRoomKeyForCategoryId(categoryId?: string | null): Promise<string | null> {
+  const meta = await getVehicleCategoryMeta(categoryId);
+  return getDriverSocketRoomKey(meta);
+}
+
+export async function resolveBookingVehicleSelection(params: {
+  vehicleCategoryId?: string | null;
+  vehicleType?: string | null;
+}): Promise<ResolvedBookingVehicleSelection> {
+  const meta = await getVehicleCategoryMeta(params.vehicleCategoryId);
+  const categoryVehicleType = getDriverSocketRoomKey(meta);
+  const requestedVehicleType = normalizeBookingVehicleType(params.vehicleType);
+
+  return {
+    vehicleCategoryId: meta?.id ?? (params.vehicleCategoryId || null),
+    vehicleCategoryName: meta?.name ?? null,
+    vehicleType: categoryVehicleType || requestedVehicleType,
+    driverRoom:
+      categoryVehicleType || requestedVehicleType
+        ? `drivers_${categoryVehicleType || requestedVehicleType}`
+        : null,
+    serviceType: meta?.serviceType ?? null,
+    typeMismatch:
+      Boolean(categoryVehicleType) &&
+      Boolean(requestedVehicleType) &&
+      categoryVehicleType !== requestedVehicleType,
   };
 }
 
