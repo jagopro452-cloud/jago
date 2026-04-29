@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -7,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const SOURCE_DIR = path.join(__dirname, "..", "public", "apks");
 const DEST_DIR_DIST = path.join(__dirname, "..", "dist", "public", "apks");
-const DOWNLOADS_DIR = path.join(process.env.USERPROFILE || "C:\\Users\\kiran", "Downloads");
+const DOWNLOADS_DIR = process.platform === "win32" ? path.join(os.homedir(), "Downloads") : null;
 
 function copyFile(src, dest) {
   try {
@@ -57,7 +58,9 @@ function syncAPKs() {
   }
 
   ensureDir(DEST_DIR_DIST);
-  ensureDir(DOWNLOADS_DIR);
+  if (DOWNLOADS_DIR) {
+    ensureDir(DOWNLOADS_DIR);
+  }
 
   const apkFiles = fs.readdirSync(SOURCE_DIR).filter((file) => file.endsWith(".apk"));
   if (apkFiles.length === 0) {
@@ -67,7 +70,9 @@ function syncAPKs() {
 
   apkFiles.forEach((fileName) => {
     copyFile(path.join(SOURCE_DIR, fileName), path.join(DEST_DIR_DIST, fileName));
-    copyFile(path.join(SOURCE_DIR, fileName), path.join(DOWNLOADS_DIR, fileName));
+    if (DOWNLOADS_DIR) {
+      copyFile(path.join(SOURCE_DIR, fileName), path.join(DOWNLOADS_DIR, fileName));
+    }
   });
 
   const customerLatest = findLatest(apkFiles, "jago-customer-");
@@ -81,7 +86,9 @@ function syncAPKs() {
   aliases.forEach(({ source, alias }) => {
     if (!source) return;
     copyFile(path.join(SOURCE_DIR, source), path.join(DEST_DIR_DIST, alias));
-    copyFile(path.join(SOURCE_DIR, source), path.join(DOWNLOADS_DIR, alias));
+    if (DOWNLOADS_DIR) {
+      copyFile(path.join(SOURCE_DIR, source), path.join(DOWNLOADS_DIR, alias));
+    }
   });
 
   const status = {

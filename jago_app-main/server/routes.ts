@@ -13294,23 +13294,75 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ========== APK DOWNLOADS ==========
   const apkDir = path.join(process.cwd(), "public", "apks");
-  const apkLatestAliases: Record<string, string> = {
-    "jago-customer-latest.apk": "jago-customer-v1.0.61-release.apk",
-    "jago-driver-latest.apk": "jago-pilot-v1.0.62-release.apk",
-    "jago-pilot-latest.apk": "jago-pilot-v1.0.62-release.apk",
+  const apkAliasPrefixes: Record<string, string> = {
+    "jago-customer-latest.apk": "jago-customer-v",
+    "jago-driver-latest.apk": "jago-pilot-v",
+    "jago-pilot-latest.apk": "jago-pilot-v",
+  };
+
+  const parseApkVersion = (fileName: string): [number, number, number] => {
+    const match = fileName.match(/v(\d+)\.(\d+)\.(\d+)/i);
+    if (!match) return [0, 0, 0];
+    return [Number(match[1]), Number(match[2]), Number(match[3])];
+  };
+
+  const compareApkVersions = (a: string, b: string): number => {
+    const av = parseApkVersion(a);
+    const bv = parseApkVersion(b);
+    for (let i = 0; i < 3; i++) {
+      if (av[i] !== bv[i]) return bv[i] - av[i];
+    }
+    return 0;
+  };
+
+  const findLatestApk = (prefix: string): string | null => {
+    if (!fs.existsSync(apkDir)) return null;
+    const files = fs.readdirSync(apkDir)
+      .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
+      .sort(compareApkVersions);
+    return files[0] ?? null;
+  };
+
+  const formatApkVersion = (fileName: string | null, fallback: string): string => {
+    const match = fileName?.match(/v\d+\.\d+\.\d+/i);
+    return match?.[0] ?? fallback;
+  };
+
+  const formatApkSize = (fileName: string | null): string => {
+    if (!fileName) return "APK unavailable";
+    const filePath = path.join(apkDir, fileName);
+    if (!fs.existsSync(filePath)) return "APK unavailable";
+    const sizeMb = Math.round(fs.statSync(filePath).size / (1024 * 1024));
+    return `${sizeMb} MB`;
+  };
+
+  const resolveApkAlias = (fileName: string): string | null => {
+    const prefix = apkAliasPrefixes[fileName];
+    if (!prefix) return null;
+    return findLatestApk(prefix);
   };
 
   app.get("/apks/:fileName", (req, res, next) => {
-    const target = apkLatestAliases[req.params.fileName];
+    const target = resolveApkAlias(req.params.fileName);
     if (!target) return next();
-    return res.sendFile(path.join(apkDir, target));
+
+    const targetPath = path.join(apkDir, target);
+    if (!fs.existsSync(targetPath)) {
+      return res.status(404).send("APK not found");
+    }
+    return res.sendFile(targetPath);
   });
 
   app.use("/apks", express.static(apkDir));
 
   // Download page � jagopro.org/download
   app.get("/download", (_req, res) => {
-    const base = process.env.APP_BASE_URL || "https://oyster-app-9e9cd.ondigitalocean.app";
+    const customerApk = findLatestApk("jago-customer-v");
+    const driverApk = findLatestApk("jago-pilot-v");
+    const customerVersion = formatApkVersion(customerApk, "v1.0.83");
+    const driverVersion = formatApkVersion(driverApk, "v1.0.83");
+    const customerSize = formatApkSize(customerApk);
+    const driverSize = formatApkSize(driverApk);
     res.send(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Download JAGO Pro App</title>
@@ -13332,15 +13384,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="logo">JAGO Pro</div>
   <div class="sub">Ride. Deliver. Earn.</div>
   <a class="btn btn-blue" href="/apks/jago-customer-latest.apk" download>
-    ?? Download Customer App
+    Download Customer App
   </a>
-  <span class="badge">v1.0.61 | Universal APK | 60 MB</span>
+  <span class="badge">${customerVersion} | Universal APK | ${customerSize}</span>
   <br><br>
   <a class="btn btn-green" href="/apks/jago-driver-latest.apk" download>
-    ?? Download Driver / Pilot App
+    Download Driver / Pilot App
   </a>
-  <span class="badge">v1.0.62 | Universal APK | 60 MB</span>
-  <div class="version">Android 6.0+ required � Free Download</div>
+  <span class="badge">${driverVersion} | Universal APK | ${driverSize}</span>
+  <div class="version">Android 7.0+ required | Free download</div>
 </div>
 </body></html>`);
   });
@@ -17315,3 +17367,4 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   return httpServer;
 }
+

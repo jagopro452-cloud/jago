@@ -16,6 +16,13 @@ def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
 }
+def googleMapsKey = localProperties.getProperty('GOOGLE_MAPS_KEY')
+if (!googleMapsKey) {
+    googleMapsKey = System.getenv('GOOGLE_MAPS_KEY')
+}
+if (!googleMapsKey) {
+    throw new GradleException("GOOGLE_MAPS_KEY missing. Add it to android/local.properties or environment variables.")
+}
 
 android {
     namespace "com.mindwhile.jago_customer"
@@ -54,17 +61,17 @@ android {
         applicationId "com.mindwhile.jago_customer"
         minSdkVersion 24
         targetSdkVersion 35
-        versionCode 76
-        versionName "1.0.76"
+        versionCode 83
+        versionName "1.0.83"
         multiDexEnabled true
-        manifestPlaceholders = [googleMapsApiKey: localProperties.getProperty('GOOGLE_MAPS_KEY', '')]
+        manifestPlaceholders = [googleMapsApiKey: googleMapsKey]
     }
 
     buildTypes {
         release {
             signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
