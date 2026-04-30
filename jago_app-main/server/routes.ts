@@ -510,11 +510,21 @@ const loginLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// OTP rate limiter � max 10 requests per hour per IP (extra protection beyond per-phone DB check)
-const otpLimiter = rateLimit({
+// OTP send limiter: protects resend spam without blocking normal verification retries.
+const otpSendLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: { message: "Too many OTP requests. Please try again after an hour." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+// OTP verify limiter: allow normal user retries, but stop brute force attempts.
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { message: "Too many OTP verification attempts. Please wait 15 minutes and try again." },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -7394,7 +7404,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- OTP SEND (Firebase Only) ----------------------------------------------
   // Mobile apps use Firebase Phone Auth on-device. The server keeps only a
   // lightweight request marker for rate limiting / telemetry and never sends SMS.
-  app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
+  app.post("/api/app/send-otp", otpSendLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer", provider, forceServerOtp = false } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
@@ -7417,11 +7427,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
       const wantsSms = forceServerOtp === true || String(provider || "").toLowerCase() === "sms";
 
-      // Rate limiting: max 5 OTPs per phone per hour
+      const recentCooldown = await rawDb.execute(rawSql`
+        SELECT id
+        FROM otp_logs
+        WHERE phone=${phoneStr} AND created_at > NOW() - INTERVAL '30 seconds'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (recentCooldown.rows.length) {
+        return res.status(429).json({ message: "Please wait 30 seconds before requesting another OTP." });
+      }
+
+      // Rate limiting: max 8 real SMS OTP sends per phone per hour.
+      // Firebase telemetry markers should not block genuine fallback usage.
       const recentCount = await rawDb.execute(rawSql`
-        SELECT COUNT(*) as cnt FROM otp_logs WHERE phone=${phoneStr} AND created_at > NOW() - INTERVAL '1 hour'
+        SELECT COUNT(*) as cnt
+        FROM otp_logs
+        WHERE phone=${phoneStr}
+          AND created_at > NOW() - INTERVAL '1 hour'
+          AND otp <> 'firebase'
       `);
-      if (parseInt((recentCount.rows[0] as any)?.cnt || "0") >= 5) {
+      if (parseInt((recentCount.rows[0] as any)?.cnt || "0") >= 8) {
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
@@ -7472,7 +7498,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // -- OTP VERIFY + LOGIN / REGISTER ----------------------------------------
-  app.post("/api/app/verify-otp", otpLimiter, async (req, res) => {
+  app.post("/api/app/verify-otp", otpVerifyLimiter, async (req, res) => {
     try {
       const { phone, otp, userType = "customer", name, referralCode } = req.body;
       if (!phone || !otp) return res.status(400).json({ message: "Phone and OTP required" });
@@ -7485,7 +7511,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const maxAttempts = parseInt((otpCfg.rows[0] as any)?.max_attempts ?? '3', 10);
       const failedAttempts = await rawDb.execute(rawSql`
         SELECT COUNT(*) AS cnt FROM otp_logs
-        WHERE phone=${phoneStr} AND is_used=false AND created_at > NOW() - INTERVAL '15 minutes'
+        WHERE phone=${phoneStr} AND otp <> 'firebase' AND is_used=false AND created_at > NOW() - INTERVAL '15 minutes'
           AND attempt_count >= ${maxAttempts}
         LIMIT 1
       `).catch(() => ({ rows: [{ cnt: 0 }] as any[] }));
@@ -7500,10 +7526,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY created_at DESC LIMIT 1
       `);
       if (!otpRow.rows.length) {
-        // Increment failed attempt counter
+        // Increment failed attempt counter only on the latest active server OTP.
         await rawDb.execute(rawSql`
-          UPDATE otp_logs SET attempt_count = COALESCE(attempt_count, 0) + 1
-          WHERE phone=${phoneStr} AND is_used=false AND expires_at > NOW()
+          WITH latest_active AS (
+            SELECT id
+            FROM otp_logs
+            WHERE phone=${phoneStr}
+              AND otp <> 'firebase'
+              AND is_used=false
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
+          UPDATE otp_logs
+          SET attempt_count = COALESCE(attempt_count, 0) + 1
+          WHERE id IN (SELECT id FROM latest_active)
         `).catch(dbCatch("db"));
         return res.status(400).json({ message: "Invalid or expired OTP" });
       }
@@ -7807,7 +7844,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // -- FORGOT PASSWORD (Firebase verification) ------------------------------
   // Uses Firebase Phone Auth instead of SMS OTP for password reset
-  app.post("/api/app/forgot-password", otpLimiter, async (req, res) => {
+  app.post("/api/app/forgot-password", otpSendLimiter, async (req, res) => {
     try {
       const { phone, userType = "customer" } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone number is required" });
