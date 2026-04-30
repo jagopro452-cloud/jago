@@ -3096,6 +3096,8 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
   Widget build(BuildContext context) {
     final balance = (_wallet?['walletBalance'] ?? _wallet?['balance'] ?? 0).toDouble();
     final isLocked = _wallet?['isLocked'] ?? false;
+    final isNegativeBalance = balance < 0;
+    final absBalance = balance.abs();
     final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
     final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;
 
@@ -3126,7 +3128,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                 ),
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(isLocked ? 'Account Locked' : 'Available Balance',
+                  Text(isLocked ? 'Account Locked' : (isNegativeBalance ? 'You Need To Pay' : 'You Will Receive'),
                     style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w500)),
                   Text('₹${balance.toStringAsFixed(2)}',
                     style: GoogleFonts.poppins(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.1)),
@@ -3180,7 +3182,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
                   child: Row(children: [
                     const Icon(Icons.info_outline_rounded, color: Colors.white, size: 14),
                     const SizedBox(width: 7),
-                    Expanded(child: Text('Recharge to unlock and go online.', style: GoogleFonts.poppins(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500))),
+                    Expanded(child: Text(isNegativeBalance ? 'Recharge now to clear dues and go online.' : 'Recharge to unlock and go online.', style: GoogleFonts.poppins(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500))),
                   ]),
                 ),
               ],

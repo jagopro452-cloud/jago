@@ -26,6 +26,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   int _seconds = 60;
   Timer? _timer;
   String? _verificationId;
+  String? _otpProvider;
   bool _hasError = false;
 
   @override
@@ -47,6 +48,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _verificationId = widget.firebaseVerificationId;
+    _otpProvider = _verificationId != null ? 'firebase' : 'server';
     _startTimer();
     SmsAutoFill().listenForCode(); // start listening for SMS OTP auto-read
 
@@ -72,12 +74,23 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
     if (_verifyInFlight || _verifyCompleted) return;
     _verifyInFlight = true;
     setState(() { _loading = true; _hasError = false; });
+    var shouldFallbackToServerOtp = false;
     try {
-      final idToken = await FirebaseOtpService.verifyOtp(
-        smsCode: _otpCtrl.text,
-        verificationId: _verificationId,
-      );
-      final res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'customer');
+      Map<String, dynamic> res;
+      if ((_otpProvider ?? 'server') == 'firebase') {
+        try {
+          final idToken = await FirebaseOtpService.verifyOtp(
+            smsCode: _otpCtrl.text,
+            verificationId: _verificationId,
+          );
+          res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'customer');
+        } catch (_) {
+          shouldFallbackToServerOtp = true;
+          res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'customer');
+        }
+      } else {
+        res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'customer');
+      }
       if (!mounted) return;
       _verifyCompleted = true;
       setState(() => _loading = false);
@@ -100,7 +113,12 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
       if (!mounted) return;
       _verifyCompleted = false;
       setState(() { _loading = false; _hasError = true; });
-      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
+      _showSnack(
+        shouldFallbackToServerOtp
+            ? 'Wrong OTP. Please try again.'
+            : e.toString().replaceAll('Exception: ', ''),
+        error: true,
+      );
       _otpCtrl.clear();
     } finally {
       _verifyInFlight = false;

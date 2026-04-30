@@ -323,10 +323,22 @@ app.use((req, res, next) => {
               UPDATE driver_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
               WHERE id=${row.payment_id}::uuid
             `);
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status='completed', completed_at=NOW(), payment_status='paid', updated_at=NOW()
-              WHERE id=${row.trip_id}::uuid AND current_status='payment_pending'
+            const tripState = await rawDb.execute(rawSql`
+              SELECT current_status
+              FROM trip_requests
+              WHERE id=${row.trip_id}::uuid
+              LIMIT 1
             `);
+            const currentTripStatus = String((tripState.rows[0] as any)?.current_status || "");
+            if (currentTripStatus !== "completed") {
+              const { transitionRideState } = await import("./ride-state");
+              await transitionRideState(String(row.trip_id), "completed", {
+                actorType: "system",
+                event: "COMPLETED",
+                data: { source: "payment_retry_job", paymentId: captured.id, orderId: row.razorpay_order_id },
+                extraSetters: [rawSql`payment_status='paid'`],
+              }).catch(() => null);
+            }
             socketIo.to(`user:${row.customer_id}`).emit("trip:completed", { tripId: row.trip_id, message: "Payment confirmed. Trip complete." });
             log(`[PaymentRetry] Trip ${row.trip_id} resolved — payment ${captured.id} captured`);
           }

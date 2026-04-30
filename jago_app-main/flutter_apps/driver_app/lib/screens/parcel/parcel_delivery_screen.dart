@@ -103,7 +103,11 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
         );
         if (_socket.isConnected) {
-          _socket.sendLocation(lat: pos.latitude, lng: pos.longitude);
+          _socket.sendParcelLocation(
+            orderId: _orderId,
+            lat: pos.latitude,
+            lng: pos.longitude,
+          );
         }
       } catch (_) {}
     });
@@ -185,10 +189,10 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         _otpCtrl.clear();
         final allDelivered = data['allDelivered'] == true;
         if (allDelivered) {
-          final fare = double.tryParse(_order['total_fare']?.toString() ?? '0') ?? 0;
+          final driverEarnings = double.tryParse(data['driverEarnings']?.toString() ?? '0') ?? 0;
           setState(() {
             _stage = _ParcelStage.completed;
-            _driverEarnings = fare * 0.85; // 15% commission
+            _driverEarnings = driverEarnings;
           });
         } else {
           setState(() {
@@ -633,7 +637,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
   // ── Stage: Completed ──────────────────────────────────────────────────────
   Widget _buildCompletedView() {
     final fare = double.tryParse(_order['total_fare']?.toString() ?? '0') ?? 0;
-    final earnings = _driverEarnings > 0 ? _driverEarnings : fare * 0.85;
+    final earnings = _driverEarnings > 0 ? _driverEarnings : fare;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

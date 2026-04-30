@@ -13,6 +13,7 @@ import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
+import { notifyUser } from "./notification-service";
 import { findParcelCapableDrivers } from "./parcel-advanced";
 import {
   getDriverDbVehicleType,
@@ -21,6 +22,15 @@ import {
   normalizeVehicleKey,
   uuidArraySql,
 } from "./vehicle-matching";
+import {
+  assignRideToDriver,
+  cancelRideState,
+  logRideEvent,
+  resetRideForRedispatch,
+  transitionRideState,
+} from "./ride-state";
+import { activeDriverEligibilitySql } from "./driver-state";
+import { applyWalletChange } from "./revenue-engine";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -580,6 +590,18 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
  * Send trip request to a single driver and start the acceptance timer.
  */
 async function offerTripToDriver(session: DispatchSession, driver: DriverMatchScore): Promise<void> {
+  const assignedRide = await assignRideToDriver(session.tripId, driver.driverId, {
+    serviceType: session.serviceType,
+    vehicleType: session.vehicleType || null,
+    distanceKm: driver.distanceKm,
+    score: driver.score,
+  });
+  if (!assignedRide) {
+    console.warn(`[DISPATCH] Atomic assign failed for trip=${session.tripId} driver=${driver.driverId}; trying next driver`);
+    await dispatchNextDriver(session);
+    return;
+  }
+
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
@@ -592,17 +614,19 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     timeoutMs: session.config.driverTimeoutMs,
   };
 
-  // Socket notification (foreground)
-  if (io) {
-    io.to(`user:${driver.driverId}`).emit("trip:new_request", payload);
-  }
+  await notifyUser(driver.driverId, "trip:new_request", payload, {
+    title: "New Ride Request!",
+    body: `${session.tripMeta.customerName} - ${session.tripMeta.pickupAddress} - Rs.${session.tripMeta.estimatedFare}`,
+    dataOnly: true,
+    channelId: "trip_alerts",
+  });
 
   // FCM notification (background/killed app)
   const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);
   const socketConnected = !!(socketRoom && socketRoom.size > 0);
-  if (driver.fcmToken) {
+  if (false && driver.fcmToken) {
     notifyDriverNewRide({
-      fcmToken: driver.fcmToken,
+      fcmToken: driver.fcmToken || null,
       driverName: driver.fullName,
       customerName: session.tripMeta.customerName,
       pickupAddress: session.tripMeta.pickupAddress,
@@ -640,6 +664,14 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     // Record this driver as timed out (equivalent to soft rejection)
     session.rejectedDriverIds.add(driver.driverId);
     session.currentOfferedDriverId = null;
+    await resetRideForRedispatch(session.tripId, {
+      actorId: driver.driverId,
+      actorType: "driver",
+      reason: "Driver offer timed out",
+      rejectedDriverId: driver.driverId,
+    }).catch((err: any) => {
+      console.error(`[DISPATCH] Failed to reset timed-out trip ${session.tripId}:`, err.message);
+    });
 
     // Notify driver their time expired
     if (io) {
@@ -696,15 +728,12 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
 
   // Update trip status in DB
   try {
-    await rawDb.execute(rawSql`
-      UPDATE trip_requests
-      SET current_status='cancelled',
-          cancel_reason=${message},
-          cancelled_by='system',
-          updated_at=NOW()
-      WHERE id=${session.tripId}::uuid
-        AND current_status IN ('searching', 'driver_assigned')
-    `);
+    await cancelRideState(session.tripId, message, {
+      actorType: "system",
+      cancelledBy: "system",
+      allowedStatuses: ["searching", "driver_assigned"],
+    });
+    await logRideEvent(session.tripId, "NO_DRIVER_FOUND", { message }, null, "system");
   } catch (err: any) {
     console.error(`[DISPATCH] Failed to cancel trip ${session.tripId}:`, err.message);
   }
@@ -728,10 +757,13 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
       `);
       if (atomicRefund.rows.length) {
         const refundAmt = parseFloat((atomicRefund.rows[0] as any).amount);
-        await rawDb.execute(rawSql`
-          UPDATE users SET wallet_balance = wallet_balance + ${refundAmt}
-          WHERE id=${t.customer_id}::uuid
-        `);
+        await applyWalletChange({
+          userId: String(t.customer_id),
+          amount: refundAmt,
+          type: "CREDIT",
+          reason: "ride_refund_no_driver",
+          refId: session.tripId,
+        });
         await rawDb.execute(rawSql`
           UPDATE trip_requests SET payment_status='refunded_to_wallet'
           WHERE id=${session.tripId}::uuid
@@ -787,7 +819,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       (d.is_online === true || d.dl_online === true) &&
       d.availability_status === "online" &&
       d.current_trip_id === null &&
-      ['approved', 'verified', 'pending'].includes(d.verification_status)
+      d.verification_status === "approved"
     );
     if (!available) {
       const reasons: string[] = [];
@@ -796,7 +828,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       if (!d.is_online && !d.dl_online) reasons.push("offline (both is_online flags false)");
       if (d.availability_status !== "online") reasons.push(`availability_status=${d.availability_status}`);
       if (d.current_trip_id !== null) reasons.push(`on trip ${d.current_trip_id}`);
-      if (!['approved', 'verified', 'pending'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
+      if (d.verification_status !== "approved") reasons.push(`verification=${d.verification_status} (need ACTIVE)`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;
@@ -878,8 +910,7 @@ async function findDriversInRadius(
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
     LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
     WHERE u.user_type = 'driver'
-      AND u.is_active = true
-      AND u.is_locked = false
+      AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online = true
       AND COALESCE(dd.availability_status, 'offline') = 'online'
       AND (
@@ -888,7 +919,6 @@ async function findDriversInRadius(
       )
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
-      AND u.verification_status IN ('approved', 'verified', 'pending')
       AND COALESCE(ds.completion_rate, 0.8) >= 0.5
       ${vcFilter}
       ${vehicleTypeFilter}
@@ -944,7 +974,7 @@ async function findDriversInRadius(
         if (!r.dl_online) reasons.push("dl.is_online=false");
         if (r.availability_status !== 'online') reasons.push(`availability_status=${r.availability_status}`);
         if (r.current_trip_id) reasons.push(`on trip ${r.current_trip_id}`);
-        if (!['approved', 'verified', 'pending'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified/pending)`);
+        if (r.verification_status !== "approved") reasons.push(`verification=${r.verification_status} (need ACTIVE)`);
         if (r.lat == 0 && r.lng == 0) reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
@@ -1093,11 +1123,11 @@ export function startScheduledRideDispatcher(): void {
         const scheduledVehicleType =
           trip.vehicle_type || await getDriverSocketRoomKeyForCategoryId(trip.vehicle_category_id);
 
-        // Switch status to searching
-        await rawDb.execute(rawSql`
-          UPDATE trip_requests SET current_status='searching', updated_at=NOW()
-          WHERE id=${trip.id}::uuid AND current_status='scheduled'
-        `);
+        await transitionRideState(String(trip.id), "searching", {
+          actorType: "system",
+          event: "REQUESTED",
+          data: { source: "scheduled_dispatch" },
+        });
 
         const serviceType = resolveServiceType(trip.trip_type, trip.vehicle_category_name);
 

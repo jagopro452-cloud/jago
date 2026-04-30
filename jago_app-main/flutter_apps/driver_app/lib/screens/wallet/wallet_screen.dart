@@ -620,6 +620,8 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final balance = (_wallet?['walletBalance'] ?? _wallet?['balance'] ?? 0).toDouble();
     final isLocked = _wallet?['isLocked'] ?? false;
+    final isNegative = balance < 0;
+    final absBalance = balance.abs();
     final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
     final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;
 
@@ -702,6 +704,28 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                             color: Colors.white, letterSpacing: -1.5)),
                         const SizedBox(height: 6),
                         Text(
+                          isNegative
+                              ? 'You need to pay â‚¹${absBalance.toStringAsFixed(2)}'
+                              : 'You will receive â‚¹${absBalance.toStringAsFixed(2)}',
+                          style: GoogleFonts.poppins(
+                            color: Colors.transparent,
+                            fontSize: 0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          isNegative
+                              ? 'You need to pay Rs ${absBalance.toStringAsFixed(2)}'
+                              : 'You will receive Rs ${absBalance.toStringAsFixed(2)}',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
                           isLocked ? 'Account Locked — Recharge to unlock' : 'Available Balance',
                           style: GoogleFonts.poppins(
                             color: Colors.white.withValues(alpha: 0.8),
@@ -760,7 +784,7 @@ class _WalletScreenState extends State<WalletScreen> with SingleTickerProviderSt
                               const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: Text('Recharge your wallet to unlock your account and go online.',
+                                child: Text('Wallet is negative. Recharge to unlock your account and go online.',
                                   style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500))),
                             ]),
                           ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_service.dart';
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -11,6 +12,8 @@ class SocketService {
   IO.Socket? _socket;
   bool _isConnected = false;
   String? _activeTripId; // stored so we can re-join trip room after server restart
+  String? _activeParcelId;
+  String? _lastBaseUrl;
 
   final _driverAssignedController = StreamController<Map<String, dynamic>>.broadcast();
   final _driverLocationController = StreamController<Map<String, dynamic>>.broadcast();
@@ -22,6 +25,8 @@ class SocketService {
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _parcelStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _parcelLocationController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
@@ -39,6 +44,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
+  Stream<Map<String, dynamic>> get onParcelStatus => _parcelStatusController.stream;
+  Stream<Map<String, dynamic>> get onParcelLocation => _parcelLocationController.stream;
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
   Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
@@ -48,6 +55,7 @@ class SocketService {
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
+    _lastBaseUrl = baseUrl;
     // If already connected, no need to create a new socket — but caller may
     // still call trackTrip() after this, which will work because _isConnected=true.
     if (_socket?.connected == true) return;
@@ -95,12 +103,18 @@ class SocketService {
       if (_activeTripId != null) {
         _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
       }
+      if (_activeParcelId != null) {
+        _socket!.emit('customer:track_parcel', {'orderId': _activeParcelId});
+      }
     });
 
     // On reconnect after server restart: re-join active trip room so events resume
     _socket!.on('reconnect', (_) {
       if (_activeTripId != null) {
         _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
+      }
+      if (_activeParcelId != null) {
+        _socket!.emit('customer:track_parcel', {'orderId': _activeParcelId});
       }
     });
 
@@ -109,9 +123,17 @@ class SocketService {
       _connectedController.add(false);
     });
 
-    _socket!.on('connect_error', (err) {
+    _socket!.on('connect_error', (err) async {
       _isConnected = false;
       _connectedController.add(false);
+      final text = err?.toString().toLowerCase() ?? '';
+      if (text.contains('unauthor')) {
+        final refreshed = await AuthService.tryRefreshSession();
+        if (refreshed && _lastBaseUrl != null) {
+          disconnect();
+          await connect(_lastBaseUrl!);
+        }
+      }
     });
 
     _socket!.on('error', (err) {
@@ -120,12 +142,17 @@ class SocketService {
       print('[SOCKET] Error: $err');
     });
 
-    _socket!.on('auth:error', (data) {
+    _socket!.on('auth:error', (data) async {
       print('[SOCKET] Auth error: $data');
-      // If we get an auth error, we might need to refresh the token or re-login.
-      // For now, let's just push a disconnected state.
       _isConnected = false;
       _connectedController.add(false);
+      final refreshed = await AuthService.tryRefreshSession();
+      if (refreshed && _lastBaseUrl != null) {
+        disconnect();
+        await connect(_lastBaseUrl!);
+        return;
+      }
+      await AuthService.handle401(source: 'customer_socket');
     });
 
     // Driver assigned to my trip (socket acceptance path)
@@ -233,6 +260,34 @@ class SocketService {
       _paymentPendingController.add(Map<String, dynamic>.from(data));
     });
 
+    _socket!.on('parcel:driver_assigned', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['status'] = 'driver_assigned';
+      _parcelStatusController.add(payload);
+    });
+
+    _socket!.on('parcel:in_transit', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['status'] = 'in_transit';
+      _parcelStatusController.add(payload);
+    });
+
+    _socket!.on('parcel:completed', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['status'] = 'completed';
+      _parcelStatusController.add(payload);
+    });
+
+    _socket!.on('parcel:cancelled', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['status'] = 'cancelled';
+      _parcelStatusController.add(payload);
+    });
+
+    _socket!.on('parcel:driver_location', (data) {
+      _parcelLocationController.add(Map<String, dynamic>.from(data));
+    });
+
     // ── WebRTC Call Signaling ──────────────────────────────────
     _socket!.on('call:incoming', (data) {
       _callIncomingController.add(Map<String, dynamic>.from(data));
@@ -272,6 +327,22 @@ class SocketService {
       _socket!.emit('customer:leave_trip', {'tripId': tripId});
     }
     _activeTripId = null;
+  }
+
+  void trackParcel(String orderId) {
+    _activeParcelId = orderId;
+    if (_socket != null && (_isConnected || _socket!.connected)) {
+      _socket!.emit('customer:track_parcel', {'orderId': orderId});
+    }
+  }
+
+  void stopTrackingParcel(String orderId) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('customer:leave_parcel', {'orderId': orderId});
+    }
+    if (_activeParcelId == orderId) {
+      _activeParcelId = null;
+    }
   }
 
   // Cancel a trip
@@ -346,6 +417,8 @@ class SocketService {
     _noDriversController.close();
     _tripSearchingController.close();
     _paymentPendingController.close();
+    _parcelStatusController.close();
+    _parcelLocationController.close();
     _callIncomingController.close();
     _callOfferController.close();
     _callAnswerController.close();

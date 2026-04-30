@@ -32,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   int _seconds = 0;
   Timer? _timer;
   String? _firebaseVerificationId;
+  String? _otpProvider;
 
   @override
   void codeUpdated() {
@@ -129,6 +130,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Future<void> _resetOtpFlow() async {
     _timer?.cancel();
     _firebaseVerificationId = null;
+    _otpProvider = null;
     _otpVerifyInFlight = false;
     _otpVerifyCompleted = false;
     await FirebaseOtpService.resetVerification();
@@ -145,6 +147,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
     _firebaseVerificationId = null;
+    _otpProvider = null;
     _otpVerifyInFlight = false;
     _otpVerifyCompleted = false;
     await FirebaseOtpService.resetVerification();
@@ -170,6 +173,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
 
     if (firebaseSent) {
+      AuthService.sendOtp(phone, 'customer').catchError((_) => <String, dynamic>{});
+      _otpProvider = 'firebase';
       setState(() { _otpSent = true; _loading = false; });
       _startTimer();
       _snack('OTP sent to +91$phone');
@@ -177,8 +182,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
-    setState(() => _loading = false);
-    _snack(firebaseError ?? 'Firebase OTP could not be started. Please try again.', error: true);
+    final res = await AuthService.sendOtp(phone, 'customer');
+    if (!mounted) return;
+    if (res['success'] != true) {
+      setState(() => _loading = false);
+      _snack(firebaseError ?? res['message'] ?? 'Failed to send OTP', error: true);
+      return;
+    }
+    _firebaseVerificationId = null;
+    _otpProvider = 'server';
+    setState(() { _otpSent = true; _loading = false; });
+    _startTimer();
+    _snack('OTP sent to +91$phone via SMS');
+    listenForCode();
   }
 
   Future<void> _verifyOtp() async {
@@ -188,17 +204,50 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!_otpSent || _otpVerifyCompleted || _otpVerifyInFlight || _loading) return;
     _otpVerifyInFlight = true;
     setState(() => _loading = true);
+    final otpProvider = _otpProvider ?? (_firebaseVerificationId != null ? 'firebase' : 'server');
+    var shouldFallbackToServerOtp = false;
+
+    if (otpProvider == 'firebase') {
+      try {
+        if (_firebaseVerificationId == null) {
+          throw Exception('OTP session expired. Please resend OTP and try again.');
+        }
+        final idToken = await FirebaseOtpService.verifyOtp(
+          smsCode: otp,
+          verificationId: _firebaseVerificationId,
+        );
+        if (!mounted) return;
+        final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+        if (!mounted) return;
+        _otpVerifyCompleted = true;
+        setState(() => _loading = false);
+        if (res['success'] == true || res['token'] != null) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
+        } else {
+          _otpVerifyCompleted = false;
+          _otpCtrl.clear();
+          _showErrorDialog('Login Failed', res['message'] ?? 'Firebase verification failed. Please try again.');
+        }
+      } catch (e) {
+        if (!mounted) return;
+        _otpVerifyCompleted = false;
+        setState(() => _loading = false);
+        _otpCtrl.clear();
+        shouldFallbackToServerOtp = true;
+      } finally {
+        if (!shouldFallbackToServerOtp) {
+          _otpVerifyInFlight = false;
+        }
+      }
+      if (!shouldFallbackToServerOtp) {
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _loading = true);
+    }
 
     try {
-      if (_firebaseVerificationId == null) {
-        throw Exception('OTP session expired. Please resend OTP and try again.');
-      }
-      final idToken = await FirebaseOtpService.verifyOtp(
-        smsCode: otp,
-        verificationId: _firebaseVerificationId,
-      );
-      if (!mounted) return;
-      final res = await AuthService.verifyFirebaseToken(idToken, phone, 'customer');
+      final res = await AuthService.verifyOtp(phone, otp, 'customer');
       if (!mounted) return;
       _otpVerifyCompleted = true;
       setState(() => _loading = false);
@@ -207,14 +256,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else {
         _otpVerifyCompleted = false;
         _otpCtrl.clear();
-        _showErrorDialog('Login Failed', res['message'] ?? 'Firebase verification failed. Please try again.');
+        _showErrorDialog('Login Failed', res['message'] ?? 'Wrong OTP. Please try again.');
       }
     } catch (e) {
       if (!mounted) return;
       _otpVerifyCompleted = false;
       setState(() => _loading = false);
       _otpCtrl.clear();
-      _showErrorDialog('Verification Failed', e.toString().replaceAll('Exception: ', ''));
+      _showErrorDialog('Verification Failed', 'Network error. Please try again.');
     } finally {
       _otpVerifyInFlight = false;
     }

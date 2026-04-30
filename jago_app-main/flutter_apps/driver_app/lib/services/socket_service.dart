@@ -339,6 +339,21 @@ class SocketService {
     );
   }
 
+  void sendParcelLocation({
+    required String orderId,
+    required double lat,
+    required double lng,
+  }) {
+    if (!_isConnected || orderId.trim().isEmpty) return;
+    try {
+      _socket!.emit('driver:parcel_location', {
+        'orderId': orderId,
+        'lat': lat,
+        'lng': lng,
+      });
+    } catch (_) {}
+  }
+
   Future<void> _postLocationViaHttp({
     required double lat,
     required double lng,

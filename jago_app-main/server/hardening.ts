@@ -15,7 +15,8 @@
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
-import { sendFcmNotification } from "./fcm";
+import { notifyUser } from "./notification-service";
+import { applyWalletChange } from "./revenue-engine";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -235,37 +236,38 @@ export async function sendNotificationWithFailsafe(opts: {
   // CHANNEL 1: FCM
   // ════════════════════════════════════════════════════════════════════════════
   
-  if (opts.fcmToken) {
+  if (opts.recipientId) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const result = await sendFcmNotification({
-          fcmToken: opts.fcmToken,
+        await notifyUser(opts.recipientId, opts.type || "notification", {
+          ...(opts.data || {}),
+          tripId: opts.tripId || null,
+          message: opts.body,
+        }, {
           title: opts.title,
           body: opts.body,
-          data: opts.data,
         });
-        
-        // Log successful FCM send
+
         await rawDb.execute(rawSql`
           INSERT INTO notification_logs 
             (recipient_id, trip_id, notification_type, fcm_token, fcm_result, attempt_count, sent_at)
           VALUES 
             (${opts.recipientId}::uuid, ${opts.tripId}::uuid, ${opts.type || 'notification'}, 
-             ${opts.fcmToken}, 'sent', ${attempt}, NOW())
+             ${opts.fcmToken || null}, 'sent', ${attempt}, NOW())
         `).catch(() => {});
-        
-        await logInfo('NOTIFICATION-FCM', 'FCM sent successfully', {
+
+        await logInfo('NOTIFICATION-FCM', 'Notification gateway sent successfully', {
           recipientId: opts.recipientId,
           tripId: opts.tripId,
           attempt,
         });
-        
-        return { success: true, channel: 'fcm' };
+
+        return { success: true, channel: 'gateway' };
       } catch (e: any) {
         lastError = e;
-        
+
         if (attempt < maxRetries) {
-          const delay = backoffMs * Math.pow(2, attempt - 1); // Exponential backoff
+          const delay = backoffMs * Math.pow(2, attempt - 1);
           await new Promise(r => setTimeout(r, delay));
         }
       }
@@ -398,10 +400,13 @@ async function autoTimeoutTrip(
   `).catch(() => {});
   
   // Refund customer
-  await rawDb.execute(rawSql`
-    UPDATE users SET wallet_balance = wallet_balance + ${fare}
-    WHERE id=${customerId}::uuid
-  `).catch(() => {});
+  await applyWalletChange({
+    userId: customerId,
+    amount: fare,
+    type: "CREDIT",
+    reason: "trip_timeout_refund",
+    refId: tripId,
+  }).catch(() => {});
   
   // Log event
   await logInfo('AUTO-TIMEOUT', `Trip ${reason}`, {
@@ -453,11 +458,13 @@ export async function recordNoShow(
   // DEDUCT PENALTY
   // ════════════════════════════════════════════════════════════════════════════
   
-  await rawDb.execute(rawSql`
-    UPDATE users
-    SET wallet_balance = wallet_balance - ${penaltyAmount}
-    WHERE id=${userId}::uuid
-  `).catch(() => {});
+  await applyWalletChange({
+    userId,
+    amount: penaltyAmount,
+    type: "DEBIT",
+    reason: isDriver ? "driver_no_show_penalty" : "customer_no_show_penalty",
+    refId: tripId,
+  }).catch(() => {});
   
   // ════════════════════════════════════════════════════════════════════════════
   // DEDUCT RATING
@@ -565,10 +572,13 @@ export async function cleanupStaleOutstationRides() {
       const totalFare = b.total_fare;
       
       // Refund wallet
-      await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance + ${totalFare}
-        WHERE id=${customerId}::uuid
-      `).catch(() => {});
+      await applyWalletChange({
+        userId: String(customerId),
+        amount: parseFloat(totalFare),
+        type: "CREDIT",
+        reason: "outstation_stale_refund",
+        refId: String(rideId),
+      }).catch(() => {});
       
       // Update booking
       await rawDb.execute(rawSql`

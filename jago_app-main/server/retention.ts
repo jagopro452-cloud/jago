@@ -13,7 +13,7 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { sendFcmNotification } from "./fcm";
+import { notifyUser } from "./notification-service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,31 +119,23 @@ export async function runRetentionCampaign(): Promise<RetentionCampaignResult> {
           `);
           result.promoCodesGenerated++;
 
-          // Send push notification
-          if (user.fcm_token) {
-            const body = rule.messageBody.replace("{PROMO}", personalCode);
-            const sent = await sendFcmNotification({
-              fcmToken: user.fcm_token,
-              title: rule.messageTitle,
-              body,
-              data: {
-                type: "retention_promo",
-                promoCode: personalCode,
-                discountAmount: String(rule.discountAmount),
-              },
-              channelId: "promotions",
-              sound: "default",
-            });
+          const body = rule.messageBody.replace("{PROMO}", personalCode);
+          await notifyUser(user.id, "promo", {
+            type: "retention_promo",
+            promoCode: personalCode,
+            discountAmount: rule.discountAmount,
+            body,
+          }, {
+            title: rule.messageTitle,
+            body,
+            channelId: "promotions",
+          });
 
-            if (sent) {
-              result.notificationsSent++;
-              // Log notification
-              await rawDb.execute(rawSql`
-                INSERT INTO retention_notifications (user_id, campaign_code, discount_amount, promo_code, message_title, message_body, sent_at, delivered)
-                VALUES (${user.id}::uuid, ${rule.promoCode}, ${rule.discountAmount}, ${personalCode}, ${rule.messageTitle}, ${body}, NOW(), true)
-              `);
-            }
-          }
+          result.notificationsSent++;
+          await rawDb.execute(rawSql`
+            INSERT INTO retention_notifications (user_id, campaign_code, discount_amount, promo_code, message_title, message_body, sent_at, delivered)
+            VALUES (${user.id}::uuid, ${rule.promoCode}, ${rule.discountAmount}, ${personalCode}, ${rule.messageTitle}, ${body}, NOW(), true)
+          `);
         } catch (e: any) {
           result.errors++;
           console.error(`[RETENTION] Error for user ${user.id}:`, e.message);

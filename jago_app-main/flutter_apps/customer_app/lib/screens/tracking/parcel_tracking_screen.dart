@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../config/jago_theme.dart';
 import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
+import '../../services/socket_service.dart';
 import '../../services/trip_service.dart';
 import '../main_screen.dart';
 
@@ -20,6 +21,8 @@ class ParcelTrackingScreen extends StatefulWidget {
 
 class _ParcelTrackingScreenState extends State<ParcelTrackingScreen> {
   Timer? _pollTimer;
+  final SocketService _socket = SocketService();
+  final List<StreamSubscription> _subs = [];
   bool _loading = true;
   bool _cancelLoading = false;
   String? _error;
@@ -30,11 +33,28 @@ class _ParcelTrackingScreenState extends State<ParcelTrackingScreen> {
     super.initState();
     _fetchOrder();
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchOrder());
+    _subs.add(_socket.onParcelStatus.listen((data) {
+      if (!mounted) return;
+      if ((data['orderId']?.toString() ?? '') != widget.orderId) return;
+      _fetchOrder();
+    }));
+    _subs.add(_socket.onParcelLocation.listen((data) {
+      if (!mounted) return;
+      if ((data['orderId']?.toString() ?? '') != widget.orderId) return;
+      _fetchOrder();
+    }));
+    _socket.connect(ApiConfig.socketUrl).then((_) {
+      _socket.trackParcel(widget.orderId);
+    });
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    _socket.stopTrackingParcel(widget.orderId);
     super.dispose();
   }
 

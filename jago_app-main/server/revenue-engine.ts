@@ -16,6 +16,7 @@
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { getRevenueConfig } from "./revenue-config";
 
 const rawDb = db;
 const rawSql = sql;
@@ -50,6 +51,45 @@ export interface UPIProvider {
   isActive: boolean;
 }
 
+export interface CalculatedRevenue {
+  model: RevenueBreakdown["model"];
+  commission: number;
+  platformFee: number;
+  gst: number;
+  insurance: number;
+  totalDeduction: number;
+  driverEarning: number;
+}
+
+export interface AppliedSettlement {
+  breakdown: RevenueBreakdown;
+  settlement: { newWalletBalance: number; isLocked: boolean; lockReason?: string };
+}
+
+export interface PendingBalanceResult {
+  newWalletBalance: number;
+  pendingBalance: number;
+  pendingCommission: number;
+  pendingGst: number;
+  isLocked: boolean;
+  autoUnlocked?: boolean;
+  lockReason?: string;
+}
+
+export interface WalletChangeResult {
+  userId: string;
+  amount: number;
+  type: "CREDIT" | "DEBIT";
+  newBalance: number;
+}
+
+export interface CompanyWalletChangeResult {
+  companyId: string;
+  amount: number;
+  type: "CREDIT" | "DEBIT";
+  newBalance: number;
+}
+
 export const SUPPORTED_UPI_PROVIDERS: UPIProvider[] = [
   { id: "gpay",    name: "Google Pay", upiHandle: "@okicici",   icon: "💳", isActive: true },
   { id: "phonepe", name: "PhonePe",    upiHandle: "@ybl",       icon: "💜", isActive: true },
@@ -57,11 +97,169 @@ export const SUPPORTED_UPI_PROVIDERS: UPIProvider[] = [
   { id: "bhim",    name: "BHIM",        upiHandle: "@upi",       icon: "🇮🇳", isActive: true },
 ];
 
+let walletEventsReady = false;
+
+async function ensureWalletEventsTable(): Promise<void> {
+  if (walletEventsReady) return;
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS wallet_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      amount NUMERIC(12,2) NOT NULL,
+      type VARCHAR(16) NOT NULL,
+      reason TEXT NOT NULL,
+      ref_id TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+  walletEventsReady = true;
+}
+
+export async function applyWalletChange(params: {
+  userId?: string;
+  driverId?: string;
+  amount: number;
+  type: "CREDIT" | "DEBIT";
+  reason: string;
+  refId?: string | null;
+  metadata?: Record<string, unknown>;
+  requireSufficientFunds?: boolean;
+}): Promise<WalletChangeResult> {
+  const userId = String(params.userId || params.driverId || "");
+  if (!userId) throw new Error("userId is required");
+  const amount = Math.round(Number(params.amount || 0) * 100) / 100;
+  if (!(amount > 0)) throw new Error("amount must be positive");
+
+  await ensureWalletEventsTable();
+
+  const updated = params.type === "CREDIT"
+    ? await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance = wallet_balance + ${amount},
+            updated_at = NOW()
+        WHERE id=${userId}::uuid
+        RETURNING wallet_balance
+      `)
+    : await rawDb.execute(rawSql`
+        UPDATE users
+        SET wallet_balance = wallet_balance - ${amount},
+            updated_at = NOW()
+        WHERE id=${userId}::uuid
+          AND (${params.requireSufficientFunds ? amount : 0} = 0 OR wallet_balance >= ${amount})
+        RETURNING wallet_balance
+      `);
+
+  if (!updated.rows.length) {
+    if (params.type === "DEBIT" && params.requireSufficientFunds) {
+      throw new Error("Insufficient wallet balance");
+    }
+    throw new Error("Wallet owner not found");
+  }
+
+  const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
+
+  await rawDb.execute(rawSql`
+    INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+    VALUES (
+      ${userId}::uuid,
+      ${amount},
+      ${params.type},
+      ${params.reason},
+      ${params.refId || null},
+      ${JSON.stringify(params.metadata || {})}::jsonb
+    )
+  `).catch(() => {});
+
+  return {
+    userId,
+    amount,
+    type: params.type,
+    newBalance,
+  };
+}
+
+export async function applyCompanyWalletChange(params: {
+  companyId: string;
+  amount: number;
+  type: "CREDIT" | "DEBIT";
+  reason: string;
+  refId?: string | null;
+  metadata?: Record<string, unknown>;
+  tripDelta?: number;
+}): Promise<CompanyWalletChangeResult> {
+  const companyId = String(params.companyId || "");
+  if (!companyId) throw new Error("companyId is required");
+  const amount = Math.round(Number(params.amount || 0) * 100) / 100;
+  if (!(amount > 0)) throw new Error("amount must be positive");
+  const tripDelta = Number(params.tripDelta || 0);
+
+  const updated = params.type === "CREDIT"
+    ? await rawDb.execute(rawSql`
+        UPDATE b2b_companies
+        SET wallet_balance = wallet_balance + ${amount},
+            total_trips = GREATEST(0, total_trips + ${tripDelta}),
+            updated_at = NOW()
+        WHERE id=${companyId}::uuid
+        RETURNING wallet_balance
+      `)
+    : await rawDb.execute(rawSql`
+        UPDATE b2b_companies
+        SET wallet_balance = wallet_balance - ${amount},
+            total_trips = GREATEST(0, total_trips + ${tripDelta}),
+            updated_at = NOW()
+        WHERE id=${companyId}::uuid
+        RETURNING wallet_balance
+      `);
+
+  if (!updated.rows.length) throw new Error("Company not found");
+  const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
+
+  await ensureWalletEventsTable();
+  await rawDb.execute(rawSql`
+    INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+    VALUES (
+      ${companyId}::uuid,
+      ${amount},
+      ${params.type},
+      ${params.reason},
+      ${params.refId || null},
+      ${JSON.stringify({ ...(params.metadata || {}), entityType: "b2b" })}::jsonb
+    )
+  `).catch(() => {});
+
+  return { companyId, amount, type: params.type, newBalance };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  SERVICE MODEL KEY MAPPING
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Map service category → revenue_model_settings key */
+function normalizeServiceCategory(service: string): ServiceCategory {
+  switch (String(service || "").toLowerCase()) {
+    case "ride":
+    case "rides":
+      return "rides";
+    case "parcel":
+      return "parcel";
+    case "b2b":
+    case "b2b_parcel":
+      return "b2b_parcel";
+    case "cargo":
+      return "cargo";
+    case "intercity":
+      return "intercity";
+    case "city_pool":
+    case "carpool":
+      return "city_pool";
+    case "outstation_pool":
+      return "outstation_pool";
+    default:
+      return "rides";
+  }
+}
+
 function getModelKey(serviceCategory: ServiceCategory): string {
   switch (serviceCategory) {
     case "rides":           return "rides_model";
@@ -123,6 +321,21 @@ function getGstKey(serviceCategory: ServiceCategory): string {
   }
 }
 
+export async function getCustomerGstRatePercent(service: ServiceCategory | string): Promise<number> {
+  const serviceCategory = normalizeServiceCategory(String(service));
+  const settings = await loadRevenueSettings();
+  const key = getGstKey(serviceCategory);
+  const fallback = serviceCategory === "parcel" || serviceCategory === "b2b_parcel" || serviceCategory === "cargo" ? 18 : 5;
+  const value = parseFloat(settings[key] || String(fallback));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+export async function calculateCustomerGstAmount(service: ServiceCategory | string, taxableAmount: number): Promise<number> {
+  const pct = await getCustomerGstRatePercent(service);
+  const taxablePaise = Math.round(Number(taxableAmount || 0) * 100);
+  return Math.round(taxablePaise * Math.round(pct * 100) / 10000) / 100;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  LOAD REVENUE SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -157,10 +370,11 @@ export async function calculateRevenueBreakdown(
     loadRevenueSettings(),
     loadModuleConfig(serviceCategory),
   ]);
+  const revenueCfg = await getRevenueConfig(serviceCategory);
 
   // Determine active model: per-module config takes priority over global settings
   const modelKey = getModelKey(serviceCategory);
-  const activeModel = modCfg?.revenueModel || s[modelKey] || s.active_model || "commission";
+  const activeModel = modCfg?.revenueModel || revenueCfg.model || s[modelKey] || s.active_model || "commission";
 
   // Check launch free period
   let launchFreeApplied = false;
@@ -200,8 +414,8 @@ export async function calculateRevenueBreakdown(
   } else if (activeModel === "commission") {
     // COMMISSION MODEL: commission% + GST-on-commission + insurance → ALL go to admin
     // Rates: per-module config takes priority over global settings
-    const commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
-    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const commPct = modCfg?.commissionPct ?? revenueCfg.commissionPercent ?? parseFloat(s.commission_pct || "15");
+    const gstOnCommPct = modCfg?.commissionGstPct ?? revenueCfg.gstPercent ?? parseFloat(s.commission_gst_on_comm || "18");
     const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
     const gstPaise  = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000); // GST on commission
@@ -220,29 +434,25 @@ export async function calculateRevenueBreakdown(
       driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else if (activeModel === "subscription") {
-    // SUBSCRIPTION MODEL: flat fee + GST-on-fee + insurance → admin
-    const platPaise = Math.round(parseFloat(s.sub_platform_fee_per_ride || "5") * 100);
-    const gstOnFeePct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
-    const gstPaise = Math.round(platPaise * Math.round(gstOnFeePct * 100) / 10000);
-    deductPaise = platPaise + gstPaise + insPaise;
-
+    // Subscription mode: no per-ride deduction.
+    deductPaise = 0;
     breakdown = {
       model: "subscription",
       commission: 0,
-      platformFee: platPaise / 100,
-      gst: gstPaise / 100,
-      insurance: insPaise / 100,
-      total: deductPaise / 100,
+      platformFee: 0,
+      gst: 0,
+      insurance: 0,
+      total: 0,
       commissionPct: 0,
-      gstPct: gstOnFeePct,
+      gstPct: 0,
       fareBeforeDeduction: fare,
-      driverEarnings: (farePaise - deductPaise) / 100,
+      driverEarnings: farePaise / 100,
     };
   } else if (activeModel === "hybrid") {
     // HYBRID: commission% + platform_fee + GST + insurance → admin
-    const commPct = modCfg?.commissionPct ?? parseFloat(s.hybrid_commission_pct || s.commission_pct || "10");
+    const commPct = modCfg?.commissionPct ?? revenueCfg.commissionPercent ?? parseFloat(s.hybrid_commission_pct || s.commission_pct || "10");
     const platPaise = Math.round(parseFloat(s.hybrid_platform_fee_per_ride || s.sub_platform_fee_per_ride || "5") * 100);
-    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const gstOnCommPct = modCfg?.commissionGstPct ?? revenueCfg.gstPercent ?? parseFloat(s.commission_gst_on_comm || "18");
     const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
     const gstPaise  = Math.round((commPaise + platPaise) * Math.round(gstOnCommPct * 100) / 10000);
@@ -262,8 +472,8 @@ export async function calculateRevenueBreakdown(
     };
   } else {
     // fallback — treat as commission
-    const commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
-    const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
+    const commPct = modCfg?.commissionPct ?? revenueCfg.commissionPercent ?? parseFloat(s.commission_pct || "15");
+    const gstOnCommPct = modCfg?.commissionGstPct ?? revenueCfg.gstPercent ?? parseFloat(s.commission_gst_on_comm || "18");
     const commPctX100 = Math.round(commPct * 100);
     const commPaise = Math.round(farePaise * commPctX100 / 10000);
     const gstPaise  = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000);
@@ -284,6 +494,23 @@ export async function calculateRevenueBreakdown(
   }
 
   return breakdown;
+}
+
+export async function calculateRevenue(
+  service: ServiceCategory | string,
+  fare: number,
+  driverId?: string,
+): Promise<CalculatedRevenue> {
+  const breakdown = await calculateRevenueBreakdown(fare, normalizeServiceCategory(String(service)), driverId);
+  return {
+    model: breakdown.model,
+    commission: breakdown.commission,
+    platformFee: breakdown.platformFee,
+    gst: breakdown.gst,
+    insurance: breakdown.insurance,
+    totalDeduction: breakdown.total,
+    driverEarning: breakdown.driverEarnings,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -321,16 +548,15 @@ export async function settleRevenue(params: {
   }
 
   const s = await loadRevenueSettings();
-  const lockThresholdVal = parseFloat(s.commission_lock_threshold || "200");
-  const legacyThreshold = parseFloat(s.auto_lock_threshold || "-200");
+  const lockThresholdVal = Math.abs(parseFloat(s.auto_lock_threshold || "-200"));
 
-  // Fetch current pending balances (needed for lock threshold check)
   const balBeforeR = await rawDb.execute(rawSql`
-    SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance
+    SELECT wallet_balance
     FROM users WHERE id=${driverId}::uuid LIMIT 1
   `).catch(() => ({ rows: [] as any[] }));
   const balBefore = balBeforeR.rows[0] as any || {};
-  const prevTotal = parseFloat(balBefore.total_pending_balance ?? "0") || 0;
+  const prevWalletBalance = parseFloat(balBefore.wallet_balance ?? "0") || 0;
+  const prevTotal = Math.max(0, -prevWalletBalance);
 
   // Determine if payment is online (platform collected) or cash (driver collected)
   let effectivePaymentMethod = paymentMethod;
@@ -346,28 +572,38 @@ export async function settleRevenue(params: {
 
   if (isOnlinePayment) {
     // ONLINE: Platform already collected fare. Credit driver net amount.
+    const walletChange = await applyWalletChange({
+      userId: driverId,
+      amount: driverWalletCredit,
+      type: "CREDIT",
+      reason: "trip_settlement_credit",
+      refId: tripId,
+      metadata: { serviceCategory, paymentMethod: effectivePaymentMethod },
+    });
     wUpd = await rawDb.execute(rawSql`
       UPDATE users
-      SET wallet_balance = wallet_balance + ${driverWalletCredit},
-          completed_rides_count = COALESCE(completed_rides_count, 0) + 1
+      SET completed_rides_count = COALESCE(completed_rides_count, 0) + 1
       WHERE id=${driverId}::uuid
-      RETURNING wallet_balance, is_locked, total_pending_balance
+      RETURNING ${walletChange.newBalance}::numeric AS wallet_balance, is_locked
     `);
-    newTotal = prevTotal;
+    newTotal = Math.max(0, -walletChange.newBalance);
   } else {
-    // CASH: Driver collected full fare. Platform dues tracked as debt.
-    // Use atomic SQL addition to prevent lost-update race conditions.
+    // CASH: Driver collected full fare. Platform dues tracked only in wallet.
+    const walletChange = await applyWalletChange({
+      userId: driverId,
+      amount: deductAmount,
+      type: "DEBIT",
+      reason: "cash_ride_dues",
+      refId: tripId,
+      metadata: { serviceCategory, paymentMethod: effectivePaymentMethod },
+    });
     wUpd = await rawDb.execute(rawSql`
       UPDATE users
-      SET wallet_balance = wallet_balance - ${deductAmount},
-          pending_commission_balance = COALESCE(pending_commission_balance, 0) + ${commissionOwed},
-          pending_gst_balance = COALESCE(pending_gst_balance, 0) + ${gstAmount},
-          total_pending_balance = COALESCE(total_pending_balance, 0) + ${deductAmount},
-          completed_rides_count = COALESCE(completed_rides_count, 0) + 1
+      SET completed_rides_count = COALESCE(completed_rides_count, 0) + 1
       WHERE id=${driverId}::uuid
-      RETURNING wallet_balance, is_locked, total_pending_balance
+      RETURNING ${walletChange.newBalance}::numeric AS wallet_balance, is_locked
     `);
-    newTotal = parseFloat((wUpd?.rows?.[0] as any)?.total_pending_balance ?? "0") || 0;
+    newTotal = Math.max(0, -walletChange.newBalance);
   }
 
   const wRow: any = wUpd?.rows?.[0] || {};
@@ -377,15 +613,8 @@ export async function settleRevenue(params: {
 
   // Auto-lock for CASH rides only
   if (!isOnlinePayment && !isLocked) {
-    if (newTotal >= lockThresholdVal) {
-      lockReason = `Pending balance ₹${newTotal.toFixed(2)} exceeds ₹${lockThresholdVal} limit. Pay to unlock.`;
-      await rawDb.execute(rawSql`
-        UPDATE users SET is_locked=true, lock_reason=${lockReason}, locked_at=NOW()
-        WHERE id=${driverId}::uuid
-      `);
-      isLocked = true;
-    } else if (newWalletBalance < legacyThreshold) {
-      lockReason = `Wallet balance ₹${newWalletBalance.toFixed(2)}. Pay ₹${Math.abs(newWalletBalance).toFixed(2)} to unlock.`;
+    if (newWalletBalance < -lockThresholdVal) {
+      lockReason = `Wallet balance ₹${newWalletBalance.toFixed(2)} is below -₹${lockThresholdVal}. Recharge to unlock.`;
       await rawDb.execute(rawSql`
         UPDATE users SET is_locked=true, lock_reason=${lockReason}, locked_at=NOW()
         WHERE id=${driverId}::uuid
@@ -472,6 +701,185 @@ export async function settleRevenue(params: {
   return { newWalletBalance, isLocked, lockReason };
 }
 
+export async function applySettlement(params: {
+  rideId: string;
+  service: ServiceCategory | string;
+  fare: number;
+  driverId: string;
+  paymentMethod: PaymentMethod;
+  serviceLabel?: string;
+  customerWalletBalance?: number;
+}): Promise<AppliedSettlement> {
+  const serviceCategory = normalizeServiceCategory(String(params.service));
+  const breakdown = await calculateRevenueBreakdown(params.fare, serviceCategory, params.driverId);
+  const settlement = await settleRevenue({
+    driverId: params.driverId,
+    tripId: params.rideId,
+    fare: params.fare,
+    paymentMethod: params.paymentMethod,
+    breakdown,
+    serviceCategory,
+    serviceLabel: params.serviceLabel || serviceCategory,
+    customerWalletBalance: params.customerWalletBalance,
+  });
+  return { breakdown, settlement };
+}
+
+export async function applyPendingBalanceDebit(params: {
+  driverId: string;
+  amount: number;
+  gstAmount?: number;
+  description?: string;
+  tripId?: string | null;
+}): Promise<PendingBalanceResult> {
+  const { driverId, description, tripId } = params;
+  const totalAmt = parseFloat(Number(params.amount || 0).toFixed(2));
+  const balR = await rawDb.execute(rawSql`
+    SELECT wallet_balance, is_locked
+    FROM users WHERE id=${driverId}::uuid LIMIT 1
+  `);
+  if (!balR.rows.length) throw new Error("Driver not found");
+  const bal: any = balR.rows[0] || {};
+  const prevWalletBalance = parseFloat(bal.wallet_balance ?? "0") || 0;
+  const prevTotal = Math.max(0, -prevWalletBalance);
+
+  const walletChange = await applyWalletChange({
+    userId: driverId,
+    amount: totalAmt,
+    type: "DEBIT",
+    reason: "platform_fee_deduction",
+    refId: tripId || null,
+    metadata: { description: description || "Platform fee deduction" },
+  });
+  const updated = await rawDb.execute(rawSql`
+    UPDATE users
+    SET pending_payment_amount = GREATEST(0, ${Math.max(0, -walletChange.newBalance)})
+    WHERE id = ${driverId}::uuid
+    RETURNING ${walletChange.newBalance}::numeric AS wallet_balance, is_locked
+  `);
+  const newTotal = Math.max(0, -walletChange.newBalance);
+
+  await rawDb.execute(rawSql`
+    INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+    VALUES (${driverId}::uuid, ${totalAmt}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
+  `).catch(() => {});
+
+  await rawDb.execute(rawSql`
+    INSERT INTO commission_settlements
+      (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount, direction, balance_before, balance_after, description)
+    VALUES
+      (${driverId}::uuid, ${tripId ? rawSql`${tripId}::uuid` : rawSql`NULL`}, 'commission_debit', 0, 0, ${totalAmt}, 'debit', ${prevTotal}, ${newTotal}, ${description || 'Fee deduction'})
+  `).catch(() => {});
+
+  const settings = await loadRevenueSettings();
+  const lockThreshold = Math.abs(parseFloat(settings.auto_lock_threshold || "-200"));
+  let isLocked = (updated.rows[0] as any)?.is_locked === true;
+  let lockReason: string | undefined;
+  if (!isLocked && walletChange.newBalance < -lockThreshold) {
+    lockReason = `Wallet balance ₹${walletChange.newBalance.toFixed(2)} is below -₹${lockThreshold}. Recharge to unlock.`;
+    await rawDb.execute(rawSql`
+      UPDATE users SET is_locked=true, lock_reason=${lockReason}, locked_at=NOW()
+      WHERE id=${driverId}::uuid
+    `);
+    isLocked = true;
+  }
+
+  return {
+    newWalletBalance: parseFloat((updated.rows[0] as any)?.wallet_balance || 0),
+    pendingBalance: newTotal,
+    pendingCommission: 0,
+    pendingGst: 0,
+    isLocked,
+    lockReason,
+  };
+}
+
+export async function applyPendingBalanceCredit(params: {
+  driverId: string;
+  amount: number;
+  method?: string;
+  description?: string;
+  forceUnlock?: boolean;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  status?: string;
+  settlementType?: string;
+  createDriverPayment?: boolean;
+}): Promise<PendingBalanceResult> {
+  const {
+    driverId,
+    method = "cash",
+    description,
+    forceUnlock = false,
+    razorpayOrderId,
+    razorpayPaymentId,
+    status = "completed",
+    settlementType = "payment_credit",
+    createDriverPayment = false,
+  } = params;
+  const payAmt = parseFloat(Number(params.amount || 0).toFixed(2));
+
+  const balR = await rawDb.execute(rawSql`
+    SELECT wallet_balance, is_locked
+    FROM users WHERE id=${driverId}::uuid LIMIT 1
+  `);
+  if (!balR.rows.length) throw new Error("Driver not found");
+  const bal: any = balR.rows[0] || {};
+  const prevWalletBalance = parseFloat(bal.wallet_balance ?? "0") || 0;
+  const prevTotal = Math.max(0, -prevWalletBalance);
+
+  const walletChange = await applyWalletChange({
+    userId: driverId,
+    amount: payAmt,
+    type: "CREDIT",
+    reason: settlementType,
+    refId: razorpayPaymentId || razorpayOrderId || null,
+    metadata: { method, description: description || null },
+  });
+  const updated = await rawDb.execute(rawSql`
+    UPDATE users
+    SET pending_payment_amount = GREATEST(0, ${Math.max(0, -walletChange.newBalance)})
+    WHERE id = ${driverId}::uuid
+    RETURNING ${walletChange.newBalance}::numeric AS wallet_balance, is_locked
+  `);
+  const newTotal = Math.max(0, -walletChange.newBalance);
+
+  const settings = await loadRevenueSettings();
+  const lockThreshold = Math.abs(parseFloat(settings.auto_lock_threshold || "-200"));
+  const wasLocked = (updated.rows[0] as any)?.is_locked === true;
+  const autoUnlocked = !!(walletChange.newBalance >= -lockThreshold && wasLocked || forceUnlock);
+  if (autoUnlocked) {
+    await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driverId}::uuid`);
+  }
+
+  await rawDb.execute(rawSql`
+    INSERT INTO commission_settlements
+      (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
+       direction, balance_before, balance_after, payment_method,
+       razorpay_order_id, razorpay_payment_id, status, description)
+    VALUES
+      (${driverId}::uuid, ${settlementType}, 0, 0, ${payAmt},
+       'credit', ${prevTotal}, ${newTotal}, ${method},
+       ${razorpayOrderId || null}, ${razorpayPaymentId || null}, ${status}, ${description || 'Settlement credit'})
+  `).catch(() => {});
+
+  if (createDriverPayment) {
+    await rawDb.execute(rawSql`
+      INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
+      VALUES (${driverId}::uuid, ${payAmt}, 'admin_settlement', 'completed', ${description || 'Admin settlement'})
+    `).catch(() => {});
+  }
+
+  return {
+    newWalletBalance: parseFloat((updated.rows[0] as any)?.wallet_balance || 0),
+    pendingBalance: newTotal,
+    pendingCommission: 0,
+    pendingGst: 0,
+    isLocked: autoUnlocked ? false : ((updated.rows[0] as any)?.is_locked === true),
+    autoUnlocked,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  WALLET OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -479,17 +887,18 @@ export async function settleRevenue(params: {
 /** Get driver wallet summary */
 export async function getDriverWalletSummary(driverId: string) {
   const r = await rawDb.execute(rawSql`
-    SELECT wallet_balance, pending_commission_balance, pending_gst_balance,
-           total_pending_balance, is_locked, lock_reason, locked_at
+    SELECT wallet_balance, is_locked, lock_reason, locked_at
     FROM users WHERE id=${driverId}::uuid LIMIT 1
   `);
   if (!r.rows.length) return null;
   const w = r.rows[0] as any;
+  const walletBalance = parseFloat(w.wallet_balance ?? "0");
+  const totalPending = Math.max(0, -walletBalance);
   return {
-    walletBalance: parseFloat(w.wallet_balance ?? "0"),
-    pendingCommission: parseFloat(w.pending_commission_balance ?? "0"),
-    pendingGst: parseFloat(w.pending_gst_balance ?? "0"),
-    totalPending: parseFloat(w.total_pending_balance ?? "0"),
+    walletBalance,
+    pendingCommission: 0,
+    pendingGst: 0,
+    totalPending,
     isLocked: w.is_locked === true,
     lockReason: w.lock_reason || null,
     lockedAt: w.locked_at || null,
@@ -512,9 +921,14 @@ export async function requestWithdrawal(driverId: string, amount: number, method
   `);
 
   // Debit wallet immediately (hold funds)
-  await rawDb.execute(rawSql`
-    UPDATE users SET wallet_balance = wallet_balance - ${amount} WHERE id=${driverId}::uuid
-  `);
+  await applyWalletChange({
+    userId: driverId,
+    amount,
+    type: "DEBIT",
+    reason: "withdrawal_request",
+    refId: String((r.rows as any[])[0]?.id || ""),
+    metadata: { method },
+  });
 
   // Record transaction
   const newBal = wallet.walletBalance - amount;
@@ -543,12 +957,16 @@ export async function rejectWithdrawal(paymentId: string) {
   `);
   const row = (r.rows as any[])[0];
   if (row) {
-    await rawDb.execute(rawSql`
-      UPDATE users SET wallet_balance = wallet_balance + ${row.amount} WHERE id=${row.driver_id}::uuid
-    `);
+    const walletChange = await applyWalletChange({
+      userId: String(row.driver_id),
+      amount: parseFloat(String(row.amount || 0)),
+      type: "CREDIT",
+      reason: "withdrawal_rejected_refund",
+      refId: paymentId,
+    });
     await rawDb.execute(rawSql`
       INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type)
-      VALUES (${row.driver_id}::uuid, 'Withdrawal rejected - refund', ${row.amount}, 0, 0, 'withdrawal_refund')
+      VALUES (${row.driver_id}::uuid, 'Withdrawal rejected - refund', ${row.amount}, 0, ${walletChange.newBalance}, 'withdrawal_refund')
     `).catch(() => {});
   }
 }
@@ -579,11 +997,15 @@ export async function getCustomerWallet(customerId: string) {
 
 export async function topUpCustomerWallet(customerId: string, amount: number, paymentMethod: string, paymentId?: string) {
   if (amount <= 0) throw new Error("Amount must be > 0");
-  const r = await rawDb.execute(rawSql`
-    UPDATE users SET wallet_balance = wallet_balance + ${amount} WHERE id=${customerId}::uuid
-    RETURNING wallet_balance
-  `);
-  const newBal = parseFloat((r.rows[0] as any)?.wallet_balance ?? "0");
+  const walletChange = await applyWalletChange({
+    userId: customerId,
+    amount,
+    type: "CREDIT",
+    reason: "customer_wallet_topup",
+    refId: paymentId || null,
+    metadata: { paymentMethod },
+  });
+  const newBal = walletChange.newBalance;
 
   await rawDb.execute(rawSql`
     INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)

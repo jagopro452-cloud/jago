@@ -16,9 +16,10 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { sendFcmNotification } from "./fcm";
+import { notifyUser } from "./notification-service";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 import { io } from "./socket";
+import { activeDriverEligibilitySql } from "./driver-state";
 import { uuidArraySql } from "./vehicle-matching";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -227,20 +228,23 @@ export async function notifyReceiver(opts: {
   // FCM push if receiver is a registered user
   try {
     const userR = await rawDb.execute(rawSql`
-      SELECT ud.fcm_token
+      SELECT u.id as user_id, ud.fcm_token
       FROM users u
       JOIN user_devices ud ON ud.user_id = u.id
       WHERE u.phone = ${receiverPhone}
         AND ud.fcm_token IS NOT NULL
       LIMIT 1
     `);
-    const fcmToken = (userR.rows[0] as any)?.fcm_token;
-    if (fcmToken) {
-      await sendFcmNotification({
-        fcmToken,
-        title: eventType === "delivered" ? "📦 Parcel Delivered!" : "📦 Parcel Update",
+    const targetUserId = (userR.rows[0] as any)?.user_id;
+    if (targetUserId) {
+      await notifyUser(String(targetUserId), "parcel:update", {
+        type: "parcel_update",
+        orderId,
+        eventType,
+        message: smsBody,
+      }, {
+        title: eventType === "delivered" ? "Parcel Delivered!" : "Parcel Update",
         body: smsBody,
-        data: { type: "parcel_update", orderId, eventType },
         channelId: "parcel_updates",
       });
     }
@@ -593,11 +597,9 @@ export async function findParcelCapableDriversDetailed(
     JOIN driver_details dd ON dd.user_id = u.id
     LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
     WHERE u.user_type = 'driver'
-      AND u.is_active = true
-      AND u.is_locked = false
+      AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online = true
       AND u.current_trip_id IS NULL
-      AND u.verification_status = 'approved'
       AND dl.lat != 0 AND dl.lng != 0
       AND dl.updated_at > NOW() - INTERVAL '30 seconds'
       AND dd.vehicle_category_id = ANY(${uuidArraySql(categoryIds)})
@@ -644,7 +646,7 @@ export async function findParcelCapableDriversDetailed(
         if (row.is_locked) reasons.push("locked");
         if (!row.dl_online) reasons.push("offline");
         if (row.current_trip_id) reasons.push("busy");
-        if (row.verification_status !== "approved") reasons.push("not_verified");
+        if (row.verification_status !== "approved") reasons.push("not_active");
         if (Number(row.lat) === 0 && Number(row.lng) === 0) reasons.push("gps_invalid");
         const mins = row.updated_at
           ? (Date.now() - new Date(row.updated_at).getTime()) / 1000

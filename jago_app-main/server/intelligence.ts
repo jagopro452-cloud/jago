@@ -13,7 +13,8 @@
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
-import { sendFcmNotification } from "./fcm";
+import { notifyUser } from "./notification-service";
+import { activeDriverEligibilitySql } from "./driver-state";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  1. DEMAND HEATMAP SYSTEM
@@ -781,17 +782,16 @@ export async function pushRebalancingNotifications(): Promise<number> {
         (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token
       FROM users u
       JOIN driver_locations dl ON dl.driver_id = u.id
-      WHERE u.user_type = 'driver' AND u.is_active = true AND u.is_locked = false
+      WHERE u.user_type = 'driver' AND ${activeDriverEligibilitySql("u")}
         AND dl.is_online = true AND u.current_trip_id IS NULL
-        AND u.verification_status = 'approved'
       LIMIT 50
     `);
 
     for (const row of idleDrivers.rows) {
       const d = row as any;
       const suggestion = await getRebalancingSuggestion(d.id, Number(d.lat), Number(d.lng));
-      if (suggestion && d.fcm_token) {
-        await sendFcmNotification({
+      if (suggestion) {
+        await notifyUser(d.id, "driver:rebalancing_suggestion", {
           fcmToken: d.fcm_token,
           title: "📍 High Demand Area Nearby",
           body: suggestion.message,

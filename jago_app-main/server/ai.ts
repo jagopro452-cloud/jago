@@ -1,6 +1,7 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
+import { activeDriverEligibilitySql } from "./driver-state";
 import { getMatchingDriverCategoryIds, uuidArraySql } from "./vehicle-matching";
 
 // ----------------------------------------------------------------------------
@@ -222,10 +223,9 @@ export async function findBestDrivers(
     JOIN driver_details dd ON dd.user_id = u.id
     LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
-    WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
+    WHERE u.user_type='driver' AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online=true AND u.current_trip_id IS NULL
       AND COALESCE(dd.availability_status, 'offline') = 'online'
-      AND u.verification_status IN ('approved','verified','pending')
       AND dl.updated_at > NOW() - INTERVAL '2 minutes'
       AND (dl.lat <> 0 OR dl.lng <> 0)
       ${vcFilter}
@@ -247,7 +247,7 @@ export async function findBestDrivers(
           (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND updated_at > NOW() - INTERVAL '2 minutes') as recent_online,
           (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND (lat <> 0 OR lng <> 0)) as online_with_gps,
           (SELECT COUNT(*) FROM users u JOIN driver_details dd ON dd.user_id=u.id
-            WHERE u.user_type='driver' AND u.verification_status IN ('approved','verified','pending')
+            WHERE u.user_type='driver' AND ${activeDriverEligibilitySql("u")}
               ${matchingCategoryIds?.length ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})` : vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
           ) as matching_category
       `);

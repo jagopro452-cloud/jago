@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
@@ -131,8 +131,19 @@ import {
   initRevenueEngineTables,
   SUPPORTED_UPI_PROVIDERS,
   loadRevenueSettings,
+  applyWalletChange,
+  applyCompanyWalletChange,
+  applyPendingBalanceDebit,
+  applyPendingBalanceCredit,
 } from "./revenue-engine";
 import type { ServiceCategory, PaymentMethod } from "./revenue-engine";
+import {
+  assignParcelDriver,
+  startParcel,
+  completeParcel,
+  transitionParcelState,
+} from "./parcel-state";
+import { activeDriverEligibilitySql } from "./driver-state";
 import {
   initDynamicServicesTables,
   getServicesForLocation,
@@ -1087,6 +1098,8 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token_expires_at TIMESTAMP;
+      UPDATE users SET email = NULL WHERE TRIM(COALESCE(email, '')) = '';
+      ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
       -- Fix: missing trip_requests columns for parcel/person-booking flow
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(120);
@@ -4275,53 +4288,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Invalid amount. Must be between ?0.01 and ?1,00,000." });
       }
 
-      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
-      const settings: any = {};
-      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
-
-      const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, is_locked
-        FROM users WHERE id=${driverId}::uuid LIMIT 1
-      `);
-      const bal: any = balR.rows[0] || {};
-      const prevTotal = parseFloat(bal.total_pending_balance ?? '0') || 0;
-      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
-      const prevGst = parseFloat(bal.pending_gst_balance ?? '0') || 0;
-
-      const gstReduction = Math.min(prevGst, parseFloat((payAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05)).toFixed(2)));
-      const commReduction = Math.min(prevCommission, parseFloat((payAmt - gstReduction).toFixed(2)));
-      const newTotal = Math.max(0, parseFloat((prevTotal - payAmt).toFixed(2)));
-      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
-      const newGst = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
-
-      await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance             = wallet_balance + ${payAmt},
-            pending_commission_balance = ${newCommission},
-            pending_gst_balance        = ${newGst},
-            total_pending_balance      = ${newTotal},
-            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${payAmt})
-        WHERE id = ${driverId}::uuid
-      `);
-      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
-      const shouldUnlock = forceUnlock || newTotal < lockThreshold;
-      if (shouldUnlock && bal.is_locked) {
-        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driverId}::uuid`);
-      }
-      await rawDb.execute(rawSql`
-        INSERT INTO commission_settlements
-          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
-           direction, balance_before, balance_after, payment_method, status, description)
-        VALUES
-          (${driverId}::uuid, 'admin_settle', ${commReduction}, ${gstReduction}, ${payAmt},
-           'credit', ${prevTotal}, ${newTotal}, ${method},
-           'completed', ${description || 'Admin manual settlement'})
-      `).catch(dbCatch("db"));
-      await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${driverId}::uuid, ${payAmt}, 'admin_settlement', 'completed', ${description || 'Admin settlement'})
-      `).catch(dbCatch("db"));
-      res.json({ success: true, newPendingBalance: newTotal, pendingCommission: newCommission, pendingGst: newGst, autoUnlocked: shouldUnlock && bal.is_locked });
+      const result = await applyPendingBalanceCredit({
+        driverId: String(driverId),
+        amount: payAmt,
+        method,
+        description: description || 'Admin manual settlement',
+        forceUnlock: Boolean(forceUnlock),
+        settlementType: 'admin_settle',
+        createDriverPayment: true,
+      });
+      res.json({
+        success: true,
+        newPendingBalance: result.pendingBalance,
+        pendingCommission: result.pendingCommission,
+        pendingGst: result.pendingGst,
+        autoUnlocked: result.autoUnlocked || false,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -4600,15 +4582,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (wdRes.rows.length) {
           const wd = wdRes.rows[0] as any;
           if (wd.status === "pending") {
-            // Deduct from driver wallet
-            await rawDb.execute(rawSql`
-              UPDATE users SET wallet_balance = wallet_balance - ${parseFloat(wd.amount)}
-              WHERE id=${wd.user_id}::uuid
-            `);
+            const walletChange = await applyWalletChange({
+              userId: String(wd.user_id),
+              amount: parseFloat(wd.amount),
+              type: "DEBIT",
+              reason: "withdrawal_processed",
+              refId: String(req.params.id),
+            });
             // Record transaction
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, debit, credit, balance, transaction_type)
-              VALUES (${wd.user_id}::uuid, ${'Withdrawal processed'}, ${parseFloat(wd.amount)}, 0, 0, ${'withdrawal'})
+              VALUES (${wd.user_id}::uuid, ${'Withdrawal processed'}, ${parseFloat(wd.amount)}, 0, ${walletChange.newBalance}, ${'withdrawal'})
             `).catch(dbCatch("db"));
           }
         }
@@ -5054,9 +5038,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // -- SECURITY: Validate amount is non-negative and within bounds --
       const validAmount = validateMoneyAmount(amount, 99999999); // Max ?99.9M per transaction
       const validType = validateEnumValue(type, ['credit', 'deduct']);
-      const r = validType === "deduct"
-        ? await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance - ${validAmount} WHERE id=${req.params.id}::uuid RETURNING *`)
-        : await rawDb.execute(rawSql`UPDATE b2b_companies SET wallet_balance = wallet_balance + ${validAmount} WHERE id=${req.params.id}::uuid RETURNING *`);
+      await applyCompanyWalletChange({
+        companyId: String(req.params.id),
+        amount: validAmount,
+        type: validType === "deduct" ? "DEBIT" : "CREDIT",
+        reason: "admin_adjust",
+        refId: String(req.params.id),
+      });
+      const r = await rawDb.execute(rawSql`SELECT * FROM b2b_companies WHERE id=${req.params.id}::uuid`);
       if (!r.rows.length) return res.status(404).json({ message: 'Company not found' });
       res.json(camelize(r.rows[0]));
     } catch (e: any) { res.status(400).json({ message: safeErrMsg(e) }); }
@@ -5634,15 +5623,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!userId || !amount) return res.status(400).json({ message: "userId and amount required" });
       const parsedAmount = Number(amount);
       if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ message: "amount must be a positive number" });
-      const r = await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance = GREATEST(0, wallet_balance + ${type === "deduct" ? -parsedAmount : parsedAmount}),
-            updated_at = NOW()
-        WHERE id = ${userId}::uuid
-        RETURNING wallet_balance
-      `);
-      if (!(r.rows as any[]).length) return res.status(404).json({ message: "User not found" });
-      const newBalance = parseFloat((r.rows as any[])[0].wallet_balance);
+      const walletChange = await applyWalletChange({
+        userId: String(userId),
+        amount: parsedAmount,
+        type: type === "deduct" ? "DEBIT" : "CREDIT",
+        reason: "admin_adjust",
+        refId: String(userId),
+        requireSufficientFunds: type === "deduct",
+      });
+      const newBalance = walletChange.newBalance;
       res.json({ success: true, newBalance, type });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -5907,29 +5896,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // --- Driver Commission Settlement System ------------------------------------
 
-  // Helper: recalculate total_pending_balance and check auto-lock/unlock
+  // Helper: wallet-only auto-lock/unlock
   async function checkAndApplySettlementLock(driverId: string, settings: Record<string, string>) {
-    const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
+    const lockThreshold = Math.abs(parseFloat(settings.auto_lock_threshold || '-200'));
     const r = await rawDb.execute(rawSql`
-      SELECT total_pending_balance, is_locked FROM users WHERE id=${driverId}::uuid LIMIT 1
+      SELECT wallet_balance, is_locked FROM users WHERE id=${driverId}::uuid LIMIT 1
     `);
     const row: any = r.rows[0] || {};
-    const total = parseFloat(row.total_pending_balance ?? '0');
+    const walletBalance = parseFloat(row.wallet_balance ?? '0');
     const isCurrentlyLocked = row.is_locked;
-    if (total >= lockThreshold && !isCurrentlyLocked) {
+    if (walletBalance < -lockThreshold && !isCurrentlyLocked) {
       await rawDb.execute(rawSql`
         UPDATE users SET is_locked=true,
-          lock_reason=${'Pending balance ?' + total.toFixed(2) + ' exceeds ?' + lockThreshold + '. Pay to unlock ride access.'},
+          lock_reason=${'Wallet balance ?' + walletBalance.toFixed(2) + ' is below -?' + lockThreshold + '. Recharge to unlock ride access.'},
           locked_at=NOW()
         WHERE id=${driverId}::uuid
       `);
-      return { locked: true, autoLocked: true, total };
+      return { locked: true, autoLocked: true, walletBalance };
     }
-    if (total < lockThreshold && isCurrentlyLocked) {
+    if (walletBalance >= -lockThreshold && isCurrentlyLocked) {
       await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driverId}::uuid`);
-      return { locked: false, autoUnlocked: true, total };
+      return { locked: false, autoUnlocked: true, walletBalance };
     }
-    return { locked: isCurrentlyLocked, total };
+    return { locked: isCurrentlyLocked, walletBalance };
   }
 
   // Get all drivers with wallet + pending balance info
@@ -5979,50 +5968,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (description && String(description).length > 500) {
         return res.status(400).json({ message: "Description too long (max 500 chars)." });
       }
-      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
-      const settings: any = {};
-      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
-
       const gstAmt = parseFloat(String(gstPortion)) || 0;
-      const commAmt = Math.round((parseFloat(String(amount)) - gstAmt) * 100) / 100;
       const totalAmt = parseFloat(String(amount));
-
-      const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance
-        FROM users WHERE id=${id}::uuid LIMIT 1
-      `);
-      if (!balR.rows.length) return res.status(404).json({ message: "Driver not found" });
       // SECURITY: Validate driver exists and has a driver role
       const driverCheck = await rawDb.execute(rawSql`SELECT role FROM users WHERE id=${id}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
       const driverRole = (driverCheck.rows[0] as any)?.role;
       if (!['driver', 'pilot'].includes(driverRole || '')) return res.status(400).json({ message: "Target user is not a driver" });
-      const bal: any = balR.rows[0] || {};
-      const prevTotal = parseFloat(bal.total_pending_balance ?? '0') || 0;
-      const newCommission = parseFloat(((parseFloat(bal.pending_commission_balance ?? '0') || 0) + commAmt).toFixed(2));
-      const newGst = parseFloat(((parseFloat(bal.pending_gst_balance ?? '0') || 0) + gstAmt).toFixed(2));
-      const newTotal = parseFloat((prevTotal + totalAmt).toFixed(2));
-
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance = wallet_balance - ${totalAmt},
-            pending_commission_balance = ${newCommission},
-            pending_gst_balance = ${newGst},
-            total_pending_balance = ${newTotal},
-            pending_payment_amount = GREATEST(0, -(wallet_balance - ${totalAmt}))
-        WHERE id = ${id}::uuid RETURNING wallet_balance, is_locked
-      `);
-      await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${id}::uuid, ${totalAmt}, 'deduction', 'completed', ${description || 'Platform fee deduction'})
-      `).catch(dbCatch("db"));
-      await rawDb.execute(rawSql`
-        INSERT INTO commission_settlements (driver_id, trip_id, settlement_type, commission_amount, gst_amount, total_amount, direction, balance_before, balance_after, description)
-        VALUES (${id}::uuid, ${tripId ? rawSql`${tripId}::uuid` : rawSql`NULL`}, 'commission_debit', ${commAmt}, ${gstAmt}, ${totalAmt}, 'debit', ${prevTotal}, ${newTotal}, ${description || 'Fee deduction'})
-      `).catch(dbCatch("db"));
-
-      const lockResult = await checkAndApplySettlementLock(id, settings);
-      const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
-      res.json({ success: true, newBalance, pendingBalance: newTotal, ...lockResult });
+      const result = await applyPendingBalanceDebit({
+        driverId: String(id),
+        amount: totalAmt,
+        gstAmount: gstAmt,
+        description: description || 'Platform fee deduction',
+        tripId: tripId ? String(tripId) : null,
+      });
+      res.json({
+        success: true,
+        newBalance: result.newWalletBalance,
+        pendingBalance: result.pendingBalance,
+        locked: result.isLocked,
+        autoLocked: !!result.lockReason,
+        lockReason: result.lockReason,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -6090,19 +6056,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         crypto.timingSafeEqual(Buffer.from(expectedSig, "utf8"), Buffer.from(razorpaySignature, "utf8"));
       if (!sigValid) return res.status(400).json({ message: "Invalid payment signature" });
 
-      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
-      const settings: any = {};
-      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
-
-      // Fetch current balances before payment
-      const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance
-        FROM users WHERE id=${id}::uuid LIMIT 1
-      `);
-      const bal: any = balR.rows[0] || {};
-      const prevTotal = parseFloat(bal.total_pending_balance ?? '0') || 0;
-      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
-      const prevGst = parseFloat(bal.pending_gst_balance ?? '0') || 0;
       // Amount from DB � never trust client-sent amount
       const pendingRec = await rawDb.execute(rawSql`
         SELECT amount FROM driver_payments WHERE razorpay_order_id=${razorpayOrderId} AND driver_id=${id}::uuid AND status='pending' LIMIT 1
@@ -6118,61 +6071,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING amount
       `);
       if (!atomicMark.rows.length) return res.status(409).json({ message: "Payment already processed or order not found" });
-
-      // Proportionally reduce commission vs GST using integer paise arithmetic (no float drift)
-      const paidPaise = Math.round(paidAmt * 100);
-      const totalPaise = Math.round(prevTotal * 100);
-      const gstPaise = Math.round(prevGst * 100);
-      const commPaise = Math.round(prevCommission * 100);
-      const gstRedPaise = Math.min(gstPaise, totalPaise > 0 ? Math.round(paidPaise * gstPaise / totalPaise) : Math.round(paidPaise * 0.05));
-      const commRedPaise = Math.min(commPaise, paidPaise - gstRedPaise);
-      const gstReduction = gstRedPaise / 100;
-      const commReduction = commRedPaise / 100;
-      const newTotal = Math.max(0, Math.round((totalPaise - paidPaise)) / 100);
-      const newCommission = Math.max(0, Math.round((commPaise - commRedPaise)) / 100);
-      const newGst = Math.max(0, Math.round((gstPaise - gstRedPaise)) / 100);
-
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance             = wallet_balance + ${paidAmt},
-            pending_commission_balance = ${newCommission},
-            pending_gst_balance        = ${newGst},
-            total_pending_balance      = ${newTotal},
-            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
-        WHERE id = ${id}::uuid
-        RETURNING wallet_balance, is_locked, total_pending_balance
-      `);
-      const updRow: any = updated.rows[0] || {};
-      const newWalletBalance = parseFloat(updRow.wallet_balance ?? 0);
-
-      // Auto-unlock check (based on pending threshold)
-      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
-      const wasLocked = updRow.is_locked;
-      if (newTotal < lockThreshold && wasLocked) {
-        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
-      }
-
-      // Record settlement payment
-      await rawDb.execute(rawSql`
-        INSERT INTO commission_settlements
-          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
-           direction, balance_before, balance_after, payment_method,
-           razorpay_order_id, razorpay_payment_id, status, description)
-        VALUES
-          (${id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
-           'credit', ${prevTotal}, ${newTotal}, 'razorpay',
-           ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
-           ${'Commission payment via Razorpay. Commission: ?' + commReduction.toFixed(2) + ', GST: ?' + gstReduction.toFixed(2)})
-      `).catch((e: any) => console.error('[SETTLE-CS]', e.message));
-      // driver_payments already marked completed atomically above � no duplicate INSERT needed
+      const result = await applyPendingBalanceCredit({
+        driverId: String(id),
+        amount: paidAmt,
+        method: 'razorpay',
+        description: 'Commission payment via Razorpay',
+        razorpayOrderId: String(razorpayOrderId),
+        razorpayPaymentId: String(razorpayPaymentId),
+        status: 'completed',
+        settlementType: 'payment_credit',
+      });
 
       res.json({
         success: true,
-        newWalletBalance,
-        pendingBalance: newTotal,
-        pendingCommission: newCommission,
-        pendingGst: newGst,
-        autoUnlocked: newTotal < lockThreshold && wasLocked,
+        newWalletBalance: result.newWalletBalance,
+        pendingBalance: result.pendingBalance,
+        pendingCommission: result.pendingCommission,
+        pendingGst: result.pendingGst,
+        autoUnlocked: result.autoUnlocked || false,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -6189,62 +6105,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (description && String(description).length > 500) {
         return res.status(400).json({ message: "Description too long (max 500 chars)." });
       }
-      const settingRows = await rawDb.execute(rawSql`SELECT key_name, value FROM revenue_model_settings`);
-      const settings: any = {};
-      settingRows.rows.forEach((r: any) => { settings[r.key_name] = r.value; });
-
-      const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance
-        FROM users WHERE id=${id}::uuid LIMIT 1
-      `);
-      const bal: any = balR.rows[0] || {};
-      const prevTotal = parseFloat(bal.total_pending_balance ?? '0') || 0;
-      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
-      const prevGst = parseFloat(bal.pending_gst_balance ?? '0') || 0;
       const paidAmt = parseFloat(String(amount));
-
-      const gstReduction = Math.min(prevGst, paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05));
-      const commReduction = Math.min(prevCommission, paidAmt - gstReduction);
-      const newTotal = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
-      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
-      const newGst = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
-
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance             = wallet_balance + ${paidAmt},
-            pending_commission_balance = ${newCommission},
-            pending_gst_balance        = ${newGst},
-            total_pending_balance      = ${newTotal},
-            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
-        WHERE id = ${id}::uuid
-        RETURNING wallet_balance, is_locked, total_pending_balance
-      `);
-      const updRow: any = updated.rows[0] || {};
-      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
-      const wasLocked = updRow.is_locked;
-      if (newTotal < lockThreshold && wasLocked) {
-        await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
-      }
-      await rawDb.execute(rawSql`
-        INSERT INTO commission_settlements
-          (driver_id, settlement_type, commission_amount, gst_amount, total_amount,
-           direction, balance_before, balance_after, payment_method, status, description)
-        VALUES
-          (${id}::uuid, 'manual_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
-           'credit', ${prevTotal}, ${newTotal}, 'cash',
-           'completed', ${description || 'Manual payment received by admin'})
-      `).catch(dbCatch("db"));
-      await rawDb.execute(rawSql`
-        INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
-        VALUES (${id}::uuid, ${paidAmt}, 'manual_credit', 'completed', ${description || 'Manual credit by admin'})
-      `).catch(dbCatch("db"));
+      const result = await applyPendingBalanceCredit({
+        driverId: String(id),
+        amount: paidAmt,
+        method: 'cash',
+        description: description || 'Manual payment received by admin',
+        forceUnlock: false,
+        settlementType: 'manual_credit',
+        createDriverPayment: true,
+      });
       res.json({
         success: true,
-        newBalance: parseFloat(updRow.wallet_balance ?? 0),
-        pendingBalance: newTotal,
-        pendingCommission: newCommission,
-        pendingGst: newGst,
-        autoUnlocked: newTotal < lockThreshold && wasLocked,
+        newBalance: result.newWalletBalance,
+        pendingBalance: result.pendingBalance,
+        pendingCommission: result.pendingCommission,
+        pendingGst: result.pendingGst,
+        autoUnlocked: result.autoUnlocked || false,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -6302,9 +6179,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const refund: any = r.rows[0];
         if (refund?.customer_id && refund?.amount) {
           const refundAmt = Math.round(parseFloat(refund.amount) * 100) / 100;
-          await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${refund.customer_id}::uuid`);
-          const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${refund.customer_id}::uuid`);
-          const newBal = Math.round(parseFloat((newBalRes.rows[0] as any)?.wallet_balance || '0') * 100) / 100;
+          const walletChange = await applyWalletChange({
+            userId: String(refund.customer_id),
+            amount: refundAmt,
+            type: "CREDIT",
+            reason: "admin_refund",
+            refId: String(id),
+          });
+          const newBal = Math.round(walletChange.newBalance * 100) / 100;
           await rawDb.execute(rawSql`
             INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
             VALUES (${refund.customer_id}::uuid, ${'Admin approved refund'}, ${refundAmt}, 0, ${newBal}, ${'admin_refund'}, ${id})
@@ -7476,14 +7358,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const rewardAmount = parseFloat(ref.reward_amount || '0');
       // Credit referrer's wallet and log transaction
       if (ref.referrer_id && rewardAmount > 0) {
-        await rawDb.execute(rawSql`
-          UPDATE users SET wallet_balance = wallet_balance + ${rewardAmount}
-          WHERE id = ${ref.referrer_id}::uuid
-        `).catch(dbCatch("db"));
-        const newBal = await rawDb.execute(rawSql`
-          SELECT wallet_balance FROM users WHERE id = ${ref.referrer_id}::uuid
-        `).catch(() => ({ rows: [] as any[] }));
-        const bal = parseFloat((newBal.rows[0] as any)?.wallet_balance || '0');
+        const walletChange = await applyWalletChange({
+          userId: String(ref.referrer_id),
+          amount: rewardAmount,
+          type: "CREDIT",
+          reason: "referral_bonus",
+          refId: String(ref.id),
+        }).catch(dbCatch("db"));
+        const bal = walletChange ? walletChange.newBalance : 0;
         await rawDb.execute(rawSql`
           INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
           VALUES (${ref.referrer_id}::uuid, ${'Referral bonus'}, ${rewardAmount}, 0, ${bal}, ${'referral_bonus'}, ${ref.id}::uuid)
@@ -7762,22 +7644,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, password, fullName, userType = "customer", email } = req.body;
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
+      const phoneStr = phone.toString().replace(/\D/g, "");
+      const normalizedEmail = (email?.toString().trim().toLowerCase() || "") || null;
       if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
-      if (phone.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
+      if (phoneStr.length !== 10) return res.status(400).json({ message: "Enter a valid 10-digit phone number" });
       if (fullName.length > 100) return res.status(400).json({ message: "Name too long (max 100 chars)" });
-      if (email && email.length > 200) return res.status(400).json({ message: "Email too long" });
+      if (normalizedEmail && normalizedEmail.length > 200) return res.status(400).json({ message: "Email too long" });
       if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
-      const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
+      if (normalizedEmail) {
+        const existingEmail = await rawDb.execute(rawSql`
+          SELECT id FROM users WHERE LOWER(email)=LOWER(${normalizedEmail}) LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        if (existingEmail.rows.length) {
+          return res.status(409).json({ message: "Email is already registered. Please use another email or login." });
+        }
+      }
       const passwordHash = await hashPassword(password);
       const insertRes = await rawDb.execute(rawSql`
         INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
-        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
+        VALUES (${fullName}, ${phoneStr}, ${normalizedEmail}, ${userType}, true, 0, ${passwordHash})
         RETURNING *
       `);
       // Set referral_code separately (handles DB where column may not exist yet)
-      const refCode = 'JAGOPRO' + phone.slice(-6);
-      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(dbCatch("db"));
+      const refCode = 'JAGOPRO' + phoneStr.slice(-6);
+      await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
       const user = camelize(insertRes.rows[0]) as any;
       const session = await issueUserSession(user.id);
       // Handle referral code if provided
@@ -8026,9 +7918,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (isOnline) {
         // Check verification status FIRST
         const verR = await rawDb.execute(rawSql`SELECT verification_status, rejection_note FROM users WHERE id=${driver.id}::uuid`);
-        const vs = (verR.rows[0] as any)?.verification_status;
-        if (!['approved', 'verified', 'pending'].includes(vs)) {
-          console.log(`[DRIVER_STATUS] Driver ${driver.id} (status: ${vs}) - Allowing regardless of verification status for test`);
+        const vs = String((verR.rows[0] as any)?.verification_status || "");
+        if (vs !== 'approved') {
+          return res.status(403).json({
+            message: "Driver verification is not approved yet. Please complete onboarding to go online.",
+            code: "VERIFICATION_REQUIRED",
+          });
         }
         // Check if driver has selected a revenue model
         const modelR = await rawDb.execute(rawSql`SELECT revenue_model, model_selected_at FROM users WHERE id=${driver.id}::uuid`);
@@ -8038,7 +7933,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Auto-heal: driver has a revenue model set (e.g. by admin) but model_selected_at was never recorded  backfill it
             await rawDb.execute(rawSql`UPDATE users SET model_selected_at=NOW() WHERE id=${driver.id}::uuid`);
           } else {
-            console.log(`[DRIVER_STATUS] Driver ${driver.id} - No model selected, but ALLOWING for test`);
+            return res.status(403).json({
+              message: "Select a revenue plan before going online.",
+              code: "REVENUE_MODEL_REQUIRED",
+            });
           }
         }
         // Subscription-like models require an active plan before going online
@@ -8052,7 +7950,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!inFreePeriod) {
             const subR = await rawDb.execute(rawSql`SELECT id, end_date FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date > NOW() ORDER BY end_date DESC LIMIT 1`);
             if (!subR.rows.length) {
-              console.log(`[DRIVER_STATUS] Driver ${driver.id} - Subscription expired, but ALLOWING for test`);
+              return res.status(403).json({
+                message: "Active subscription required to go online. Please renew to continue.",
+                code: "SUBSCRIPTION_REQUIRED",
+              });
             }
           }
         }
@@ -8069,12 +7970,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (docExpR.rows.length) {
           const expDoc = docExpR.rows[0] as any;
           const docLabel = expDoc.doc_type === 'rc' ? 'Vehicle RC' : expDoc.doc_type === 'insurance' ? 'Vehicle Insurance' : 'Pollution Certificate (PUC)';
-          // return res.status(403).json({
-          //   message: `Your ${docLabel} has expired (${expDoc.expiry_date}). Please upload an updated document to go online.`,
-          //   documentExpired: true,
-          //   docType: expDoc.doc_type,
-          // });
-          console.log(`[DRIVER_STATUS] Driver ${driver.id} - Documents expired (${expDoc.doc_type}), but ALLOWING for test`);
+          return res.status(403).json({
+            message: `Your ${docLabel} has expired (${expDoc.expiry_date}). Please upload an updated document to go online.`,
+            documentExpired: true,
+            docType: expDoc.doc_type,
+          });
         }
         // Check wallet lock (applies to both models � negative balance)
         const walletR = await rawDb.execute(rawSql`SELECT is_locked, wallet_balance, lock_reason FROM users WHERE id=${driver.id}::uuid`);
@@ -8084,11 +7984,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const thresholdR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold' LIMIT 1`);
         const lockThreshold = parseFloat((thresholdR.rows[0] as any)?.value || "-100");
         // Block if explicitly locked
-        // if (w?.is_locked) return res.status(403).json({
-        //   message: w.lock_reason || "Account locked. Please recharge wallet to go online.",
-        //   isLocked: true, walletBalance: currentBalance
-        // });
-        if (w?.is_locked) console.log(`[DRIVER_STATUS] Driver ${driver.id} - Locked (${w.lock_reason}), but ALLOWING for test`);
+        if (w?.is_locked) return res.status(403).json({
+          message: w.lock_reason || "Account locked. Please recharge wallet to go online.",
+          isLocked: true, walletBalance: currentBalance
+        });
         // Block if wallet is below threshold (auto-lock that wasn't yet written)
         if (currentBalance < lockThreshold) {
           const lockMsg = `Wallet balance ?${currentBalance.toFixed(2)} is below minimum threshold ?${lockThreshold}. Recharge wallet to go online.`;
@@ -8331,11 +8230,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               LIMIT 1
             `);
             if (!subR.rows.length) {
-              // return res.status(403).json({
-              //   message: "Active subscription required to accept rides. Please subscribe to continue.",
-              //   code: "SUBSCRIPTION_REQUIRED",
-              // });
-              console.log(`[DRIVER_ACCEPT] Driver ${driver.id} - Subscription missing, but ALLOWING for test`);
+              return res.status(403).json({
+                message: "Active subscription required to accept rides. Please subscribe to continue.",
+                code: "SUBSCRIPTION_REQUIRED",
+              });
             }
           }
         }
@@ -8343,11 +8241,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // -- Account lock check ------------------------------------------------
       if (driver.is_locked || driver.isLocked) {
-        // return res.status(403).json({
-        //   message: driver.lock_reason || driver.lockReason || "Account locked. Please clear pending dues to accept rides.",
-        //   code: "ACCOUNT_LOCKED",
-        // });
-        console.log(`[DRIVER_ACCEPT] Driver ${driver.id} - Locked, but ALLOWING for test`);
+        return res.status(403).json({
+          message: driver.lock_reason || driver.lockReason || "Account locked. Please clear dues to accept rides.",
+          code: "ACCOUNT_LOCKED",
+        });
       }
 
       // Generate pickup OTP
@@ -8854,55 +8751,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (tripPaymentMethod === 'wallet' && tripCustomerId) {
         try {
           // ATOMIC: Single UPDATE prevents race condition � balance can never go negative
-          const fullDeductR = await rawDb.execute(rawSql`
-            UPDATE users SET wallet_balance = wallet_balance - ${userPayable}
-            WHERE id=${tripCustomerId}::uuid AND wallet_balance >= ${userPayable}
-            RETURNING wallet_balance
-          `);
-          const custBal = fullDeductR.rows.length
-            ? parseFloat((fullDeductR.rows[0] as any).wallet_balance || '0') + userPayable
-            : parseFloat(((await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`)).rows[0] as any)?.wallet_balance || '0');
-          if (fullDeductR.rows.length) {
+          const balRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
+          const custBal = parseFloat((balRes.rows[0] as any)?.wallet_balance || '0');
+          if (custBal >= userPayable) {
             // Full wallet deduction succeeded atomically
-            const newCustBal = parseFloat((fullDeductR.rows[0] as any).wallet_balance || '0');
+            const walletChange = await applyWalletChange({
+              userId: String(tripCustomerId),
+              amount: userPayable,
+              type: "DEBIT",
+              reason: "ride_wallet_payment",
+              refId: String(tripId),
+              requireSufficientFunds: true,
+            });
             walletPaidAmount = userPayable;
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${newCustBal}, ${'ride_payment'}, ${tripId})
+              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${walletChange.newBalance}, ${'ride_payment'}, ${tripId})
             `).catch(dbCatch("db"));
             console.log(`[WALLET] ? Full deduction ?${userPayable} from customer ${tripCustomerId}`);
           } else if (custBal > 0) {
-            // Partial wallet deduction � ATOMIC: CTE captures old balance, zeroes it in one statement
-            const partialR = await rawDb.execute(rawSql`
-              WITH prev AS (SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid FOR UPDATE)
-              UPDATE users SET wallet_balance = 0
-              FROM prev
-              WHERE users.id = ${tripCustomerId}::uuid AND prev.wallet_balance > 0
-              RETURNING prev.wallet_balance AS prev_balance
-            `);
-            if (!partialR.rows.length) {
-              // Balance already zeroed by a concurrent transaction � treat as no wallet
-              await rawDb.execute(rawSql`
-                UPDATE trip_requests SET payment_status='pending_payment',
-                  pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
-              `).catch(dbCatch("db"));
-              walletPendingAmount = userPayable;
-              console.log(`[WALLET] ??  Partial skipped (balance=0 by concurrent tx) � customer ${tripCustomerId}`);
-            } else {
-              const deducted = parseFloat(parseFloat((partialR.rows[0] as any).prev_balance || '0').toFixed(2));
-              const remaining = parseFloat((userPayable - deducted).toFixed(2));
-              await rawDb.execute(rawSql`
-                UPDATE trip_requests SET payment_status='partial_payment',
-                  pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
-              `).catch(dbCatch("db"));
-              await rawDb.execute(rawSql`
-                INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-                VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, 0, ${'ride_payment'}, ${tripId})
-              `).catch(dbCatch("db"));
-              walletPaidAmount = deducted;
-              walletPendingAmount = remaining;
-              console.log(`[WALLET] ??  Partial: ?${deducted} from wallet, ?${remaining} pending (cash/UPI) � customer ${tripCustomerId}`);
-            }
+            const deducted = parseFloat(custBal.toFixed(2));
+            const walletChange = await applyWalletChange({
+              userId: String(tripCustomerId),
+              amount: deducted,
+              type: "DEBIT",
+              reason: "ride_wallet_partial_payment",
+              refId: String(tripId),
+              requireSufficientFunds: true,
+            });
+            const remaining = parseFloat((userPayable - deducted).toFixed(2));
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests SET payment_status='partial_payment',
+                pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
+            `).catch(dbCatch("db"));
+            await rawDb.execute(rawSql`
+              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+              VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, ${walletChange.newBalance}, ${'ride_payment'}, ${tripId})
+            `).catch(dbCatch("db"));
+            walletPaidAmount = deducted;
+            walletPendingAmount = remaining;
+            console.log(`[WALLET] Partial: ?${deducted} from wallet, ?${remaining} pending (cash/UPI) customer ${tripCustomerId}`);
           } else {
             // No wallet balance � full amount must be paid by cash/UPI
             await rawDb.execute(rawSql`
@@ -9040,10 +8928,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             SELECT value FROM business_settings WHERE key_name='driver_cancel_penalty' LIMIT 1
           `).catch(() => ({ rows: [] as any[] }));
           const penalty = parseFloat((penaltyR.rows[0] as any)?.value || '10');
-          await rawDb.execute(rawSql`
-            UPDATE users SET wallet_balance = wallet_balance - ${penalty}
-            WHERE id = ${driver.id}::uuid AND wallet_balance >= ${penalty}
-          `);
+          await applyWalletChange({
+            userId: String(driver.id),
+            amount: penalty,
+            type: "DEBIT",
+            reason: "driver_cancel_penalty",
+            refId: String(tripId),
+            requireSufficientFunds: true,
+          }).catch(dbCatch("db"));
           await rawDb.execute(rawSql`
             INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
             VALUES (${driver.id}::uuid, ${penalty}, 'cancel_penalty', 'completed',
@@ -9160,15 +9052,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
-        SELECT wallet_balance, is_locked, lock_reason, pending_payment_amount,
-               pending_commission_balance, pending_gst_balance, total_pending_balance, lock_threshold
+        SELECT wallet_balance, is_locked, lock_reason, pending_payment_amount, lock_threshold
         FROM users WHERE id=${driver.id}::uuid LIMIT 1
       `);
       const payments = await rawDb.execute(rawSql`SELECT * FROM driver_payments WHERE driver_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 50`);
       const wdReqs = await rawDb.execute(rawSql`SELECT * FROM withdraw_requests WHERE user_id=${driver.id}::uuid ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
       const d = r.rows[0] as any;
       const bal = parseFloat(d?.wallet_balance || 0);
-      const totalPending = parseFloat(d?.total_pending_balance ?? '0');
+      const totalPending = Math.max(0, -bal);
       const lockThreshold = parseFloat(d?.lock_threshold ?? '200');
       const historyRows = camelize(payments.rows).map((p: any) => ({
         ...p,
@@ -9194,8 +9085,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isLocked: d?.is_locked || false,
         lockReason: d?.lock_reason || null,
         pendingPaymentAmount: parseFloat(d?.pending_payment_amount || 0),
-        pendingCommission: parseFloat(d?.pending_commission_balance ?? '0'),
-        pendingGst: parseFloat(d?.pending_gst_balance ?? '0'),
+        pendingCommission: 0,
+        pendingGst: 0,
         totalPendingBalance: totalPending,
         lockThreshold,
         history: historyRows,
@@ -9222,14 +9113,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const r = await rawDb.execute(rawSql`
-        SELECT wallet_balance, is_locked, lock_reason,
-               pending_commission_balance, pending_gst_balance, total_pending_balance, lock_threshold
+        SELECT wallet_balance, is_locked, lock_reason, lock_threshold
         FROM users WHERE id=${driver.id}::uuid LIMIT 1
       `);
       const row: any = r.rows[0] || {};
-      const pendingCommission = parseFloat(row.pending_commission_balance ?? '0');
-      const pendingGst = parseFloat(row.pending_gst_balance ?? '0');
-      const totalPending = parseFloat(row.total_pending_balance ?? '0');
+      const walletBalance = parseFloat(row.wallet_balance ?? '0');
+      const pendingCommission = 0;
+      const pendingGst = 0;
+      const totalPending = Math.max(0, -walletBalance);
       const lockThreshold = parseFloat(row.lock_threshold ?? '200');
       const recent = await rawDb.execute(rawSql`
         SELECT settlement_type, total_amount, direction, balance_before, balance_after,
@@ -9239,7 +9130,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => ({ rows: [] }));
       let displayMessage = 'No pending dues';
       if (totalPending > 0) {
-        displayMessage = `Platform Fee ?${pendingCommission.toFixed(2)}\nGST ?${pendingGst.toFixed(2)}\nTotal Due ?${totalPending.toFixed(2)}`;
+        displayMessage = `Wallet Due ?${totalPending.toFixed(2)}\nRecharge to continue accepting rides.`;
       }
       res.json({
         pendingCommission,
@@ -9262,13 +9153,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { amount } = req.body;
       const { keyId, keySecret } = await getRazorpayKeys();
       if (!keyId || !keySecret) return res.status(503).json({ message: "Payment gateway not configured." });
-      // Validate amount against pending balance
-      const balR = await rawDb.execute(rawSql`SELECT total_pending_balance FROM users WHERE id=${driver.id}::uuid LIMIT 1`);
+      // Validate amount against negative wallet dues
+      const balR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${driver.id}::uuid LIMIT 1`);
       const bal: any = balR.rows[0] || {};
-      const pendingAmt = parseFloat(bal.total_pending_balance ?? '0');
+      const pendingAmt = Math.max(0, -parseFloat(bal.wallet_balance ?? '0'));
       const payAmt = parseFloat(String(amount));
       if (!payAmt || payAmt <= 0) return res.status(400).json({ message: "Invalid amount" });
-      if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ?${payAmt} exceeds pending balance ?${pendingAmt.toFixed(2)}` });
+      if (payAmt > pendingAmt + 1) return res.status(400).json({ message: `Amount ?${payAmt} exceeds wallet dues ?${pendingAmt.toFixed(2)}` });
       const Razorpay = _require("razorpay");
       const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret, timeout: 15000 });
       const order = await rzp.orders.create({ amount: Math.round(payAmt * 100), currency: "INR", receipt: `cs_${Date.now().toString(36)}` });
@@ -9311,33 +9202,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const paidAmt = parseFloat((pendingRec.rows[0] as any).amount);
 
       const balR = await rawDb.execute(rawSql`
-        SELECT pending_commission_balance, pending_gst_balance, total_pending_balance, wallet_balance, is_locked
+        SELECT wallet_balance, is_locked
         FROM users WHERE id=${driver.id}::uuid LIMIT 1
       `);
       const bal: any = balR.rows[0] || {};
-      const prevTotal = parseFloat(bal.total_pending_balance ?? '0') || 0;
-      const prevCommission = parseFloat(bal.pending_commission_balance ?? '0') || 0;
-      const prevGst = parseFloat(bal.pending_gst_balance ?? '0') || 0;
-      const gstReduction = Math.min(prevGst, parseFloat((paidAmt * (prevTotal > 0 ? prevGst / prevTotal : 0.05)).toFixed(2)));
-      const commReduction = Math.min(prevCommission, parseFloat((paidAmt - gstReduction).toFixed(2)));
-      const newTotal = Math.max(0, parseFloat((prevTotal - paidAmt).toFixed(2)));
-      const newCommission = Math.max(0, parseFloat((prevCommission - commReduction).toFixed(2)));
-      const newGst = Math.max(0, parseFloat((prevGst - gstReduction).toFixed(2)));
+      const prevWalletBalance = parseFloat(bal.wallet_balance ?? '0') || 0;
+      const prevTotal = Math.max(0, -prevWalletBalance);
+      if (paidAmt > prevTotal + 1) {
+        return res.status(400).json({ message: `Amount ?${paidAmt} exceeds wallet dues ?${prevTotal.toFixed(2)}` });
+      }
 
-      const updated = await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance             = wallet_balance + ${paidAmt},
-            pending_commission_balance = ${newCommission},
-            pending_gst_balance        = ${newGst},
-            total_pending_balance      = ${newTotal},
-            pending_payment_amount     = GREATEST(0, pending_payment_amount - ${paidAmt})
-        WHERE id = ${driver.id}::uuid
-        RETURNING wallet_balance, is_locked
-      `);
-      const updRow: any = updated.rows[0] || {};
-      const lockThreshold = parseFloat(settings.commission_lock_threshold || '200');
-      const wasLocked = updRow.is_locked;
-      if (newTotal < lockThreshold && wasLocked) {
+      const walletChange = await applyWalletChange({
+        driverId: String(driver.id),
+        amount: paidAmt,
+        type: "CREDIT",
+        reason: "payment_credit",
+        refId: String(razorpayPaymentId),
+        metadata: { method: "razorpay", razorpayOrderId },
+      });
+      const newTotal = Math.max(0, -walletChange.newBalance);
+      const newCommission = 0;
+      const newGst = 0;
+      const lockThreshold = Math.abs(parseFloat(settings.auto_lock_threshold || '-200'));
+      const wasLocked = bal.is_locked === true;
+      if (walletChange.newBalance >= -lockThreshold && wasLocked) {
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${driver.id}::uuid`);
       }
       await rawDb.execute(rawSql`
@@ -9346,10 +9234,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
            direction, balance_before, balance_after, payment_method,
            razorpay_order_id, razorpay_payment_id, status, description)
         VALUES
-          (${driver.id}::uuid, 'payment_credit', ${commReduction}, ${gstReduction}, ${paidAmt},
+          (${driver.id}::uuid, 'payment_credit', 0, 0, ${paidAmt},
            'credit', ${prevTotal}, ${newTotal}, 'razorpay',
            ${razorpayOrderId}, ${razorpayPaymentId}, 'completed',
-           ${'Driver payment via Razorpay. Commission: ?' + commReduction.toFixed(2) + ', GST: ?' + gstReduction.toFixed(2)})
+           ${'Driver payment via Razorpay wallet settlement'})
       `).catch(dbCatch("db"));
       await rawDb.execute(rawSql`
         UPDATE driver_payments SET status='completed', razorpay_payment_id=${razorpayPaymentId},
@@ -9362,7 +9250,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         newPendingBalance: newTotal,
         pendingCommission: newCommission,
         pendingGst: newGst,
-        autoUnlocked: newTotal < lockThreshold && wasLocked,
+        autoUnlocked: walletChange.newBalance >= -lockThreshold && wasLocked,
         message: newTotal <= 0 ? 'All dues cleared! Account unlocked.' : `?${newTotal.toFixed(2)} pending. Pay remaining to unlock.`,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -9664,11 +9552,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "No pending order found for this payment" });
       }
       const amt = parseFloat((claimR.rows[0] as any).amount);
+      const walletChange = await applyWalletChange({
+        userId: String(driver.id),
+        amount: amt,
+        type: "CREDIT",
+        reason: "razorpay_fallback",
+        refId: razorpayPaymentId,
+      });
       const wUpd = await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance + ${amt}, pending_payment_amount = GREATEST(0, pending_payment_amount - ${amt})
+        UPDATE users SET pending_payment_amount = GREATEST(0, pending_payment_amount - ${amt})
         WHERE id=${driver.id}::uuid RETURNING wallet_balance, is_locked
       `);
-      const newBalance = parseFloat((wUpd.rows[0] as any)?.wallet_balance || 0);
+      const newBalance = walletChange.newBalance;
       // Auto-unlock if wallet is now above the auto-lock threshold
       const threshR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold' LIMIT 1`);
       const unlockThreshold = parseFloat((threshR.rows[0] as any)?.value || "-100");
@@ -10469,7 +10364,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           // Fallback: credit wallet (if no Razorpay payment ID or Razorpay refund failed)
           if (!refundedToBank) {
-            await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${refundAmt} WHERE id=${customer.id}::uuid`);
+            await applyWalletChange({
+              userId: String(customer.id),
+              amount: refundAmt,
+              type: "CREDIT",
+              reason: "cancel_refund",
+              refId: String(effectiveTripId),
+            });
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET payment_status='refunded_to_wallet' WHERE id=${effectiveTripId}::uuid
             `).catch(dbCatch("db"));
@@ -10501,14 +10402,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const walletR = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid LIMIT 1`);
           const walBal = parseFloat((walletR.rows[0] as any)?.wallet_balance || '0');
           if (canWalletCoverCharge(walBal, cancelFee)) {
-            await rawDb.execute(rawSql`
-              UPDATE users SET wallet_balance = wallet_balance - ${cancelFee}
-              WHERE id=${customer.id}::uuid AND wallet_balance >= ${cancelFee}
-            `);
+            const walletChange = await applyWalletChange({
+              userId: String(customer.id),
+              amount: cancelFee,
+              type: "DEBIT",
+              reason: "cancel_fee",
+              refId: String(effectiveTripId),
+              requireSufficientFunds: true,
+            });
             await rawDb.execute(rawSql`
               INSERT INTO transactions (user_id, trip_id, account, debit, credit, balance, transaction_type)
               VALUES (${customer.id}::uuid, ${effectiveTripId}::uuid, ${'Cancel Fee'}, ${cancelFee}, 0,
-                ${walBal - cancelFee}, ${'cancel_fee'})
+                ${walletChange.newBalance}, ${'cancel_fee'})
             `).catch(dbCatch("db"));
             log(`[CancelFee] Customer ${customer.id} charged ?${cancelFee} for late cancellation`, 'cancel');
           } else {
@@ -11267,7 +11172,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND u.is_active=true
           AND u.is_locked=false
           AND u.current_trip_id IS NULL
-          AND u.verification_status IN ('approved', 'verified', 'pending')
+          AND u.verification_status = 'approved'
           AND dl.updated_at > NOW() - INTERVAL '2 minutes'
           AND dl.lat != 0 AND dl.lng != 0
           ${vcFilter}
@@ -11315,7 +11220,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!row.is_active) reasons.push("user.is_active=false");
           if (row.is_locked) reasons.push("user.is_locked=true");
           if (row.current_trip_id) reasons.push(`current_trip_id=${row.current_trip_id}`);
-          if (!['approved', 'verified', 'pending'].includes(String(row.verification_status || ''))) {
+          if (String(row.verification_status || '') !== 'approved') {
             reasons.push(`verification=${row.verification_status || 'null'}`);
           }
           if (row.lat == null || row.lng == null || (Number(row.lat) === 0 && Number(row.lng) === 0)) {
@@ -11436,32 +11341,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  // -- CUSTOMER: Wallet recharge � DISABLED (use Razorpay verify-payment instead) --
-  app.post("/api/app/customer/wallet/recharge", authApp, async (_req, res) => {
-    // This legacy endpoint credited wallet without payment verification.
-    // All wallet recharges must go through create-order ? Razorpay ? verify-payment.
-    return res.status(410).json({ message: "Please use the payment gateway to recharge your wallet." });
-    /* DISABLED � security fix
-    try {
-      const customer = (req as any).currentUser;
-      const { amount, paymentRef, paymentMethod = "upi" } = req.body;
-      const amt = parseFloat(amount);
-      if (!amt || amt <= 0) return res.status(400).json({ message: "Invalid amount" });
-      if (amt < 10) return res.status(400).json({ message: "Minimum recharge is ?10" });
-      if (amt > 10000) return res.status(400).json({ message: "Maximum recharge is ?10,000 per transaction" });
-      if (!paymentRef) return res.status(400).json({ message: "Payment reference required" });
-      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
-      const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-      const newBal = parseFloat((newBalRes.rows[0] as any).wallet_balance || "0");
-      await rawDb.execute(rawSql`
-        INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-        VALUES (${customer.id}::uuid, ${`Wallet recharge via ${paymentMethod}`}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${paymentRef||null})
-      `).catch(dbCatch("db"));
-      res.json({ success: true, balance: newBal, message: `?${amt} added to wallet` });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-    */
-  });
-
   // -- CUSTOMER: Razorpay � Create order ------------------------------------
   app.post("/api/app/customer/wallet/create-order", authApp, requireCustomer, paymentOrderLimiter, async (req, res) => {
     try {
@@ -11526,9 +11405,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!atomicMark.rows.length) return res.status(409).json({ message: "Payment already processed", alreadyCredited: true });
       const amt = Math.round(parseFloat((atomicMark.rows[0] as any).amount) * 100) / 100;
-      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amt} WHERE id=${customer.id}::uuid`);
-      const newBalRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${customer.id}::uuid`);
-      const newBal = Math.round(parseFloat((newBalRes.rows[0] as any).wallet_balance || "0") * 100) / 100;
+      const walletChange = await applyWalletChange({
+        userId: String(customer.id),
+        amount: amt,
+        type: "CREDIT",
+        reason: "wallet_recharge",
+        refId: razorpayPaymentId,
+      });
+      const newBal = Math.round(walletChange.newBalance * 100) / 100;
       await rawDb.execute(rawSql`
         INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
         VALUES (${customer.id}::uuid, ${'Wallet recharge via Razorpay'}, ${amt}, 0, ${newBal}, ${'wallet_recharge'}, ${razorpayPaymentId})
@@ -11774,15 +11658,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 }
 
                 // Credit driver wallet
+                const walletChange = await applyWalletChange({
+                  userId: String(rec.driverId),
+                  amount: Number(rec.amount),
+                  type: "CREDIT",
+                  reason: "payment_webhook_driver_credit",
+                  refId: String(rec.tripId || rec.paymentId || "driver_credit"),
+                });
                 const wRow = await rawDb.execute(rawSql`
-                  UPDATE users
-                  SET wallet_balance = wallet_balance + ${rec.amount}, updated_at = NOW()
-                  WHERE id = ${rec.driverId}::uuid
-                  RETURNING wallet_balance, is_locked
+                  SELECT wallet_balance, is_locked FROM users WHERE id = ${rec.driverId}::uuid
                 `);
                 if (wRow.rows.length) {
                   const row = wRow.rows[0] as any;
-                  const newBal = parseFloat(row.wallet_balance);
+                  const newBal = walletChange.newBalance;
                   const thr = await rawDb.execute(rawSql`
                     SELECT value FROM revenue_model_settings
                     WHERE key_name = 'auto_lock_threshold' LIMIT 1
@@ -11834,11 +11722,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                       verified_at = NOW()
                   WHERE razorpay_order_id = ${orderId} AND status = 'pending'
                 `);
-                await rawDb.execute(rawSql`
-                  UPDATE users
-                  SET wallet_balance = wallet_balance + ${rec.amount}, updated_at = NOW()
-                  WHERE id = ${rec.customerId}::uuid
-                `);
+                await applyWalletChange({
+                  userId: String(rec.customerId),
+                  amount: Number(rec.amount),
+                  type: "CREDIT",
+                  reason: "payment_webhook_customer_credit",
+                  refId: String(paymentId || orderId),
+                });
                 if (io) io.to(`user:${rec.customerId}`).emit("wallet:recharged", { amount: rec.amount });
                 console.info(`${tag} customer wallet credited customer=${rec.customerId} ?${rec.amount}`);
               }
@@ -12023,11 +11913,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 WHERE id = ${rr.id}::uuid
               `);
               if (rr.paymentMethod === "wallet" && rr.customerId) {
-                await rawDb.execute(rawSql`
-                  UPDATE users
-                  SET wallet_balance = wallet_balance + ${refundAmt}, updated_at = NOW()
-                  WHERE id = ${rr.customerId}::uuid
-                `);
+                await applyWalletChange({
+                  userId: String(rr.customerId),
+                  amount: refundAmt,
+                  type: "CREDIT",
+                  reason: "refund_webhook_credit",
+                  refId: String(rr.id),
+                });
                 if (io) io.to(`user:${rr.customerId}`).emit("wallet:recharged", {
                   amount: refundAmt,
                   reason: "Refund processed",
@@ -13881,7 +13773,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         await rawDb.execute(rawSql`UPDATE users SET jago_coins = COALESCE(jago_coins,0) + ${parseInt(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
         await rawDb.execute(rawSql`INSERT INTO coins_ledger (user_id, amount, type, description) VALUES (${user.id}::uuid, ${parseInt(chosen.reward_amount)}, 'spin_wheel', 'Daily spin reward: ${chosen.label}')`).catch(dbCatch("db"));
       } else if (chosen.reward_type === 'wallet' && parseFloat(chosen.reward_amount) > 0) {
-        await rawDb.execute(rawSql`UPDATE users SET wallet_balance = COALESCE(wallet_balance,0) + ${parseFloat(chosen.reward_amount)} WHERE id=${user.id}::uuid`);
+        await applyWalletChange({
+          userId: String(user.id),
+          amount: parseFloat(chosen.reward_amount),
+          type: "CREDIT",
+          reason: "spin_wheel_reward",
+          refId: String(chosen.id || "spin_wheel"),
+        });
       }
 
       res.json({ success: true, item: camelize(chosen), canSpin: false });
@@ -13933,7 +13831,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (trip.customer_id !== user.id && trip.driver_id !== user.id) return res.status(403).json({ message: "Not authorized" });
       await rawDb.execute(rawSql`UPDATE trip_requests SET tip_amount=${amount} WHERE id=${tripId}::uuid`);
       // Credit tip to driver wallet
-      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${amount} WHERE id=${trip.driver_id}::uuid`);
+      await applyWalletChange({
+        userId: String(trip.driver_id),
+        amount,
+        type: "CREDIT",
+        reason: "trip_tip",
+        refId: String(tripId),
+      });
       // Log it
       await rawDb.execute(rawSql`
         INSERT INTO coins_ledger (user_id, amount, type, description, trip_id)
@@ -14016,7 +13920,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const bal = parseFloat((walRes.rows[0] as any)?.wallet_balance || 0);
       if (bal < plan.price) return res.status(400).json({ message: `Insufficient wallet balance. Need ?${plan.price}, have ?${bal.toFixed(0)}` });
       // Deduct & create pass
-      await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance - ${plan.price} WHERE id=${user.id}::uuid`);
+      await applyWalletChange({
+        userId: String(user.id),
+        amount: plan.price,
+        type: "DEBIT",
+        reason: "monthly_pass_purchase",
+        refId: String(plan.name),
+        requireSufficientFunds: true,
+      });
       await rawDb.execute(rawSql`UPDATE monthly_passes SET is_active=false WHERE user_id=${user.id}::uuid`);
       await rawDb.execute(rawSql`
         INSERT INTO monthly_passes (user_id, rides_total, rides_used, amount_paid, plan_name)
@@ -14072,12 +13983,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const ride = camelize(rideRes.rows[0]);
       const totalFare = parseFloat((parseFloat(ride.seatPrice || 0) * seats).toFixed(2));
       // ATOMIC: deduct wallet only if balance sufficient � prevents negative balance race
-      const walUpd = await rawDb.execute(rawSql`
-        UPDATE users SET wallet_balance = wallet_balance - ${totalFare}
-        WHERE id=${user.id}::uuid AND wallet_balance >= ${totalFare}
-        RETURNING wallet_balance
-      `);
-      if (!walUpd.rows.length) {
+      let deductedBalance: number | null = null;
+      try {
+        const walletChange = await applyWalletChange({
+          userId: String(user.id),
+          amount: totalFare,
+          type: "DEBIT",
+          reason: "car_share_booking",
+          refId: String(rideId),
+          requireSufficientFunds: true,
+        });
+        deductedBalance = walletChange.newBalance;
+      } catch {
         const walRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${user.id}::uuid`);
         const bal = parseFloat(String(walRes.rows[0]?.wallet_balance || '0'));
         return res.status(400).json({ message: 'Insufficient wallet balance. Need ?' + totalFare + ', have ?' + bal.toFixed(0) });
@@ -14091,7 +14008,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!bookingR.rows.length) {
         // Seats were taken between our check and insert � refund the wallet deduction
-        await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${totalFare} WHERE id=${user.id}::uuid`);
+        await applyWalletChange({
+          userId: String(user.id),
+          amount: totalFare,
+          type: "CREDIT",
+          reason: "car_share_refund",
+          refId: String(rideId),
+        });
         return res.status(409).json({ message: 'No seats available. Please try again.' });
       }
       res.json({ success: true, message: seats + ' seat(s) booked for ?' + totalFare + '. Deducted from wallet.', totalFare });
@@ -14849,13 +14772,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       // B2B webhook: order_cancelled
       if (cancelled.is_b2b && cancelled.b2b_company_id) {
         // Refund fare back to company wallet on cancellation (order was never picked up)
-        await rawDb.execute(rawSql`
-          UPDATE b2b_companies
-          SET wallet_balance = wallet_balance + ${parseFloat(cancelled.total_fare || '0')},
-              total_trips = GREATEST(0, total_trips - 1),
-              updated_at = NOW()
-          WHERE id = ${cancelled.b2b_company_id}::uuid
-        `).catch(dbCatch("db"));
+        await applyCompanyWalletChange({
+          companyId: String(cancelled.b2b_company_id),
+          amount: parseFloat(cancelled.total_fare || '0'),
+          type: "CREDIT",
+          reason: "b2b_order_cancel_refund",
+          refId: String(cancelled.id),
+          tripDelta: -1,
+        }).catch(dbCatch("db"));
         fireB2BWebhook({
           eventType: "order_cancelled",
           orderId: cancelled.id,
@@ -14871,30 +14795,91 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // Driver: get pending parcel requests nearby
   app.get("/api/app/driver/parcel/pending", authApp, async (req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`
-        SELECT * FROM parcel_orders
+      const driverId = (req as any).currentUser?.id;
+      const driverCtxR = await rawDb.execute(rawSql`
+        SELECT dl.lat, dl.lng, dd.vehicle_category_id
+        FROM users u
+        JOIN driver_locations dl ON dl.driver_id = u.id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        WHERE u.id=${driverId}::uuid
+          AND ${activeDriverEligibilitySql("u")}
+          AND dl.is_online=true
+        LIMIT 1
+      `);
+      const driverCtx = driverCtxR.rows[0] as any;
+      if (!driverCtx) {
+        return res.json({ orders: [] });
+      }
+
+      const categoryR = await rawDb.execute(rawSql`
+        SELECT vehicle_key
+        FROM parcel_vehicle_types
+        WHERE category_id=${driverCtx.vehicle_category_id}::uuid
+          AND is_active=true
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const parcelKey = String((categoryR.rows[0] as any)?.vehicle_key || "");
+      if (!parcelKey) {
+        return res.json({ orders: [] });
+      }
+
+      const match = await findParcelCapableDriversDetailed(
+        Number(driverCtx.lat),
+        Number(driverCtx.lng),
+        15,
+        parcelKey,
+        [],
+        50,
+      );
+      const eligibleDriverIds = new Set(match.drivers.map((row: any) => String(row.id)));
+      if (!eligibleDriverIds.has(String(driverId))) {
+        return res.json({ orders: [] });
+      }
+
+      const ordersR = await rawDb.execute(rawSql`
+        SELECT *
+        FROM parcel_orders
         WHERE current_status = 'searching'
+          AND vehicle_category = ${parcelKey}
+          AND pickup_lat IS NOT NULL
+          AND pickup_lng IS NOT NULL
+          AND SQRT(
+            POW((pickup_lat - ${Number(driverCtx.lat)}) * 111.32, 2) +
+            POW((pickup_lng - ${Number(driverCtx.lng)}) * 111.32 * COS(RADIANS(${Number(driverCtx.lat)})), 2)
+          ) <= 15
         ORDER BY created_at ASC
         LIMIT 20
       `);
-      res.json({ orders: r.rows });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+      res.json({ orders: ordersR.rows });
+    } catch (e: any) {
+      const dbMessage = String(e?.message || "").toLowerCase();
+      if (dbMessage.includes("users_email_key") || dbMessage.includes("duplicate key") && dbMessage.includes("email")) {
+        return res.status(409).json({ message: "Email is already registered. Please use another email or login." });
+      }
+      if (dbMessage.includes("users_phone") || dbMessage.includes("duplicate key") && dbMessage.includes("phone")) {
+        return res.status(409).json({ message: "Account already exists. Please login." });
+      }
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Driver: accept a parcel order
   app.post("/api/app/driver/parcel/:id/accept", authApp, async (req, res) => {
     try {
       const driverId = (req as any).currentUser?.id;
-      const r = await rawDb.execute(rawSql`
-        UPDATE parcel_orders
-        SET driver_id=${driverId}::uuid, current_status='driver_assigned', updated_at=NOW()
-        WHERE id=${req.params.id}::uuid AND current_status='searching'
-          AND driver_id IS NULL
-        RETURNING *
+      const eligibilityR = await rawDb.execute(rawSql`
+        SELECT 1
+        FROM users u
+        WHERE u.id=${driverId}::uuid
+          AND ${activeDriverEligibilitySql("u")}
+        LIMIT 1
       `);
-      if (!(r.rows as any[]).length) return res.status(409).json({ message: 'Already assigned' });
-      const order = (r.rows as any[])[0];
-      if (io) io.to(`user:${order.customer_id}`).emit('parcel:driver_assigned', { orderId: order.id, driverId });
+      if (!eligibilityR.rows.length) {
+        return res.status(403).json({ message: "Driver is not eligible to accept parcel requests." });
+      }
+      const order = await assignParcelDriver(String(req.params.id), String(driverId), { via: "driver_api_accept" });
+      if (!order) return res.status(409).json({ message: 'Already assigned' });
       // B2B webhook: driver_assigned
       if (order.is_b2b && order.b2b_company_id) {
         const dNameR = await rawDb.execute(rawSql`SELECT full_name FROM users WHERE id=${driverId}::uuid`).catch(() => ({ rows: [] as any[] }));
@@ -14916,23 +14901,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const driverId = (req as any).currentUser?.id;
       const { otp } = req.body;
       const r = await rawDb.execute(rawSql`
-        SELECT id, pickup_otp, current_status, customer_id, drop_locations, is_b2b, b2b_company_id
+        SELECT id, pickup_otp, current_status, customer_id, drop_locations, is_b2b, b2b_company_id, driver_id
         FROM parcel_orders WHERE id=${req.params.id}::uuid
       `);
       const order = (r.rows as any[])[0];
       if (!order) return res.status(404).json({ message: 'Order not found' });
       if (order.current_status !== 'driver_assigned') return res.status(400).json({ message: 'Invalid order state' });
+      if (String(order.driver_id || '') !== String(driverId || '')) return res.status(403).json({ message: 'Order is not assigned to this driver' });
       if (String(order.pickup_otp) !== String(otp)) return res.status(400).json({ message: 'Invalid OTP' });
-      await rawDb.execute(rawSql`
-        UPDATE parcel_orders SET current_status='in_transit', updated_at=NOW() WHERE id=${req.params.id}::uuid
-      `);
+      await startParcel(String(req.params.id), {
+        actorId: String(driverId),
+        actorType: "driver",
+        driverId: String(driverId),
+        data: { via: "pickup_otp" },
+      });
 
       // Get driver name for notifications
       const driverR = await rawDb.execute(rawSql`SELECT full_name FROM users WHERE id=${driverId}::uuid`);
       const driverName = (driverR.rows[0] as any)?.full_name || "JAGO Pro Pilot";
-
-      // Emit lifecycle event
-      emitParcelLifecycle(order.id, order.customer_id, driverId, "in_transit", { driverName });
 
       // Notify all receivers that parcel has been picked up
       const drops: any[] = typeof order.drop_locations === 'string' ? JSON.parse(order.drop_locations) : (order.drop_locations || []);
@@ -14946,7 +14932,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }).catch(dbCatch("db"));
       }
 
-      if (io) io.to(`user:${order.customer_id}`).emit('parcel:in_transit', { orderId: order.id });
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -14957,12 +14942,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const driverId = (req as any).currentUser?.id;
       const { dropIndex, otp } = req.body;
       const r = await rawDb.execute(rawSql`
-        SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id, is_b2b, b2b_company_id
+        SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id, is_b2b, b2b_company_id, payment_method
         FROM parcel_orders WHERE id=${req.params.id}::uuid
       `);
       const order = (r.rows as any[])[0];
       if (!order) return res.status(404).json({ message: 'Order not found' });
       if (order.current_status !== 'in_transit') return res.status(400).json({ message: 'Order not in transit' });
+      if (String(order.driver_id || '') !== String(driverId || '')) return res.status(403).json({ message: 'Order is not assigned to this driver' });
       const drops: any[] = typeof order.drop_locations === 'string'
         ? JSON.parse(order.drop_locations) : order.drop_locations;
       const idx = parseInt(dropIndex ?? order.current_drop_index);
@@ -14979,16 +14965,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const expectedMin = order.expected_delivery_minutes || 60;
       const slaBreached = elapsedMin > expectedMin + 15;
 
-      await rawDb.execute(rawSql`
-        UPDATE parcel_orders
-        SET drop_locations = ${JSON.stringify(drops)},
-            current_drop_index = ${nextIdx},
-            current_status = ${allDelivered ? 'completed' : 'in_transit'},
-            sla_breached = ${slaBreached},
-            updated_at = NOW()
-        WHERE id = ${req.params.id}::uuid
-      `);
-
       // Notify the receiver that their parcel was delivered
       if (drop.receiverPhone) {
         notifyReceiver({
@@ -14999,11 +14975,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }).catch(dbCatch("db"));
       }
 
+      let driverEarningsForResponse: number | null = null;
       if (allDelivered) {
         // -- FULL REVENUE SETTLEMENT: commission% + GST + insurance ? admin --
         const totalFare = parseFloat(order.total_fare) || 0;
         const serviceType = order.is_b2b ? "b2b_parcel" : "parcel";
         const parcelBreakdown = await calculateRevenueBreakdown(totalFare, serviceType as any, order.driver_id);
+        driverEarningsForResponse = Number(parcelBreakdown.driverEarnings || 0);
+
+        await completeParcel(String(req.params.id), {
+          actorId: String(driverId),
+          actorType: "driver",
+          driverId: String(driverId),
+          data: { dropIndex: idx, allDelivered: true, slaBreached },
+          extraSetters: [
+            rawSql`drop_locations = ${JSON.stringify(drops)}::jsonb`,
+            rawSql`current_drop_index = ${nextIdx}`,
+            rawSql`sla_breached = ${slaBreached}`,
+          ],
+        });
 
         // Save revenue breakdown on the order
         await rawDb.execute(rawSql`
@@ -15029,11 +15019,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           serviceLabel: serviceType,
         });
 
-        emitParcelLifecycle(order.id, order.customer_id, order.driver_id, "completed", {
-          totalFare, breakdown: parcelBreakdown,
-        });
-        if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
-
         // B2B webhook
         if (order.is_b2b && order.b2b_company_id) {
           fireB2BWebhook({
@@ -15041,8 +15026,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             timestamp: new Date().toISOString(), data: { totalFare: order.total_fare, slaBreached },
           }).catch(dbCatch("db"));
         }
+      } else {
+        await transitionParcelState(String(req.params.id), "in_transit", {
+          actorId: String(driverId),
+          actorType: "driver",
+          driverId: String(driverId),
+          data: { dropIndex: idx, allDelivered: false, slaBreached },
+          extraSetters: [
+            rawSql`drop_locations = ${JSON.stringify(drops)}::jsonb`,
+            rawSql`current_drop_index = ${nextIdx}`,
+            rawSql`sla_breached = ${slaBreached}`,
+          ],
+        });
       }
-      res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx], slaBreached });
+      res.json({
+        success: true,
+        allDelivered,
+        nextDrop: allDelivered ? null : drops[nextIdx],
+        slaBreached,
+        driverEarnings: driverEarningsForResponse,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -15422,19 +15425,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         });
       }
 
-      // Atomic wallet deduction for the full batch
-      const deductR = await rawDb.execute(rawSql`
-        UPDATE b2b_companies
-        SET wallet_balance = wallet_balance - ${grandTotal},
-            total_trips    = total_trips + ${deliveryList.length},
-            updated_at     = NOW()
-        WHERE id=${companyId}::uuid
-          AND (wallet_balance + credit_limit) >= ${grandTotal}
-        RETURNING wallet_balance
-      `);
-      if (!deductR.rows.length) {
-        return res.status(402).json({ message: 'Wallet deduction failed � balance may have changed. Please retry.' });
-      }
+      const walletChange = await applyCompanyWalletChange({
+        companyId: String(companyId),
+        amount: grandTotal,
+        type: "DEBIT",
+        reason: "bulk_delivery",
+        refId: `bulk:${Date.now()}`,
+        tripDelta: deliveryList.length,
+        metadata: { deliveries: deliveryList.length },
+      });
 
       const results: any[] = [];
       for (const delivery of deliveryList) {
@@ -15483,7 +15482,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }).catch(dbCatch("db"));
       }
 
-      const newBalance = parseFloat((deductR.rows[0] as any).wallet_balance || '0');
+      const newBalance = walletChange.newBalance;
       res.json({ success: true, ordersCreated: results.length, orders: results, remainingBalance: newBalance });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

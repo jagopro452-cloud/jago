@@ -204,6 +204,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _otpVerifyInFlight = true;
     setState(() => _loading = true);
     final otpProvider = _otpProvider ?? (_firebaseVerificationId != null ? 'firebase' : 'server');
+    var shouldFallbackToServerOtp = false;
 
     if (otpProvider == 'firebase') {
       try {
@@ -232,12 +233,17 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         _otpVerifyCompleted = false;
         setState(() => _loading = false);
         _otpCtrl.clear();
-        _showErrorDialog('Verification Failed', e.toString().replaceAll('Exception: ', ''));
-        // Firebase verify failed — fall through to server OTP verification
+        shouldFallbackToServerOtp = true;
       } finally {
-        _otpVerifyInFlight = false;
+        if (!shouldFallbackToServerOtp) {
+          _otpVerifyInFlight = false;
+        }
       }
-      return;
+      if (!shouldFallbackToServerOtp) {
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _loading = true);
     }
 
     // Fallback: verify with server OTP (works even when Firebase is blocked)

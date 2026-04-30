@@ -23,6 +23,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   int _seconds = 30;
   Timer? _timer;
   String? _verificationId;
+  String? _otpProvider;
   bool _hasError = false;
 
   late AnimationController _slideCtrl;
@@ -34,6 +35,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _verificationId = widget.firebaseVerificationId;
+    _otpProvider = _verificationId != null ? 'firebase' : 'server';
     _startTimer();
 
     _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
@@ -56,9 +58,9 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   Future<void> _verify() async {
     if (_otpCtrl.text.length != 6) return;
     setState(() { _loading = true; _hasError = false; });
+    var shouldFallbackToServerOtp = false;
 
-    if (_verificationId != null) {
-      // Firebase path
+    if ((_otpProvider ?? 'server') == 'firebase') {
       try {
         final idToken = await FirebaseOtpService.verifyOtp(
           smsCode: _otpCtrl.text,
@@ -67,7 +69,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
         final res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'driver');
         setState(() => _loading = false);
         if (!mounted) return;
-        if (res['success'] == true) {
+        if (res['success'] == true || res['token'] != null) {
           Navigator.pushAndRemoveUntil(context,
             PageRouteBuilder(
               pageBuilder: (_, __, ___) => const HomeScreen(),
@@ -80,17 +82,71 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
           setState(() => _hasError = true);
           _otpCtrl.clear();
         }
-      } catch (e) {
-        setState(() { _loading = false; _hasError = true; });
-        _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
+        return;
+      } catch (_) {
+        shouldFallbackToServerOtp = true;
+      }
+    }
+
+    try {
+      final res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'driver');
+      setState(() => _loading = false);
+      if (!mounted) return;
+      if (res['success'] == true || res['token'] != null) {
+        Navigator.pushAndRemoveUntil(context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const HomeScreen(),
+            transitionDuration: const Duration(milliseconds: 400),
+            transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+          ),
+          (_) => false);
+      } else {
+        _showSnack(res['message'] ?? 'Verification failed. Try again.', error: true);
+        setState(() => _hasError = true);
         _otpCtrl.clear();
       }
-    } else {
-      // Firebase verification ID not available — ask user to retry
-      setState(() => _loading = false);
-      _showSnack('Session expired. Please go back and request a new OTP.', error: true);
-      setState(() => _hasError = true);
+    } catch (e) {
+      setState(() { _loading = false; _hasError = true; });
+      _showSnack(
+        shouldFallbackToServerOtp
+            ? 'Wrong OTP. Please try again.'
+            : e.toString().replaceAll('Exception: ', ''),
+        error: true,
+      );
+      _otpCtrl.clear();
     }
+  }
+
+  Future<void> _resendOtp() async {
+    _otpCtrl.clear();
+    setState(() => _hasError = false);
+    _startTimer();
+
+    bool firebaseSent = false;
+    String? firebaseError;
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91${widget.phone}',
+      forceResend: true,
+      onCodeSent: (vId) {
+        _verificationId = vId;
+        _otpProvider = 'firebase';
+        firebaseSent = true;
+      },
+      onError: (e) {
+        firebaseError = e;
+      },
+    );
+
+    if (firebaseSent || !mounted) return;
+
+    final serverOtp = await AuthService.sendOtp(widget.phone, 'driver');
+    if (!mounted) return;
+    if (serverOtp['success'] == true) {
+      _verificationId = null;
+      _otpProvider = 'server';
+      return;
+    }
+    _showSnack(firebaseError ?? serverOtp['message'] ?? 'OTP send failed. Check your phone number and try again.', error: true);
   }
 
   void _showSnack(String msg, {bool error = false}) {
@@ -122,7 +178,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
         backgroundColor: const Color(0xFF1A3A70),
         body: Stack(
           children: [
-            // ── Dark gradient hero background ──
             Positioned(
               top: 0, left: 0, right: 0,
               height: size.height * 0.42,
@@ -144,7 +199,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                       child: Container(width: 140, height: 140,
                         decoration: BoxDecoration(shape: BoxShape.circle,
                           color: Colors.white.withValues(alpha: 0.03)))),
-                    // Back button
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 8,
@@ -154,7 +208,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
-                    // Hero content
                     Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -203,8 +256,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                 ),
               ),
             ),
-
-            // ── Bottom card (dark) ──
             Positioned(
               bottom: 0, left: 0, right: 0,
               child: SlideTransition(
@@ -223,7 +274,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Drag handle
                         Center(
                           child: Container(
                             width: 40, height: 4,
@@ -234,8 +284,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             ),
                           ),
                         ),
-
-                        // Pilot badge
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                           decoration: BoxDecoration(
@@ -249,7 +297,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                           ]),
                         ),
                         const SizedBox(height: 14),
-
                         Text(
                           'Enter 6-digit OTP',
                           style: GoogleFonts.poppins(
@@ -266,10 +313,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             color: Colors.white.withValues(alpha: 0.45),
                           ),
                         ),
-
                         const SizedBox(height: 32),
-
-                        // OTP PIN input
                         PinCodeTextField(
                           appContext: context,
                           length: 6,
@@ -303,10 +347,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             if (_hasError && v.isNotEmpty) setState(() => _hasError = false);
                           },
                         ),
-
                         const SizedBox(height: 12),
-
-                        // Timer / resend
                         Center(
                           child: _seconds > 0
                             ? RichText(
@@ -326,19 +367,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                 ),
                               )
                             : GestureDetector(
-                                onTap: () async {
-                                  _otpCtrl.clear();
-                                  setState(() => _hasError = false);
-                                  _startTimer();
-                                  FirebaseOtpService.sendOtp(
-                                    phoneNumber: '+91${widget.phone}',
-                                    forceResend: true,
-                                    onCodeSent: (vId) => setState(() => _verificationId = vId),
-                                    onError: (e) {
-                                      _showSnack('OTP send failed. Check your phone number and try again.', error: true);
-                                    },
-                                  );
-                                },
+                                onTap: _resendOtp,
                                 child: Text(
                                   'Resend OTP',
                                   style: GoogleFonts.poppins(
@@ -349,10 +378,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                                 ),
                               ),
                         ),
-
                         const SizedBox(height: 32),
-
-                        // Verify button
                         SizedBox(
                           width: double.infinity,
                           height: 58,
@@ -397,14 +423,12 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 20),
-
                         Center(
                           child: GestureDetector(
                             onTap: () => Navigator.pop(context),
                             child: Text(
-                              '← Change Phone Number',
+                              'Change Phone Number',
                               style: GoogleFonts.poppins(
                                 color: Colors.white.withValues(alpha: 0.4),
                                 fontWeight: FontWeight.w400,
