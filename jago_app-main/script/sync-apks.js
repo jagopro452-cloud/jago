@@ -43,9 +43,13 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function isVersionedApk(fileName) {
+  return /v\d+\.\d+\.\d+/i.test(fileName);
+}
+
 function findLatest(files, prefix) {
   return files
-    .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
+    .filter((file) => file.startsWith(prefix) && file.endsWith(".apk") && isVersionedApk(file))
     .sort(compareVersions)[0] ?? null;
 }
 
