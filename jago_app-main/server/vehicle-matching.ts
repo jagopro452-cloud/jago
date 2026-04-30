@@ -238,6 +238,12 @@ async function findVehicleCategoryMetaByHint(params: {
 
   return bestScore >= 0 ? bestMeta : null;
 }
+
+export function uuidArraySql(ids: string[]) {
+  const safeIds = ids.filter(Boolean);
+  if (!safeIds.length) return rawSql.raw("ARRAY[]::uuid[]");
+  return rawSql.raw(`ARRAY[${safeIds.map((id) => `'${id}'::uuid`).join(", ")}]`);
+}
 function deriveServiceType(row: any): string {
   const explicit = String(row.service_type || "").trim().toLowerCase();
   if (explicit) return explicit;

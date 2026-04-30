@@ -19,6 +19,7 @@ import {
   getDriverDbVehicleType,
   getDriverSocketRoomKeyForCategoryId,
   getMatchingDriverCategoryIds,
+  uuidArraySql,
 } from "./vehicle-matching";
 
 export let io: SocketIOServer;
@@ -1110,7 +1111,7 @@ export async function notifyNearbyDriversNewTrip(
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
     const excludeClause = safeIds.length > 0
-      ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
+      ? rawSql`AND NOT (u.id = ANY(${uuidArraySql(safeIds)}))`
       : rawSql``;
     const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
     const driverRoomKey = await getDriverSocketRoomKeyForCategoryId(vehicleCategoryId);
@@ -1127,8 +1128,10 @@ export async function notifyNearbyDriversNewTrip(
         AND COALESCE(dd.availability_status, 'offline') = 'online'
         AND u.verification_status IN ('approved', 'verified', 'pending')
         ${matchingCategoryIds?.length
-        ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`}
+        ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})`
+        : vehicleCategoryId
+          ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+          : rawSql``}
         ${driverDbVehicleType ? rawSql`AND vc.type = ${driverDbVehicleType}` : rawSql``}
         ${excludeClause}
         AND ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) < 0.06
@@ -1165,7 +1168,7 @@ export async function notifyNearbyDriversNewTrip(
     if (driverIds.length > 0) {
       const devRes = await rawDb.execute(rawSql`
         SELECT user_id, fcm_token FROM user_devices
-        WHERE user_id = ANY(${driverIds}::uuid[]) AND fcm_token IS NOT NULL
+        WHERE user_id = ANY(${uuidArraySql(driverIds)}) AND fcm_token IS NOT NULL
       `);
       for (const r of devRes.rows) {
         fcmMap[(r as any).user_id] = (r as any).fcm_token;
@@ -1258,8 +1261,10 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         AND t.driver_id IS NULL
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
         ${matchingCategoryIds?.length
-        ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`}
+        ? rawSql`AND t.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})`
+        : driverVehicleCategoryId
+          ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`
+          : rawSql``}
         AND (NULLIF(t.vehicle_type, '') IS NULL OR t.vehicle_type = ${driverVehicleType})
         ${driverDbVehicleType ? rawSql`AND vc.type = ${driverDbVehicleType}` : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06

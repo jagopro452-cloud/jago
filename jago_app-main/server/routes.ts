@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
-import { notifyNearbyDriversNewTrip, io } from "./socket";
+import { io } from "./socket";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -44,6 +44,7 @@ import {
   onDriverAccepted,
   onDriverRejected,
   cancelDispatch,
+  restartDispatchForTrip,
   hasActiveDispatch,
   getDispatchStatus,
   getActiveDispatchCount,
@@ -55,7 +56,6 @@ import {
 import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
 import {
   getPlatformServiceKeyForCategory,
-  getVehicleCategoryMeta,
   normalizeBookingVehicleType,
   resolveBookingVehicleSelection,
 } from "./vehicle-matching";
@@ -8431,26 +8431,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Notify dispatch engine � immediately moves to next driver in queue
         onDriverRejected(tripId, driver.id).catch((err: any) => {
           console.error('[DISPATCH] onDriverRejected error:', err.message);
-          // Fallback: legacy re-assignment if dispatch engine not tracking this trip
-          if (io) {
-            const trip = camelize(tripRes.rows[0]) as any;
-            if (trip.customerId) {
-              io.to(`user:${trip.customerId}`).emit("trip:searching", { tripId, message: "Looking for another pilot..." });
-            }
-            const rejectExcludeList = (trip.rejectedDriverIds || []).filter(Boolean);
-            findBestDrivers(
-              Number(trip.pickupLat), Number(trip.pickupLng),
-              trip.vehicleCategoryId || undefined,
-              rejectExcludeList, 3
-            ).then(nextBestDrivers => {
-              for (const nd of nextBestDrivers) {
-                io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-                  tripId, pickupAddress: trip.pickupAddress || "Pickup",
-                  estimatedFare: Number(trip.estimatedFare) || 0,
-                });
-              }
-            }).catch(dbCatch("db"));
-          }
+          restartDispatchForTrip(tripId, { additionalRejectedDriverIds: [driver.id] }).catch(dbCatch("db"));
         });
       }
 
@@ -8970,7 +8951,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Reset trip to 'searching' � auto-reassign to next driver
       await rawDb.execute(rawSql`
         UPDATE trip_requests SET current_status='searching', driver_id=NULL, pickup_otp=NULL,
-          driver_accepted_at=NULL, cancel_reason=${reason || 'Driver cancelled'}, updated_at=NOW()
+          driver_accepted_at=NULL, cancel_reason=${reason || 'Driver cancelled'},
+          rejected_driver_ids = array_append(COALESCE(rejected_driver_ids,'{}'), ${driver.id}::uuid),
+          updated_at=NOW()
         WHERE id=${tripId}::uuid
       `);
       await appendTripStatus(tripId, 'requested', 'driver', reason || 'Driver cancelled, reassigned');
@@ -9018,7 +9001,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // AI-scored reassignment after driver cancellation
-      const cancelNextBest = await findBestDrivers(
+      await restartDispatchForTrip(tripId, { additionalRejectedDriverIds: [driver.id] });
+      if (false) { const cancelNextBest = await findBestDrivers(
         Number(trip.pickupLat), Number(trip.pickupLng),
         trip.vehicleCategoryId || undefined,
         [driver.id],
@@ -9055,7 +9039,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         }
       }
-      res.json({ success: true, reassigned: cancelNextBest.length > 0 });
+      }
+      res.json({ success: true, reassigned: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -10048,6 +10033,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // -- Smart Dispatch Engine ----------------------------------------------
       const serviceType = resolveServiceType(normalizedTripType, resolvedVehicleCategoryName);
+      const parcelVehicleCategory = serviceType === "parcel" || serviceType === "b2b_parcel"
+        ? normalizeBookingVehicleType(resolvedVehicleType || resolvedVehicleCategoryName || "")
+          || undefined
+        : undefined;
 
       const dispatchMeta: TripMeta = {
         refId: tripRow.refId,
@@ -10075,16 +10064,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         resolvedVehicleCategoryId || undefined,
         resolvedVehicleType || undefined,
         serviceType,
-        dispatchMeta
+        dispatchMeta,
+        parcelVehicleCategory
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
-        // Fallback to legacy broadcast if dispatch engine fails
-        notifyNearbyDriversNewTrip(
-          tripRow.id,
-          Number(pickupLat),
-          Number(pickupLng),
-          resolvedVehicleCategoryId || undefined,
-        ).catch(dbCatch("db"));
+        if (io) {
+          io.to(`user:${customer.id}`).emit("trip:searching", {
+            tripId: tripRow.id,
+            message: "Still matching you with the next available pilot...",
+          });
+        }
       });
 
       res.json({
@@ -15601,22 +15590,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         if (io) io.to(`user:${trip.driverId}`).emit("trip:timeout", { tripId: trip.id });
 
         const excludeList = [...(trip.rejectedDriverIds || []), trip.driverId].filter(Boolean);
-        const nextBest = await findBestDrivers(
-          trip.pickupLat, trip.pickupLng,
-          trip.vehicleCategoryId || undefined,
-          excludeList, 1
-        );
-
-        if (nextBest.length && io) {
-          const nd = nextBest[0];
-          io.to(`user:${nd.driverId}`).emit("trip:new_request", { tripId: trip.id, pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0 });
-          if (nd.fcmToken) {
-            notifyDriverNewRide({ fcmToken: nd.fcmToken, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: trip.id }).catch(dbCatch("db"));
-          }
-          console.log(`[TIMEOUT] Trip ${trip.id} safety-net reassigned to driver ${nd.driverId}`);
-        } else if (io) {
-          notifyNearbyDriversNewTrip(trip.id, trip.pickupLat, trip.pickupLng, trip.vehicleCategoryId, excludeList).catch(dbCatch("db"));
-        }
+        await restartDispatchForTrip(trip.id, { additionalRejectedDriverIds: excludeList });
+        console.log(`[TIMEOUT] Trip ${trip.id} safety-net restarted in sequential dispatch mode`);
       }
     } catch (e: any) {
       console.error("[TIMEOUT] Auto-reassign error:", formatDbError(e));
@@ -16000,7 +15975,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   app.patch("/api/admin/vehicle-status/:vehicleKey", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const vehicleKey = normalizeVehicleKey(String(req.params.vehicleKey || ""));
+      const vehicleKeyParam = Array.isArray(req.params.vehicleKey) ? req.params.vehicleKey[0] : req.params.vehicleKey;
+      const vehicleKey = normalizeVehicleKey(vehicleKeyParam);
       const allowed = vehicleControlDefaults.find((v) => v.key === vehicleKey);
       if (!allowed) return res.status(400).json({ message: "Invalid vehicle type" });
       if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });

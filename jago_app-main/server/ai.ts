@@ -1,7 +1,7 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { getMatchingDriverCategoryIds, uuidArraySql } from "./vehicle-matching";
 
 // ----------------------------------------------------------------------------
 //  JAGO Pro AI Intelligence Layer
@@ -200,7 +200,7 @@ export async function findBestDrivers(
   const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
 
   const vcFilter = matchingCategoryIds?.length
-    ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+    ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})`
     : vehicleCategoryId
       ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
       : rawSql``;
@@ -248,7 +248,7 @@ export async function findBestDrivers(
           (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND (lat <> 0 OR lng <> 0)) as online_with_gps,
           (SELECT COUNT(*) FROM users u JOIN driver_details dd ON dd.user_id=u.id
             WHERE u.user_type='driver' AND u.verification_status IN ('approved','verified','pending')
-              ${matchingCategoryIds?.length ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])` : vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+              ${matchingCategoryIds?.length ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})` : vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
           ) as matching_category
       `);
       const d = (diag.rows[0] as any) || {};

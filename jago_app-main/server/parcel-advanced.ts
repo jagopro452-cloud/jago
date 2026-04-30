@@ -19,6 +19,7 @@ import { sql as rawSql } from "drizzle-orm";
 import { sendFcmNotification } from "./fcm";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 import { io } from "./socket";
+import { uuidArraySql } from "./vehicle-matching";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -563,7 +564,7 @@ export async function findParcelCapableDriversDetailed(
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeExclude = excludeDriverIds.filter((id) => uuidRe.test(id));
   const excludeClause = safeExclude.length > 0
-    ? rawSql`AND NOT (u.id = ANY(${safeExclude}::uuid[]))`
+    ? rawSql`AND NOT (u.id = ANY(${uuidArraySql(safeExclude)}))`
     : rawSql``;
 
   const categoryIds = await resolveAllowedCategoryIds(vehicleCategory);
@@ -599,7 +600,7 @@ export async function findParcelCapableDriversDetailed(
       AND u.verification_status = 'approved'
       AND dl.lat != 0 AND dl.lng != 0
       AND dl.updated_at > NOW() - INTERVAL '30 seconds'
-      AND dd.vehicle_category_id = ANY(${categoryIds}::uuid[])
+      AND dd.vehicle_category_id = ANY(${uuidArraySql(categoryIds)})
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
