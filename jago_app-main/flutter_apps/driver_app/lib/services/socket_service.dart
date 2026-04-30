@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import 'api_client.dart';
+import 'auth_service.dart';
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -11,6 +13,7 @@ class SocketService {
   SocketService._internal();
   static const Duration _gpsStaleOfflineAfter = Duration(minutes: 2);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
+  static const String _activeTripKey = 'active_driver_trip_id';
 
   IO.Socket? _socket;
   bool _isConnected = false;
@@ -60,6 +63,8 @@ class SocketService {
   bool get hasActiveTrip => (_activeTripId ?? '').isNotEmpty;
 
   Future<void> connect(String baseUrl) async {
+    await _restoreActiveTripFromStorage();
+
     if (_socket != null) {
       if (_socket!.connected) return;
       _socket!.connect();
@@ -106,6 +111,7 @@ class SocketService {
       _isConnected = true;
       _connectedController.add(true);
       print('[SOCKET][DRIVER] connected');
+      _restoreSessionBindings();
     });
 
     // On reconnect after server restart: restore online status so driver stays visible
@@ -132,6 +138,24 @@ class SocketService {
       _isConnected = false;
       _connectedController.add(false);
       print('[SOCKET][DRIVER] disconnected');
+    });
+
+    _socket!.on('error:unauthorized', (_) async {
+      final refreshed = await AuthService.refreshOnce();
+      if (refreshed) {
+        disconnect();
+        await connect(baseUrl);
+      }
+    });
+
+    _socket!.on('connect_error', (error) async {
+      final errorText = error?.toString().toLowerCase() ?? '';
+      if (!errorText.contains('unauthor')) return;
+      final refreshed = await AuthService.refreshOnce();
+      if (refreshed) {
+        disconnect();
+        await connect(baseUrl);
+      }
     });
 
     _socket!.on('driver:online_ack', (data) {
@@ -223,6 +247,37 @@ class SocketService {
     _startHeartbeat();
   }
 
+  Future<void> _restoreActiveTripFromStorage() async {
+    if ((_activeTripId ?? '').isNotEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final tripId = prefs.getString(_activeTripKey)?.trim() ?? '';
+    if (tripId.isNotEmpty) {
+      _activeTripId = tripId;
+    }
+  }
+
+  void _restoreSessionBindings() {
+    if (!_isConnected || _socket == null) return;
+    if (_wasOnline) {
+      _socket!.emit('driver:online', {
+        'isOnline': true,
+        if (_lastLat != null) 'lat': _lastLat,
+        if (_lastLng != null) 'lng': _lastLng,
+      });
+    }
+    if ((_activeTripId ?? '').isNotEmpty) {
+      _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
+      if (_lastLat != null && _lastLng != null) {
+        _socket!.emit('driver:location', {
+          'lat': _lastLat,
+          'lng': _lastLng,
+          'heading': 0,
+          'speed': 0,
+        });
+      }
+    }
+  }
+
   /// Heartbeat: if driver is online but no location sent for 15s → auto-offline.
   /// Prevents ghost-online drivers who have GPS failures.
   void _startHeartbeat() {
@@ -245,10 +300,21 @@ class SocketService {
   /// Call when driver enters/exits a trip so socket can rejoin room on reconnect.
   /// Also joins the room immediately if connected.
   void setActiveTrip(String? tripId) {
-    _activeTripId = tripId;
-    if (tripId != null && _isConnected && _socket != null) {
-      _socket!.emit('driver:rejoin_trip', {'tripId': tripId});
+    final normalized = tripId?.trim();
+    _activeTripId = (normalized == null || normalized.isEmpty) ? null : normalized;
+    _persistActiveTripId(_activeTripId);
+    if (_activeTripId != null && _isConnected && _socket != null) {
+      _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
     }
+  }
+
+  Future<void> _persistActiveTripId(String? tripId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (tripId == null || tripId.isEmpty) {
+      await prefs.remove(_activeTripKey);
+      return;
+    }
+    await prefs.setString(_activeTripKey, tripId);
   }
 
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
@@ -280,24 +346,21 @@ class SocketService {
     double speed = 0,
   }) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      if (token == null || token.isEmpty) return;
-      await http.post(
-        Uri.parse(ApiConfig.driverLocation),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'lat': lat,
-          'lng': lng,
-          'heading': heading,
-          'speed': speed,
-          'isOnline': _wasOnline,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      await const ApiClient().request(
+        (headers) => http.post(
+          Uri.parse(ApiConfig.driverLocation),
+          headers: headers,
+          body: jsonEncode({
+            'lat': lat,
+            'lng': lng,
+            'heading': heading,
+            'speed': speed,
+            'isOnline': _wasOnline,
+          }),
+        ).timeout(const Duration(seconds: 10)),
+        isActiveTrip: hasActiveTrip,
+        source: 'driver_location_http_fallback',
+      );
     } catch (_) {}
   }
 
@@ -323,18 +386,19 @@ class SocketService {
 
   Future<void> _setOnlineViaHttp({required bool isOnline, double? lat, double? lng}) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      if (token == null) return;
-      await http.patch(
-        Uri.parse(ApiConfig.driverOnlineStatus),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'isOnline': isOnline,
-          if (lat != null) 'lat': lat,
-          if (lng != null) 'lng': lng,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      await const ApiClient().request(
+        (headers) => http.patch(
+          Uri.parse(ApiConfig.driverOnlineStatus),
+          headers: headers,
+          body: jsonEncode({
+            'isOnline': isOnline,
+            if (lat != null) 'lat': lat,
+            if (lng != null) 'lng': lng,
+          }),
+        ).timeout(const Duration(seconds: 10)),
+        isActiveTrip: hasActiveTrip,
+        source: 'driver_online_status_http_fallback',
+      );
     } catch (_) {}
   }
 

@@ -11,19 +11,42 @@ import 'fcm_service.dart';
 
 class AuthService {
   static const _tokenKey = 'auth_token';
+  static const _refreshTokenKey = 'refresh_token';
   static const _userKey = 'user_data';
   static const _userNameKey = 'user_name';
   static const _userPhoneKey = 'user_phone';
   static const _userIdKey = 'user_id';
+  static const _activeTripKey = 'active_driver_trip_id';
+  static Completer<bool>? _refreshInFlight;
+  static Completer<void>? _logoutInFlight;
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    final token = prefs.getString(_tokenKey)?.trim();
+    if (token == null || token.isEmpty) return null;
+    return token;
+  }
+
+  static Future<String?> getRefreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_refreshTokenKey)?.trim();
+    if (token == null || token.isEmpty) return null;
+    return token;
   }
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token.trim());
+  }
+
+  static Future<void> saveRefreshToken(String? refreshToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = refreshToken?.trim() ?? '';
+    if (value.isEmpty) {
+      await prefs.remove(_refreshTokenKey);
+      return;
+    }
+    await prefs.setString(_refreshTokenKey, value);
   }
 
   static Future<void> saveUser(Map<String, dynamic> userData) async {
@@ -54,8 +77,12 @@ class AuthService {
   static Future<Map<String, dynamic>?> getSavedUser() async {
     final prefs = await SharedPreferences.getInstance();
     final str = prefs.getString(_userKey);
-    if (str == null) return null;
-    return jsonDecode(str);
+    if (str == null || str.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(str);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
   }
 
   static Future<bool> isLoggedIn() async {
@@ -66,10 +93,21 @@ class AuthService {
   static Future<void> clearLocalSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove(_refreshTokenKey);
     await prefs.remove(_userKey);
     await prefs.remove(_userNameKey);
     await prefs.remove(_userPhoneKey);
     await prefs.remove(_userIdKey);
+  }
+
+  static Future<String?> getActiveTripId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tripId = prefs.getString(_activeTripKey)?.trim() ?? '';
+    return tripId.isEmpty ? null : tripId;
+  }
+
+  static Future<bool> hasActiveTripSession() async {
+    return (await getActiveTripId()) != null;
   }
 
   static Future<bool> rehydrateStoredSession({bool refreshProfile = true}) async {
@@ -96,8 +134,8 @@ class AuthService {
       if (res.statusCode == 200) {
         if ((res.headers['content-type'] ?? '').contains('application/json')) {
           final body = jsonDecode(res.body);
-          if (body is Map<String, dynamic>) {
-            await saveUser(body);
+          if (body is Map) {
+            await saveUser(Map<String, dynamic>.from(body));
           }
         }
         return true;
@@ -158,6 +196,7 @@ class AuthService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
+        await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser(data['user'] ?? data);
         // Save FCM token to server after login
         FcmService().onLoginSuccess().catchError((_) {});
@@ -179,9 +218,61 @@ class AuthService {
     await clearLocalSession();
   }
 
+  static Future<bool> tryRefreshSession() async {
+    final refreshToken = await getRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) return false;
+
+    // Backend refresh-token endpoint is not available in this repo yet.
+    // Keep the lock/hook in place so the client can start using it as soon as
+    // the server exposes a supported refresh flow.
+    return false;
+  }
+
+  static Future<bool> refreshOnce() async {
+    if (_refreshInFlight != null) {
+      return _refreshInFlight!.future;
+    }
+
+    final completer = Completer<bool>();
+    _refreshInFlight = completer;
+    try {
+      final refreshed = await tryRefreshSession();
+      completer.complete(refreshed);
+      return refreshed;
+    } catch (_) {
+      completer.complete(false);
+      return false;
+    } finally {
+      _refreshInFlight = null;
+    }
+  }
+
+  static Future<void> safeLogout() async {
+    if (_logoutInFlight != null) {
+      return _logoutInFlight!.future;
+    }
+
+    final completer = Completer<void>();
+    _logoutInFlight = completer;
+    try {
+      await logout();
+    } finally {
+      completer.complete();
+      _logoutInFlight = null;
+    }
+  }
+
   /// Call when server returns 401 — clears session and redirects to login.
-  static Future<void> handle401() async {
-    await clearLocalSession();
+  static Future<void> handle401({String source = 'unknown', bool allowDuringActiveTrip = true}) async {
+    final refreshed = await refreshOnce();
+    if (refreshed) return;
+
+    if (allowDuringActiveTrip && await hasActiveTripSession()) {
+      debugPrint('[AUTH][DRIVER] Suppressing logout during active trip from $source');
+      return;
+    }
+
+    await safeLogout();
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const SplashScreen()),
       (route) => false,
@@ -195,6 +286,9 @@ class AuthService {
           .timeout(const Duration(seconds: 30));
       if (res.statusCode == 200) {
         return UserModel.fromJson(jsonDecode(res.body));
+      }
+      if (res.statusCode == 401) {
+        await handle401(source: 'driver_profile', allowDuringActiveTrip: true);
       }
     } on TimeoutException {
       return null;
@@ -214,6 +308,7 @@ class AuthService {
       final data = jsonDecode(res.body);
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
+        await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser(data['user'] ?? data);
         FcmService().onLoginSuccess().catchError((_) {});
       }
@@ -238,6 +333,7 @@ class AuthService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
+        await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser(data['user'] ?? data);
         FcmService().onLoginSuccess().catchError((_) {});
       }
@@ -263,6 +359,7 @@ class AuthService {
       final data = jsonDecode(res.body);
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
+        await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser(data['user'] ?? data);
         FcmService().onLoginSuccess().catchError((_) {});
       }

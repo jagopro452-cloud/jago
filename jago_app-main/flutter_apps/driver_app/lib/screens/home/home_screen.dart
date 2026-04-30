@@ -595,6 +595,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void _handleSessionExpired() {
     AuthService.rehydrateStoredSession().then((stillValid) async {
       if (stillValid || !mounted) return;
+      if (_socket.hasActiveTrip || await AuthService.hasActiveTripSession()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Session issue detected. Recovering trip session...', style: TextStyle(fontWeight: FontWeight.w500)),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ));
+        return;
+      }
       await AuthService.clearLocalSession();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -2050,8 +2059,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
             child: GestureDetector(
               onTap: () async {
+                if (_socket.hasActiveTrip || await AuthService.hasActiveTripSession()) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Complete the active trip before logging out.', style: TextStyle(fontWeight: FontWeight.w500)),
+                    backgroundColor: Colors.orange,
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                  return;
+                }
+                _socket.setActiveTrip(null);
                 _socket.disconnect();
-                await AuthService.logout();
+                await AuthService.safeLogout();
                 if (!mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
