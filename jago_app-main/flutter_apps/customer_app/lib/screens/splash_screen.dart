@@ -4,9 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/jago_theme.dart';
-import '../services/auth_service.dart';
+import '../services/session_manager.dart';
 import 'auth/login_screen.dart';
-import 'home/home_screen.dart';
 import 'main_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'onboarding/terms_screen.dart';
@@ -27,6 +26,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _textOpacity;
 
   late AnimationController _progressCtrl;
+  Timer? _sessionRetryTimer;
+  bool _navigationCommitted = false;
 
   @override
   void initState() {
@@ -68,6 +69,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   void dispose() {
+    _sessionRetryTimer?.cancel();
     _logoCtrl.dispose();
     _textCtrl.dispose();
     _progressCtrl.dispose();
@@ -89,26 +91,52 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       return;
     }
     final onboardingSeen = prefs.getBool('onboarding_seen') ?? false;
-    final token = prefs.getString('auth_token');
     if (!mounted) return;
 
-    Widget destination;
     if (!onboardingSeen) {
-      destination = const OnboardingScreen();
-    } else if (token != null && token.isNotEmpty) {
-      final profile = await AuthService.getProfile();
-      if (!mounted) return;
-      if (profile != null) {
-        destination = const MainScreen();
-      } else {
-        await prefs.remove('auth_token');
-        await prefs.remove('user_data');
-        destination = const LoginScreen();
-      }
-    } else {
-      destination = const LoginScreen();
+      _pushDestination(const OnboardingScreen());
+      return;
     }
 
+    await _resolveSessionDestination(attempt: 0);
+  }
+
+  Future<void> _resolveSessionDestination({required int attempt}) async {
+    if (!mounted || _navigationCommitted) return;
+
+    final result = await SessionManager.restoreSession();
+    if (!mounted || _navigationCommitted) return;
+
+    if (result.state == SessionRestoreState.authenticated) {
+      _pushDestination(const MainScreen());
+      return;
+    }
+
+    if (result.state == SessionRestoreState.retryableFailure) {
+      if (attempt < 2) {
+        _scheduleSessionRetry(attempt + 1);
+        return;
+      }
+
+      if (result.hasCachedProfile) {
+        _pushDestination(const MainScreen());
+        return;
+      }
+    }
+
+    _pushDestination(const LoginScreen());
+  }
+
+  void _scheduleSessionRetry(int nextAttempt) {
+    _sessionRetryTimer?.cancel();
+    _sessionRetryTimer = Timer(const Duration(seconds: 3), () {
+      _resolveSessionDestination(attempt: nextAttempt);
+    });
+  }
+
+  void _pushDestination(Widget destination) {
+    if (!mounted || _navigationCommitted) return;
+    _navigationCommitted = true;
     if (!mounted) return;
     Navigator.pushReplacement(context, PageRouteBuilder(
       pageBuilder: (_, __, ___) => destination,

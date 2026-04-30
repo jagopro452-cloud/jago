@@ -864,11 +864,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleUnauthorized() {
-    AuthService.logout().then((_) {
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-    });
+    AuthService.handle401(source: 'customer_home');
   }
 
   Future<void> _fetchHome() async {
