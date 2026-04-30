@@ -25,6 +25,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _showPassword = false;
   bool _usePassword = false;
   bool _loading = false;
+  bool _otpVerifyInFlight = false;
+  bool _otpVerifyCompleted = false;
   int _seconds = 0;
   Timer? _timer;
   String? _firebaseVerificationId;
@@ -33,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   @override
   void codeUpdated() {
     // Called by CodeAutoFill when SMS is auto-read
-    if (code != null) {
+    if (code != null && _otpSent && !_otpVerifyCompleted) {
       final match = RegExp(r'\d{6}').firstMatch(code!);
       if (match != null && mounted) {
         final otp = match.group(0)!;
@@ -71,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     cancel(); // Stop SMS auto-read listening
+    FirebaseOtpService.resetVerification();
     _cardCtrl.dispose();
     _logoCtrl.dispose();
     _timer?.cancel();
@@ -124,12 +127,29 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     });
   }
 
+  Future<void> _resetOtpFlow() async {
+    _timer?.cancel();
+    _firebaseVerificationId = null;
+    _otpProvider = null;
+    _otpVerifyInFlight = false;
+    _otpVerifyCompleted = false;
+    await FirebaseOtpService.resetVerification();
+    if (!mounted) return;
+    setState(() {
+      _otpSent = false;
+      _loading = false;
+      _otpCtrl.clear();
+    });
+  }
+
   Future<void> _sendOtp() async {
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
     _firebaseVerificationId = null;
     _otpProvider = null;
+    _otpVerifyInFlight = false;
+    _otpVerifyCompleted = false;
     await FirebaseOtpService.resetVerification();
 
     // PRIMARY: Firebase Phone Auth — await until code is sent or error
@@ -180,7 +200,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final phone = _phoneCtrl.text.trim();
     final otp = _otpCtrl.text.trim();
     if (otp.length != 6) { _snack('Enter the 6-digit OTP', error: true); return; }
-    if (_loading) return;
+    if (!_otpSent || _otpVerifyCompleted || _otpVerifyInFlight || _loading) return;
+    _otpVerifyInFlight = true;
     setState(() => _loading = true);
     final otpProvider = _otpProvider ?? (_firebaseVerificationId != null ? 'firebase' : 'server');
 
@@ -196,20 +217,25 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         if (!mounted) return;
         final res = await AuthService.verifyFirebaseToken(idToken, phone, 'driver');
         if (!mounted) return;
+        _otpVerifyCompleted = true;
         setState(() => _loading = false);
         if (res['success'] == true || res['token'] != null) {
           Navigator.pushAndRemoveUntil(context,
             MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
         } else {
+          _otpVerifyCompleted = false;
           _otpCtrl.clear();
           _showErrorDialog('Login Failed', res['message'] ?? 'Firebase verification failed. Please try again.');
         }
       } catch (e) {
         if (!mounted) return;
+        _otpVerifyCompleted = false;
         setState(() => _loading = false);
         _otpCtrl.clear();
         _showErrorDialog('Verification Failed', e.toString().replaceAll('Exception: ', ''));
         // Firebase verify failed — fall through to server OTP verification
+      } finally {
+        _otpVerifyInFlight = false;
       }
       return;
     }
@@ -218,19 +244,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     try {
       final res = await AuthService.verifyOtp(phone, otp, 'driver');
       if (!mounted) return;
+      _otpVerifyCompleted = true;
       setState(() => _loading = false);
       if (res['success'] == true || res['token'] != null) {
         Navigator.pushAndRemoveUntil(context,
           MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
       } else {
+        _otpVerifyCompleted = false;
         _otpCtrl.clear();
         _showErrorDialog('Login Failed', res['message'] ?? 'Wrong OTP. Please try again.');
       }
     } catch (e) {
       if (!mounted) return;
+      _otpVerifyCompleted = false;
       setState(() => _loading = false);
       _otpCtrl.clear();
       _showErrorDialog('Verification Failed', 'Network error. Please try again.');
+    } finally {
+      _otpVerifyInFlight = false;
     }
   }
 
@@ -394,7 +425,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                           child: _seconds > 0
                             ? Text('Resend in ${_seconds}s', style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 13))
                             : GestureDetector(
-                                onTap: () { setState(() { _otpSent = false; _otpCtrl.clear(); }); _sendOtp(); },
+                                onTap: () async { await _resetOtpFlow(); await _sendOtp(); },
                                 child: Text('Resend OTP', style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w500, fontSize: 13)),
                               ),
                         ),
@@ -403,7 +434,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         const SizedBox(height: 12),
                         Center(
                           child: GestureDetector(
-                            onTap: () => setState(() { _otpSent = false; _otpCtrl.clear(); }),
+                            onTap: () async => _resetOtpFlow(),
                             child: Text('← Change Number', style: GoogleFonts.poppins(
                               color: const Color(0xFF94A3B8), fontWeight: FontWeight.w500, fontSize: 13)),
                           ),

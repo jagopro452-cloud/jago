@@ -85,11 +85,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         setState(() => _loading = false);
         _showSnack(err, error: true);
       },
-      onAutoVerify: (idToken) {
-        if (!mounted) return;
-        _firebaseIdToken = idToken;
-        setState(() { _loading = false; _step = 2; });
-      },
     );
   }
 

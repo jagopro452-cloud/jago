@@ -21,6 +21,8 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMixin, CodeAutoFill {
   final _otpCtrl = TextEditingController();
   bool _loading = false;
+  bool _verifyInFlight = false;
+  bool _verifyCompleted = false;
   int _seconds = 60;
   Timer? _timer;
   String? _verificationId;
@@ -29,7 +31,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   @override
   void codeUpdated() {
     // SMS auto-read fired — fill the box and auto-verify
-    if (code != null && code!.length == 6 && mounted) {
+    if (code != null && code!.length == 6 && mounted && !_verifyCompleted) {
       _otpCtrl.text = code!;
       _verify();
     }
@@ -67,6 +69,8 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
 
   Future<void> _verify() async {
     if (_otpCtrl.text.length != 6) return;
+    if (_verifyInFlight || _verifyCompleted) return;
+    _verifyInFlight = true;
     setState(() { _loading = true; _hasError = false; });
     try {
       final idToken = await FirebaseOtpService.verifyOtp(
@@ -75,6 +79,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
       );
       final res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'customer');
       if (!mounted) return;
+      _verifyCompleted = true;
       setState(() => _loading = false);
       // success = true OR token present (server may return token without explicit success flag)
       if (res['success'] == true || res['token'] != null) {
@@ -86,15 +91,19 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
           ),
           (_) => false);
       } else {
+        _verifyCompleted = false;
         _showSnack(res['message'] ?? 'Verification failed. Try again.', error: true);
         setState(() => _hasError = true);
         _otpCtrl.clear();
       }
     } catch (e) {
       if (!mounted) return;
+      _verifyCompleted = false;
       setState(() { _loading = false; _hasError = true; });
       _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
       _otpCtrl.clear();
+    } finally {
+      _verifyInFlight = false;
     }
   }
 
@@ -115,6 +124,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
     _timer?.cancel();
     _otpCtrl.dispose();
     _slideCtrl.dispose();
+    FirebaseOtpService.resetVerification();
     cancel(); // stop SMS listener
     super.dispose();
   }

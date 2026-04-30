@@ -29,6 +29,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    FirebaseOtpService.resetVerification();
     _phoneCtrl.dispose(); _otpCtrl.dispose();
     _newPassCtrl.dispose(); _confirmCtrl.dispose();
     super.dispose();
@@ -56,6 +57,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final phone = _phoneCtrl.text.trim();
     if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
     setState(() => _loading = true);
+    _firebaseVerificationId = null;
+    _firebaseIdToken = null;
+    await FirebaseOtpService.resetVerification();
     await FirebaseOtpService.sendOtp(
       phoneNumber: '+91$phone',
       onCodeSent: (vId) {
@@ -69,11 +73,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         if (!mounted) return;
         setState(() => _loading = false);
         _showSnack(err, error: true);
-      },
-      onAutoVerify: (idToken) {
-        if (!mounted) return;
-        _firebaseIdToken = idToken;
-        setState(() { _loading = false; _step = 2; });
       },
     );
   }

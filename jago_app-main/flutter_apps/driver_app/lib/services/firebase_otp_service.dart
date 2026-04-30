@@ -8,6 +8,10 @@ class FirebaseOtpService {
 
   static String? _verificationId;
   static int? _resendToken;
+  static Future<String>? _ongoingVerification;
+  static String? _ongoingVerificationKey;
+  static String? _lastVerifiedKey;
+  static String? _lastVerifiedToken;
 
   static String _mapAuthError(FirebaseAuthException e) {
     switch (e.code) {
@@ -33,6 +37,10 @@ class FirebaseOtpService {
   static Future<void> resetVerification() async {
     _verificationId = null;
     _resendToken = null;
+    _ongoingVerification = null;
+    _ongoingVerificationKey = null;
+    _lastVerifiedKey = null;
+    _lastVerifiedToken = null;
     try {
       await _auth.signOut();
     } catch (_) {}
@@ -106,22 +114,43 @@ class FirebaseOtpService {
   }) async {
     final vId = verificationId ?? _verificationId;
     if (vId == null) throw Exception('Verification ID missing. Please resend OTP.');
+    final verificationKey = '$vId:$smsCode';
 
-    // Sign out any stale session before creating a new one — prevents "session expired"
-    try { await _auth.signOut(); } catch (_) {}
-
-    final credential = PhoneAuthProvider.credential(
-      verificationId: vId,
-      smsCode: smsCode,
-    );
-    try {
-      final userCred = await _auth.signInWithCredential(credential);
-      final idToken = await userCred.user?.getIdToken(true);
-      if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
-      return idToken;
-    } on FirebaseAuthException catch (e) {
-      throw Exception(_mapAuthError(e));
+    if (_lastVerifiedKey == verificationKey && _lastVerifiedToken != null) {
+      return _lastVerifiedToken!;
     }
+    if (_ongoingVerificationKey == verificationKey && _ongoingVerification != null) {
+      return _ongoingVerification!;
+    }
+
+    final verificationFuture = () async {
+      // Sign out any stale session before creating a new one — prevents "session expired"
+      try { await _auth.signOut(); } catch (_) {}
+
+      final credential = PhoneAuthProvider.credential(
+        verificationId: vId,
+        smsCode: smsCode,
+      );
+      try {
+        final userCred = await _auth.signInWithCredential(credential);
+        final idToken = await userCred.user?.getIdToken(true);
+        if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
+        _lastVerifiedKey = verificationKey;
+        _lastVerifiedToken = idToken;
+        return idToken;
+      } on FirebaseAuthException catch (e) {
+        throw Exception(_mapAuthError(e));
+      } finally {
+        if (_ongoingVerificationKey == verificationKey) {
+          _ongoingVerification = null;
+          _ongoingVerificationKey = null;
+        }
+      }
+    }();
+
+    _ongoingVerificationKey = verificationKey;
+    _ongoingVerification = verificationFuture;
+    return verificationFuture;
   }
 
   static Future<void> signOut() async {
