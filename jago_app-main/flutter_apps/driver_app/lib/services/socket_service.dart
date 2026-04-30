@@ -57,9 +57,14 @@ class SocketService {
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
   Stream<Map<String, dynamic>> get onCallRejected => _callRejectedController.stream;
   bool get isConnected => _isConnected;
+  bool get hasActiveTrip => (_activeTripId ?? '').isNotEmpty;
 
   Future<void> connect(String baseUrl) async {
-    if (_socket?.connected == true) return;
+    if (_socket != null) {
+      if (_socket!.connected) return;
+      _socket!.connect();
+      return;
+    }
 
     final prefs = await SharedPreferences.getInstance();
     var userId = prefs.getString('user_id') ?? '';

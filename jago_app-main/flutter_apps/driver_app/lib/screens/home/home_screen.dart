@@ -66,7 +66,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   String _zone = '';
   bool _hasValidLocationFix = false;
   bool _hasLiveLocationAccess = false;
+  bool _isAppInForeground = true;
   Timer? _locationTimer;
+  Timer? _incomingTripPollTimer;
   StreamSubscription<Position>? _posStream; // live GPS stream — battery-efficient
   Position? _lastPosition; // cached position for server updates
   late AnimationController _pulseCtrl;
@@ -376,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     for (final s in _subs) s.cancel();
     _vehicleStatusSub?.cancel();
     _locationTimer?.cancel();
+    _incomingTripPollTimer?.cancel();
     _posStream?.cancel();
     _idleTimer?.cancel();
     _heatmap.stopRefresh();
@@ -386,23 +389,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && _isOnline) {
-      return;
-    }
+    final isBackgroundState =
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+    _isAppInForeground = !isBackgroundState;
     if (state == AppLifecycleState.resumed) {
+      _socket.connect(ApiConfig.socketUrl);
       _consumeQueuedAlertAction();
       _checkPendingFcmTrip();
+      if (_isOnline) {
+        _refreshLocationAfterResume();
+        _startIncomingTripPolling();
+        _startHeatmapRefresh();
+        _startIdleTimer();
+      }
+      return;
     }
-    if (state == AppLifecycleState.paused) {
-      // App backgrounded — suspend GPS stream + server poll to save battery
-      // Socket stays connected so the driver still receives trip requests via FCM
-      _locationTimer?.cancel();
-      _locationTimer = null;
-      _posStream?.cancel();
-      _posStream = null;
-    } else if (state == AppLifecycleState.resumed) {
-      // Came back to foreground — refresh GPS fix and resume live updates if needed
-      _refreshLocationAfterResume();
+    if (isBackgroundState) {
+      _stopIncomingTripPolling();
+      _idleTimer?.cancel();
+      _idleTimer = null;
+      _heatmap.stopRefresh();
+
+      if (!_isOnline) {
+        _stopLocationStreaming();
+      }
+      return;
     }
   }
 
@@ -488,6 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (!mounted) return;
     setState(() => _isOnline = false);
     _stopLocationStreaming();
+    _stopIncomingTripPolling();
     _stopHeatmap();
     _socket.setOnlineStatus(
       isOnline: false,
@@ -656,6 +671,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           }
           if (_hasValidLocationFix && _hasLiveLocationAccess) {
             _startLocationStreaming();
+            _startIncomingTripPolling();
           }
           // Re-announce online status via socket — restores driver_locations.is_online=true
           // after app restart/crash where socket disconnect handler had set it false.
@@ -773,31 +789,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         headers: reqHeaders,
         body: jsonEncode({'lat': lat, 'lng': lng, 'isOnline': true}),
       ).catchError((_) => http.Response('', 500));
-
-      if (_isOnline && _incomingTrip == null) {
-        try {
-          final resp = await http.get(
-            Uri.parse(ApiConfig.driverIncomingTrip),
-            headers: reqHeaders,
-          ).timeout(const Duration(seconds: 4));
-          if (resp.statusCode == 200 && mounted) {
-            final data = jsonDecode(resp.body) as Map<String, dynamic>;
-            final trip = data['trip'];
-            final stage = (data['stage'] ?? '').toString();
-            if (trip != null && stage == 'new_request' && _incomingTrip == null) {
-              final tripMap = Map<String, dynamic>.from(trip as Map);
-              tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
-              if (!_canReceiveTripPayload(tripMap)) {
-                _showUnavailableByAdminOnce();
-                return;
-              }
-              setState(() => _incomingTrip = tripMap);
-              _showIncomingTrip();
-            }
-          }
-        } catch (_) {}
-      }
     });
+
+    if (_isAppInForeground) {
+      _startIncomingTripPolling();
+    }
   }
 
   void _stopLocationStreaming() {
@@ -806,6 +802,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     _posStream?.cancel();
     _posStream = null;
     _lastPosition = null;
+  }
+
+  void _startIncomingTripPolling() {
+    _incomingTripPollTimer?.cancel();
+    if (!_isOnline || !_isAppInForeground || _socket.hasActiveTrip) return;
+
+    _incomingTripPollTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (!_isOnline || !_isAppInForeground || _socket.hasActiveTrip || _incomingTrip != null || !mounted) return;
+      await _pollIncomingTripOnce();
+    });
+  }
+
+  void _stopIncomingTripPolling() {
+    _incomingTripPollTimer?.cancel();
+    _incomingTripPollTimer = null;
+  }
+
+  Future<void> _pollIncomingTripOnce() async {
+    try {
+      final reqHeaders = await AuthService.getHeaders();
+      final resp = await http.get(
+        Uri.parse(ApiConfig.driverIncomingTrip),
+        headers: reqHeaders,
+      ).timeout(const Duration(seconds: 4));
+      if (resp.statusCode != 200 || !mounted) return;
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final trip = data['trip'];
+      final stage = (data['stage'] ?? '').toString();
+      if (trip == null || stage != 'new_request' || _socket.hasActiveTrip || _incomingTrip != null) return;
+
+      final tripMap = Map<String, dynamic>.from(trip as Map);
+      tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+      if (!_canReceiveTripPayload(tripMap)) {
+        _showUnavailableByAdminOnce();
+        return;
+      }
+      setState(() => _incomingTrip = tripMap);
+      _showIncomingTrip();
+    } catch (_) {}
   }
 
   // ── Heatmap methods ────────────────────────────────────────────────────
@@ -1207,11 +1243,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     if (newStatus) {
       _startLocationStreaming();
+      _startIncomingTripPolling();
       _startHeatmapRefresh();
       _startIdleTimer();
       _showSnack('Online forced for Testing! ✓');
     } else {
       _stopLocationStreaming();
+      _stopIncomingTripPolling();
       _stopHeatmap();
       _showSnack('Offline అయ్యారు');
     }
