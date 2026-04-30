@@ -710,6 +710,33 @@ function extractBearerToken(req: Request): string | null {
   return auth.slice("Bearer ".length).trim() || null;
 }
 
+const USER_ACCESS_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const USER_REFRESH_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+async function issueUserSession(userId: string) {
+  const accessToken = `${userId}:${crypto.randomBytes(32).toString("hex")}`;
+  const refreshToken = `${userId}:${crypto.randomBytes(48).toString("hex")}`;
+  const accessTokenExpiresAt = new Date(Date.now() + USER_ACCESS_TOKEN_TTL_MS).toISOString();
+  const refreshTokenExpiresAt = new Date(Date.now() + USER_REFRESH_TOKEN_TTL_MS).toISOString();
+
+  await rawDb.execute(rawSql`
+    UPDATE users
+    SET auth_token=${accessToken},
+        auth_token_expires_at=${accessTokenExpiresAt},
+        refresh_token=${refreshToken},
+        refresh_token_expires_at=${refreshTokenExpiresAt},
+        last_login_at=NOW()
+    WHERE id=${userId}::uuid
+  `);
+
+  return {
+    accessToken,
+    refreshToken,
+    accessTokenExpiresAt,
+    refreshTokenExpiresAt,
+  };
+}
+
 async function issueAdminSession(adminId: string) {
   const sessionToken = `${adminId}:${crypto.randomBytes(32).toString("hex")}`;
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_HOURS * 60 * 60 * 1000);
@@ -1058,6 +1085,8 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) NOT NULL DEFAULT 5.0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS total_ratings INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token_expires_at TIMESTAMP;
 
       -- Fix: missing trip_requests columns for parcel/person-booking flow
       ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(120);
@@ -7568,10 +7597,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Generate secure auth token (30-day expiry)
-      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const session = await issueUserSession(user.id);
       // Store auth token in users.auth_token (NOT in fcm_token � that's for Firebase)
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
 
       // If driver, get wallet info
       let walletBalance = 0;
@@ -7587,7 +7614,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({
         success: true,
         isNew,
-        token,
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
         user: {
           id: user.id,
           fullName: user.fullName,
@@ -7698,9 +7726,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
       }
 
-      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
+      const session = await issueUserSession(user.id);
 
       let walletBalance = 0;
       let isLocked = false;
@@ -7714,7 +7740,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       console.log(`[AUTH] Firebase login success for ${phoneStr.slice(-4).padStart(10, '*')} userType=${userType} source=${firebaseVerifySource || 'unknown'}`);
       res.json({
-        success: true, isNew, token,
+        success: true, isNew, token: session.accessToken, refreshToken: session.refreshToken,
         user: {
           id: user.id, fullName: user.fullName, phone: user.phone,
           email: user.email || null, userType: user.userType,
@@ -7753,9 +7779,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const refCode = 'JAGOPRO' + phone.slice(-6);
       await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phone} AND user_type=${userType}`).catch(dbCatch("db"));
       const user = camelize(insertRes.rows[0]) as any;
-      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
+      const session = await issueUserSession(user.id);
       // Handle referral code if provided
       if (req.body.referralCode) {
         try {
@@ -7768,7 +7792,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         } catch (_) { }
       }
-      res.json({ success: true, isNew: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
+      res.json({ success: true, isNew: true, token: session.accessToken, refreshToken: session.refreshToken, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, walletBalance: 0 } });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -7785,13 +7809,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user.passwordHash) return res.status(400).json({ message: "Password not set. Please use Forgot Password to set one." });
       const match = await verifyPassword(password, user.passwordHash);
       if (!match) return res.status(401).json({ message: "Incorrect password. Please try again." });
-      const token = `${user.id}:${crypto.randomBytes(32).toString("hex")}`;
-      const tokenExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=${token}, auth_token_expires_at=${tokenExpiry} WHERE id=${user.id}::uuid`);
+      const session = await issueUserSession(user.id);
       const walletBalance = safeFloat(user.walletBalance, 0);
-      res.json({ success: true, token, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: safeFloat(user.rating, 5.0), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
+      res.json({ success: true, token: session.accessToken, refreshToken: session.refreshToken, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: safeFloat(user.rating, 5.0), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
+
+  const refreshAppSession = async (req: Request, res: Response) => {
+    try {
+      const refreshToken = extractBearerToken(req);
+      if (!refreshToken) {
+        return res.status(401).json({ message: "Refresh token required" });
+      }
+
+      const parts = refreshToken.split(":");
+      if (parts.length < 2) {
+        return res.status(401).json({ message: "Invalid refresh token format" });
+      }
+
+      const userId = parts[0];
+      const userR = await rawDb.execute(rawSql`
+        SELECT id, is_active, user_type
+        FROM users
+        WHERE id=${userId}::uuid
+          AND refresh_token=${refreshToken}
+          AND is_active=true
+          AND (refresh_token_expires_at IS NULL OR refresh_token_expires_at > NOW())
+        LIMIT 1
+      `);
+
+      if (!userR.rows.length) {
+        return res.status(401).json({ message: "Refresh session expired. Please login again." });
+      }
+
+      const session = await issueUserSession((userR.rows[0] as any).id as string);
+      return res.json({
+        success: true,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        accessTokenExpiresAt: session.accessTokenExpiresAt,
+        refreshTokenExpiresAt: session.refreshTokenExpiresAt,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ message: safeErrMsg(e) });
+    }
+  };
+
+  app.post("/api/app/auth/refresh", refreshAppSession);
+  app.post("/auth/refresh", refreshAppSession);
 
   // -- FORGOT PASSWORD (Firebase verification) ------------------------------
   // Uses Firebase Phone Auth instead of SMS OTP for password reset
@@ -12482,7 +12547,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/logout", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=NULL WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`UPDATE users SET auth_token=NULL, auth_token_expires_at=NULL, refresh_token=NULL, refresh_token_expires_at=NULL WHERE id=${user.id}::uuid`);
       res.json({ success: true, message: "Logged out successfully" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12518,7 +12583,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Permanent delete � anonymize all PII, revoke token, keep records for audit
         await rawDb.execute(rawSql`
           UPDATE users SET is_active=false, full_name='Deleted User', email=null, phone=null,
-            profile_image=null, auth_token=null, wallet_balance=0, updated_at=NOW()
+            profile_image=null, auth_token=null, auth_token_expires_at=null, refresh_token=null, refresh_token_expires_at=null, wallet_balance=0, updated_at=NOW()
           WHERE id=${customer.id}::uuid
         `);
         // Also cancel any active trips
@@ -12529,7 +12594,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ success: true, message: "Account permanently deleted. All data has been removed." });
       }
       // Soft delete � just deactivate
-      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${customer.id}::uuid`);
+      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, auth_token_expires_at=null, refresh_token=null, refresh_token_expires_at=null, updated_at=NOW() WHERE id=${customer.id}::uuid`);
       res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12542,7 +12607,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (permanent) {
         await rawDb.execute(rawSql`
           UPDATE users SET is_active=false, full_name='Deleted Driver', email=null, phone=null,
-            profile_image=null, auth_token=null, wallet_balance=0, updated_at=NOW()
+            profile_image=null, auth_token=null, auth_token_expires_at=null, refresh_token=null, refresh_token_expires_at=null, wallet_balance=0, updated_at=NOW()
           WHERE id=${driver.id}::uuid AND user_type='driver'
         `);
         // Cancel active trip if any
@@ -12553,7 +12618,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
         return res.json({ success: true, message: "Driver account permanently deleted." });
       }
-      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, updated_at=NOW() WHERE id=${driver.id}::uuid AND user_type='driver'`);
+      await rawDb.execute(rawSql`UPDATE users SET is_active=false, auth_token=null, auth_token_expires_at=null, refresh_token=null, refresh_token_expires_at=null, updated_at=NOW() WHERE id=${driver.id}::uuid AND user_type='driver'`);
       res.json({ success: true, message: "Account deactivated. Contact support to reactivate." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

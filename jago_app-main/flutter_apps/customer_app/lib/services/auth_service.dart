@@ -227,11 +227,29 @@ class AuthService {
   static Future<bool> tryRefreshSession() async {
     final refreshToken = await getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) return false;
-
-    // Backend refresh-token endpoint is not available in this repo yet.
-    // Keep the hook here so the client can start using it as soon as the
-    // server exposes a supported refresh flow.
-    return false;
+    try {
+      final res = await http
+          .post(
+            Uri.parse(ApiConfig.refreshSession),
+            headers: {
+              ..._base,
+              'Authorization': 'Bearer $refreshToken',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return false;
+      final decoded = jsonDecode(res.body);
+      if (decoded is! Map) return false;
+      final data = Map<String, dynamic>.from(decoded);
+      final newAccessToken = data['accessToken']?.toString().trim() ?? '';
+      final newRefreshToken = data['refreshToken']?.toString().trim() ?? '';
+      if (newAccessToken.isEmpty || newRefreshToken.isEmpty) return false;
+      await saveToken(newAccessToken);
+      await saveRefreshToken(newRefreshToken);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<void> logout() async {
