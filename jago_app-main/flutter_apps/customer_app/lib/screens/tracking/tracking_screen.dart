@@ -2119,7 +2119,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     if (confirm != true) return;
     final sosHeaders = await AuthService.getHeaders();
     try {
-      await http.post(Uri.parse(ApiConfig.sos),
+      final response = await http.post(Uri.parse(ApiConfig.sos),
           headers: {...sosHeaders, 'Content-Type': 'application/json'},
           body: jsonEncode({
             'tripId': widget.tripId,
@@ -2127,6 +2127,9 @@ class _TrackingScreenState extends State<TrackingScreen>
             'lng': _center.longitude,
             'message': 'Customer SOS alert during trip',
           }));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('SOS request failed');
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('🚨 SOS Alert sent! Help is on the way.',

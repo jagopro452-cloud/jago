@@ -181,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
 
     // FALLBACK: Server SMS OTP (when Firebase is blocked/unavailable)
-    final res = await AuthService.sendOtp(phone, 'driver');
+    final res = await AuthService.sendOtp(phone, 'driver', true);
     if (!mounted) return;
     if (res['success'] != true) {
       setState(() => _loading = false);

@@ -94,7 +94,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
-    final serverOtp = await AuthService.sendOtp(phone, 'customer');
+    final serverOtp = await AuthService.sendOtp(phone, 'customer', true);
     if (!mounted) return;
     if (serverOtp['success'] != true) {
       setState(() => _loading = false);

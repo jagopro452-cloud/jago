@@ -318,13 +318,19 @@ class AuthService {
   static Future<Map<String, dynamic>> sendOtp(
     String phone, [
     String userType = 'customer',
+    bool forceServerOtp = false,
   ]) async {
     try {
       final res = await http
           .post(
             Uri.parse(ApiConfig.sendOtp),
             headers: _base,
-            body: jsonEncode({'phone': phone, 'userType': userType}),
+            body: jsonEncode({
+              'phone': phone,
+              'userType': userType,
+              if (forceServerOtp) 'provider': 'sms',
+              if (forceServerOtp) 'forceServerOtp': true,
+            }),
           )
           .timeout(const Duration(seconds: 30));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {

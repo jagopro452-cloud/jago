@@ -31,6 +31,7 @@ export let io: SocketIOServer;
 // NOTE: These maps are local to this process. With Redis adapter, socket routing works across processes but these maps still need Redis-backed storage for full HA. TODO: migrate to Redis hashes.
 const driverSockets = new Map<string, string>();
 const customerSockets = new Map<string, string>();
+const activeCallSessions = new Map<string, { callerId: string; targetId: string; startedAt: number }>();
 
 // Grace-period timers: when a driver socket disconnects we wait before marking them offline.
 // If they reconnect within the grace window the timer is cancelled and they stay online.
@@ -55,6 +56,24 @@ function getDriverRoomName(vehicleType: string): string {
 
 function emitSelf(socket: Socket, event: string, payload: Record<string, any>) {
   io?.to(socket.id).emit(event, payload);
+}
+
+function isValidCallSession(tripId: string | undefined, userId: string, targetUserId: string): boolean {
+  if (!tripId) return false;
+  const session = activeCallSessions.get(tripId);
+  if (!session) return false;
+  const participants = new Set([session.callerId, session.targetId]);
+  return participants.has(userId) && participants.has(targetUserId);
+}
+
+async function hasAnyLiveSocketForUser(userId: string): Promise<boolean> {
+  if (!io) return false;
+  try {
+    const sockets = await io.in(`user:${userId}`).allSockets();
+    return sockets.size > 0;
+  } catch {
+    return false;
+  }
 }
 
 async function loadDriverVehicleProfile(driverId: string): Promise<{
@@ -867,19 +886,39 @@ export function setupSocket(httpServer: HttpServer) {
         const { tripId, message, senderName, senderType } = data;
         if (!tripId || !message?.trim() || message.length > 2000) return;
 
+        const tripParticipant = await rawDb.execute(rawSql`
+          SELECT
+            t.id,
+            CASE
+              WHEN t.customer_id = ${userId}::uuid THEN 'customer'
+              WHEN t.driver_id = ${userId}::uuid THEN 'driver'
+              ELSE NULL
+            END as sender_type,
+            COALESCE(u.full_name, ${senderName || ""}) as sender_name
+          FROM trip_requests t
+          JOIN users u ON u.id = ${userId}::uuid
+          WHERE t.id = ${tripId}::uuid
+            AND (t.customer_id = ${userId}::uuid OR t.driver_id = ${userId}::uuid)
+          LIMIT 1
+        `);
+        if (!tripParticipant.rows.length) {
+          emitSelf(socket, "trip:message_error", { tripId, message: "You are not part of this trip" });
+          return;
+        }
+        const participant = tripParticipant.rows[0] as any;
         const now = new Date();
 
         // Persist to DB first
         await rawDb.execute(rawSql`
           INSERT INTO trip_messages (trip_id, sender_id, sender_type, sender_name, message, created_at)
-          VALUES (${tripId}::uuid, ${userId}::uuid, ${senderType || 'customer'}, ${senderName || ''}, ${message.trim()}, ${now.toISOString()})
+          VALUES (${tripId}::uuid, ${userId}::uuid, ${participant.sender_type || senderType || 'customer'}, ${participant.sender_name || senderName || ''}, ${message.trim()}, ${now.toISOString()})
         `);
 
         // Then relay to all participants in the trip room
         io.to(`trip:${tripId}`).emit("trip:new_message", {
           from: userId,
-          senderType: senderType || 'customer',
-          senderName: senderName || '',
+          senderType: participant.sender_type || senderType || 'customer',
+          senderName: participant.sender_name || senderName || '',
           message: message.trim(),
           timestamp: now.toISOString(),
         });
@@ -893,6 +932,18 @@ export function setupSocket(httpServer: HttpServer) {
       try {
         const { tripId } = data;
         if (!tripId) return;
+
+        const tripParticipant = await rawDb.execute(rawSql`
+          SELECT id
+          FROM trip_requests
+          WHERE id = ${tripId}::uuid
+            AND (customer_id = ${userId}::uuid OR driver_id = ${userId}::uuid)
+          LIMIT 1
+        `);
+        if (!tripParticipant.rows.length) {
+          emitSelf(socket, "trip:message_error", { tripId, message: "You are not part of this trip" });
+          return;
+        }
 
         const rows = await rawDb.execute(rawSql`
           SELECT id, trip_id, sender_id, sender_type, sender_name, message, created_at
@@ -923,7 +974,6 @@ export function setupSocket(httpServer: HttpServer) {
     // Phone numbers are MASKED — real numbers never exposed over socket
 
     // Track active call sessions: tripId → { callerId, targetId, startedAt }
-    const activeCallSessions = new Map<string, { callerId: string; targetId: string; startedAt: number }>();
 
     socket.on("call:initiate", async (data: { targetUserId: string; tripId: string; callerName: string }) => {
       try {
@@ -983,16 +1033,33 @@ export function setupSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("call:offer", (data: { targetUserId: string; sdp: any }) => {
-      io.to(`user:${data.targetUserId}`).emit("call:offer", { callerId: userId, sdp: data.sdp });
+    socket.on("call:offer", (data: { targetUserId: string; tripId: string; sdp: any }) => {
+      if (!isValidCallSession(data.tripId, userId, data.targetUserId)) {
+        emitSelf(socket, "call:error", { message: "Invalid call session" });
+        return;
+      }
+      io.to(`user:${data.targetUserId}`).emit("call:offer", { callerId: userId, tripId: data.tripId, sdp: data.sdp });
     });
 
-    socket.on("call:answer", (data: { targetUserId: string; sdp: any }) => {
-      io.to(`user:${data.targetUserId}`).emit("call:answer", { callerId: userId, sdp: data.sdp });
+    socket.on("call:answer", async (data: { targetUserId: string; tripId: string; sdp: any }) => {
+      if (!isValidCallSession(data.tripId, userId, data.targetUserId)) {
+        emitSelf(socket, "call:error", { message: "Invalid call session" });
+        return;
+      }
+      io.to(`user:${data.targetUserId}`).emit("call:answer", { callerId: userId, tripId: data.tripId, sdp: data.sdp });
+      await rawDb.execute(rawSql`
+        UPDATE call_logs SET status='connected'
+        WHERE trip_id=${data.tripId}::uuid
+          AND ((caller_id=${userId}::uuid AND receiver_id=${data.targetUserId}::uuid) OR (caller_id=${data.targetUserId}::uuid AND receiver_id=${userId}::uuid))
+          AND status='initiated'
+      `).catch(() => { });
     });
 
-    socket.on("call:ice", (data: { targetUserId: string; candidate: any }) => {
-      io.to(`user:${data.targetUserId}`).emit("call:ice", { from: userId, candidate: data.candidate });
+    socket.on("call:ice", (data: { targetUserId: string; tripId: string; candidate: any }) => {
+      if (!isValidCallSession(data.tripId, userId, data.targetUserId)) {
+        return;
+      }
+      io.to(`user:${data.targetUserId}`).emit("call:ice", { from: userId, tripId: data.tripId, candidate: data.candidate });
     });
 
     socket.on("call:end", async (data: { targetUserId: string; tripId?: string; durationSec?: number }) => {
@@ -1028,10 +1095,10 @@ export function setupSocket(httpServer: HttpServer) {
         // Grace period: don't mark offline immediately — reconnect within 90s keeps driver visible.
         // This prevents momentary network blips from removing driver from active dispatch.
         // If driver explicitly called driver:online with isOnline=false, that already updated DB directly.
-        const timer = setTimeout(() => {
+        const timer = setTimeout(async () => {
           pendingOfflineTimers.delete(userId);
-          // Only mark offline if still not reconnected (no entry in driverSockets)
-          if (!driverSockets.has(userId)) {
+          // Only mark offline if still not reconnected across any socket server instance.
+          if (!(await hasAnyLiveSocketForUser(userId))) {
             rawDb.execute(rawSql`
               UPDATE driver_locations SET is_online=false, updated_at=NOW()
               WHERE driver_id=${userId}::uuid

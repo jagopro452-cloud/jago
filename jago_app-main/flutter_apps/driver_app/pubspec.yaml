@@ -39,6 +39,7 @@ dependencies:
   flutter_svg: ^2.0.10+1
   sms_autofill: ^2.4.1
   just_audio: ^0.9.31
+  flutter_webrtc: ^1.4.1
 
 dev_dependencies:
   flutter_test:

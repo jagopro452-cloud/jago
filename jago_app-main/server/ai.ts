@@ -163,6 +163,16 @@ export interface DriverMatchScore {
   avgResponseTimeSec: number;
   score: number;
   fcmToken?: string;
+  scoreBreakdown?: {
+    distance: number;
+    behavior: number;
+    rating: number;
+    responseSpeed: number;
+    completionRate: number;
+    idleBonus: number;
+    final: number;
+    locationAgeSeconds?: number;
+  };
 }
 
 interface FindBestDriversOptions {

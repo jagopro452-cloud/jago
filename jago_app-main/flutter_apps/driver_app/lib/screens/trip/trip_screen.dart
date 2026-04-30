@@ -1647,7 +1647,7 @@ class _TripScreenState extends State<TripScreen>
     final h = await AuthService.getHeaders();
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
-      await http.post(Uri.parse(ApiConfig.sos),
+      final response = await http.post(Uri.parse(ApiConfig.sos),
           headers: {...h, 'Content-Type': 'application/json'},
           body: jsonEncode({
             'tripId': tripId,
@@ -1655,6 +1655,9 @@ class _TripScreenState extends State<TripScreen>
             'lng': _center.longitude,
             'message': 'Driver SOS alert during trip'
           }));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('SOS request failed');
+      }
       if (!mounted) return;
       _showSnack('SOS Alert sent! Help is on the way.');
     } catch (_) {

@@ -53,7 +53,9 @@ describe("route hardening contracts", () => {
 
   it("keeps cancellation penalties and notifications non-destructive", () => {
     expect(hardeningRoutesSource).toContain("if (!canWalletCoverCharge(walletBalance, penaltyAmount))");
-    expect(hardeningRoutesSource).toContain("WHERE id=${customerId}::uuid AND wallet_balance >= ${penaltyAmount}");
+    expect(hardeningRoutesSource).toContain("SELECT wallet_balance FROM users WHERE id=${customerId}::uuid LIMIT 1");
+    expect(hardeningRoutesSource).toContain("applyWalletChange({");
+    expect(hardeningRoutesSource).toContain('reason: "customer_cancel_penalty"');
     expect(hardeningRoutesSource).toContain("action: 'trip:cancelled'");
     expect(hardeningRoutesSource).toContain("type: 'trip_cancelled'");
   });

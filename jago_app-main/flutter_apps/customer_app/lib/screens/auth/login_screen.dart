@@ -182,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
-    final res = await AuthService.sendOtp(phone, 'customer');
+    final res = await AuthService.sendOtp(phone, 'customer', true);
     if (!mounted) return;
     if (res['success'] != true) {
       setState(() => _loading = false);

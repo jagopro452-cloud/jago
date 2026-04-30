@@ -51,6 +51,17 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   outstation: { radiusStepsKm: [5, 10, 15, 25], driverTimeoutMs: 15000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
+const LOCATION_FRESHNESS_SECONDS = 150;
+const MAX_IDLE_BONUS_MINUTES = 30;
+const DISPATCH_SCORE_WEIGHTS = {
+  distance: 0.35,
+  behavior: 0.25,
+  rating: 0.15,
+  responseSpeed: 0.10,
+  completionRate: 0.10,
+  idleBonus: 0.05,
+} as const;
+
 function getConfig(serviceType: string): DispatchConfig {
   return DISPATCH_CONFIGS[serviceType] || DISPATCH_CONFIGS.auto;
 }
@@ -84,6 +95,8 @@ interface DispatchSession {
   totalTimer: ReturnType<typeof setTimeout> | null;
   retryCount: number;      // how many full-radius restarts have been done
   retryTimer: ReturnType<typeof setTimeout> | null;
+  femaleOnlyPass: boolean;
+  femalePreferenceEnabled: boolean;
 }
 
 type DispatchAuditStatus = "sent" | "rejected" | "timeout" | "accepted";
@@ -107,6 +120,106 @@ export interface TripMeta {
 
 function logDispatchAudit(rideId: string, driverId: string, status: DispatchAuditStatus): void {
   console.log(`[DISPATCH] rideId=${rideId}, driverId=${driverId}, status=${status}`);
+}
+
+function getLocationAgeSeconds(updatedAt: unknown): number | null {
+  if (!updatedAt) return null;
+  const at = new Date(String(updatedAt));
+  if (Number.isNaN(at.getTime())) return null;
+  return Math.max(0, Math.round((Date.now() - at.getTime()) / 1000));
+}
+
+function isDriverLocationFresh(updatedAt: unknown, thresholdSeconds = LOCATION_FRESHNESS_SECONDS): boolean {
+  const ageSeconds = getLocationAgeSeconds(updatedAt);
+  return ageSeconds !== null && ageSeconds <= thresholdSeconds;
+}
+
+function buildDispatchScore(input: {
+  distanceKm: number;
+  rating: number;
+  avgResponseTimeSec: number;
+  completionRate: number;
+  behaviorScore: number;
+  idleSeconds?: number;
+  locationAgeSeconds?: number | null;
+}): { final: number; breakdown: DriverMatchScore["scoreBreakdown"] } {
+  const distKm = Number(input.distanceKm) || 99;
+  const rating = Number(input.rating) || 3.0;
+  const avgResp = Number(input.avgResponseTimeSec) || 60;
+  const completionRate = Number(input.completionRate) || 0.8;
+  const behaviorScore = Number(input.behaviorScore) || 50;
+  const idleSeconds = Math.max(0, Number(input.idleSeconds) || 0);
+
+  const distanceScore = Math.max(0, 1 - distKm / 25);
+  const behaviorNorm = Math.max(0, Math.min(1, behaviorScore / 100));
+  const ratingScore = Math.max(0, Math.min(1, (rating - 1) / 4));
+  const responseScore = Math.max(0, 1 - avgResp / 300);
+  const completionScore = Math.max(0, Math.min(1, completionRate));
+  const idleMinutes = Math.min(MAX_IDLE_BONUS_MINUTES, idleSeconds / 60);
+  const idleBonusScore = Math.max(0, Math.min(1, idleMinutes / MAX_IDLE_BONUS_MINUTES));
+
+  const final =
+    distanceScore * DISPATCH_SCORE_WEIGHTS.distance +
+    behaviorNorm * DISPATCH_SCORE_WEIGHTS.behavior +
+    ratingScore * DISPATCH_SCORE_WEIGHTS.rating +
+    responseScore * DISPATCH_SCORE_WEIGHTS.responseSpeed +
+    completionScore * DISPATCH_SCORE_WEIGHTS.completionRate +
+    idleBonusScore * DISPATCH_SCORE_WEIGHTS.idleBonus;
+
+  return {
+    final: Math.round(final * 1000) / 1000,
+    breakdown: {
+      distance: Math.round(distanceScore * 1000) / 1000,
+      behavior: Math.round(behaviorNorm * 1000) / 1000,
+      rating: Math.round(ratingScore * 1000) / 1000,
+      responseSpeed: Math.round(responseScore * 1000) / 1000,
+      completionRate: Math.round(completionScore * 1000) / 1000,
+      idleBonus: Math.round(idleBonusScore * 1000) / 1000,
+      final: Math.round(final * 1000) / 1000,
+      locationAgeSeconds: input.locationAgeSeconds ?? undefined,
+    },
+  };
+}
+
+function formatScoreBreakdown(breakdown?: DriverMatchScore["scoreBreakdown"]): string {
+  if (!breakdown) return "n/a";
+  return [
+    `distance=${breakdown.distance}`,
+    `behavior=${breakdown.behavior}`,
+    `rating=${breakdown.rating}`,
+    `response=${breakdown.responseSpeed}`,
+    `completion=${breakdown.completionRate}`,
+    `idle=${breakdown.idleBonus}`,
+    `age=${breakdown.locationAgeSeconds ?? "?"}s`,
+    `final=${breakdown.final}`,
+  ].join(" ");
+}
+
+async function loadDispatchGenderPreference(customerId: string, serviceType: string): Promise<boolean> {
+  if (serviceType === "parcel" || serviceType === "b2b_parcel") return false;
+  try {
+    const prefR = await rawDb.execute(rawSql`
+      SELECT
+        u.gender,
+        COALESCE(u.prefer_female_driver, false) as prefer_female_driver,
+        COALESCE(up.preferred_gender, 'any') as preferred_gender,
+        COALESCE(bs.value, '0') as female_to_female_matching
+      FROM users u
+      LEFT JOIN user_preferences up ON up.user_id = u.id
+      LEFT JOIN business_settings bs ON bs.key_name = 'female_to_female_matching'
+      WHERE u.id = ${customerId}::uuid
+      LIMIT 1
+    `).catch(() => ({ rows: [] as any[] }));
+    const row = prefR.rows[0] as any;
+    if (!row) return false;
+    const customerGender = String(row.gender || "").toLowerCase();
+    const preferFemale = row.prefer_female_driver === true || row.prefer_female_driver === "true";
+    const preferredGender = String(row.preferred_gender || "any").toLowerCase();
+    const featureEnabled = String(row.female_to_female_matching || "0") === "1";
+    return featureEnabled && customerGender === "female" && (preferFemale || preferredGender === "female");
+  } catch {
+    return false;
+  }
 }
 
 // ── Dispatch Engine (singleton) ──────────────────────────────────────────────
@@ -157,6 +270,7 @@ export async function startDispatch(
   cancelDispatch(tripId);
 
   const config = getConfig(serviceType);
+  const femalePreferenceEnabled = await loadDispatchGenderPreference(customerId, serviceType);
 
   const session: DispatchSession = {
     tripId,
@@ -181,6 +295,8 @@ export async function startDispatch(
     totalTimer: null,
     retryCount: 0,
     retryTimer: null,
+    femaleOnlyPass: femalePreferenceEnabled,
+    femalePreferenceEnabled,
   };
 
   activeDispatches.set(tripId, session);
@@ -195,7 +311,8 @@ export async function startDispatch(
   console.log(
     `[DISPATCH] trip=${tripId} service=${serviceType} booking.vehicleType=${vehicleType ?? "missing"} ` +
       `vehicleCategoryId=${vehicleCategoryId ?? "missing"} pickup=(${pickupLat},${pickupLng}) ` +
-      `radiusSteps=${config.radiusStepsKm.join("->")} timeout=${config.driverTimeoutMs / 1000}s/driver`,
+      `radiusSteps=${config.radiusStepsKm.join("->")} timeout=${config.driverTimeoutMs / 1000}s/driver ` +
+      `femaleOnlyPass=${femalePreferenceEnabled}`,
   );
 
   // Begin the first radius step
@@ -440,6 +557,16 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
 
   const config = session.config;
   if (session.radiusIndex >= config.radiusStepsKm.length) {
+    if (session.femaleOnlyPass) {
+      session.femaleOnlyPass = false;
+      session.radiusIndex = 0;
+      session.driverQueue = [];
+      session.queueIndex = 0;
+      console.log(`[DISPATCH] trip=${session.tripId} no female pilots found; falling back to nearest eligible ${session.vehicleType || session.serviceType} drivers`);
+      emitCustomerSearchStatus(session);
+      await searchAndDispatchNextRadius(session);
+      return;
+    }
     // All radius steps exhausted
     expireDispatch(session, "No pilots available nearby. Please try again.");
     return;
@@ -456,7 +583,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
   // Deduplicate
   const uniqueExcludeIds = Array.from(new Set(excludeIds));
 
-  console.log(`[DISPATCH] Trip ${session.tripId} — searching radius ${radiusKm}km (step ${session.radiusIndex + 1}/${config.radiusStepsKm.length})`);
+  console.log(`[DISPATCH] Trip ${session.tripId} — searching radius ${radiusKm}km (step ${session.radiusIndex + 1}/${config.radiusStepsKm.length}) femaleOnly=${session.femaleOnlyPass}`);
 
   try {
     // Use parcel-specific driver search for parcel/b2b_parcel service types
@@ -475,7 +602,15 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         const distKm = Number(row.distance_km) || 99;
         const rating = Number(row.rating) || 3.0;
         const behaviorScore = Number(row.behavior_score) || 50;
-        const score = (1 - Math.min(distKm / 25, 1)) * 0.35 + (behaviorScore / 100) * 0.25 + ((rating - 1) / 4) * 0.20 + 0.15;
+        const scoreMeta = buildDispatchScore({
+          distanceKm: distKm,
+          rating,
+          avgResponseTimeSec: 60,
+          completionRate: 0.8,
+          behaviorScore,
+          idleSeconds: 0,
+          locationAgeSeconds: getLocationAgeSeconds(row.updated_at),
+        });
         return {
           driverId: row.id,
           fullName: row.full_name || "Pilot",
@@ -486,8 +621,9 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
           rating: Math.round(rating * 10) / 10,
           totalTrips: 0,
           avgResponseTimeSec: 60,
-          score: Math.round(score * 1000) / 1000,
+          score: scoreMeta.final,
           fcmToken: row.fcm_token || undefined,
+          scoreBreakdown: scoreMeta.breakdown,
         };
       });
       drivers.sort((a, b) => b.score - a.score);
@@ -499,7 +635,8 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         session.vehicleCategoryId,
         session.vehicleType,
         uniqueExcludeIds,
-        config.driversPerStep
+        config.driversPerStep,
+        session.femaleOnlyPass
       );
     }
 
@@ -651,6 +788,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   }
 
   console.log(`[DISPATCH] 📣 PILOT NOTIFIED — trip=${session.tripId} → pilot=${driver.driverId} (${driver.fullName}, ${driver.distanceKm}km away, score=${driver.score}) socketOnline=${socketConnected} fcmToken=${driver.fcmToken ? driver.fcmToken.substring(0, 15) + '...' : 'MISSING'} timeout=${session.config.driverTimeoutMs / 1000}s`);
+  console.log(`[DISPATCH] score_breakdown trip=${session.tripId} driver=${driver.driverId} ${formatScoreBreakdown(driver.scoreBreakdown)}`);
   logDispatchAudit(session.tripId, driver.driverId, "sent");
 
   // Start timeout timer — if driver doesn't respond, auto-skip
@@ -801,6 +939,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
     const r = await rawDb.execute(rawSql`
       SELECT u.is_online, u.is_locked, u.current_trip_id, u.is_active, u.verification_status,
              dl.is_online as dl_online,
+             dl.updated_at as last_location_at,
              COALESCE(dd.availability_status, 'offline') as availability_status
       FROM users u
       LEFT JOIN driver_locations dl ON dl.driver_id = u.id
@@ -813,13 +952,15 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       return false;
     }
     const d = r.rows[0] as any;
+    const freshLocation = isDriverLocationFresh(d.last_location_at);
     const available = (
       d.is_active === true &&
       d.is_locked !== true &&
       (d.is_online === true || d.dl_online === true) &&
       d.availability_status === "online" &&
       d.current_trip_id === null &&
-      d.verification_status === "approved"
+      d.verification_status === "approved" &&
+      freshLocation
     );
     if (!available) {
       const reasons: string[] = [];
@@ -829,6 +970,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       if (d.availability_status !== "online") reasons.push(`availability_status=${d.availability_status}`);
       if (d.current_trip_id !== null) reasons.push(`on trip ${d.current_trip_id}`);
       if (d.verification_status !== "approved") reasons.push(`verification=${d.verification_status} (need ACTIVE)`);
+      if (!freshLocation) reasons.push(`stale location (${getLocationAgeSeconds(d.last_location_at) ?? "unknown"}s old)`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;
@@ -848,7 +990,8 @@ async function findDriversInRadius(
   vehicleCategoryId: string | undefined,
   vehicleType: string | undefined,
   excludeDriverIds: string[],
-  limit: number
+  limit: number,
+  femaleOnly = false
 ): Promise<DriverMatchScore[]> {
   console.log(
     `[DISPATCH] findDriversInRadius pickup=(${pickupLat},${pickupLng}) radius=${radiusKm}km ` +
@@ -884,6 +1027,9 @@ async function findDriversInRadius(
   const vehicleTypeFilter = driverDbVehicleType
     ? rawSql`AND vc.type = ${driverDbVehicleType}`
     : rawSql``;
+  const femaleFilter = femaleOnly
+    ? rawSql`AND LOWER(COALESCE(u.gender, '')) = 'female'`
+    : rawSql``;
 
   // Rapido-style ranking: distance first, then idle time (longest-waiting driver
   // gets next ride — fairness + reduces ghost drivers), then rating.
@@ -898,6 +1044,7 @@ async function findDriversInRadius(
       COALESCE(ds.completion_rate, 0.8) as completion_rate,
       COALESCE(dbs.overall_score, 50) as behavior_score,
       EXTRACT(EPOCH FROM (NOW() - COALESCE(ds.updated_at, dl.updated_at))) as idle_seconds,
+      EXTRACT(EPOCH FROM (NOW() - dl.updated_at)) as location_age_seconds,
       (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token,
       SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -913,15 +1060,13 @@ async function findDriversInRadius(
       AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online = true
       AND COALESCE(dd.availability_status, 'offline') = 'online'
-      AND (
-        dl.updated_at > NOW() - INTERVAL '30 minutes'
-        OR (u.is_online = true AND dl.updated_at > NOW() - INTERVAL '4 hours')
-      )
+      AND dl.updated_at > NOW() - (${LOCATION_FRESHNESS_SECONDS} * INTERVAL '1 second')
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
       AND COALESCE(ds.completion_rate, 0.8) >= 0.5
       ${vcFilter}
       ${vehicleTypeFilter}
+      ${femaleFilter}
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -942,7 +1087,7 @@ async function findDriversInRadius(
     ),
   );
   console.log(
-    `[DISPATCH] radius=${radiusKm}km booking.vehicleType=${vehicleType} matchedDrivers=${drivers.rows.length} ` +
+    `[DISPATCH] radius=${radiusKm}km booking.vehicleType=${vehicleType} femaleOnly=${femaleOnly} matchedDrivers=${drivers.rows.length} ` +
       `totalOnline=${onlineCount} matchedDriverTypes=${matchedVehicleTypes.join(",") || "none"}`,
   );
 
@@ -976,9 +1121,8 @@ async function findDriversInRadius(
         if (r.current_trip_id) reasons.push(`on trip ${r.current_trip_id}`);
         if (r.verification_status !== "approved") reasons.push(`verification=${r.verification_status} (need ACTIVE)`);
         if (r.lat == 0 && r.lng == 0) reasons.push("lat/lng=0,0 (no GPS fix)");
-        const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
-        const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
-        if (isStale) reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
+        const locationAgeSeconds = getLocationAgeSeconds(r.updated_at);
+        if (!isDriverLocationFresh(r.updated_at)) reasons.push(`stale location (${locationAgeSeconds ?? "unknown"}s old)`);
         if (allowedCategoryIds.size > 0 && !allowedCategoryIds.has(String(r.vehicle_category_id || ""))) {
           reasons.push(
             `vehicle_category mismatch (has=${r.vehicle_category_id}, allowed=${Array.from(allowedCategoryIds).join("|")})`,
@@ -1003,7 +1147,7 @@ async function findDriversInRadius(
   if (!drivers.rows.length) return [];
 
   // AI scoring: distance (35%) + behavior score (25%) + rating (20%) + response speed (10%) + completion (10%)
-  const WEIGHTS = { distance: 0.35, behavior: 0.25, rating: 0.20, responseSpeed: 0.10, completionRate: 0.10 };
+  const WEIGHTS = DISPATCH_SCORE_WEIGHTS;
 
   const scored: DriverMatchScore[] = drivers.rows.map((row: any) => {
     const distKm = Number(row.distance_km) || 99;
@@ -1011,6 +1155,10 @@ async function findDriversInRadius(
     const avgResp = Number(row.avg_response_time_sec) || 60;
     const completionRate = Number(row.completion_rate) || 0.8;
     const behaviorScore = Number(row.behavior_score) || 50;
+    const idleSeconds = Number(row.idle_seconds) || 0;
+    const locationAgeSeconds = row.location_age_seconds != null
+      ? Math.round(Number(row.location_age_seconds))
+      : null;
 
     const maxRadius = 25;
     const distScore = Math.max(0, 1 - distKm / maxRadius);
@@ -1025,6 +1173,15 @@ async function findDriversInRadius(
       ratingScore * WEIGHTS.rating +
       respScore * WEIGHTS.responseSpeed +
       complScore * WEIGHTS.completionRate;
+    const scoreMeta = buildDispatchScore({
+      distanceKm: distKm,
+      rating,
+      avgResponseTimeSec: avgResp,
+      completionRate,
+      behaviorScore,
+      idleSeconds,
+      locationAgeSeconds,
+    });
 
     return {
       driverId: row.id,
@@ -1036,8 +1193,9 @@ async function findDriversInRadius(
       rating: Math.round(rating * 10) / 10,
       totalTrips: Number(row.total_trips) || 0,
       avgResponseTimeSec: Math.round(avgResp),
-      score: Math.round(score * 1000) / 1000,
+      score: scoreMeta.final,
       fcmToken: row.fcm_token || undefined,
+      scoreBreakdown: scoreMeta.breakdown,
     };
   });
 

@@ -483,19 +483,19 @@ class SocketService {
     _socket!.emit('call:initiate', {'targetUserId': targetUserId, 'tripId': tripId, 'callerName': callerName});
   }
 
-  void sendCallOffer({required String targetUserId, required dynamic sdp}) {
+  void sendCallOffer({required String targetUserId, required String tripId, required dynamic sdp}) {
     if (!_isConnected) return;
-    _socket!.emit('call:offer', {'targetUserId': targetUserId, 'sdp': sdp});
+    _socket!.emit('call:offer', {'targetUserId': targetUserId, 'tripId': tripId, 'sdp': sdp});
   }
 
-  void sendCallAnswer({required String targetUserId, required dynamic sdp}) {
+  void sendCallAnswer({required String targetUserId, required String tripId, required dynamic sdp}) {
     if (!_isConnected) return;
-    _socket!.emit('call:answer', {'targetUserId': targetUserId, 'sdp': sdp});
+    _socket!.emit('call:answer', {'targetUserId': targetUserId, 'tripId': tripId, 'sdp': sdp});
   }
 
-  void sendIceCandidate({required String targetUserId, required dynamic candidate}) {
+  void sendIceCandidate({required String targetUserId, required String tripId, required dynamic candidate}) {
     if (!_isConnected) return;
-    _socket!.emit('call:ice', {'targetUserId': targetUserId, 'candidate': candidate});
+    _socket!.emit('call:ice', {'targetUserId': targetUserId, 'tripId': tripId, 'candidate': candidate});
   }
 
   void endCall({required String targetUserId, String? tripId, int? durationSec}) {

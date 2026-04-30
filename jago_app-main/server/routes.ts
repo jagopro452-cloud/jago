@@ -2,6 +2,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
+import { notifyUser } from "./notification-service";
+import { sendAlert as sendOpsAlert } from "./observability";
 import { sendCustomSms } from "./sms";
 import { io } from "./socket";
 import type { Server } from "http";
@@ -7394,10 +7396,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // lightweight request marker for rate limiting / telemetry and never sends SMS.
   app.post("/api/app/send-otp", otpLimiter, async (req, res) => {
     try {
-      const { phone, userType = "customer" } = req.body;
+      const { phone, userType = "customer", provider, forceServerOtp = false } = req.body;
       if (!phone) return res.status(400).json({ message: "Phone required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+
+      const otpSettingsR = await rawDb.execute(rawSql`
+        SELECT primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds
+        FROM otp_settings
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const otpSettings = (otpSettingsR.rows[0] as any) || {};
+      const primaryProvider = String(otpSettings.primary_provider || "firebase").toLowerCase();
+      const smsEnabled = otpSettings.sms_enabled === true;
+      const firebaseEnabled = otpSettings.firebase_enabled !== false;
+      const fallbackEnabled = otpSettings.fallback_enabled === true;
+      const otpExpirySeconds = Math.min(
+        Math.max(parseInt(String(otpSettings.otp_expiry_seconds || "120"), 10) || 120, 60),
+        600,
+      );
+      const wantsSms = forceServerOtp === true || String(provider || "").toLowerCase() === "sms";
 
       // Rate limiting: max 5 OTPs per phone per hour
       const recentCount = await rawDb.execute(rawSql`
@@ -7407,13 +7425,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
       }
 
+      if (wantsSms || (!firebaseEnabled && smsEnabled) || (primaryProvider === "sms" && smsEnabled)) {
+        if (!smsEnabled) {
+          return res.status(503).json({ success: false, message: "SMS OTP is currently unavailable. Please try Firebase login again." });
+        }
+
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        await rawDb.execute(rawSql`
+          INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
+          VALUES (${phoneStr}, ${generatedOtp}, ${userType}, NOW(), NOW() + (${otpExpirySeconds} * INTERVAL '1 second'))
+        `).catch(dbCatch("db"));
+
+        const smsSent = await sendCustomSms(
+          phoneStr,
+          `Your JAGO OTP is ${generatedOtp}. Valid for ${Math.max(1, Math.round(otpExpirySeconds / 60))} minutes. Do not share it.`,
+        );
+
+        if (!smsSent) {
+          return res.status(503).json({
+            success: false,
+            message: "SMS OTP service is unavailable right now. Please try again in a moment.",
+          });
+        }
+
+        return res.json({
+          success: true,
+          provider: "sms",
+          message: "OTP sent via SMS.",
+          ...(process.env.NODE_ENV !== "production" ? { devOtp: generatedOtp } : {}),
+        });
+      }
+
       await rawDb.execute(rawSql`
         INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
         VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `).catch(dbCatch("db"));
       console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} -> Firebase`);
-      return res.json({ success: true, provider: 'firebase', message: 'Use Firebase OTP for verification.' });
+      return res.json({
+        success: true,
+        provider: 'firebase',
+        fallbackEnabled,
+        message: fallbackEnabled ? 'Use Firebase OTP for verification. SMS fallback is available if Firebase fails.' : 'Use Firebase OTP for verification.',
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -7694,7 +7748,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { phone, password, userType = "customer" } = req.body;
       if (!phone || !password) return res.status(400).json({ message: "Phone and password are required" });
-      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
+      const phoneStr = phone.toString().replace(/\D/g, "");
+      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
       if (!userRes.rows.length) return res.status(404).json({ message: "No account found. Please register first." });
       const user = camelize(userRes.rows[0]) as any;
       if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
@@ -7774,9 +7829,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
       if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
-      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
-      if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
+      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
+      if (!userRes.rows.length) return res.status(404).json({ message: "No account found with this phone number." });
+      const otpRow = await rawDb.execute(rawSql`
+        SELECT id FROM otp_logs
+        WHERE phone=${phoneStr}
+          AND user_type=${userType}
+          AND otp=${otp}
+          AND is_used=false
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const user = userRes.rows[0] as any;
+      const legacyResetOtpStillValid = user.reset_otp === otp && user.reset_otp_expiry && new Date(user.reset_otp_expiry) > new Date();
+      if (!otpRow.rows.length && !legacyResetOtpStillValid) {
+        return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
+      }
       const passwordHash = await hashPassword(newPassword);
+      if (otpRow.rows.length) {
+        await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`).catch(dbCatch("db"));
+      }
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -11293,26 +11366,138 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const user = (req as any).currentUser;
       const { lat, lng, tripId, message } = req.body;
-      // Insert into safety_alerts (correct table � sos_alerts was wrong table name)
+      const alertLat = Number(lat);
+      const alertLng = Number(lng);
+      const normalizedTripId = String(tripId || "").trim() || null;
+      let tripRow: any = null;
+
+      if (normalizedTripId) {
+        const tripR = await rawDb.execute(rawSql`
+          SELECT id, customer_id, driver_id, current_status, pickup_address, destination_address
+          FROM trip_requests
+          WHERE id=${normalizedTripId}::uuid
+          LIMIT 1
+        `);
+        tripRow = tripR.rows[0] as any;
+        if (!tripRow) return res.status(404).json({ message: "Trip not found" });
+        if (tripRow.customer_id !== user.id && tripRow.driver_id !== user.id) {
+          return res.status(403).json({ message: "You are not part of this trip" });
+        }
+      }
+
+      const recentAlertR = await rawDb.execute(rawSql`
+        SELECT id
+        FROM safety_alerts
+        WHERE user_id=${user.id}::uuid
+          AND COALESCE(trip_id::text, '') = COALESCE(${normalizedTripId}, '')
+          AND status='active'
+          AND created_at > NOW() - INTERVAL '60 seconds'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const recentAlertId = (recentAlertR.rows[0] as any)?.id;
+      if (recentAlertId) {
+        return res.json({
+          success: true,
+          alertId: recentAlertId,
+          deduped: true,
+          message: "SOS alert already active. Help is on the way.",
+        });
+      }
+
+      const alertMessage = String(message || "SOS triggered from app").slice(0, 280);
       const r = await rawDb.execute(rawSql`
         INSERT INTO safety_alerts (user_id, trip_id, alert_type, triggered_by, latitude, longitude, notes, status)
         VALUES (
           ${user.id}::uuid,
-          ${tripId || null},
+          ${normalizedTripId || null},
           'sos',
           ${user.userType === 'driver' ? 'driver' : 'customer'},
-          ${lat ? Number(lat) : null},
-          ${lng ? Number(lng) : null},
-          ${message || 'SOS triggered from app'},
+          ${Number.isFinite(alertLat) ? alertLat : null},
+          ${Number.isFinite(alertLng) ? alertLng : null},
+          ${alertMessage},
           'active'
         )
         RETURNING id
       `);
       const alertId = (r.rows[0] as any)?.id || null;
-      console.log(`[SOS] ? ${user.userType} ${user.fullName} (${user.phone}) at ${lat},${lng} alertId=${alertId}`);
-      res.json({ success: true, alertId, message: "SOS alert sent. Help is on the way." });
+
+      const settingsR = await rawDb.execute(rawSql`
+        SELECT key_name, value
+        FROM business_settings
+        WHERE key_name IN ('support_phone', 'sos_number')
+      `).catch(() => ({ rows: [] as any[] }));
+      const settings = Object.fromEntries(
+        settingsR.rows.map((row: any) => [String(row.key_name || ""), String(row.value || "")]),
+      );
+      const supportPhone = settings.support_phone || settings.sos_number || "100";
+
+      const alertPayload = {
+        alertId,
+        tripId: normalizedTripId,
+        lat: Number.isFinite(alertLat) ? alertLat : null,
+        lng: Number.isFinite(alertLng) ? alertLng : null,
+        fromUserId: user.id,
+        fromUserType: user.userType,
+        fromName: user.fullName || "User",
+        phone: user.phone || "",
+        message: alertMessage,
+        supportPhone,
+        createdAt: new Date().toISOString(),
+      };
+
+      if (normalizedTripId) {
+        io?.to(`trip:${normalizedTripId}`).emit("safety:sos", alertPayload);
+      }
+      io?.to("ops:sos").emit("safety:sos", alertPayload);
+
+      if (tripRow) {
+        const otherId = user.userType === "driver" ? tripRow.customer_id : tripRow.driver_id;
+        if (otherId) {
+          await notifyUser(String(otherId), "safety:sos", alertPayload, {
+            dedupeKey: `sos:${alertId}:counterparty`,
+            title: "Emergency SOS Alert",
+            body: `${user.fullName || "Your co-rider"} triggered an SOS alert.`,
+          });
+        }
+      }
+
+      const contactsR = await rawDb.execute(rawSql`
+        SELECT name, phone
+        FROM emergency_contacts
+        WHERE user_id=${user.id}::uuid
+        ORDER BY created_at ASC
+        LIMIT 3
+      `).catch(() => ({ rows: [] as any[] }));
+      let contactsNotified = 0;
+      const tripContext = tripRow
+        ? ` Trip: ${tripRow.pickup_address || "pickup"} to ${tripRow.destination_address || "destination"}.`
+        : "";
+      const smsText = `SOS ALERT: ${user.fullName || "User"} (${user.phone || "unknown"}) triggered emergency assistance.${tripContext} Support: ${supportPhone}.`;
+      for (const contact of contactsR.rows as any[]) {
+        const sent = await sendCustomSms(String(contact.phone || ""), smsText).catch(() => false);
+        if (sent) contactsNotified += 1;
+      }
+
+      await sendOpsAlert({
+        level: "critical",
+        source: "sos",
+        message: `SOS triggered by ${user.userType} ${user.fullName || user.id}`,
+        details: JSON.stringify({
+          alertId,
+          tripId: normalizedTripId,
+          userId: user.id,
+          phone: user.phone,
+          lat: alertPayload.lat,
+          lng: alertPayload.lng,
+          contactsNotified,
+        }),
+      }).catch(() => undefined);
+
+      console.log(`[SOS] ALERT userType=${user.userType} user=${user.fullName} phone=${user.phone} trip=${normalizedTripId || "-"} alertId=${alertId} contacts=${contactsNotified}`);
+      res.json({ success: true, alertId, contactsNotified, message: "SOS alert sent. Help is on the way." });
     } catch (e: any) {
-      console.error(`[SOS] ? Failed to create alert:`, e);
+      console.error(`[SOS] Failed to create alert:`, e);
       res.status(500).json({ message: safeErrMsg(e) });
     }
   });

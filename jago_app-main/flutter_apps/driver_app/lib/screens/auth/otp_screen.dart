@@ -139,7 +139,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
 
     if (firebaseSent || !mounted) return;
 
-    final serverOtp = await AuthService.sendOtp(widget.phone, 'driver');
+    final serverOtp = await AuthService.sendOtp(widget.phone, 'driver', true);
     if (!mounted) return;
     if (serverOtp['success'] == true) {
       _verificationId = null;

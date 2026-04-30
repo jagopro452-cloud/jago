@@ -165,12 +165,17 @@ class AuthService {
     return {..._base, if (token != null) 'Authorization': 'Bearer $token'};
   }
 
-  static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'driver']) async {
+  static Future<Map<String, dynamic>> sendOtp(String phone, [String userType = 'driver', bool forceServerOtp = false]) async {
     try {
       final res = await http.post(
         Uri.parse(ApiConfig.sendOtp),
         headers: _base,
-        body: jsonEncode({'phone': phone, 'userType': userType}),
+        body: jsonEncode({
+          'phone': phone,
+          'userType': userType,
+          if (forceServerOtp) 'provider': 'sms',
+          if (forceServerOtp) 'forceServerOtp': true,
+        }),
       ).timeout(const Duration(seconds: 30));
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {'success': false, 'message': 'Server error. Please try again.'};
