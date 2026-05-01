@@ -2204,9 +2204,20 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Widget _buildPoolSeatSelector() {
-    final fareVal = (_fare?['estimatedFare'] ?? 0).toDouble();
-    final perSeat = _seatsBooked > 0 && fareVal > 0 ? fareVal : 0.0;
+    // fareVal = per-seat fare for THIS passenger's pickup→drop distance
+    // (server/fallback calculates: perSeatBase + perSeatKmRate × distanceKm)
+    final farePerSeat = (_fare?['estimatedFare'] ?? 0).toDouble();
+    final totalFare = farePerSeat * _seatsBooked;
+    // Commission + GST breakdown (10% commission + 18% GST on commission = ~11.8% total)
+    final commissionPct = 10.0;
+    final gstOnComm = 1.8; // 18% of 10% = 1.8%
+    final commission = totalFare * commissionPct / 100;
+    final gst = totalFare * gstOnComm / 100;
+    final driverEarns = totalFare - commission - gst;
+
     const purple = Color(0xFF7C3AED);
+    const green = Color(0xFF16A34A);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -2218,6 +2229,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Row(children: [
             const Icon(Icons.people_rounded, size: 18, color: purple),
             const SizedBox(width: 8),
@@ -2229,7 +2241,29 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               child: Text('Pool Ride', style: GoogleFonts.outfit(color: purple, fontSize: 11, fontWeight: FontWeight.w700)),
             ),
           ]),
+          const SizedBox(height: 6),
+          // Distance-based fare explanation
+          if (farePerSeat > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.route_rounded, size: 14, color: green),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Your fare: ₹${farePerSeat.toStringAsFixed(0)} per seat based on your route (${_distanceKm.toStringAsFixed(1)} km)',
+                    style: GoogleFonts.outfit(fontSize: 11, color: green, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ]),
+            ),
           const SizedBox(height: 12),
+          // Seat buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(4, (idx) {
@@ -2240,7 +2274,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 6),
-                  width: 60, height: 60,
+                  width: 60, height: 64,
                   decoration: BoxDecoration(
                     color: sel ? purple : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(16),
@@ -2251,33 +2285,77 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.person_rounded, size: 22, color: sel ? Colors.white : Colors.grey.shade500),
-                      Text('$n', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: sel ? Colors.white : Colors.grey.shade600)),
+                      const SizedBox(height: 2),
+                      Text('$n seat${n > 1 ? 's' : ''}',
+                        style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.w700, color: sel ? Colors.white : Colors.grey.shade600)),
                     ],
                   ),
                 ),
               );
             }),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '$_seatsBooked seat${_seatsBooked > 1 ? 's' : ''} selected',
-                style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B)),
+          const SizedBox(height: 14),
+          // Fare calculation breakdown — the core logic display
+          if (farePerSeat > 0) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: purple.withOpacity(0.12)),
               ),
-              if (perSeat > 0)
-                Text(
-                  '₹${(perSeat * _seatsBooked).toStringAsFixed(0)} total',
-                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF1E293B)),
+              child: Column(children: [
+                // Per-seat × seats = total
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('₹${farePerSeat.toStringAsFixed(0)}/seat  ×  $_seatsBooked seat${_seatsBooked > 1 ? 's' : ''}',
+                      style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B))),
+                    Text('₹${totalFare.toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF1E293B))),
+                  ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Prices auto-split across passengers. Save up to 60% vs solo ride.',
-            style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF94A3B8)),
-          ),
+                const Divider(height: 16, thickness: 0.5),
+                // Commission + GST line
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Jago commission (10%) + GST',
+                      style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF94A3B8))),
+                    Text('−₹${(commission + gst).toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFFEF4444))),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Driver earns
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Driver earns',
+                      style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF64748B))),
+                    Text('₹${driverEarns.toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w600, color: green)),
+                  ],
+                ),
+                const Divider(height: 16, thickness: 0.5),
+                // YOU PAY
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('You Pay',
+                      style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w700, color: const Color(0xFF1E293B))),
+                    Text('₹${totalFare.toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: purple)),
+                  ],
+                ),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Each passenger pays based on their own route distance. Other passengers in your pool may pay differently.',
+              style: GoogleFonts.outfit(fontSize: 10, color: const Color(0xFF94A3B8)),
+            ),
+          ],
         ],
       ),
     );

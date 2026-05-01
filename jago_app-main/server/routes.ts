@@ -6660,7 +6660,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         return res.status(409).json({ message: "Not enough seats available", available: ride.available_seats });
       }
-      res.json({ success: true, booking: camelize(bookingRes.rows[0]) });
+      const booking = camelize(bookingRes.rows[0]) as any;
+      const totalFare = parseFloat(booking.totalFare || 0);
+      const farePerSeat = seats > 0 ? Math.round(totalFare / seats * 100) / 100 : 0;
+      const commAmt = Math.round(totalFare * 10 / 100 * 100) / 100;
+      const gstAmt = Math.round(totalFare * 1.8 / 100 * 100) / 100;
+      const driverEarns = Math.round((totalFare - commAmt - gstAmt) * 100) / 100;
+
+      res.json({
+        success: true,
+        booking,
+        fareBreakdown: {
+          perSeatFare: farePerSeat,
+          seatsBooked: seats,
+          totalPassengerPays: totalFare,
+          jagoCommission: commAmt,
+          gst: gstAmt,
+          driverEarns,
+          formula: `₹${farePerSeat.toFixed(0)}/seat × ${seats} seat${seats > 1 ? 's' : ''} = ₹${totalFare.toFixed(0)}`,
+        },
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -6911,7 +6930,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
 
-      // After 5 minutes (collection window), trigger dispatch if not yet done — handled by driver or admin
+      // Commission + GST breakdown for transparency
+      const commissionPct = 10;
+      const gstOnCommPct = 1.8; // 18% of 10% commission
+      const commissionAmt = Math.round(totalFare * commissionPct / 100 * 100) / 100;
+      const gstAmt = Math.round(totalFare * gstOnCommPct / 100 * 100) / 100;
+      const driverEarns = Math.round((totalFare - commissionAmt - gstAmt) * 100) / 100;
+
       res.json({
         success: true,
         passenger: { ...passenger, poolRideId },
@@ -6920,6 +6945,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         totalFare,
         seatsBooked: seats,
         distanceKm: distKm,
+        // Fare breakdown transparency
+        fareBreakdown: {
+          perSeatFare: farePerSeat,
+          seatsBooked: seats,
+          totalPassengerPays: totalFare,
+          jagoCommission: commissionAmt,
+          gst: gstAmt,
+          driverEarns,
+          note: `₹${farePerSeat.toFixed(0)}/seat × ${seats} seat${seats > 1 ? 's' : ''} = ₹${totalFare.toFixed(0)} (your ${distKm.toFixed(1)}km route)`,
+        },
         isNewRide,
         shouldDispatch,
         message: isNewRide
@@ -6967,6 +7002,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       const avail = availR.rows[0] as any;
 
+      // Commission + GST breakdown for preview
+      const commPct = 10;
+      const gstPct = 1.8;
+      const commAmt = Math.round(totalFare * commPct / 100 * 100) / 100;
+      const gstAmt = Math.round(totalFare * gstPct / 100 * 100) / 100;
+      const driverEarns = Math.round((totalFare - commAmt - gstAmt) * 100) / 100;
+
       res.json({
         farePerSeat,
         totalFare,
@@ -6975,6 +7017,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxSeats,
         availableRides: parseInt(avail.cnt || 0),
         availableSeats: parseInt(avail.total_available_seats || 0),
+        // Full breakdown so Flutter UI can show exact calculation
+        fareBreakdown: {
+          perSeatFare: farePerSeat,
+          seatsBooked: seats,
+          totalPassengerPays: totalFare,
+          jagoCommission: commAmt,
+          gst: gstAmt,
+          driverEarns,
+          formula: `₹${farePerSeat.toFixed(0)} × ${seats} = ₹${totalFare.toFixed(0)} (${distKm.toFixed(1)}km route)`,
+        },
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
