@@ -24,6 +24,7 @@ class CallService {
   MediaStream? _remoteStream;
   RTCSessionDescription? _pendingRemoteOffer;
   bool _hasRemoteDescription = false;
+  Timer? _outgoingCallTimer;
 
   final _remoteStreamController = StreamController<dynamic>.broadcast();
   final _callStateController = StreamController<CallState>.broadcast();
@@ -57,7 +58,10 @@ class CallService {
   }) async {
     if (_state != CallState.idle) return;
     if (!await _ensureMicrophonePermission()) {
-      _setState(CallState.idle);
+      _setState(CallState.micPermissionDenied);
+      Future.delayed(const Duration(seconds: 3), () {
+        if (_state == CallState.micPermissionDenied) _setState(CallState.idle);
+      });
       return;
     }
 
@@ -85,6 +89,14 @@ class CallService {
       tripId: tripId,
       sdp: {'type': offer.type, 'sdp': offer.sdp},
     );
+
+    // Auto-hangup after 45 seconds if peer doesn't answer
+    _outgoingCallTimer?.cancel();
+    _outgoingCallTimer = Timer(const Duration(seconds: 45), () {
+      if (_state == CallState.outgoing) {
+        hangUp(notifyRemote: true);
+      }
+    });
   }
 
   Future<void> acceptCall({
@@ -145,6 +157,8 @@ class CallService {
   }
 
   Future<void> hangUp({bool notifyRemote = true}) async {
+    _outgoingCallTimer?.cancel();
+    _outgoingCallTimer = null;
     if (notifyRemote && activeCallTargetId != null) {
       int? dur;
       if (_callStartTime != null) {
@@ -270,6 +284,8 @@ class CallService {
 
   Future<void> _handleAnswer(Map<String, dynamic> data) async {
     if (_state != CallState.outgoing || _peerConnection == null) return;
+    _outgoingCallTimer?.cancel();
+    _outgoingCallTimer = null;
     final sdp = Map<String, dynamic>.from(data['sdp'] as Map? ?? const {});
     final type = (sdp['type'] ?? '').toString();
     final description = (sdp['sdp'] ?? '').toString();
@@ -330,6 +346,8 @@ class CallService {
   }
 
   void dispose() {
+    _outgoingCallTimer?.cancel();
+    _outgoingCallTimer = null;
     for (final s in _subs) {
       s.cancel();
     }
@@ -340,4 +358,4 @@ class CallService {
   }
 }
 
-enum CallState { idle, outgoing, incoming, connected, rejected }
+enum CallState { idle, outgoing, incoming, connected, rejected, micPermissionDenied }

@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   void _startTimer() {
     _timer?.cancel();
-    _seconds = 30;
+    _seconds = 60;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || _seconds == 0) { t.cancel(); return; }
       setState(() => _seconds--);

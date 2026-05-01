@@ -46,6 +46,12 @@ class _CallScreenState extends State<CallScreen> {
           if (mounted) Navigator.of(context).pop();
         });
       }
+      if (s == CallState.micPermissionDenied) {
+        _durationTimer?.cancel();
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) Navigator.of(context).pop();
+        });
+      }
     }));
 
     if (widget.isIncoming) {
@@ -147,6 +153,7 @@ class _CallScreenState extends State<CallScreen> {
       case CallState.connected: return 'Connected';
       case CallState.rejected: return 'Call declined';
       case CallState.idle: return 'Call ended';
+      case CallState.micPermissionDenied: return 'Microphone access denied';
     }
   }
 

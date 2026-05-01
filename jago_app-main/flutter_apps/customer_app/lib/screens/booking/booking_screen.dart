@@ -121,6 +121,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (key.contains('mini truck') || key.contains('tata ace')) return 'mini_truck';
     if (key.contains('pickup')) return 'pickup_truck';
     if (key.contains('tempo')) return 'tempo_407';
+    if (key.contains('outstation pool') || key.contains('outstation')) return 'outstation_pool';
+    if (key.contains('local pool') || key.contains('city pool')) return 'local_pool';
+    if (key.contains('pool') || key.contains('carpool')) return 'local_pool';
     if (key.contains('bike')) return 'bike';
     if (key.contains('auto')) return 'auto';
     if (key.contains('cab') ||
@@ -168,6 +171,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     final requestedKey = _normalizeVehicleLookupKey(requestedName);
     var score = 0;
 
+    if (requestedType == 'local_pool' && (nameKey.contains('local_pool') || nameKey.contains('city_pool') || nameKey.contains('pool'))) score += 120;
+    if (requestedType == 'outstation_pool' && (nameKey.contains('outstation') || nameKey.contains('outstation_pool'))) score += 120;
     if (requestedType == 'bike' && nameKey.contains('bike')) score += 120;
     if (requestedType == 'auto' && nameKey.contains('auto')) score += 120;
     if (requestedType == 'car') {
@@ -355,6 +360,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('mini truck') || n.contains('tata ace')) return 'Mini cargo truck · Up to 500 kg';
     if (n.contains('pickup van') || n.contains('pickup')) return 'Large pickup van · Up to 2000 kg';
     if (n.contains('parcel')) return 'Parcel delivery';
+    if (n.contains('outstation pool') || (n.contains('outstation') && n.contains('pool'))) return 'Intercity shared ride · Save more';
+    if (n.contains('local pool') || n.contains('city pool')) return 'Share your ride · 2-3 seats';
+    if (n.contains('pool') || n.contains('carpool')) return 'Shared ride · Cost effective';
     if (n.contains('bike')) return '1 passenger · Fastest';
     if (n.contains('auto')) return 'Up to 3 passengers';
     if (n.contains('suv')) return 'Up to 6 passengers · AC';
@@ -365,17 +373,19 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   // Rule 4: Returns true if vehicle should be HIDDEN
   static bool _shouldHideVehicle(String name) {
     final n = name.toLowerCase();
-    
-    // Whitelist only requested categories: bike, auto, cab, premium
-    // Relaxed contains checks to avoid hiding valid variations (e.g. "Bike - Fast")
+
+    // Whitelist all valid ride categories
     if (n.contains('bike')) return false;
     if (n.contains('auto')) return false;
     if (n.contains('cab')) return false;
     if (n.contains('premium')) return false;
     if (n.contains('sedan')) return false;
     if (n.contains('car')) return false;
+    if (n.contains('pool')) return false;      // local pool, city pool, outstation pool
+    if (n.contains('carpool')) return false;
+    if (n.contains('outstation')) return false;
 
-    // Hide everything else (Parcel, SUV, Pool, etc. if not requested)
+    // Hide cargo/parcel vehicles from ride list
     return true;
   }
 
@@ -394,6 +404,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
     'mini_truck':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
     'pickup_van':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
+    'local_pool':       'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125550/ChatGPT_Image_Apr_2_2026_03_55_30_PM_ywb7fj.png',
+    'outstation_pool':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_27_28_AM_w0rcnh',
   };
 
   static String? _vehicleImageKey(String name) {
@@ -404,6 +416,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('parcel bike') || n.contains('bike parcel')) return 'parcel_bike';
     if (n.contains('parcel auto')) return 'parcel_auto';
     if (n.contains('parcel')) return 'parcel_bike';
+    if (n.contains('outstation pool') || (n.contains('outstation') && n.contains('pool'))) return 'outstation_pool';
+    if (n.contains('local pool') || n.contains('city pool') || n.contains('pool') || n.contains('carpool')) return 'local_pool';
     if (n.contains('bike')) return 'bike';
     if (n.contains('auto')) return 'auto';
     if (n.contains('cab') || n.contains('car') || n.contains('suv')) return 'cab';
@@ -560,6 +574,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('parcel bike') || n.contains('bike parcel')) return 'Up to 10 kg';
     if (n.contains('parcel auto')) return 'Up to 50 kg';
     if (n.contains('parcel')) return 'Package delivery';
+    if (n.contains('outstation pool')) return 'Shared · intercity';
+    if (n.contains('local pool') || n.contains('city pool') || n.contains('pool')) return 'Shared · 2-3 seats';
     if (n.contains('suv')) return '6 seats';
     if (n.contains('car')) return '4 seats';
     if (n.contains('auto')) return '3 seats';
@@ -881,12 +897,14 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         make('Pickup Van',  150, 35, 180, (dist * 5).ceil()),
       ];
     }
-    // Ride vehicles (default)
+    // Ride vehicles (default) — includes pool options
     return [
-      make('Bike', 25, 10, 28, (dist * 3).ceil()),
-      make('Auto', 35, 13, 40, (dist * 3.5).ceil()),
-      make('Cab',  50, 16, 60, (dist * 4).ceil()),
-      make('Premium Cab', 70, 20, 80, (dist * 4).ceil()),
+      make('Bike',           25, 10, 28, (dist * 3).ceil()),
+      make('Auto',           35, 13, 40, (dist * 3.5).ceil()),
+      make('Cab',            50, 16, 60, (dist * 4).ceil()),
+      make('Premium Cab',    70, 20, 80, (dist * 4).ceil()),
+      make('Local Pool',     18,  8, 22, (dist * 2.5).ceil()),
+      make('Outstation Pool', 30, 12, 40, (dist * 3).ceil()),
     ];
   }
 
