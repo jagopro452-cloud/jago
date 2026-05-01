@@ -26,6 +26,13 @@ import {
 } from "./vehicle-matching";
 import { setDriverPresence, deleteDriverPresence } from "./presence";
 import { logInfo, logWarn } from "./hardening";
+import {
+  checkSpeedFraud,
+  checkGpsJumpFraud,
+  checkTripNoMovement,
+  clearDriverLocationState,
+  clearTripMovementState,
+} from "./fraud";
 
 export let io: SocketIOServer;
 
@@ -267,6 +274,12 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const tripRow = tripR.rows[0] as any;
           const tripId = tripRow?.current_trip_id || tripRow?.active_trip_id;
+
+          // ── Fraud checks (sync, non-blocking log) ──────────────────────────
+          checkGpsJumpFraud(userId, lat, lng);
+          checkSpeedFraud(userId, speed * 3.6, tripId ?? null); // m/s → km/h
+          if (tripId) checkTripNoMovement(tripId, userId, lat, lng);
+
           if (tripId) {
             io.to(`trip:${tripId}`).emit("driver:location_update", { lat, lng, heading, speed, tripId });
 
@@ -606,6 +619,7 @@ export function setupSocket(httpServer: HttpServer) {
                 actorType: "driver",
                 data: { source: "socket_status" },
               });
+              clearTripMovementState(tripId);
             } else {
               await transitionRideState(tripId, "payment_pending", {
                 driverId: userId,
@@ -1153,6 +1167,12 @@ export function setupSocket(httpServer: HttpServer) {
             `).catch(() => { });
             deleteDriverPresence(userId).catch(() => { });
             logInfo("PRESENCE", `Driver ${userId} offline after grace period`, { reason }).catch(() => { });
+            console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
+            clearDriverLocationState(userId);
+            deleteDriverPresence(userId).catch(() => { });
+            logInfo("PRESENCE", `Driver ${userId} offline after grace period`, { reason }).catch(() => { });
+            console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
+            clearDriverLocationState(userId);
           }
         }, DRIVER_OFFLINE_GRACE_MS);
         pendingOfflineTimers.set(userId, timer);

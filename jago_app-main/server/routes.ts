@@ -146,6 +146,12 @@ import {
   transitionParcelState,
 } from "./parcel-state";
 import { activeDriverEligibilitySql } from "./driver-state";
+import { getSurgeInfo, getSurgeFactor, invalidateSurgeCache } from "./surge";
+import {
+  isCustomerCancellationBlocked,
+  recordCustomerCancellation as recordFraudCancellation,
+  getCustomerCancelCount,
+} from "./fraud";
 import {
   initDynamicServicesTables,
   getServicesForLocation,
@@ -10693,7 +10699,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 if (surgeZoneRow?.surge_factor) surgeMult = parseFloat(surgeZoneRow.surge_factor) || 1.0;
               } catch { }
             }
-            // Also check time-based surge pricing (zone-specific + global)
+            // Check time-based surge pricing (zone-specific + global)
             try {
               const now = new Date();
               const timeStr = now.toTimeString().slice(0, 5); // HH:MM
@@ -10709,6 +10715,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 const timeSurge = parseFloat((activeSurge.rows[0] as any).multiplier || '1');
                 surgeMult = Math.max(surgeMult, timeSurge);
               }
+            } catch { }
+            // Real-time demand/supply surge — takes precedence if higher than static/time surge
+            try {
+              const realtimeSurge = await getSurgeFactor(validPickupCoords.lat, validPickupCoords.lng);
+              surgeMult = Math.max(surgeMult, realtimeSurge);
             } catch { }
             const raw = (base + perKm * dist + perMin * 0) * nightMult * surgeMult;
             computedFare = Math.max(raw, minFare);
@@ -10855,8 +10866,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         log('HARDENING-BOOKING-VALIDATION', hardeningErr.message);
       }
 
+      // Cancellation abuse guard — soft block after 4 cancels in 1hr
+      if (isCustomerCancellationBlocked(customer.id)) {
+        return res.status(429).json({
+          message: "Too many cancellations. Please wait before booking again.",
+          code: "CANCELLATION_LIMIT_EXCEEDED",
+          cancelCount: getCustomerCancelCount(customer.id),
+        });
+      }
 
-      // Always start as 'searching' � driver must ACCEPT before being assigned
+      // Always start as 'searching'� driver must ACCEPT before being assigned
       const trip = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
           ref_id, customer_id, driver_id, vehicle_category_id, vehicle_type, vehicle_type_name,
@@ -10958,7 +10977,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         vehicleCategoryName: resolvedVehicleCategoryName || null,
       };
 
-      // Start sequential dispatch � sends to ONE driver at a time with expanding radius
+      // Invalidate surge cache for this pickup area — demand just increased
+      invalidateSurgeCache(Number(pickupLat), Number(pickupLng));
+
+      // Start sequential dispatch� sends to ONE driver at a time with expanding radius
       startDispatch(
         tripRow.id,
         customer.id,
@@ -11254,6 +11276,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Cancel active dispatch session if one exists
       cancelDispatch(effectiveTripId);
+
+      // Record cancellation for fraud/abuse tracking (in-memory window check)
+      recordFraudCancellation(customer.id);
 
       await appendTripStatus(effectiveTripId, 'trip_cancelled', 'customer', reason || 'Customer cancelled');
       await logRideLifecycleEvent(effectiveTripId, 'trip_cancelled', customer.id, 'customer', { reason: reason || 'Customer cancelled' });
@@ -11671,6 +11696,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Zone surge factor: use detectZoneId (polygon + radius fallback)
       let zoneSurge = 1.0;
       let activeZoneName = '';
+      let realtimeSurgeInfo: import("./surge").SurgeInfo | null = null;
       if (pickupLat && pickupLng) {
         try {
           const detectedZoneId = await detectZoneId(parseFloat(pickupLat), parseFloat(pickupLng));
@@ -11680,6 +11706,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               zoneSurge = parseFloat((zr.rows[0] as any).surge_factor) || 1.0;
               activeZoneName = (zr.rows[0] as any).name || '';
             }
+          }
+        } catch { }
+        // Real-time demand/supply surge — parallel fetch, non-blocking
+        try {
+          realtimeSurgeInfo = await getSurgeInfo(parseFloat(pickupLat), parseFloat(pickupLng));
+          if (realtimeSurgeInfo.multiplier > zoneSurge) {
+            zoneSurge = realtimeSurgeInfo.multiplier;
           }
         } catch { }
       }
@@ -11800,7 +11833,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
+      const surgeActive = zoneSurge > 1.0;
+      res.json({
+        fares,
+        distanceKm: Math.round(dist * 10) / 10,
+        durationMin: dur,
+        isNight,
+        launchOffer,
+        surge: surgeActive ? {
+          active: true,
+          multiplier: zoneSurge,
+          label: realtimeSurgeInfo?.label ?? (zoneSurge >= 2 ? "very_high" : zoneSurge >= 1.5 ? "high" : "moderate"),
+          demandCount: realtimeSurgeInfo?.demandCount ?? null,
+          supplyCount: realtimeSurgeInfo?.supplyCount ?? null,
+          message: `High demand in your area (${zoneSurge}x pricing)`,
+        } : { active: false, multiplier: 1.0 },
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

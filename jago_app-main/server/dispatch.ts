@@ -54,14 +54,16 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
 
 const LOCATION_FRESHNESS_SECONDS = 150;
 const MAX_IDLE_BONUS_MINUTES = 30;
+// ETA is the strongest signal for pickup time — doubled from 0.15 to 0.30.
+// Distance weight halved (ETA already captures proximity + traffic).
 const DISPATCH_SCORE_WEIGHTS = {
-  distance: 0.20,
-  eta: 0.15,
+  distance: 0.10,
+  eta: 0.30,
   behavior: 0.25,
   rating: 0.15,
-  responseSpeed: 0.10,
-  completionRate: 0.10,
-  idleBonus: 0.05,
+  responseSpeed: 0.08,
+  completionRate: 0.08,
+  idleBonus: 0.04,
 } as const;
 
 function getConfig(serviceType: string): DispatchConfig {
@@ -793,11 +795,17 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
 
+  // ETA from score breakdown (set by rerankDriversWithEta); fallback to distance estimate
+  const etaMinutes: number =
+    driver.scoreBreakdown?.etaMinutes ??
+    Math.max(1, Math.round((driver.distanceKm / 25) * 60));
+
   const payload = {
     tripId: session.tripId,
     ...session.tripMeta,
     aiScore: driver.score,
     driverDistanceKm: driver.distanceKm,
+    etaMinutes,
     timeoutMs: session.config.driverTimeoutMs,
   };
 
@@ -807,6 +815,15 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     dataOnly: true,
     channelId: "trip_alerts",
   });
+
+  // Notify customer of the ETA so the app can show "Driver arriving in ~X min"
+  if (io) {
+    io.to(`user:${session.customerId}`).emit("trip:driver_eta", {
+      tripId: session.tripId,
+      etaMinutes,
+      driverDistanceKm: Math.round(driver.distanceKm * 10) / 10,
+    });
+  }
 
   // FCM notification (background/killed app)
   const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);

@@ -12,7 +12,7 @@ class SocketService {
   factory SocketService() => _instance;
   SocketService._internal();
   static const Duration _gpsStaleOfflineAfter = Duration(minutes: 2);
-  static const Duration _heartbeatInterval = Duration(seconds: 30);
+  static const Duration _heartbeatInterval = Duration(seconds: 12);
   static const String _activeTripKey = 'active_driver_trip_id';
 
   IO.Socket? _socket;
@@ -170,6 +170,10 @@ class SocketService {
       print('[SOCKET][DRIVER] online_ack $data');
     });
 
+    _socket!.on('driver:heartbeat_ack', (data) {
+      // Server confirmed Redis TTL refresh — no action needed
+    });
+
     _socket!.on('trip:new_request', (data) {
       _newTripController.add(Map<String, dynamic>.from(data));
     });
@@ -298,18 +302,25 @@ class SocketService {
     }
   }
 
-  /// Heartbeat: if driver is online but no location sent for 15s → auto-offline.
-  /// Prevents ghost-online drivers who have GPS failures.
+  /// Heartbeat: keeps server-side Redis presence TTL alive (35s TTL, 12s ping = safe margin).
+  /// Also auto-offlines driver if GPS has been silent too long (no active trip).
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
-      if (!_wasOnline) return;
+      if (!_wasOnline || !_isConnected || _socket == null) return;
+
+      // Refresh Redis TTL — include last known coords if available
+      _socket!.emit('driver:heartbeat', {
+        'ts': DateTime.now().millisecondsSinceEpoch,
+        if (_lastLat != null) 'lat': _lastLat,
+        if (_lastLng != null) 'lng': _lastLng,
+      });
+
+      // GPS staleness check: skip during active trip (GPS may legitimately lag)
       if (_activeTripId != null) return;
       final last = _lastLocationSentAt;
       if (last == null) return;
-      final stale = DateTime.now().difference(last) >= _gpsStaleOfflineAfter;
-      if (stale && _isConnected) {
-        // GPS failed or app went background — mark driver offline
+      if (DateTime.now().difference(last) >= _gpsStaleOfflineAfter) {
         _socket!.emit('driver:online', {'isOnline': false});
         _wasOnline = false;
         print('[SOCKET][DRIVER] auto-offline after stale GPS > ${_gpsStaleOfflineAfter.inSeconds}s');
