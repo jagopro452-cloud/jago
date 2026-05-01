@@ -314,6 +314,34 @@ export function setupSocket(httpServer: HttpServer) {
         }
       });
 
+      // ── Driver: heartbeat — refreshes Redis presence TTL without a full location update ──
+      // Drivers should send this every 10–15s when online but not actively streaming GPS.
+      socket.on("driver:heartbeat", async (data?: { lat?: number; lng?: number }) => {
+        try {
+          const now = Date.now();
+          const prev = driverLastTrackingAt.get(userId);
+          driverLastTrackingAt.set(userId, now);
+          const lat = data?.lat;
+          const lng = data?.lng;
+          if (lat && lng && isFinite(lat) && isFinite(lng)) {
+            setDriverPresence(userId, {
+              lat, lng, heading: 0, speed: 0,
+              vehicleType: driverProfile.vehicleType || "",
+              vehicleCategoryId: driverProfile.vehicleCategoryId || "",
+              lastSeen: now,
+            }).catch(() => { });
+          } else {
+            // No coords — just ping Redis to extend TTL without updating geo
+            const { getDriverPresence, setDriverPresence: sp } = await import("./presence");
+            const existing = await getDriverPresence(userId);
+            if (existing) {
+              sp(userId, { ...existing, lastSeen: now }).catch(() => { });
+            }
+          }
+          emitSelf(socket, "driver:heartbeat_ack", { ts: now });
+        } catch { }
+      });
+
       // ── Driver: rejoin trip room after reconnect ───────────────────────────
       socket.on("driver:rejoin_trip", async (data: { tripId: string }) => {
         try {

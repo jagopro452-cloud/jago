@@ -651,6 +651,36 @@ const adminDataLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Booking rate limiter — 5 attempts per minute per IP prevents double-tap duplicates
+const bookingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { message: "Too many booking requests. Please wait a moment." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+// Per-phone OTP guard (in-process, complements IP limiter — blocks IP-rotating abuse)
+const phoneOtpWindow = new Map<string, { count: number; resetAt: number }>();
+function checkPhoneOtpLimit(phone: string, maxPerHour = 8): boolean {
+  const now = Date.now();
+  const entry = phoneOtpWindow.get(phone);
+  if (!entry || now > entry.resetAt) {
+    phoneOtpWindow.set(phone, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (entry.count >= maxPerHour) return false;
+  entry.count++;
+  return true;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [phone, entry] of phoneOtpWindow) {
+    if (now > entry.resetAt) phoneOtpWindow.delete(phone);
+  }
+}, 60 * 60 * 1000);
+
 const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL_HOURS || 24));
 // SECURITY: Never expose OTPs in production responses, regardless of env var setting
 const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" && process.env.NODE_ENV !== "production";
@@ -2211,10 +2241,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { presenceHealthy, getOnlineDriverCount } = await import("./presence");
       const redisOk = await presenceHealthy();
       const onlineDrivers = redisOk ? await getOnlineDriverCount() : null;
+
+      // Live counters — run in parallel, each isolated so one failure doesn't block the rest
+      const [activeRides, searchingRides, otpFailLast1h, pendingPayments] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS n FROM trip_requests
+          WHERE current_status IN ('accepted','driver_assigned','arrived','on_the_way')
+            AND created_at > NOW() - INTERVAL '24 hours'
+        `).then(r => Number((r.rows[0] as any)?.n || 0)).catch(() => null),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS n FROM trip_requests
+          WHERE current_status = 'searching'
+            AND created_at > NOW() - INTERVAL '30 minutes'
+        `).then(r => Number((r.rows[0] as any)?.n || 0)).catch(() => null),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS n FROM system_logs
+          WHERE tag = 'OTP' AND level = 'ERROR'
+            AND created_at > NOW() - INTERVAL '1 hour'
+        `).then(r => Number((r.rows[0] as any)?.n || 0)).catch(() => null),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS n FROM trip_requests
+          WHERE current_status = 'payment_pending'
+            AND created_at > NOW() - INTERVAL '2 hours'
+        `).then(r => Number((r.rows[0] as any)?.n || 0)).catch(() => null),
+      ]);
+
       res.json({
-        status: "ok", db: "connected",
+        status: "ok",
+        db: "connected",
         redis: redisOk ? "connected" : "unavailable",
-        onlineDrivers,
+        metrics: {
+          onlineDrivers,
+          activeRides,
+          searchingRides,
+          otpFailLast1h,
+          pendingPayments,
+        },
         ts: new Date().toISOString(),
       });
     } catch (e: any) {
@@ -8150,6 +8212,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!phone) return res.status(400).json({ message: "Phone required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
+      // Per-phone rate guard (IP-independent) — max 8 OTPs per phone per hour
+      if (!checkPhoneOtpLimit(phoneStr)) {
+        return res.status(429).json({ message: "Too many OTP requests for this number. Try again in an hour." });
+      }
 
       const otpSettingsR = await rawDb.execute(rawSql`
         SELECT primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds
@@ -10465,7 +10531,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // -- CUSTOMER: Book a ride -------------------------------------------------
-  app.post("/api/app/customer/book-ride", authApp, requireCustomer, async (req, res) => {
+  app.post("/api/app/customer/book-ride", authApp, requireCustomer, bookingLimiter, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
       const {
@@ -10537,6 +10603,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({
           message: "vehicleCategoryId is required for booking",
           code: "VEHICLE_CATEGORY_REQUIRED",
+        });
+      }
+
+      // Idempotency guard: reject if this customer already has an active in-flight booking.
+      // This prevents double-booking on network retry or double-tap within the same session.
+      const inflightR = await rawDb.execute(rawSql`
+        SELECT id, current_status FROM trip_requests
+        WHERE customer_id = ${customer.id}::uuid
+          AND current_status IN ('searching', 'driver_assigned', 'accepted', 'arrived', 'on_the_way')
+          AND created_at > NOW() - INTERVAL '10 minutes'
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (inflightR.rows.length > 0) {
+        const existing = inflightR.rows[0] as any;
+        return res.status(409).json({
+          message: "You already have an active booking. Complete or cancel it before booking again.",
+          code: "BOOKING_IN_FLIGHT",
+          existingTripId: existing.id,
+          existingStatus: existing.current_status,
         });
       }
 
