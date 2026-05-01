@@ -1169,10 +1169,6 @@ export function setupSocket(httpServer: HttpServer) {
             logInfo("PRESENCE", `Driver ${userId} offline after grace period`, { reason }).catch(() => { });
             console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
             clearDriverLocationState(userId);
-            deleteDriverPresence(userId).catch(() => { });
-            logInfo("PRESENCE", `Driver ${userId} offline after grace period`, { reason }).catch(() => { });
-            console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
-            clearDriverLocationState(userId);
           }
         }, DRIVER_OFFLINE_GRACE_MS);
         pendingOfflineTimers.set(userId, timer);
