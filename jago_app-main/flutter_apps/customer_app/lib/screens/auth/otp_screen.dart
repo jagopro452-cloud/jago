@@ -74,7 +74,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
     if (_verifyInFlight || _verifyCompleted) return;
     _verifyInFlight = true;
     setState(() { _loading = true; _hasError = false; });
-    var shouldFallbackToServerOtp = false;
     try {
       Map<String, dynamic> res;
       if ((_otpProvider ?? 'server') == 'firebase') {
@@ -84,9 +83,24 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
             verificationId: _verificationId,
           );
           res = await AuthService.verifyFirebaseToken(idToken, widget.phone, 'customer');
-        } catch (_) {
-          shouldFallbackToServerOtp = true;
-          res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'customer');
+        } catch (e) {
+          final fallback = await AuthService.sendOtp(widget.phone, 'customer', true);
+          if (!mounted) return;
+          _verifyCompleted = false;
+          setState(() { _loading = false; _hasError = true; });
+          _otpCtrl.clear();
+          if (fallback['success'] == true) {
+            _verificationId = null;
+            _otpProvider = 'server';
+            _startTimer();
+            _showSnack('Firebase verification expired. We sent a new SMS OTP. Enter the new code.', error: true);
+          } else {
+            _showSnack(
+              fallback['message'] ?? e.toString().replaceAll('Exception: ', ''),
+              error: true,
+            );
+          }
+          return;
         }
       } else {
         res = await AuthService.verifyOtp(widget.phone, _otpCtrl.text, 'customer');
@@ -113,12 +127,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
       if (!mounted) return;
       _verifyCompleted = false;
       setState(() { _loading = false; _hasError = true; });
-      _showSnack(
-        shouldFallbackToServerOtp
-            ? 'Wrong OTP. Please try again.'
-            : e.toString().replaceAll('Exception: ', ''),
-        error: true,
-      );
+      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
       _otpCtrl.clear();
     } finally {
       _verifyInFlight = false;

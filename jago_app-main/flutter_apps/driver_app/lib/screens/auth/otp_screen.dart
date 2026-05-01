@@ -58,8 +58,6 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
   Future<void> _verify() async {
     if (_otpCtrl.text.length != 6) return;
     setState(() { _loading = true; _hasError = false; });
-    var shouldFallbackToServerOtp = false;
-
     if ((_otpProvider ?? 'server') == 'firebase') {
       try {
         final idToken = await FirebaseOtpService.verifyOtp(
@@ -83,8 +81,23 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
           _otpCtrl.clear();
         }
         return;
-      } catch (_) {
-        shouldFallbackToServerOtp = true;
+      } catch (e) {
+        final fallback = await AuthService.sendOtp(widget.phone, 'driver', true);
+        if (!mounted) return;
+        setState(() { _loading = false; _hasError = true; });
+        _otpCtrl.clear();
+        if (fallback['success'] == true) {
+          _verificationId = null;
+          _otpProvider = 'server';
+          _startTimer();
+          _showSnack('Firebase verification expired. We sent a new SMS OTP. Enter the new code.', error: true);
+        } else {
+          _showSnack(
+            fallback['message'] ?? e.toString().replaceAll('Exception: ', ''),
+            error: true,
+          );
+        }
+        return;
       }
     }
 
@@ -107,12 +120,7 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
       }
     } catch (e) {
       setState(() { _loading = false; _hasError = true; });
-      _showSnack(
-        shouldFallbackToServerOtp
-            ? 'Wrong OTP. Please try again.'
-            : e.toString().replaceAll('Exception: ', ''),
-        error: true,
-      );
+      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
       _otpCtrl.clear();
     }
   }

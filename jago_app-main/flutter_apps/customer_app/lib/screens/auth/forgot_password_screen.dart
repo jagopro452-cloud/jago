@@ -121,10 +121,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final otpProvider = _otpProvider ?? (_firebaseVerificationId != null ? 'firebase' : 'server');
     try {
       if (otpProvider == 'firebase') {
-        final idToken = await FirebaseOtpService.verifyOtp(
-          smsCode: otp, verificationId: _firebaseVerificationId);
-        if (!mounted) return;
-        _firebaseIdToken = idToken;
+        try {
+          final idToken = await FirebaseOtpService.verifyOtp(
+            smsCode: otp, verificationId: _firebaseVerificationId);
+          if (!mounted) return;
+          _firebaseIdToken = idToken;
+        } catch (e) {
+          final fallback = await AuthService.sendOtp(_phoneCtrl.text.trim(), 'customer', true);
+          if (!mounted) return;
+          setState(() => _loading = false);
+          _otpCtrl.clear();
+          if (fallback['success'] == true) {
+            _firebaseVerificationId = null;
+            _otpProvider = 'server';
+            _startTimer();
+            _showSnack('Firebase verification expired. We sent a new SMS OTP. Please enter the new code.', error: true);
+          } else {
+            _showSnack(fallback['message'] ?? e.toString().replaceAll('Exception: ', ''), error: true);
+          }
+          return;
+        }
       } else {
         final res = await AuthService.verifyOtp(_phoneCtrl.text.trim(), otp, 'customer');
         if (!mounted) return;
