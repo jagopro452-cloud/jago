@@ -3346,6 +3346,163 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── FRAUD DASHBOARD ──────────────────────────────────────────────────────────
+
+  // GET /api/admin/fraud-flags
+  // Query params: ?type=FRAUD_SPEED&page=1&limit=50
+  // Returns paginated fraud flags from system_logs with per-user flag counts.
+  app.get("/api/admin/fraud-flags", requireAdminAuth, async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page || "1")));
+      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "50"))));
+      const offset = (page - 1) * limit;
+      const typeFilter = req.query.type ? String(req.query.type) : null;
+      const userFilter = req.query.userId ? String(req.query.userId) : null;
+
+      const [flagsR, countR, summaryR] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT
+            sl.id, sl.tag, sl.message, sl.details, sl.created_at,
+            (sl.details->>'driverId')   AS driver_id,
+            (sl.details->>'customerId') AS customer_id,
+            (sl.details->>'tripId')     AS trip_id,
+            u.full_name AS user_name, u.phone AS user_phone,
+            u.is_active AS user_active
+          FROM system_logs sl
+          LEFT JOIN users u ON u.id = COALESCE(
+            (sl.details->>'driverId')::uuid,
+            (sl.details->>'customerId')::uuid
+          )
+          WHERE sl.tag LIKE 'FRAUD_%'
+            ${typeFilter ? rawSql`AND sl.tag = ${typeFilter}` : rawSql``}
+            ${userFilter ? rawSql`AND (sl.details->>'driverId' = ${userFilter} OR sl.details->>'customerId' = ${userFilter})` : rawSql``}
+          ORDER BY sl.created_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS total FROM system_logs
+          WHERE tag LIKE 'FRAUD_%'
+            ${typeFilter ? rawSql`AND tag = ${typeFilter}` : rawSql``}
+        `),
+        // Per-user flag summary (top offenders)
+        rawDb.execute(rawSql`
+          SELECT
+            COALESCE(details->>'driverId', details->>'customerId') AS user_id,
+            COUNT(*) AS flag_count,
+            MAX(created_at) AS last_flagged_at,
+            array_agg(DISTINCT tag) AS flag_types
+          FROM system_logs
+          WHERE tag LIKE 'FRAUD_%'
+            AND created_at > NOW() - INTERVAL '7 days'
+          GROUP BY 1
+          HAVING COUNT(*) >= 2
+          ORDER BY flag_count DESC
+          LIMIT 20
+        `),
+      ]);
+
+      res.json({
+        flags: camelize(flagsR.rows),
+        total: parseInt((countR.rows[0] as any)?.total ?? "0"),
+        page,
+        limit,
+        topOffenders: (summaryR.rows as any[]).map(r => ({
+          userId: r.user_id,
+          flagCount: parseInt(r.flag_count),
+          lastFlaggedAt: r.last_flagged_at,
+          flagTypes: r.flag_types,
+        })),
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/fraud-flags/action
+  // Body: { userId, action: "block" | "warn" | "clear", reason }
+  // block → sets user is_active=false + is_banned=true (suspended)
+  // warn  → inserts a system_log entry (creates paper trail, no account change)
+  // clear → deletes FRAUD_ logs for this user (false positive cleanup)
+  app.post("/api/admin/fraud-flags/action", requireAdminAuth, async (req, res) => {
+    try {
+      const { userId, action, reason } = req.body;
+      if (!userId || !action) {
+        return res.status(400).json({ message: "userId and action are required" });
+      }
+      if (!["block", "warn", "clear"].includes(action)) {
+        return res.status(400).json({ message: "action must be block, warn, or clear" });
+      }
+      const adminUser = (req as any).adminUser;
+      const adminId = adminUser?.id ?? "system";
+
+      if (action === "block") {
+        await rawDb.execute(rawSql`
+          UPDATE users SET is_active = false, is_banned = true,
+            ban_reason = ${reason || "Fraud — blocked by admin"},
+            ban_until = NOW() + INTERVAL '30 days'
+          WHERE id = ${userId}::uuid
+        `);
+        await rawDb.execute(rawSql`
+          INSERT INTO system_logs (level, tag, message, details)
+          VALUES ('warn', 'ADMIN_ACTION', ${`Admin blocked user: ${reason || ""}`},
+            ${JSON.stringify({ userId, action: "block", adminId, reason })}::jsonb)
+        `);
+        res.json({ success: true, action: "block", userId });
+      } else if (action === "warn") {
+        await rawDb.execute(rawSql`
+          INSERT INTO system_logs (level, tag, message, details)
+          VALUES ('warn', 'ADMIN_ACTION', ${`Admin warning issued: ${reason || ""}`},
+            ${JSON.stringify({ userId, action: "warn", adminId, reason })}::jsonb)
+        `);
+        res.json({ success: true, action: "warn", userId });
+      } else {
+        // clear — remove fraud flags for this user (false positive / resolved)
+        await rawDb.execute(rawSql`
+          DELETE FROM system_logs
+          WHERE tag LIKE 'FRAUD_%'
+            AND (details->>'driverId' = ${userId} OR details->>'customerId' = ${userId})
+        `);
+        await rawDb.execute(rawSql`
+          INSERT INTO system_logs (level, tag, message, details)
+          VALUES ('info', 'ADMIN_ACTION', ${`Admin cleared fraud flags: ${reason || ""}`},
+            ${JSON.stringify({ userId, action: "clear", adminId, reason })}::jsonb)
+        `);
+        res.json({ success: true, action: "clear", userId });
+      }
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/fraud-flags/stats
+  // Breakdown by type, daily trend, top flagged users — for dashboard charts
+  app.get("/api/admin/fraud-flags/stats", requireAdminAuth, async (req, res) => {
+    try {
+      const [byTypeR, dailyR, blockedR] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT tag, COUNT(*) AS cnt
+          FROM system_logs
+          WHERE tag LIKE 'FRAUD_%' AND created_at > NOW() - INTERVAL '30 days'
+          GROUP BY tag ORDER BY cnt DESC
+        `),
+        rawDb.execute(rawSql`
+          SELECT DATE(created_at) AS day, COUNT(*) AS cnt
+          FROM system_logs
+          WHERE tag LIKE 'FRAUD_%' AND created_at > NOW() - INTERVAL '14 days'
+          GROUP BY day ORDER BY day
+        `),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS cnt FROM users
+          WHERE is_banned = true AND ban_reason LIKE 'Fraud%'
+        `).catch(() => ({ rows: [{ cnt: 0 }] })),
+      ]);
+
+      res.json({
+        byType: (byTypeR.rows as any[]).map(r => ({ type: r.tag, count: parseInt(r.cnt) })),
+        dailyTrend: (dailyR.rows as any[]).map(r => ({ day: r.day, count: parseInt(r.cnt) })),
+        totalBlockedForFraud: parseInt((blockedR.rows[0] as any)?.cnt ?? "0"),
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── END FRAUD DASHBOARD ───────────────────────────────────────────────────────
+
   app.get("/api/dashboard/chart", requireAdminAuth, async (req, res) => {
     try {
       const r = await rawDb.execute(rawSql`

@@ -32,6 +32,7 @@ import {
 import { activeDriverEligibilitySql } from "./driver-state";
 import { applyWalletChange } from "./revenue-engine";
 import { getDistanceWithCache } from "./maps-cache";
+import { getSurgeInfo, recordDispatchOutcome } from "./surge";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -209,6 +210,31 @@ function formatScoreBreakdown(breakdown?: DriverMatchScore["scoreBreakdown"]): s
   ].join(" ");
 }
 
+/**
+ * Surge-aware scoring formula (active when surgeMultiplier > 1.0):
+ *   score = (etaScore * 0.50) + (ratingScore * 0.20) + (surgeZonePriority * 0.30)
+ *
+ * surgeZonePriority rewards drivers who are close to the pickup inside a surge zone
+ * — they relieve demand fastest, which is the platform's highest priority under surge.
+ *
+ * Under no-surge conditions the full 7-factor buildDispatchScore() runs instead.
+ */
+function buildSurgeAwareScore(
+  etaMinutes: number,
+  rating: number,
+  distanceKm: number,
+  surgeMultiplier: number,
+): number {
+  const etaScore = Math.max(0, 1 - etaMinutes / 30);
+  const ratingScore = Math.max(0, Math.min(1, (rating - 1) / 4));
+  // Surge zone priority: high surge + close driver = highest priority
+  const surgeIntensity = Math.min(1.0, (surgeMultiplier - 1.0) / 1.0); // 0 at 1x, 1.0 at 2x
+  const proximityScore = Math.max(0, 1 - distanceKm / 15);
+  const surgeZonePriority = surgeIntensity * proximityScore;
+
+  return (etaScore * 0.50) + (ratingScore * 0.20) + (surgeZonePriority * 0.30);
+}
+
 async function rerankDriversWithEta(
   drivers: DriverMatchScore[],
   pickupLat: number,
@@ -220,22 +246,47 @@ async function rerankDriversWithEta(
   const top = drivers.slice(0, limit);
   const rest = drivers.slice(limit);
 
+  // Fetch surge once for the pickup — used by all drivers in this batch
+  let surgeMultiplier = 1.0;
+  try {
+    const surgeInfo = await getSurgeInfo(pickupLat, pickupLng);
+    surgeMultiplier = surgeInfo.multiplier;
+  } catch { /* no-op — use 1.0 */ }
+
+  const isSurgeActive = surgeMultiplier > 1.0;
+
   await Promise.all(top.map(async (driver) => {
     try {
       const eta = await getDistanceWithCache(driver.lat, driver.lng, pickupLat, pickupLng);
       const breakdown = driver.scoreBreakdown;
-      const recomputed = buildDispatchScore({
-        distanceKm: driver.distanceKm,
-        rating: driver.rating,
-        avgResponseTimeSec: driver.avgResponseTimeSec,
-        completionRate: breakdown?.completionRate ?? 0.8,
-        behaviorScore: (breakdown?.behavior ?? 0.5) * 100,
-        idleSeconds: (breakdown?.idleBonus ?? 0) * MAX_IDLE_BONUS_MINUTES * 60,
-        etaMinutes: eta.durationMinutes,
-        locationAgeSeconds: breakdown?.locationAgeSeconds ?? null,
-      });
-      driver.score = recomputed.final;
-      driver.scoreBreakdown = recomputed.breakdown;
+
+      if (isSurgeActive) {
+        // Under surge: simplified 3-factor formula prioritises speed + proximity
+        driver.score = buildSurgeAwareScore(
+          eta.durationMinutes,
+          driver.rating,
+          driver.distanceKm,
+          surgeMultiplier,
+        );
+      } else {
+        // Normal: full 7-factor quality score
+        const recomputed = buildDispatchScore({
+          distanceKm: driver.distanceKm,
+          rating: driver.rating,
+          avgResponseTimeSec: driver.avgResponseTimeSec,
+          completionRate: breakdown?.completionRate ?? 0.8,
+          behaviorScore: (breakdown?.behavior ?? 0.5) * 100,
+          idleSeconds: (breakdown?.idleBonus ?? 0) * MAX_IDLE_BONUS_MINUTES * 60,
+          etaMinutes: eta.durationMinutes,
+          locationAgeSeconds: breakdown?.locationAgeSeconds ?? null,
+        });
+        driver.score = recomputed.final;
+        driver.scoreBreakdown = recomputed.breakdown;
+      }
+      // Always store ETA minutes in breakdown for customer notification
+      if (driver.scoreBreakdown) {
+        driver.scoreBreakdown.etaMinutes = eta.durationMinutes;
+      }
     } catch {
       // Keep distance-based score if ETA fetch fails.
     }
@@ -479,8 +530,12 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
     });
   }
 
+  // Record accepted outcome for surge feedback loop
+  const waitMs = Date.now() - session.createdAt;
+  recordDispatchOutcome(session.pickupLat, session.pickupLng, true, waitMs);
+
   activeDispatches.delete(tripId);
-  console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId}`);
+  console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId} waitMs=${waitMs}`);
   logDispatchAudit(tripId, driverId, "accepted");
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -865,6 +920,9 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
 
     console.log(`[DISPATCH] Driver ${driver.driverId} timed out on trip ${session.tripId}`);
     logDispatchAudit(session.tripId, driver.driverId, "timeout");
+
+    // Record non-accept outcome for surge feedback loop
+    recordDispatchOutcome(session.pickupLat, session.pickupLng, false, session.config.driverTimeoutMs);
 
     // Record this driver as timed out (equivalent to soft rejection)
     session.rejectedDriverIds.add(driver.driverId);

@@ -116,10 +116,103 @@ export function invalidateSurgeCache(lat: number, lng: number): void {
   surgeCache.delete(key);
 }
 
-// Prune stale cache entries every 5 minutes
+// ── Feedback loop ─────────────────────────────────────────────────────────────
+//
+// Tracks real dispatch outcomes per grid cell to smooth surge up/down.
+//
+// Rules:
+//   acceptRate < 40% AND avgWait > 60s AND surge < 2.0  → bump up one tier
+//   acceptRate > 80% AND avgWait < 90s AND surge > 1.0  → drop down one tier
+//
+// Minimum 5 offers in the window before any adjustment is applied.
+// Window resets after each adjustment to avoid over-correction.
+
+interface CellFeedback {
+  offers: number;
+  accepts: number;
+  totalWaitMs: number;
+  windowStartedAt: number;
+}
+
+const FEEDBACK_MIN_OFFERS = 5;
+const FEEDBACK_WINDOW_MS = 10 * 60 * 1000; // 10-minute rolling window
+
+const cellFeedback = new Map<string, CellFeedback>();
+
+/** Call when a dispatch offer is resolved. accepted=true on driver accept, false on timeout/reject. */
+export function recordDispatchOutcome(
+  lat: number,
+  lng: number,
+  accepted: boolean,
+  waitMs: number,
+): void {
+  const key = gridKey(lat, lng);
+  const now = Date.now();
+  const existing = cellFeedback.get(key);
+
+  // Reset if window expired
+  if (!existing || now - existing.windowStartedAt > FEEDBACK_WINDOW_MS) {
+    cellFeedback.set(key, {
+      offers: 1,
+      accepts: accepted ? 1 : 0,
+      totalWaitMs: waitMs,
+      windowStartedAt: now,
+    });
+    return;
+  }
+
+  cellFeedback.set(key, {
+    ...existing,
+    offers: existing.offers + 1,
+    accepts: existing.accepts + (accepted ? 1 : 0),
+    totalWaitMs: existing.totalWaitMs + waitMs,
+  });
+}
+
+/** Returns surge multiplier adjusted by dispatch feedback. Falls back to base surge. */
+export async function getSurgeFactorAdjusted(lat: number, lng: number): Promise<number> {
+  const base = await getSurgeInfo(lat, lng);
+  const key = gridKey(lat, lng);
+  const fb = cellFeedback.get(key);
+
+  if (!fb || fb.offers < FEEDBACK_MIN_OFFERS) return base.multiplier;
+
+  const acceptRate = fb.accepts / fb.offers;
+  const avgWaitMs = fb.totalWaitMs / fb.offers;
+  let mult = base.multiplier;
+
+  // Not enough drivers accepting → market signal to attract more (raise surge)
+  if (acceptRate < 0.40 && avgWaitMs > 60_000 && mult < 2.0) {
+    const nextTierIdx = SURGE_TIERS.findIndex(t => t.multiplier === mult);
+    if (nextTierIdx > 0) mult = SURGE_TIERS[nextTierIdx - 1].multiplier;
+    cellFeedback.delete(key); // reset window after adjustment
+  }
+  // Demand being met easily → reduce friction for customers (lower surge)
+  else if (acceptRate > 0.80 && avgWaitMs < 90_000 && mult > 1.0) {
+    const curTierIdx = SURGE_TIERS.findIndex(t => t.multiplier === mult);
+    if (curTierIdx >= 0 && curTierIdx < SURGE_TIERS.length - 1) {
+      mult = SURGE_TIERS[curTierIdx + 1].multiplier;
+    }
+    cellFeedback.delete(key);
+  }
+
+  return mult;
+}
+
+/** Get feedback stats for a cell — used by admin monitoring. */
+export function getCellFeedbackStats(lat: number, lng: number): CellFeedback | null {
+  return cellFeedback.get(gridKey(lat, lng)) ?? null;
+}
+
+// ── Memory housekeeping ───────────────────────────────────────────────────────
+
+// Prune stale cache and feedback entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
   Array.from(surgeCache.entries()).forEach(([key, info]) => {
     if (now - info.cachedAt > SURGE_CACHE_TTL_MS * 8) surgeCache.delete(key);
+  });
+  Array.from(cellFeedback.entries()).forEach(([key, fb]) => {
+    if (now - fb.windowStartedAt > FEEDBACK_WINDOW_MS * 3) cellFeedback.delete(key);
   });
 }, 5 * 60 * 1000);
