@@ -147,6 +147,7 @@ import {
 } from "./parcel-state";
 import { activeDriverEligibilitySql } from "./driver-state";
 import { getSurgeInfo, getSurgeFactor, invalidateSurgeCache } from "./surge";
+import { STANDARD_CHECKLIST, getChecklistForBuild, validateQaSession } from "./qa";
 import {
   isCustomerCancellationBlocked,
   recordCustomerCancellation as recordFraudCancellation,
@@ -1081,6 +1082,51 @@ async function ensureOperationalSchema() {
         expires_at TIMESTAMP NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
+    `);
+
+    // ── QA / Build approval tables ────────────────────────────────────────────
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS qa_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        build_version VARCHAR(50) NOT NULL,
+        build_type VARCHAR(20) NOT NULL DEFAULT 'all',
+        tester_name VARCHAR(100) NOT NULL,
+        tester_id UUID,
+        status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+        submitted_at TIMESTAMPTZ,
+        approved_at TIMESTAMPTZ,
+        approved_by_name VARCHAR(100),
+        approved_by_id UUID,
+        rejection_reason TEXT,
+        notes TEXT,
+        critical_fail_count INTEGER NOT NULL DEFAULT 0,
+        total_tests INTEGER NOT NULL DEFAULT 0,
+        passed_tests INTEGER NOT NULL DEFAULT 0,
+        failed_tests INTEGER NOT NULL DEFAULT 0,
+        skipped_tests INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS qa_test_results (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL REFERENCES qa_sessions(id) ON DELETE CASCADE,
+        template_id VARCHAR(100) NOT NULL,
+        category VARCHAR(50) NOT NULL,
+        test_name VARCHAR(200) NOT NULL,
+        critical BOOLEAN NOT NULL DEFAULT false,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        tested_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(session_id, template_id)
+      )
+    `);
+    await rawDb.execute(rawSql`
+      CREATE INDEX IF NOT EXISTS idx_qa_sessions_status ON qa_sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_qa_sessions_build ON qa_sessions(build_version, build_type);
+      CREATE INDEX IF NOT EXISTS idx_qa_results_session ON qa_test_results(session_id, status);
     `);
 
     await rawDb.execute(rawSql`
@@ -3502,6 +3548,298 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── END FRAUD DASHBOARD ───────────────────────────────────────────────────────
+
+  // ── QA TRACKING & BUILD APPROVAL ─────────────────────────────────────────────
+  //
+  // Workflow:
+  //   POST /api/admin/qa/sessions                     — create session + populate checklist
+  //   GET  /api/admin/qa/sessions                     — list all sessions
+  //   GET  /api/admin/qa/sessions/:id                 — full session detail + test results
+  //   PATCH /api/admin/qa/sessions/:id/result         — mark a test item pass/fail/skip
+  //   POST /api/admin/qa/sessions/:id/submit          — submit for approval (validates 0 critical fails)
+  //   POST /api/admin/qa/sessions/:id/approve         — manager approves build
+  //   POST /api/admin/qa/sessions/:id/reject          — manager rejects with reason
+  //   GET  /api/admin/qa/checklist                    — view standard checklist template
+  //   GET  /api/admin/qa/build-status/:version        — is this build approved to ship?
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // GET /api/admin/qa/checklist — standard checklist template for reference
+  app.get("/api/admin/qa/checklist", requireAdminAuth, (req, res) => {
+    const buildType = (req.query.buildType as any) || "all";
+    res.json({ checklist: getChecklistForBuild(buildType), total: STANDARD_CHECKLIST.length });
+  });
+
+  // POST /api/admin/qa/sessions — create new QA session and pre-populate test rows
+  app.post("/api/admin/qa/sessions", requireAdminAuth, async (req, res) => {
+    try {
+      const { buildVersion, buildType = "all", testerName, notes } = req.body;
+      if (!buildVersion?.trim()) return res.status(400).json({ message: "buildVersion is required" });
+      if (!testerName?.trim()) return res.status(400).json({ message: "testerName is required" });
+      if (!["customer_app", "driver_app", "admin_panel", "all"].includes(buildType)) {
+        return res.status(400).json({ message: "buildType must be customer_app | driver_app | admin_panel | all" });
+      }
+
+      const admin = (req as any).adminUser;
+      const checklist = getChecklistForBuild(buildType);
+
+      const sessionR = await rawDb.execute(rawSql`
+        INSERT INTO qa_sessions (build_version, build_type, tester_name, tester_id, notes, total_tests)
+        VALUES (${buildVersion.trim()}, ${buildType}, ${testerName.trim()}, ${admin?.id ?? null}, ${notes ?? null}, ${checklist.length})
+        RETURNING id
+      `);
+      const sessionId = (sessionR.rows[0] as any).id;
+
+      // Pre-populate all test rows as 'pending'
+      for (const item of checklist) {
+        await rawDb.execute(rawSql`
+          INSERT INTO qa_test_results (session_id, template_id, category, test_name, critical)
+          VALUES (${sessionId}::uuid, ${item.id}, ${item.category}, ${item.name}, ${item.critical})
+          ON CONFLICT (session_id, template_id) DO NOTHING
+        `);
+      }
+
+      res.json({ success: true, sessionId, totalTests: checklist.length, buildType });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/qa/sessions — list all QA sessions (newest first)
+  app.get("/api/admin/qa/sessions", requireAdminAuth, async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page || "1")));
+      const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || "20"))));
+      const offset = (page - 1) * limit;
+      const statusFilter = req.query.status ? String(req.query.status) : null;
+
+      const [sessionsR, countR] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT * FROM qa_sessions
+          ${statusFilter ? rawSql`WHERE status = ${statusFilter}` : rawSql``}
+          ORDER BY created_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `),
+        rawDb.execute(rawSql`
+          SELECT COUNT(*) AS total FROM qa_sessions
+          ${statusFilter ? rawSql`WHERE status = ${statusFilter}` : rawSql``}
+        `),
+      ]);
+
+      res.json({
+        sessions: camelize(sessionsR.rows),
+        total: parseInt((countR.rows[0] as any)?.total ?? "0"),
+        page,
+        limit,
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/qa/sessions/:id — full session detail with all test results
+  app.get("/api/admin/qa/sessions/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const [sessionR, resultsR] = await Promise.all([
+        rawDb.execute(rawSql`SELECT * FROM qa_sessions WHERE id=${id}::uuid LIMIT 1`),
+        rawDb.execute(rawSql`
+          SELECT * FROM qa_test_results WHERE session_id=${id}::uuid ORDER BY category, test_name
+        `),
+      ]);
+      if (!sessionR.rows.length) return res.status(404).json({ message: "Session not found" });
+
+      const session = camelize(sessionR.rows[0]) as any;
+      const results = camelize(resultsR.rows) as any[];
+
+      // Group results by category for easier UI rendering
+      const byCategory: Record<string, any[]> = {};
+      for (const r of results) {
+        if (!byCategory[r.category]) byCategory[r.category] = [];
+        byCategory[r.category].push(r);
+      }
+
+      res.json({ session, results, byCategory });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // PATCH /api/admin/qa/sessions/:id/result — mark a single test item
+  // Body: { templateId, status: "pass"|"fail"|"skip", notes? }
+  app.patch("/api/admin/qa/sessions/:id/result", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { templateId, status, notes } = req.body;
+
+      if (!templateId) return res.status(400).json({ message: "templateId is required" });
+      if (!["pass", "fail", "skip", "pending"].includes(status)) {
+        return res.status(400).json({ message: "status must be pass | fail | skip | pending" });
+      }
+
+      // Verify session exists and is still in_progress
+      const sessionR = await rawDb.execute(rawSql`SELECT status FROM qa_sessions WHERE id=${id}::uuid LIMIT 1`);
+      if (!sessionR.rows.length) return res.status(404).json({ message: "Session not found" });
+      const sessionStatus = (sessionR.rows[0] as any).status;
+      if (!["in_progress"].includes(sessionStatus)) {
+        return res.status(400).json({ message: `Cannot update results on a ${sessionStatus} session` });
+      }
+
+      await rawDb.execute(rawSql`
+        UPDATE qa_test_results
+        SET status=${status}, notes=${notes ?? null}, tested_at=NOW()
+        WHERE session_id=${id}::uuid AND template_id=${templateId}
+      `);
+
+      // Recount pass/fail/skip/critical_fail and update session summary
+      await rawDb.execute(rawSql`
+        UPDATE qa_sessions SET
+          passed_tests   = (SELECT COUNT(*) FROM qa_test_results WHERE session_id=${id}::uuid AND status='pass'),
+          failed_tests   = (SELECT COUNT(*) FROM qa_test_results WHERE session_id=${id}::uuid AND status='fail'),
+          skipped_tests  = (SELECT COUNT(*) FROM qa_test_results WHERE session_id=${id}::uuid AND status='skip'),
+          critical_fail_count = (SELECT COUNT(*) FROM qa_test_results WHERE session_id=${id}::uuid AND status='fail' AND critical=true),
+          updated_at     = NOW()
+        WHERE id=${id}::uuid
+      `);
+
+      res.json({ success: true, templateId, status });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/qa/sessions/:id/submit — tester submits for approval
+  // Validates: 0 critical FAILs + 0 critical PENDING items
+  app.post("/api/admin/qa/sessions/:id/submit", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sessionR = await rawDb.execute(rawSql`SELECT * FROM qa_sessions WHERE id=${id}::uuid LIMIT 1`);
+      if (!sessionR.rows.length) return res.status(404).json({ message: "Session not found" });
+      const session = camelize(sessionR.rows[0]) as any;
+      if (session.status !== "in_progress") {
+        return res.status(400).json({ message: `Session already ${session.status}` });
+      }
+
+      const resultsR = await rawDb.execute(rawSql`
+        SELECT template_id, status, critical FROM qa_test_results WHERE session_id=${id}::uuid
+      `);
+      const results = (resultsR.rows as any[]).map(r => ({
+        templateId: r.template_id,
+        status: r.status as "pass" | "fail" | "skip" | "pending",
+      }));
+
+      const validation = validateQaSession(results, session.buildType as any);
+      if (!validation.valid) {
+        return res.status(422).json({
+          message: "QA session cannot be submitted — critical issues found",
+          blockers: validation.blockers,
+        });
+      }
+
+      await rawDb.execute(rawSql`
+        UPDATE qa_sessions SET status='submitted', submitted_at=NOW(), updated_at=NOW()
+        WHERE id=${id}::uuid
+      `);
+
+      res.json({
+        success: true,
+        message: "QA session submitted for approval",
+        passedTests: session.passedTests,
+        failedTests: session.failedTests,
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/qa/sessions/:id/approve — manager approves build
+  app.post("/api/admin/qa/sessions/:id/approve", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const admin = (req as any).adminUser;
+
+      const sessionR = await rawDb.execute(rawSql`SELECT status FROM qa_sessions WHERE id=${id}::uuid LIMIT 1`);
+      if (!sessionR.rows.length) return res.status(404).json({ message: "Session not found" });
+      if ((sessionR.rows[0] as any).status !== "submitted") {
+        return res.status(400).json({ message: "Only submitted sessions can be approved" });
+      }
+
+      await rawDb.execute(rawSql`
+        UPDATE qa_sessions SET
+          status='approved', approved_at=NOW(),
+          approved_by_name=${admin?.name ?? "Admin"},
+          approved_by_id=${admin?.id ?? null},
+          notes=COALESCE(${notes ?? null}, notes),
+          updated_at=NOW()
+        WHERE id=${id}::uuid
+      `);
+
+      // Audit log
+      await rawDb.execute(rawSql`
+        INSERT INTO system_logs (level, tag, message, details)
+        VALUES ('info', 'BUILD_APPROVED', 'Build approved for delivery',
+          ${JSON.stringify({ sessionId: id, approvedBy: admin?.name ?? "Admin", notes })}::jsonb)
+      `);
+
+      res.json({ success: true, message: "Build APPROVED — cleared for delivery" });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/qa/sessions/:id/reject — manager rejects with mandatory reason
+  app.post("/api/admin/qa/sessions/:id/reject", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      if (!reason?.trim()) return res.status(400).json({ message: "rejection reason is required" });
+      const admin = (req as any).adminUser;
+
+      const sessionR = await rawDb.execute(rawSql`SELECT status FROM qa_sessions WHERE id=${id}::uuid LIMIT 1`);
+      if (!sessionR.rows.length) return res.status(404).json({ message: "Session not found" });
+      if (!["submitted", "in_progress"].includes((sessionR.rows[0] as any).status)) {
+        return res.status(400).json({ message: "Only in_progress or submitted sessions can be rejected" });
+      }
+
+      await rawDb.execute(rawSql`
+        UPDATE qa_sessions SET
+          status='rejected', rejection_reason=${reason.trim()},
+          approved_by_name=${admin?.name ?? "Admin"},
+          updated_at=NOW()
+        WHERE id=${id}::uuid
+      `);
+
+      await rawDb.execute(rawSql`
+        INSERT INTO system_logs (level, tag, message, details)
+        VALUES ('warn', 'BUILD_REJECTED', ${`Build rejected: ${reason.trim()}`},
+          ${JSON.stringify({ sessionId: id, rejectedBy: admin?.name ?? "Admin", reason })}::jsonb)
+      `);
+
+      res.json({ success: true, message: "Build REJECTED", reason: reason.trim() });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/qa/build-status/:version — quick gate check before delivery
+  // Returns whether a build version has an approved QA session
+  app.get("/api/admin/qa/build-status/:version", requireAdminAuth, async (req, res) => {
+    try {
+      const { version } = req.params;
+      const { buildType } = req.query;
+
+      const r = await rawDb.execute(rawSql`
+        SELECT id, status, build_type, tester_name, approved_by_name, approved_at,
+          passed_tests, failed_tests, total_tests
+        FROM qa_sessions
+        WHERE build_version = ${version}
+          ${buildType ? rawSql`AND build_type = ${String(buildType)}` : rawSql``}
+        ORDER BY created_at DESC
+        LIMIT 5
+      `);
+
+      const sessions = camelize(r.rows) as any[];
+      const approved = sessions.find(s => s.status === "approved");
+
+      res.json({
+        buildVersion: version,
+        approvedForDelivery: !!approved,
+        approvedSession: approved ?? null,
+        allSessions: sessions,
+        verdict: approved
+          ? `✅ APPROVED — ${approved.approvedByName} signed off on ${new Date(approved.approvedAt).toLocaleString()}`
+          : "❌ NOT APPROVED — no approved QA session found for this build",
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── END QA TRACKING ───────────────────────────────────────────────────────────
 
   app.get("/api/dashboard/chart", requireAdminAuth, async (req, res) => {
     try {
