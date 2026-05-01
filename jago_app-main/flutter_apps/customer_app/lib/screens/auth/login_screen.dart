@@ -173,7 +173,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
 
     if (firebaseSent) {
-      AuthService.sendOtp(phone, 'customer').catchError((_) => <String, dynamic>{});
       _otpProvider = 'firebase';
       setState(() { _otpSent = true; _loading = false; });
       _startTimer();
@@ -228,10 +227,35 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _showErrorDialog('Login Failed', res['message'] ?? 'Firebase verification failed. Please try again.');
         }
       } catch (e) {
-        final fallback = await AuthService.sendOtp(phone, 'customer', true);
+        String? firebaseResendError;
+        var firebaseResent = false;
+        await FirebaseOtpService.sendOtp(
+          phoneNumber: '+91$phone',
+          forceResend: true,
+          onCodeSent: (verificationId) {
+            _firebaseVerificationId = verificationId;
+            firebaseResent = true;
+          },
+          onError: (error) {
+            firebaseResendError = error;
+          },
+        );
         if (!mounted) return;
         _otpVerifyCompleted = false;
         _otpCtrl.clear();
+        if (firebaseResent && _firebaseVerificationId != null) {
+          _otpProvider = 'firebase';
+          setState(() => _loading = false);
+          _startTimer();
+          _showErrorDialog(
+            'OTP Refreshed',
+            'Your previous OTP expired or failed. We sent a fresh OTP. Please enter the new code.',
+          );
+          _otpVerifyInFlight = false;
+          return;
+        }
+        final fallback = await AuthService.sendOtp(phone, 'customer', true);
+        if (!mounted) return;
         if (fallback['success'] == true) {
           _firebaseVerificationId = null;
           _otpProvider = 'server';
@@ -239,13 +263,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _startTimer();
           _showErrorDialog(
             'OTP Refreshed',
-            'Firebase verification expired or failed. We sent a new SMS OTP. Please enter the new code.',
+            'Firebase verification failed. We sent a new SMS OTP instead. Please enter the new code.',
           );
         } else {
           setState(() => _loading = false);
           _showErrorDialog(
             'Verification Failed',
-            fallback['message'] ?? e.toString().replaceAll('Exception: ', ''),
+            fallback['message'] ?? firebaseResendError ?? e.toString().replaceAll('Exception: ', ''),
           );
         }
         _otpVerifyInFlight = false;

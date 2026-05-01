@@ -123,17 +123,37 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           if (!mounted) return;
           _firebaseIdToken = idToken;
         } catch (e) {
-          final fallback = await AuthService.sendOtp(_phoneCtrl.text.trim(), 'driver', true);
+          String? firebaseResendError;
+          var firebaseResent = false;
+          await FirebaseOtpService.sendOtp(
+            phoneNumber: '+91${_phoneCtrl.text.trim()}',
+            forceResend: true,
+            onCodeSent: (verificationId) {
+              _firebaseVerificationId = verificationId;
+              firebaseResent = true;
+            },
+            onError: (error) {
+              firebaseResendError = error;
+            },
+          );
           if (!mounted) return;
           setState(() => _loading = false);
           _otpCtrl.clear();
-          if (fallback['success'] == true) {
-            _firebaseVerificationId = null;
-            _otpProvider = 'server';
+          if (firebaseResent && _firebaseVerificationId != null) {
+            _otpProvider = 'firebase';
             _startTimer();
-            _showSnack('Firebase verification expired. We sent a new SMS OTP. Please enter the new code.', error: true);
+            _showSnack('Firebase verification expired. We sent a fresh OTP. Please enter the new code.', error: true);
           } else {
-            _showSnack(fallback['message'] ?? e.toString().replaceAll('Exception: ', ''), error: true);
+            final fallback = await AuthService.sendOtp(_phoneCtrl.text.trim(), 'driver', true);
+            if (!mounted) return;
+            if (fallback['success'] == true) {
+              _firebaseVerificationId = null;
+              _otpProvider = 'server';
+              _startTimer();
+              _showSnack('Firebase verification failed. We sent a new SMS OTP instead. Please enter the new code.', error: true);
+            } else {
+              _showSnack(fallback['message'] ?? firebaseResendError ?? e.toString().replaceAll('Exception: ', ''), error: true);
+            }
           }
           return;
         }

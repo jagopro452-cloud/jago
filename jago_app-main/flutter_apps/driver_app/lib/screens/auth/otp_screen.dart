@@ -82,20 +82,40 @@ class _OtpScreenState extends State<OtpScreen> with SingleTickerProviderStateMix
         }
         return;
       } catch (e) {
-        final fallback = await AuthService.sendOtp(widget.phone, 'driver', true);
+        String? firebaseResendError;
+        var firebaseResent = false;
+        await FirebaseOtpService.sendOtp(
+          phoneNumber: '+91${widget.phone}',
+          forceResend: true,
+          onCodeSent: (verificationId) {
+            _verificationId = verificationId;
+            firebaseResent = true;
+          },
+          onError: (error) {
+            firebaseResendError = error;
+          },
+        );
         if (!mounted) return;
         setState(() { _loading = false; _hasError = true; });
         _otpCtrl.clear();
-        if (fallback['success'] == true) {
-          _verificationId = null;
-          _otpProvider = 'server';
+        if (firebaseResent && _verificationId != null) {
+          _otpProvider = 'firebase';
           _startTimer();
-          _showSnack('Firebase verification expired. We sent a new SMS OTP. Enter the new code.', error: true);
+          _showSnack('Firebase verification expired. We sent a fresh OTP. Enter the new code.', error: true);
         } else {
-          _showSnack(
-            fallback['message'] ?? e.toString().replaceAll('Exception: ', ''),
-            error: true,
-          );
+          final fallback = await AuthService.sendOtp(widget.phone, 'driver', true);
+          if (!mounted) return;
+          if (fallback['success'] == true) {
+            _verificationId = null;
+            _otpProvider = 'server';
+            _startTimer();
+            _showSnack('Firebase verification failed. We sent a new SMS OTP instead. Enter the new code.', error: true);
+          } else {
+            _showSnack(
+              fallback['message'] ?? firebaseResendError ?? e.toString().replaceAll('Exception: ', ''),
+              error: true,
+            );
+          }
         }
         return;
       }
