@@ -41,6 +41,7 @@ class BookingScreen extends StatefulWidget {
 
 class _BookingScreenState extends State<BookingScreen> with TickerProviderStateMixin {
   GoogleMapController? _mapController;
+  bool _mapCreated = false;
   bool _loading = false;
   bool _estimating = true;
   List<Map<String, dynamic>> _allFares = [];
@@ -415,7 +416,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     'cab': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_27_28_AM_w0rcnh',
     'premium': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_31_05_AM_kavp5e',
     'parcel_bike': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
-    'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
+    'parcel_auto': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775367404/be5b86c2-7a8a-4dbd-ad33-e8da2b627d5e_vurdrg.png',
     'mini_truck':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
     'pickup_van':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
     'local_pool':       'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125550/ChatGPT_Image_Apr_2_2026_03_55_30_PM_ywb7fj.png',
@@ -438,6 +439,28 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return null;
   }
 
+  Widget _buildVehicleImage(String name, {BoxFit fit = BoxFit.contain, double? width, double? height, Color? tint}) {
+    final imgKey = _vehicleImageKey(name);
+    final imgUrl = imgKey != null ? _vehicleImageUrls[imgKey] : null;
+    final fallback = Center(
+      child: Text(
+        _emojiForVehicle(name),
+        style: TextStyle(fontSize: ((height ?? width ?? 72) * 0.42).clamp(24, 52).toDouble()),
+      ),
+    );
+    if (imgUrl == null) return fallback;
+    return Image.network(
+      imgUrl,
+      width: width,
+      height: height,
+      fit: fit,
+      color: tint,
+      colorBlendMode: tint != null ? BlendMode.modulate : null,
+      loadingBuilder: (context, child, progress) => progress == null ? child : fallback,
+      errorBuilder: (_, __, ___) => fallback,
+    );
+  }
+
   /// Renders vehicle artwork — real network image with icon fallback.
   Widget _buildVehicleArtwork(String name, Color accent, bool isSelected, {double size = 96}) {
     final imageKey = _vehicleImageKey(name);
@@ -458,14 +481,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 18),
           child: imageUrl != null
-            ? Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                  icon, size: size * 0.44,
-                  color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
-                ),
-              )
+            ? _buildVehicleImage(name, fit: BoxFit.contain, height: size * 0.62)
             : Icon(
                 icon, size: size * 0.44,
                 color: accent.withValues(alpha: isSelected ? 0.85 : 0.60),
@@ -544,20 +560,15 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           ])),
           // Real vehicle image — emoji fallback if network fails
           Builder(builder: (_) {
-            final imgKey = _vehicleImageKey(name);
-            final imgUrl = imgKey != null ? _vehicleImageUrls[imgKey] : null;
             return SizedBox(
               width: 100, height: 80,
-              child: imgUrl != null
-                ? Image.network(
-                    imgUrl,
-                    fit: BoxFit.contain,
-                    color: Colors.white.withValues(alpha: 0.92),
-                    colorBlendMode: BlendMode.modulate,
-                    errorBuilder: (_, __, ___) =>
-                        Text(emoji, style: const TextStyle(fontSize: 64)),
-                  )
-                : Text(emoji, style: const TextStyle(fontSize: 64)),
+              child: _buildVehicleImage(
+                name,
+                fit: BoxFit.contain,
+                width: 100,
+                height: 80,
+                tint: Colors.white.withValues(alpha: 0.92),
+              ),
             );
           }),
         ]),
@@ -873,6 +884,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   /// no fares. Formula: Total = Base + (Distance × Per-KM Rate) + 5% GST.
   List<Map<String, dynamic>> _buildFallbackFares() {
     final dist = _distanceKm;
+    final requestKey = _normalizeVehicleLookupKey(widget.vehicleCategoryName);
+    final hasPoolCatalog = _bookableVehicleCategories.any((category) {
+      final key = _normalizeVehicleLookupKey(category['name']?.toString());
+      return key.contains('pool') || key.contains('carpool') || key.contains('outstation');
+    });
+    final includePoolOptions =
+        requestKey.contains('pool') || requestKey.contains('carpool') || hasPoolCatalog;
     Map<String, dynamic> make(
         String name, double base, double perKm, double minFareVal, int eta) {
       final raw = (base + dist * perKm).clamp(minFareVal, double.infinity);
@@ -917,8 +935,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       make('Auto',           35, 13, 40, (dist * 3.5).ceil()),
       make('Cab',            50, 16, 60, (dist * 4).ceil()),
       make('Premium Cab',    70, 20, 80, (dist * 4).ceil()),
-      make('Local Pool',     18,  8, 22, (dist * 2.5).ceil()),
-      make('Outstation Pool', 30, 12, 40, (dist * 3).ceil()),
+      if (includePoolOptions) make('Local Pool',     18,  8, 22, (dist * 2.5).ceil()),
+      if (includePoolOptions) make('Outstation Pool', 30, 12, 40, (dist * 3).ceil()),
     ];
   }
 
@@ -1580,6 +1598,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     initialCameraPosition: CameraPosition(target: _pickupLatLng, zoom: 14),
                     onMapCreated: (c) {
                       _mapController = c;
+                      if (mounted) setState(() => _mapCreated = true);
                       debugPrint(
                         '[MAP] Booking map created pickup=${_pickupLatLng.latitude},${_pickupLatLng.longitude} dest=${_destLatLng.latitude},${_destLatLng.longitude}',
                       );
@@ -1593,7 +1612,17 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                     zoomControlsEnabled: false,
                     myLocationButtonEnabled: false,
                     mapToolbarEnabled: false,
+                    compassEnabled: false,
+                    buildingsEnabled: true,
                   ),
+                  if (!_mapCreated)
+                    const Positioned.fill(
+                      child: IgnorePointer(
+                        child: Center(
+                          child: CircularProgressIndicator(color: JT.primary),
+                        ),
+                      ),
+                    ),
                     
                     // Floating Address Card
                     Positioned(
@@ -1630,8 +1659,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             stream: _vehicleStatusService.watchVehicleStatuses(),
                             builder: (context, snapshot) {
                               final statuses = snapshot.data ?? {};
-                              final visibleFares = _allFares;
-                              final canBook = _canConfirmRide;
+                              final visibleFares = _visibleFareEntries(statuses);
+                              final canBook = _canConfirmRide && visibleFares.isNotEmpty;
 
                               return Container(
                                 decoration: BoxDecoration(
@@ -2113,11 +2142,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Builder(builder: (_) {
-                      final imgKey = _vehicleImageKey(name);
-                      final imgUrl = imgKey != null ? _vehicleImageUrls[imgKey] : null;
-                      return imgUrl != null 
-                          ? Image.network(imgUrl, fit: BoxFit.contain)
-                          : Center(child: Text(_emojiForVehicle(name), style: const TextStyle(fontSize: 32)));
+                      return _buildVehicleImage(name, fit: BoxFit.contain, height: 56);
                     }),
                   ),
                   const SizedBox(width: 16),

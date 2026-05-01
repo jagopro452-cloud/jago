@@ -34,6 +34,12 @@ class VehicleStatusService {
     VehicleStatus(key: 'auto', name: 'Auto', active: true),
     VehicleStatus(key: 'cab', name: 'Cab', active: true),
     VehicleStatus(key: 'premium', name: 'Premium', active: true),
+    VehicleStatus(key: 'parcel_bike', name: 'Parcel Bike', active: true),
+    VehicleStatus(key: 'parcel_auto', name: 'Parcel Auto', active: true),
+    VehicleStatus(key: 'mini_truck', name: 'Mini Truck', active: true),
+    VehicleStatus(key: 'pickup_van', name: 'Pickup Van', active: true),
+    VehicleStatus(key: 'local_pool', name: 'Local Pool', active: true),
+    VehicleStatus(key: 'outstation_pool', name: 'Outstation Pool', active: true),
   ];
 
   Stream<Map<String, VehicleStatus>> watchVehicleStatuses() async* {
@@ -69,6 +75,16 @@ class VehicleStatusService {
 
   static String keyForVehicleName(String value) {
     final name = value.toLowerCase();
+    if (name.contains('bike') && name.contains('parcel')) return 'parcel_bike';
+    if (name.contains('auto') && name.contains('parcel')) return 'parcel_auto';
+    if (name.contains('mini') && name.contains('truck')) return 'mini_truck';
+    if (name.contains('tata') && name.contains('ace')) return 'mini_truck';
+    if (name.contains('pickup')) return 'pickup_van';
+    if (name.contains('outstation') && name.contains('pool')) return 'outstation_pool';
+    if ((name.contains('local') || name.contains('city') || name.contains('carpool')) &&
+        name.contains('pool')) {
+      return 'local_pool';
+    }
     if (name.contains('bike')) return 'bike';
     if (name.contains('auto')) return 'auto';
     if (name.contains('premium')) return 'premium';

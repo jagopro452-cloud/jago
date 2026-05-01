@@ -16817,12 +16817,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   const vehicleControlDefaults = [
     { key: "bike", name: "Bike", active: true, icon: "bike" },
     { key: "auto", name: "Auto", active: true, icon: "auto" },
-    { key: "cab", name: "Cab", active: false, icon: "car" },
-    { key: "premium", name: "Premium", active: false, icon: "premium" },
+    { key: "cab", name: "Cab", active: true, icon: "car" },
+    { key: "premium", name: "Premium", active: true, icon: "premium" },
+    { key: "parcel_bike", name: "Parcel Bike", active: true, icon: "parcel_bike" },
+    { key: "parcel_auto", name: "Parcel Auto", active: true, icon: "parcel_auto" },
+    { key: "mini_truck", name: "Mini Truck", active: true, icon: "mini_truck" },
+    { key: "pickup_van", name: "Pickup Van", active: true, icon: "pickup_van" },
+    { key: "local_pool", name: "Local Pool", active: true, icon: "local_pool" },
+    { key: "outstation_pool", name: "Outstation Pool", active: true, icon: "outstation_pool" },
   ];
 
   function normalizeVehicleKey(value: string) {
     const v = String(value || "").trim().toLowerCase();
+    if (v.includes("bike") && v.includes("parcel")) return "parcel_bike";
+    if (v.includes("auto") && v.includes("parcel")) return "parcel_auto";
+    if (v.includes("mini") && v.includes("truck")) return "mini_truck";
+    if (v.includes("tata") && v.includes("ace")) return "mini_truck";
+    if (v.includes("pickup")) return "pickup_van";
+    if (v.includes("outstation") && v.includes("pool")) return "outstation_pool";
+    if ((v.includes("local") || v.includes("city") || v.includes("carpool")) && v.includes("pool")) return "local_pool";
     if (v.includes("bike")) return "bike";
     if (v.includes("auto")) return "auto";
     if (v.includes("premium")) return "premium";

@@ -187,8 +187,6 @@ export async function applyWalletChange(params: {
   } finally {
     client.release();
   }
-
-
   return {
     userId,
     amount,

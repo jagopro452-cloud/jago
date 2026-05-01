@@ -253,7 +253,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       }
       _reverseGeocode(_lat, _lng);
     } catch (e) {
-      setState(() => _locationLoading = false);
+      if (!mounted) return;
+      setState(() {
+        _lat ??= 16.5062;
+        _lng ??= 80.6480;
+        _locationLoading = false;
+        _address = 'Could not fetch live location. Showing default area.';
+      });
     }
   }
 
@@ -406,16 +412,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                   _pendingCamera = null;
                 }
               },
-            onCameraMove: (pos) {
-              // High performance: update values without setState
-              _lat = pos.target.latitude;
-              _lng = pos.target.longitude;
-            },
-            onCameraIdle: () {
-              // Only update UI and geocode when map stops moving
-              if (mounted) setState(() {});
-              _reverseGeocode(_lat, _lng);
-            },
+              onCameraMove: _onCameraMove,
+              onCameraIdle: () {
+                if (mounted) setState(() {});
+                _onCameraIdle();
+              },
             ),
           if (_locationLoading)
             const Center(child: CircularProgressIndicator()),

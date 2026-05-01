@@ -34,6 +34,10 @@ export function normalizeBookingVehicleType(value: string | null | undefined): s
   const key = normalizeVehicleKey(value);
   if (!key) return null;
 
+  if (key === "premium" || key === "premium_cab" || key === "luxury" || key === "prime_sedan") {
+    return "premium";
+  }
+
   if (key === "bike_parcel" || (key.includes("parcel") && key.includes("bike"))) return "bike_parcel";
   if (
     key === "auto_parcel" ||
@@ -103,6 +107,7 @@ export function getDriverDbVehicleType(vehicleType: string | null | undefined): 
   if (normalized === "bike") return "motor_bike";
   if (normalized === "auto") return "auto";
   if (normalized === "car") return "car";
+  if (normalized === "premium") return "car";
   return null;
 }
 
@@ -132,7 +137,12 @@ function allowedKeysForRequestedVehicle(
       return ["bike"];
     case "auto":
       return ["auto"];
+    case "premium":
+      return ["premium", "sedan", "suv", "mini_car", "car"];
     case "car":
+      if (normalizeVehicleKey(requestedVehicleName).includes("premium")) {
+        return ["premium", "sedan", "suv", "mini_car", "car"];
+      }
       return ["mini_car", "car", "sedan", "suv"];
     case "bike_parcel":
       return ["bike_parcel"];
@@ -168,7 +178,9 @@ function scoreVehicleCandidate(
 
   if (requestedType === "bike" && rowKey === "bike") score += 60;
   if (requestedType === "auto" && rowKey === "auto") score += 60;
+  if (requestedType === "premium" && rowKey === "premium") score += 85;
   if (requestedType === "car") {
+    if (rowKey === "premium") score += requestedNameKey.includes("premium") ? 60 : 10;
     if (rowKey === "mini_car" || rowKey === "car") score += 40;
     if (rowKey === "sedan") score += 35;
     if (rowKey === "suv") score += 30;
@@ -314,6 +326,8 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
     case "auto":
     case "auto_ride":
       return ["auto"];
+    case "premium":
+      return ["premium"];
     case "mini_car":
     case "car":
       return ["mini_car"];
@@ -420,6 +434,7 @@ export function getPlatformServiceKeyForCategory(meta: VehicleCategoryMeta | nul
   }
   if (key === "bike") return "bike_ride";
   if (key === "auto") return "auto_ride";
+  if (key === "premium") return "sedan";
   if (key === "mini_car" || key === "car" || key === "pool_mini") return "mini_car";
   if (key === "sedan" || key === "pool_sedan") return "sedan";
   if (key === "suv" || key === "pool_suv") return "suv";
