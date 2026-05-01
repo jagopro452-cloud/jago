@@ -17,6 +17,7 @@ import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { notifyUser } from "./notification-service";
 import { applyWalletChange } from "./revenue-engine";
+import { restartDispatchForTrip } from "./dispatch";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -203,10 +204,27 @@ async function reassignTripToNextDriver(
   if (!tripR.rows.length) return;
   
   const trip = tripR.rows[0] as any;
-  
-  // Restart dispatch with same trip
-  // (Reuse existing dispatch engine, skip the failed driver)
-  // TODO: Call startDispatch again with exclusion list
+
+  try {
+    await restartDispatchForTrip(tripId, {
+      additionalRejectedDriverIds: [failedDriverId],
+      preserveSessionRejections: true,
+    });
+    await logInfo('DISPATCH-REASSIGN', 'Redispatch restarted after driver verification failure', {
+      tripId,
+      failedDriverId,
+      reason,
+      customerId: trip.customer_id,
+      estimatedFare: trip.estimated_fare,
+    });
+  } catch (error: any) {
+    await logError('DISPATCH-REASSIGN', `Redispatch failed for trip ${tripId}`, {
+      failedDriverId,
+      reason,
+      customerId: trip.customer_id,
+      error: error?.message || String(error),
+    }).catch(() => {});
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
