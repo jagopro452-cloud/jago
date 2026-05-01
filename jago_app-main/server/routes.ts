@@ -655,9 +655,12 @@ const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL
 // SECURITY: Never expose OTPs in production responses, regardless of env var setting
 const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" && process.env.NODE_ENV !== "production";
 
-const AI_ASSISTANT_SERVICE_URL = (process.env.AI_ASSISTANT_SERVICE_URL || "http://localhost:7104").replace(/\/$/, "");
-if (AI_ASSISTANT_SERVICE_URL.includes('localhost') && process.env.NODE_ENV === 'production') {
-  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL points to localhost in production. Voice-intent AI microservice will be SKIPPED � set AI_ASSISTANT_SERVICE_URL env var to enable it.");
+// AI microservice is optional — null disables voice intent without crashing server
+const AI_ASSISTANT_SERVICE_URL = process.env.AI_ASSISTANT_SERVICE_URL
+  ? process.env.AI_ASSISTANT_SERVICE_URL.replace(/\/$/, "")
+  : null;
+if (false) { // placeholder kept to preserve surrounding line numbers; remove next cleanup
+  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL localhost removed� set AI_ASSISTANT_SERVICE_URL env var to enable it.");
 }
 
 // -- Claude AI voice intent parser --------------------------------------------
@@ -2205,7 +2208,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool: dbPool } = await import("./db");
       await dbPool.query("SELECT 1");
-      res.json({ status: "ok", db: "connected", ts: new Date().toISOString() });
+      const { presenceHealthy, getOnlineDriverCount } = await import("./presence");
+      const redisOk = await presenceHealthy();
+      const onlineDrivers = redisOk ? await getOnlineDriverCount() : null;
+      res.json({
+        status: "ok", db: "connected",
+        redis: redisOk ? "connected" : "unavailable",
+        onlineDrivers,
+        ts: new Date().toISOString(),
+      });
     } catch (e: any) {
       res.status(503).json({ status: "error", db: "disconnected" });
     }

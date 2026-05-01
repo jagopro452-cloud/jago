@@ -26,6 +26,9 @@ const EnvSchema = z.object({
 
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
   FIREBASE_WEB_API_KEY: z.string().optional(),
+
+  REDIS_URL: z.string().optional(),
+  ALLOWED_ORIGINS: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;
@@ -74,6 +77,7 @@ export function validateProductionReadiness(env: AppEnv): void {
   if (!env.RAZORPAY_KEY_SECRET) warnings.push("RAZORPAY_KEY_SECRET");
   if (!env.RAZORPAY_WEBHOOK_SECRET) warnings.push("RAZORPAY_WEBHOOK_SECRET");
   if (!env.SOCKET_ALLOWED_ORIGINS) warnings.push("SOCKET_ALLOWED_ORIGINS (defaults to * — set to restrict WebSocket origins)");
+  if (!env.REDIS_URL) warnings.push("REDIS_URL not set — driver presence cache and Socket.IO multi-server sync will be disabled (in-memory fallback only)");
 
   if (critical.length) {
     throw new Error(`[config] FATAL: Critical production env vars not set: ${critical.join(", ")} — cannot start in production without these.`);

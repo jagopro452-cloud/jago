@@ -24,6 +24,8 @@ import {
   getMatchingDriverCategoryIds,
   uuidArraySql,
 } from "./vehicle-matching";
+import { setDriverPresence, deleteDriverPresence } from "./presence";
+import { logInfo, logWarn } from "./hardening";
 
 export let io: SocketIOServer;
 
@@ -201,7 +203,7 @@ export function setupSocket(httpServer: HttpServer) {
 
     if (userType === "driver") {
       driverSockets.set(userId, socket.id);
-      await syncDriverVehicleRoom(socket, userId);
+      const driverProfile = await syncDriverVehicleRoom(socket, userId);
 
       // Cancel any pending offline timer (driver reconnected within grace window)
       const pendingTimer = pendingOfflineTimers.get(userId);
@@ -242,6 +244,13 @@ export function setupSocket(httpServer: HttpServer) {
             ON CONFLICT (driver_id) DO UPDATE
               SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed}, is_online=true, updated_at=NOW()
           `);
+          // Redis presence: refresh TTL so the key stays alive as long as driver is streaming
+          setDriverPresence(userId, {
+            lat, lng, heading, speed,
+            vehicleType: driverProfile.vehicleType || "",
+            vehicleCategoryId: driverProfile.vehicleCategoryId || "",
+            lastSeen: now,
+          }).catch(() => { });
           const tripR = await rawDb.execute(rawSql`
             SELECT
               u.current_trip_id,
@@ -356,15 +365,15 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const driverProfile = await syncDriverVehicleRoom(socket, userId);
           emitSelf(socket, "driver:online_ack", { isOnline });
-          // If driver explicitly went offline, cancel any pending grace-period timer
+          // If driver explicitly went offline, cancel any pending grace-period timer and clear Redis presence
           if (!isOnline) {
             const pending = pendingOfflineTimers.get(userId);
             if (pending) { clearTimeout(pending); pendingOfflineTimers.delete(userId); }
+            deleteDriverPresence(userId).catch(() => { });
           }
-          console.log(
-            `[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng} ` +
-              `driver.vehicleType=${driverProfile.vehicleType || "missing"}`,
-          );
+          logInfo("DRIVER_STATUS", `Driver ${userId} ${isOnline ? "ONLINE" : "OFFLINE"}`, {
+            lat, lng, vehicleType: driverProfile.vehicleType || "missing",
+          }).catch(() => { });
 
           // If driver just came online, check for searching trips nearby
           if (isOnline && hasValidCoords && lat != null && lng != null) {
@@ -1114,7 +1123,8 @@ export function setupSocket(httpServer: HttpServer) {
             rawDb.execute(rawSql`
               UPDATE users SET is_online=false WHERE id=${userId}::uuid
             `).catch(() => { });
-            console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
+            deleteDriverPresence(userId).catch(() => { });
+            logInfo("PRESENCE", `Driver ${userId} offline after grace period`, { reason }).catch(() => { });
           }
         }, DRIVER_OFFLINE_GRACE_MS);
         pendingOfflineTimers.set(userId, timer);
