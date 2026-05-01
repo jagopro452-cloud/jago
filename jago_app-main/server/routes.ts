@@ -1400,6 +1400,84 @@ async function ensureOperationalSchema() {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
+
+      -- Local on-demand carpool: passengers book seats; direction-matching algorithm
+      CREATE TABLE IF NOT EXISTS local_pool_rides (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        driver_id UUID,
+        vehicle_category_id UUID,
+        pickup_lat NUMERIC(10,7),
+        pickup_lng NUMERIC(10,7),
+        destination_lat NUMERIC(10,7),
+        destination_lng NUMERIC(10,7),
+        route_bearing_deg NUMERIC(6,2),
+        pickup_address TEXT,
+        destination_address TEXT,
+        max_seats INTEGER DEFAULT 4,
+        booked_seats INTEGER DEFAULT 0,
+        fare_per_seat NUMERIC(10,2) DEFAULT 0,
+        distance_km NUMERIC(10,2) DEFAULT 0,
+        status VARCHAR(30) DEFAULT 'collecting',
+        collection_deadline TIMESTAMP,
+        zone_id UUID,
+        dispatch_trip_id UUID,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS local_pool_passengers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        pool_ride_id UUID NOT NULL,
+        trip_request_id UUID,
+        customer_id UUID NOT NULL,
+        pickup_lat NUMERIC(10,7),
+        pickup_lng NUMERIC(10,7),
+        drop_lat NUMERIC(10,7),
+        drop_lng NUMERIC(10,7),
+        pickup_address TEXT,
+        drop_address TEXT,
+        seats_booked INTEGER DEFAULT 1,
+        fare_per_seat NUMERIC(10,2) DEFAULT 0,
+        total_fare NUMERIC(10,2) DEFAULT 0,
+        distance_km NUMERIC(10,2) DEFAULT 0,
+        payment_method VARCHAR(40) DEFAULT 'cash',
+        status VARCHAR(30) DEFAULT 'booked',
+        pickup_order INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Per-seat fare config columns on trip_fares
+      ALTER TABLE trip_fares ADD COLUMN IF NOT EXISTS per_seat_base_fare NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_fares ADD COLUMN IF NOT EXISTS per_seat_km_rate NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE trip_fares ADD COLUMN IF NOT EXISTS max_pool_seats INTEGER DEFAULT 4;
+
+      -- Add local_pool to revenue config
+      INSERT INTO service_revenue_config (module_name, revenue_model, commission_percentage, commission_gst_percentage, subscription_required)
+      VALUES ('local_pool', 'commission', 10.00, 18.00, false)
+      ON CONFLICT (module_name) DO NOTHING;
+
+      -- Track local_pool mode setting
+      INSERT INTO revenue_model_settings (key_name, value)
+      VALUES ('local_pool_mode', 'on'), ('local_pool_collection_secs', '300')
+      ON CONFLICT (key_name) DO NOTHING;
+
+      -- Seed Local Pool vehicle category if missing
+      INSERT INTO vehicle_categories
+        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, total_seats, is_carpool)
+      SELECT 'Local Pool', 'local_pool', 'ride', '??', true,
+             18::numeric, 8::numeric, 40::numeric, 1::numeric, 4::int, true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM vehicle_categories WHERE LOWER(name) = 'local pool'
+      );
+
+      INSERT INTO vehicle_categories
+        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, total_seats, is_carpool)
+      SELECT 'Outstation Pool', 'outstation_pool', 'ride', '??', true,
+             30::numeric, 12::numeric, 60::numeric, 2::numeric, 4::int, true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM vehicle_categories WHERE LOWER(name) = 'outstation pool'
+      );
     `);
 
     await rawDb.execute(rawSql`
@@ -6651,6 +6729,508 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ success: true, outstation_pool_mode: mode });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOCAL POOL — on-demand seat-based city carpool with direction matching
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Pure helpers ────────────────────────────────────────────────────────
+
+  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function bearingDeg(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const dl = (lng2 - lng1) * Math.PI / 180;
+    const x = Math.sin(dl) * Math.cos(phi2);
+    const y = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dl);
+    return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+  }
+
+  function isDirectionCompatible(b1: number, b2: number, toleranceDeg = 55): boolean {
+    const diff = Math.abs(b1 - b2);
+    return Math.min(diff, 360 - diff) <= toleranceDeg;
+  }
+
+  function calcSeatFare(
+    fareConfig: { perSeatBaseFare?: string | number; perSeatKmRate?: string | number; baseFare?: string | number; farePerKm?: string | number; minimumFare?: string | number },
+    distanceKm: number,
+    maxSeats: number
+  ): number {
+    const perSeatBase = parseFloat(String(fareConfig.perSeatBaseFare || 0));
+    const perSeatKm = parseFloat(String(fareConfig.perSeatKmRate || 0));
+    if (perSeatBase > 0 || perSeatKm > 0) {
+      const minFare = parseFloat(String(fareConfig.minimumFare || 0));
+      return Math.max(perSeatBase + perSeatKm * distanceKm, minFare > 0 ? minFare / maxSeats : 0);
+    }
+    // Derive per-seat from full fare with 20% pool premium
+    const base = parseFloat(String(fareConfig.baseFare || 0));
+    const perKm = parseFloat(String(fareConfig.farePerKm || 0));
+    const fullFare = base + perKm * distanceKm;
+    const seats = maxSeats > 0 ? maxSeats : 4;
+    return Math.round((fullFare / seats) * 1.2 * 10) / 10;
+  }
+
+  // ─── Customer: book a local pool ride (seat-level booking) ───────────────
+
+  app.post("/api/app/customer/local-pool/book", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const {
+        pickupLat, pickupLng, dropLat, dropLng,
+        pickupAddress = '', dropAddress = '',
+        seatsBooked = 1, vehicleCategoryId, paymentMethod = 'cash',
+      } = req.body;
+
+      if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
+        return res.status(400).json({ message: "Pickup and drop coordinates are required" });
+      }
+      const seats = Math.min(Math.max(parseInt(String(seatsBooked)) || 1, 1), 4);
+      const pickupLatN = parseFloat(pickupLat);
+      const pickupLngN = parseFloat(pickupLng);
+      const dropLatN = parseFloat(dropLat);
+      const dropLngN = parseFloat(dropLng);
+      const customerBearing = bearingDeg(pickupLatN, pickupLngN, dropLatN, dropLngN);
+      const distKm = haversineKm(pickupLatN, pickupLngN, dropLatN, dropLngN);
+
+      // Fetch fare config for this vehicle category
+      let fareConfig: any = {};
+      if (vehicleCategoryId) {
+        const fcR = await rawDb.execute(rawSql`
+          SELECT tf.*, vc.base_fare AS vc_base_fare, vc.fare_per_km AS vc_fare_per_km,
+                 vc.minimum_fare AS vc_min_fare, vc.total_seats AS vc_max_seats
+          FROM vehicle_categories vc
+          LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
+          WHERE vc.id = ${vehicleCategoryId}::uuid
+          ORDER BY tf.created_at DESC LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        if (fcR.rows.length) fareConfig = camelize(fcR.rows[0]) as any;
+      }
+      if (!fareConfig.baseFare) {
+        // Fallback local pool defaults
+        fareConfig = { baseFare: 18, farePerKm: 8, minimumFare: 40, maxPoolSeats: 4 };
+      }
+      const maxSeats = parseInt(String(fareConfig.maxPoolSeats || fareConfig.vcMaxSeats || 4));
+      const farePerSeat = calcSeatFare(fareConfig, distKm, maxSeats);
+      const totalFare = Math.round(farePerSeat * seats * 100) / 100;
+
+      // ── Find a compatible open pool ride ──────────────────────────────────
+      const openRidesR = await rawDb.execute(rawSql`
+        SELECT * FROM local_pool_rides
+        WHERE status = 'collecting'
+          AND vehicle_category_id = ${vehicleCategoryId || null}::uuid
+          AND (max_seats - booked_seats) >= ${seats}
+          AND collection_deadline > NOW()
+          AND (
+            6371 * 2 * ASIN(SQRT(
+              POWER(SIN((${pickupLatN} - pickup_lat::float) * PI()/360), 2) +
+              COS(${pickupLatN} * PI()/180) * COS(pickup_lat::float * PI()/180) *
+              POWER(SIN((${pickupLngN} - pickup_lng::float) * PI()/360), 2)
+            ))
+          ) <= 3
+        ORDER BY booked_seats DESC, created_at ASC
+        LIMIT 10
+      `);
+
+      let matchedRide: any = null;
+      for (const row of openRidesR.rows as any[]) {
+        const rideBearing = parseFloat(row.route_bearing_deg || 0);
+        if (isDirectionCompatible(rideBearing, customerBearing)) {
+          matchedRide = row;
+          break;
+        }
+      }
+
+      let poolRideId: string;
+      let isNewRide = false;
+
+      if (matchedRide) {
+        // Join existing pool ride
+        await rawDb.execute(rawSql`
+          UPDATE local_pool_rides
+          SET booked_seats = booked_seats + ${seats}, updated_at = NOW()
+          WHERE id = ${matchedRide.id}::uuid
+        `);
+        poolRideId = matchedRide.id;
+      } else {
+        // Create new pool ride — first passenger defines the anchor
+        const collectionSecs = 300; // 5 minutes collection window
+        const newRideR = await rawDb.execute(rawSql`
+          INSERT INTO local_pool_rides
+            (vehicle_category_id, pickup_lat, pickup_lng, destination_lat, destination_lng,
+             route_bearing_deg, pickup_address, destination_address, max_seats, booked_seats,
+             fare_per_seat, distance_km, status, collection_deadline)
+          VALUES
+            (${vehicleCategoryId || null}::uuid,
+             ${pickupLatN}, ${pickupLngN}, ${dropLatN}, ${dropLngN},
+             ${customerBearing},
+             ${pickupAddress || null}, ${dropAddress || null},
+             ${maxSeats}, ${seats},
+             ${farePerSeat}, ${distKm},
+             'collecting',
+             NOW() + INTERVAL '${rawSql.raw(String(collectionSecs))} seconds')
+          RETURNING id
+        `);
+        poolRideId = (newRideR.rows[0] as any).id;
+        isNewRide = true;
+      }
+
+      // Insert passenger record
+      const passengerR = await rawDb.execute(rawSql`
+        INSERT INTO local_pool_passengers
+          (pool_ride_id, customer_id, pickup_lat, pickup_lng, drop_lat, drop_lng,
+           pickup_address, drop_address, seats_booked, fare_per_seat, total_fare,
+           distance_km, payment_method, status, pickup_order)
+        VALUES
+          (${poolRideId}::uuid, ${customer.id}::uuid,
+           ${pickupLatN}, ${pickupLngN}, ${dropLatN}, ${dropLngN},
+           ${pickupAddress || null}, ${dropAddress || null},
+           ${seats}, ${farePerSeat}, ${totalFare},
+           ${distKm}, ${paymentMethod}, 'booked',
+           (SELECT COALESCE(MAX(pickup_order), 0) + 1 FROM local_pool_passengers WHERE pool_ride_id = ${poolRideId}::uuid))
+        RETURNING *
+      `);
+      const passenger = camelize(passengerR.rows[0]) as any;
+
+      // Check if pool ride is now full → mark as dispatching
+      const rideStateR = await rawDb.execute(rawSql`
+        SELECT booked_seats, max_seats FROM local_pool_rides WHERE id = ${poolRideId}::uuid LIMIT 1
+      `);
+      const rideState = rideStateR.rows[0] as any;
+      const shouldDispatch = parseInt(rideState.booked_seats) >= parseInt(rideState.max_seats);
+      if (shouldDispatch) {
+        await rawDb.execute(rawSql`
+          UPDATE local_pool_rides SET status = 'dispatching', updated_at = NOW() WHERE id = ${poolRideId}::uuid
+        `);
+      }
+
+      // After 5 minutes (collection window), trigger dispatch if not yet done — handled by driver or admin
+      res.json({
+        success: true,
+        passenger: { ...passenger, poolRideId },
+        poolRideId,
+        farePerSeat,
+        totalFare,
+        seatsBooked: seats,
+        distanceKm: distKm,
+        isNewRide,
+        shouldDispatch,
+        message: isNewRide
+          ? "Pool ride created. Searching for more passengers and a driver..."
+          : "You joined an existing pool ride!",
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Customer: estimate pool fare before booking ──────────────────────────
+
+  app.post("/api/app/customer/local-pool/estimate", authApp, async (req, res) => {
+    try {
+      const { pickupLat, pickupLng, dropLat, dropLng, seatsBooked = 1, vehicleCategoryId } = req.body;
+      if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
+        return res.status(400).json({ message: "Coordinates required" });
+      }
+      const seats = Math.min(Math.max(parseInt(String(seatsBooked)) || 1, 1), 4);
+      const distKm = haversineKm(parseFloat(pickupLat), parseFloat(pickupLng), parseFloat(dropLat), parseFloat(dropLng));
+
+      let fareConfig: any = { baseFare: 18, farePerKm: 8, minimumFare: 40, maxPoolSeats: 4 };
+      if (vehicleCategoryId) {
+        const fcR = await rawDb.execute(rawSql`
+          SELECT tf.*, vc.base_fare AS vc_base_fare, vc.fare_per_km AS vc_fare_per_km,
+                 vc.minimum_fare AS vc_min_fare, vc.total_seats AS vc_max_seats
+          FROM vehicle_categories vc
+          LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
+          WHERE vc.id = ${vehicleCategoryId}::uuid
+          ORDER BY tf.created_at DESC LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        if (fcR.rows.length) fareConfig = { ...fareConfig, ...camelize(fcR.rows[0]) as any };
+      }
+      const maxSeats = parseInt(String(fareConfig.maxPoolSeats || fareConfig.vcMaxSeats || 4));
+      const farePerSeat = calcSeatFare(fareConfig, distKm, maxSeats);
+      const totalFare = Math.round(farePerSeat * seats * 100) / 100;
+
+      // Count available pool rides nearby
+      const availR = await rawDb.execute(rawSql`
+        SELECT COUNT(*) as cnt,
+               SUM(max_seats - booked_seats) as total_available_seats
+        FROM local_pool_rides
+        WHERE status = 'collecting'
+          AND (max_seats - booked_seats) >= ${seats}
+          AND collection_deadline > NOW()
+      `);
+      const avail = availR.rows[0] as any;
+
+      res.json({
+        farePerSeat,
+        totalFare,
+        distanceKm: distKm,
+        seatsBooked: seats,
+        maxSeats,
+        availableRides: parseInt(avail.cnt || 0),
+        availableSeats: parseInt(avail.total_available_seats || 0),
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Customer: my pool bookings ───────────────────────────────────────────
+
+  app.get("/api/app/customer/local-pool/bookings", authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT lpp.*,
+          lpr.status as ride_status,
+          lpr.booked_seats, lpr.max_seats,
+          lpr.driver_id,
+          u.full_name as driver_name, u.phone as driver_phone,
+          ud.avg_rating as driver_rating
+        FROM local_pool_passengers lpp
+        LEFT JOIN local_pool_rides lpr ON lpr.id = lpp.pool_ride_id
+        LEFT JOIN users u ON u.id = lpr.driver_id
+        LEFT JOIN driver_details ud ON ud.user_id = lpr.driver_id
+        WHERE lpp.customer_id = ${customer.id}::uuid
+        ORDER BY lpp.created_at DESC
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Driver: accept local pool ride ──────────────────────────────────────
+
+  app.post("/api/app/driver/local-pool/accept/:rideId", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { rideId } = req.params;
+      const r = await rawDb.execute(rawSql`
+        UPDATE local_pool_rides
+        SET driver_id = ${driver.id}::uuid,
+            status = 'accepted',
+            updated_at = NOW()
+        WHERE id = ${rideId}::uuid
+          AND driver_id IS NULL
+          AND status IN ('collecting', 'dispatching')
+        RETURNING *
+      `);
+      if (!r.rows.length) return res.status(409).json({ message: "Ride already taken or not available" });
+
+      const ride = camelize(r.rows[0]) as any;
+      const passR = await rawDb.execute(rawSql`
+        SELECT lpp.*, u.full_name as customer_name, u.phone as customer_phone
+        FROM local_pool_passengers lpp
+        LEFT JOIN users u ON u.id = lpp.customer_id
+        WHERE lpp.pool_ride_id = ${rideId}::uuid AND lpp.status = 'booked'
+        ORDER BY lpp.pickup_order ASC
+      `);
+      const passengers = camelize(passR.rows);
+      res.json({ success: true, ride, passengers });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Driver: get active local pool ride ───────────────────────────────────
+
+  app.get("/api/app/driver/local-pool/active", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT * FROM local_pool_rides
+        WHERE driver_id = ${driver.id}::uuid
+          AND status NOT IN ('completed', 'cancelled')
+        ORDER BY created_at DESC LIMIT 1
+      `);
+      if (!r.rows.length) return res.json({ ride: null, passengers: [] });
+      const ride = camelize(r.rows[0]) as any;
+      const passR = await rawDb.execute(rawSql`
+        SELECT lpp.*, u.full_name as customer_name, u.phone as customer_phone, u.profile_image
+        FROM local_pool_passengers lpp
+        LEFT JOIN users u ON u.id = lpp.customer_id
+        WHERE lpp.pool_ride_id = ${ride.id}::uuid
+        ORDER BY lpp.pickup_order ASC
+      `);
+      res.json({ ride, passengers: camelize(passR.rows) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Driver: update passenger status (picked_up / dropped) ───────────────
+
+  app.patch("/api/app/driver/local-pool/passengers/:passengerId/status", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { passengerId } = req.params;
+      const { status } = req.body; // 'picked_up' | 'dropped' | 'no_show'
+      if (!['picked_up', 'dropped', 'no_show'].includes(status)) {
+        return res.status(400).json({ message: "status must be picked_up, dropped, or no_show" });
+      }
+      // Verify driver owns the pool ride
+      await rawDb.execute(rawSql`
+        UPDATE local_pool_passengers lpp
+        SET status = ${status}, updated_at = NOW()
+        FROM local_pool_rides lpr
+        WHERE lpp.id = ${passengerId}::uuid
+          AND lpr.id = lpp.pool_ride_id
+          AND lpr.driver_id = ${driver.id}::uuid
+      `);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Driver: complete local pool ride + revenue settlement ───────────────
+
+  app.post("/api/app/driver/local-pool/:rideId/complete", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { rideId } = req.params;
+      const claimR = await rawDb.execute(rawSql`
+        UPDATE local_pool_rides
+        SET status = 'completed', updated_at = NOW()
+        WHERE id = ${rideId}::uuid
+          AND driver_id = ${driver.id}::uuid
+          AND status NOT IN ('completed')
+        RETURNING *
+      `);
+      if (!claimR.rows.length) return res.status(404).json({ message: "Ride not found or already completed" });
+
+      const passR = await rawDb.execute(rawSql`
+        SELECT * FROM local_pool_passengers WHERE pool_ride_id = ${rideId}::uuid AND status != 'cancelled'
+      `);
+      const passengers = passR.rows as any[];
+      const totalRevenue = passengers.reduce((s, p) => s + parseFloat(p.total_fare || 0), 0);
+
+      const breakdown = await calculateRevenueBreakdown(totalRevenue, "local_pool", driver.id);
+      const settlement = await settleRevenue({
+        driverId: driver.id,
+        tripId: rideId,
+        fare: totalRevenue,
+        paymentMethod: "cash",
+        breakdown,
+        serviceCategory: "local_pool",
+        serviceLabel: "local_pool",
+      });
+
+      await rawDb.execute(rawSql`
+        UPDATE local_pool_passengers SET status = 'dropped', updated_at = NOW()
+        WHERE pool_ride_id = ${rideId}::uuid AND status NOT IN ('dropped', 'cancelled', 'no_show')
+      `);
+
+      res.json({
+        success: true,
+        totalRevenue,
+        driverEarnings: breakdown.driverEarnings,
+        walletBalance: settlement.newWalletBalance,
+        totalPassengers: passengers.length,
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Driver: list available pool rides to accept ──────────────────────────
+
+  app.get("/api/app/driver/local-pool/available", authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      // Get driver's current location from their latest location update
+      const locR = await rawDb.execute(rawSql`
+        SELECT current_lat, current_lng FROM users WHERE id = ${driver.id}::uuid LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const loc = locR.rows[0] as any;
+      const driverLat = parseFloat(loc?.current_lat || 0);
+      const driverLng = parseFloat(loc?.current_lng || 0);
+
+      const r = await rawDb.execute(rawSql`
+        SELECT lpr.*,
+          COUNT(lpp.id)::int as passenger_count,
+          COALESCE(SUM(lpp.total_fare), 0) as total_fare_pool
+        FROM local_pool_rides lpr
+        LEFT JOIN local_pool_passengers lpp ON lpp.pool_ride_id = lpr.id AND lpp.status = 'booked'
+        WHERE lpr.status IN ('collecting', 'dispatching')
+          AND lpr.driver_id IS NULL
+          AND lpr.collection_deadline > NOW()
+        GROUP BY lpr.id
+        ORDER BY lpr.booked_seats DESC, lpr.created_at ASC
+        LIMIT 20
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ─── Admin: local pool rides management ──────────────────────────────────
+
+  app.get("/api/admin/local-pool/rides", requireAdminAuth, async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const r = await rawDb.execute(rawSql`
+        SELECT lpr.*,
+          u.full_name as driver_name, u.phone as driver_phone,
+          COUNT(DISTINCT lpp.id)::int as passenger_count,
+          COALESCE(SUM(lpp.total_fare), 0) as total_revenue
+        FROM local_pool_rides lpr
+        LEFT JOIN users u ON u.id = lpr.driver_id
+        LEFT JOIN local_pool_passengers lpp ON lpp.pool_ride_id = lpr.id AND lpp.status != 'cancelled'
+        ${status && status !== 'all' ? rawSql`WHERE lpr.status = ${status}` : rawSql``}
+        GROUP BY lpr.id, u.full_name, u.phone
+        ORDER BY lpr.created_at DESC
+        LIMIT 200
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.get("/api/admin/local-pool/rides/:rideId/passengers", requireAdminAuth, async (req, res) => {
+    try {
+      const { rideId } = req.params;
+      const r = await rawDb.execute(rawSql`
+        SELECT lpp.*, u.full_name as customer_name, u.phone as customer_phone
+        FROM local_pool_passengers lpp
+        LEFT JOIN users u ON u.id = lpp.customer_id
+        WHERE lpp.pool_ride_id = ${rideId}::uuid
+        ORDER BY lpp.pickup_order ASC
+      `);
+      res.json({ data: camelize(r.rows) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.get("/api/admin/local-pool/stats", requireAdminAuth, async (_req, res) => {
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT
+          COUNT(*) FILTER (WHERE status != 'cancelled') as total_rides,
+          COUNT(*) FILTER (WHERE status = 'collecting') as collecting,
+          COUNT(*) FILTER (WHERE status = 'completed') as completed,
+          (SELECT COUNT(*) FROM local_pool_passengers WHERE status != 'cancelled') as total_passengers,
+          (SELECT COALESCE(SUM(total_fare), 0) FROM local_pool_passengers WHERE status = 'dropped') as total_revenue
+        FROM local_pool_rides
+      `);
+      res.json(camelize(r.rows[0]) || {});
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.patch("/api/admin/local-pool/settings", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const { mode, collectionSecs } = req.body;
+      if (mode && ['on', 'off'].includes(mode)) {
+        await rawDb.execute(rawSql`
+          INSERT INTO revenue_model_settings (key_name, value)
+          VALUES ('local_pool_mode', ${mode})
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      if (collectionSecs && parseInt(collectionSecs) > 0) {
+        await rawDb.execute(rawSql`
+          INSERT INTO revenue_model_settings (key_name, value)
+          VALUES ('local_pool_collection_secs', ${String(parseInt(collectionSecs))})
+          ON CONFLICT (key_name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `);
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
 
   // GET all revenue model settings as a flat key-value map
   app.get("/api/admin/revenue/settings", requireAdminAuth, async (_req, res) => {

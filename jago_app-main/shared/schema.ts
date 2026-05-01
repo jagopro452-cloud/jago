@@ -482,6 +482,56 @@ export const insertTripMessageSchema = createInsertSchema(tripMessages).omit({ i
 export type InsertTripMessage = z.infer<typeof insertTripMessageSchema>;
 export type TripMessage = typeof tripMessages.$inferSelect;
 
+// Local pool rides — dynamic on-demand seat matching for city carpool
+export const localPoolRides = pgTable("local_pool_rides", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  driverId: uuid("driver_id"),
+  vehicleCategoryId: uuid("vehicle_category_id"),
+  pickupLat: doublePrecision("pickup_lat"),
+  pickupLng: doublePrecision("pickup_lng"),
+  destinationLat: doublePrecision("destination_lat"),
+  destinationLng: doublePrecision("destination_lng"),
+  routeBearingDeg: doublePrecision("route_bearing_deg"),
+  pickupAddress: text("pickup_address"),
+  destinationAddress: text("destination_address"),
+  maxSeats: integer("max_seats").default(4),
+  bookedSeats: integer("booked_seats").default(0),
+  farePerSeat: numeric("fare_per_seat", { precision: 10, scale: 2 }).default("0"),
+  distanceKm: doublePrecision("distance_km").default(0),
+  status: varchar("status", { length: 30 }).default("collecting"),
+  collectionDeadline: timestamp("collection_deadline"),
+  zoneId: uuid("zone_id"),
+  dispatchTripId: uuid("dispatch_trip_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Passengers within a local pool ride
+export const localPoolPassengers = pgTable("local_pool_passengers", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  poolRideId: uuid("pool_ride_id").notNull(),
+  tripRequestId: uuid("trip_request_id"),
+  customerId: uuid("customer_id").notNull(),
+  pickupLat: doublePrecision("pickup_lat"),
+  pickupLng: doublePrecision("pickup_lng"),
+  dropLat: doublePrecision("drop_lat"),
+  dropLng: doublePrecision("drop_lng"),
+  pickupAddress: text("pickup_address"),
+  dropAddress: text("drop_address"),
+  seatsBooked: integer("seats_booked").default(1),
+  farePerSeat: numeric("fare_per_seat", { precision: 10, scale: 2 }).default("0"),
+  totalFare: numeric("total_fare", { precision: 10, scale: 2 }).default("0"),
+  distanceKm: doublePrecision("distance_km").default(0),
+  paymentMethod: varchar("payment_method", { length: 40 }).default("cash"),
+  status: varchar("status", { length: 30 }).default("booked"),
+  pickupOrder: integer("pickup_order").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type LocalPoolRide = typeof localPoolRides.$inferSelect;
+export type LocalPoolPassenger = typeof localPoolPassengers.$inferSelect;
+
 export type TripFare = typeof tripFares.$inferSelect;
 export type CouponSetup = typeof couponSetups.$inferSelect;
 export type Review = typeof reviews.$inferSelect;

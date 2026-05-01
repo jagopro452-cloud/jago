@@ -113,6 +113,7 @@ const navSections: NavSection[] = [
       { label: "All Trips", icon: "bi-car-front-fill", href: "/admin/trips" },
       { label: "Car Sharing", icon: "bi-people-fill", href: "/admin/car-sharing" },
       { label: "Intercity Car Sharing", icon: "bi-car-front-fill", href: "/admin/intercity-carsharing" },
+      { label: "Local Pool Rides", icon: "bi-people-fill", href: "/admin/local-pool" },
       { label: "Outstation Pool", icon: "bi-signpost-2-fill", href: "/admin/outstation-pool" },
       { label: "Intercity Routes", icon: "bi-map", href: "/admin/intercity-routes" },
       { label: "Parcel Refund Request", icon: "bi-arrow-return-left", href: "/admin/parcel-refunds" },

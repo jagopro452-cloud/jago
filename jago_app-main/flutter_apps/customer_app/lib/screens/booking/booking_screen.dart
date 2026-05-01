@@ -59,6 +59,20 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   late Razorpay _razorpay;
 
+  // Pool ride seat selection
+  int _seatsBooked = 1;
+  double _poolFarePerSeat = 0;
+  bool _poolFareLoading = false;
+
+  bool get _isLocalPoolVehicle {
+    final vt = _normalizeVehicleType(
+      _fare?['vehicleType']?.toString() ??
+      _fare?['type']?.toString() ??
+      _fareVehicleName(_fare ?? const <String, dynamic>{}),
+    );
+    return vt == 'local_pool' || vt == 'carpool';
+  }
+
   bool _bookForSomeone = false;
   final _passengerNameCtrl = TextEditingController();
   final _passengerPhoneCtrl = TextEditingController();
@@ -914,6 +928,55 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     try {
       final headers = await AuthService.getHeaders();
       final selection = _selectedVehicleSelection ?? _buildSelectionFromFare(_fare);
+
+      // Determine if this is a local pool booking
+      final selectedVehicleType = selection?['vehicleType']?.toString() ??
+          _normalizeVehicleType(
+            _fare?['vehicleType']?.toString() ??
+                _fare?['type']?.toString() ??
+                _fareVehicleName(_fare ?? const <String, dynamic>{}),
+          );
+      final isLocalPool = selectedVehicleType == 'local_pool' || selectedVehicleType == 'carpool';
+
+      if (isLocalPool) {
+        // Route to dedicated local pool endpoint
+        final vcId = selection?['vehicleCategoryId']?.toString() ??
+            _fare?['vehicleCategoryId']?.toString() ??
+            _fare?['id']?.toString() ??
+            widget.vehicleCategoryId;
+        final poolBody = <String, dynamic>{
+          'pickupLat': widget.pickupLat, 'pickupLng': widget.pickupLng,
+          'dropLat': widget.destLat, 'dropLng': widget.destLng,
+          'pickupAddress': widget.pickup,
+          'dropAddress': widget.destination,
+          'seatsBooked': _seatsBooked,
+          'paymentMethod': _paymentMethod,
+          if (vcId != null && vcId.isNotEmpty) 'vehicleCategoryId': vcId,
+        };
+        debugPrint('[LOCAL_POOL_BOOK] payload=${jsonEncode(poolBody)}');
+        final res = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/app/customer/local-pool/book'),
+          headers: headers,
+          body: jsonEncode(poolBody),
+        );
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (!mounted) return;
+          _showSnack(
+            'Pool ride booked! $_seatsBooked seat(s) · ₹${data['totalFare']?.toStringAsFixed(0) ?? ''} · ${data['message'] ?? 'Matching driver...'}',
+            error: false,
+          );
+          setState(() => _loading = false);
+          Navigator.pop(context);
+        } else {
+          if (!mounted) return;
+          final err = jsonDecode(res.body);
+          _showSnack(err['message']?.toString() ?? 'Pool booking failed', error: true);
+          setState(() => _loading = false);
+        }
+        return;
+      }
+
       final body = <String, dynamic>{
         'pickupAddress': widget.pickup,
         'destinationAddress': widget.destination,
@@ -949,12 +1012,6 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           _fare?['id']?.toString() ??
           widget.vehicleCategoryId;
       if (vcId != null && vcId.isNotEmpty) body['vehicleCategoryId'] = vcId;
-      final selectedVehicleType = selection?['vehicleType']?.toString() ??
-          _normalizeVehicleType(
-            _fare?['vehicleType']?.toString() ??
-                _fare?['type']?.toString() ??
-                _fareVehicleName(_fare ?? const <String, dynamic>{}),
-          );
       if (selectedVehicleType != null) body['vehicleType'] = selectedVehicleType;
       final selectedVehicleName =
           selection?['vehicleName']?.toString() ?? _fareVehicleName(_fare ?? const <String, dynamic>{});
@@ -1607,6 +1664,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                                         children: [
                                           _buildVehicleSelector(statuses),
+                                          if (_isLocalPoolVehicle) ...[
+                                            const SizedBox(height: 12),
+                                            _buildPoolSeatSelector(),
+                                          ],
                                           if (!_hasResolvedVehicleSelection && !_estimating) ...[
                                             const SizedBox(height: 12),
                                             Container(
@@ -2104,34 +2165,121 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                   ),
                   
                   // Pricing
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '₹${displayFare.toStringAsFixed(0)}',
-                        style: GoogleFonts.outfit(
-                          fontSize: 22, 
-                          fontWeight: FontWeight.w800, 
-                          color: const Color(0xFF1E293B)
-                        ),
-                      ),
-                      if (isSelected && _promoDiscount > 0)
+                  Builder(builder: (_) {
+                    final vt = _normalizeVehicleType(
+                      f['vehicleType']?.toString() ?? f['type']?.toString() ?? name,
+                    );
+                    final isPool = vt == 'local_pool' || vt == 'carpool';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
                         Text(
-                          '₹${fareVal.toInt()}',
-                          style: const TextStyle(
-                            fontSize: 12, 
-                            color: Colors.grey, 
-                            decoration: TextDecoration.lineThrough
+                          '₹${displayFare.toStringAsFixed(0)}',
+                          style: GoogleFonts.outfit(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1E293B),
                           ),
                         ),
-                    ],
-                  ),
+                        if (isPool)
+                          Text(
+                            'per seat',
+                            style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF7C3AED), fontWeight: FontWeight.w600),
+                          ),
+                        if (isSelected && _promoDiscount > 0)
+                          Text(
+                            '₹${fareVal.toInt()}',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey, decoration: TextDecoration.lineThrough),
+                          ),
+                      ],
+                    );
+                  }),
                 ],
               ),
             ),
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildPoolSeatSelector() {
+    final fareVal = (_fare?['estimatedFare'] ?? 0).toDouble();
+    final perSeat = _seatsBooked > 0 && fareVal > 0 ? fareVal : 0.0;
+    const purple = Color(0xFF7C3AED);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: purple.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: purple.withOpacity(0.18), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.people_rounded, size: 18, color: purple),
+            const SizedBox(width: 8),
+            Text('Select Seats', style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15, color: const Color(0xFF1E293B))),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              child: Text('Pool Ride', style: GoogleFonts.outfit(color: purple, fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(4, (idx) {
+              final n = idx + 1;
+              final sel = _seatsBooked == n;
+              return GestureDetector(
+                onTap: () { HapticFeedback.selectionClick(); setState(() => _seatsBooked = n); },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  width: 60, height: 60,
+                  decoration: BoxDecoration(
+                    color: sel ? purple : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: sel ? purple : Colors.grey.shade200, width: sel ? 2 : 1),
+                    boxShadow: sel ? [BoxShadow(color: purple.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3))] : [],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person_rounded, size: 22, color: sel ? Colors.white : Colors.grey.shade500),
+                      Text('$n', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: sel ? Colors.white : Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$_seatsBooked seat${_seatsBooked > 1 ? 's' : ''} selected',
+                style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B)),
+              ),
+              if (perSeat > 0)
+                Text(
+                  '₹${(perSeat * _seatsBooked).toStringAsFixed(0)} total',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF1E293B)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Prices auto-split across passengers. Save up to 60% vs solo ride.',
+            style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF94A3B8)),
+          ),
+        ],
+      ),
     );
   }
 
