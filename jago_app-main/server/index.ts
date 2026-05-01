@@ -20,6 +20,8 @@ validateProductionReadiness(env);
 const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
+let bootstrapReady = false;
+let bootstrapError: string | null = null;
 
 declare module "http" {
   interface IncomingMessage {
@@ -37,6 +39,15 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "1mb", parameterLimit: 100 }));
+
+app.get("/_health", (_req, res) => {
+  return res.status(200).json({
+    ok: true,
+    ready: bootstrapReady,
+    error: bootstrapError,
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -118,6 +129,22 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use((req, res, next) => {
+  if (bootstrapReady || req.path === "/_health") {
+    return next();
+  }
+
+  return res.status(503).json({
+    message: "Server is starting. Please try again in a few seconds.",
+    ready: false,
+  });
+});
+
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen(port, "0.0.0.0", () => {
+  console.log(`Server bootstrap listening on port ${port}`);
+});
+
 (async () => {
   // Run Drizzle migrations at startup — this creates ALL tables including admins
   try {
@@ -126,6 +153,7 @@ app.use((req, res, next) => {
     await migrate(drizzleDb, { migrationsFolder });
     log("[db] Migrations applied OK — all tables ready");
   } catch (e: any) {
+    bootstrapError = `migration_failed:${e.message}`;
     console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
     console.error("[db] Full error:", e.stack || e);
     process.exit(1);
@@ -163,6 +191,7 @@ app.use((req, res, next) => {
     await registerRoutes(httpServer, app);
     log("[server] API routes registered successfully");
   } catch (e: any) {
+    bootstrapError = `route_registration_failed:${e.message}`;
     console.error("[routes] Failed to register routes:", e.message);
     console.error("[routes] Stack:", e.stack);
     sendAlert({
@@ -182,10 +211,9 @@ app.use((req, res, next) => {
 
   // ─── NOW START SERVER LISTENING ───
   // Routes are registered and ready to handle requests
-  const port = parseInt(process.env.PORT || "5000", 10);
-  const server = httpServer.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on port ${port}`);
-  });
+  bootstrapReady = true;
+  bootstrapError = null;
+  console.log(`Server ready on port ${port}`);
 
   // ─── BACKGROUND INITIALIZATION (non-blocking) ───
 
