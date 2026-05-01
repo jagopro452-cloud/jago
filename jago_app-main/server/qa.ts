@@ -276,6 +276,9 @@ export function validateQaSession(
     if (item.critical && status === "fail") {
       blockers.push(`CRITICAL FAIL: [${item.category}] ${item.name}`);
     }
+    if (item.critical && status === "skip") {
+      blockers.push(`CRITICAL SKIPPED: [${item.category}] ${item.name}`);
+    }
     if (item.critical && status === "pending") {
       blockers.push(`CRITICAL NOT TESTED: [${item.category}] ${item.name}`);
     }
