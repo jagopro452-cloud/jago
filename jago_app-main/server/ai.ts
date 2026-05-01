@@ -165,12 +165,14 @@ export interface DriverMatchScore {
   fcmToken?: string;
   scoreBreakdown?: {
     distance: number;
+    eta: number;
     behavior: number;
     rating: number;
     responseSpeed: number;
     completionRate: number;
     idleBonus: number;
     final: number;
+    etaMinutes?: number;
     locationAgeSeconds?: number;
   };
 }

@@ -31,6 +31,7 @@ import {
 } from "./ride-state";
 import { activeDriverEligibilitySql } from "./driver-state";
 import { applyWalletChange } from "./revenue-engine";
+import { getDistanceWithCache } from "./maps-cache";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -54,7 +55,8 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
 const LOCATION_FRESHNESS_SECONDS = 150;
 const MAX_IDLE_BONUS_MINUTES = 30;
 const DISPATCH_SCORE_WEIGHTS = {
-  distance: 0.35,
+  distance: 0.20,
+  eta: 0.15,
   behavior: 0.25,
   rating: 0.15,
   responseSpeed: 0.10,
@@ -141,6 +143,7 @@ function buildDispatchScore(input: {
   completionRate: number;
   behaviorScore: number;
   idleSeconds?: number;
+  etaMinutes?: number | null;
   locationAgeSeconds?: number | null;
 }): { final: number; breakdown: DriverMatchScore["scoreBreakdown"] } {
   const distKm = Number(input.distanceKm) || 99;
@@ -149,8 +152,12 @@ function buildDispatchScore(input: {
   const completionRate = Number(input.completionRate) || 0.8;
   const behaviorScore = Number(input.behaviorScore) || 50;
   const idleSeconds = Math.max(0, Number(input.idleSeconds) || 0);
+  const etaMinutes = input.etaMinutes != null
+    ? Math.max(0, Number(input.etaMinutes) || 0)
+    : null;
 
   const distanceScore = Math.max(0, 1 - distKm / 25);
+  const etaScore = Math.max(0, 1 - ((etaMinutes ?? Math.max(1, distKm * 3)) / 30));
   const behaviorNorm = Math.max(0, Math.min(1, behaviorScore / 100));
   const ratingScore = Math.max(0, Math.min(1, (rating - 1) / 4));
   const responseScore = Math.max(0, 1 - avgResp / 300);
@@ -160,6 +167,7 @@ function buildDispatchScore(input: {
 
   const final =
     distanceScore * DISPATCH_SCORE_WEIGHTS.distance +
+    etaScore * DISPATCH_SCORE_WEIGHTS.eta +
     behaviorNorm * DISPATCH_SCORE_WEIGHTS.behavior +
     ratingScore * DISPATCH_SCORE_WEIGHTS.rating +
     responseScore * DISPATCH_SCORE_WEIGHTS.responseSpeed +
@@ -170,12 +178,14 @@ function buildDispatchScore(input: {
     final: Math.round(final * 1000) / 1000,
     breakdown: {
       distance: Math.round(distanceScore * 1000) / 1000,
+      eta: Math.round(etaScore * 1000) / 1000,
       behavior: Math.round(behaviorNorm * 1000) / 1000,
       rating: Math.round(ratingScore * 1000) / 1000,
       responseSpeed: Math.round(responseScore * 1000) / 1000,
       completionRate: Math.round(completionScore * 1000) / 1000,
       idleBonus: Math.round(idleBonusScore * 1000) / 1000,
       final: Math.round(final * 1000) / 1000,
+      etaMinutes: etaMinutes ?? undefined,
       locationAgeSeconds: input.locationAgeSeconds ?? undefined,
     },
   };
@@ -185,6 +195,8 @@ function formatScoreBreakdown(breakdown?: DriverMatchScore["scoreBreakdown"]): s
   if (!breakdown) return "n/a";
   return [
     `distance=${breakdown.distance}`,
+    `eta=${breakdown.eta}`,
+    `etaMin=${breakdown.etaMinutes ?? "?"}`,
     `behavior=${breakdown.behavior}`,
     `rating=${breakdown.rating}`,
     `response=${breakdown.responseSpeed}`,
@@ -193,6 +205,42 @@ function formatScoreBreakdown(breakdown?: DriverMatchScore["scoreBreakdown"]): s
     `age=${breakdown.locationAgeSeconds ?? "?"}s`,
     `final=${breakdown.final}`,
   ].join(" ");
+}
+
+async function rerankDriversWithEta(
+  drivers: DriverMatchScore[],
+  pickupLat: number,
+  pickupLng: number,
+  maxCandidates = 5,
+): Promise<DriverMatchScore[]> {
+  if (drivers.length <= 1) return drivers;
+  const limit = Math.min(maxCandidates, drivers.length);
+  const top = drivers.slice(0, limit);
+  const rest = drivers.slice(limit);
+
+  await Promise.all(top.map(async (driver) => {
+    try {
+      const eta = await getDistanceWithCache(driver.lat, driver.lng, pickupLat, pickupLng);
+      const breakdown = driver.scoreBreakdown;
+      const recomputed = buildDispatchScore({
+        distanceKm: driver.distanceKm,
+        rating: driver.rating,
+        avgResponseTimeSec: driver.avgResponseTimeSec,
+        completionRate: breakdown?.completionRate ?? 0.8,
+        behaviorScore: (breakdown?.behavior ?? 0.5) * 100,
+        idleSeconds: (breakdown?.idleBonus ?? 0) * MAX_IDLE_BONUS_MINUTES * 60,
+        etaMinutes: eta.durationMinutes,
+        locationAgeSeconds: breakdown?.locationAgeSeconds ?? null,
+      });
+      driver.score = recomputed.final;
+      driver.scoreBreakdown = recomputed.breakdown;
+    } catch {
+      // Keep distance-based score if ETA fetch fails.
+    }
+  }));
+
+  top.sort((a, b) => b.score - a.score);
+  return [...top, ...rest];
 }
 
 async function loadDispatchGenderPreference(customerId: string, serviceType: string): Promise<boolean> {
@@ -627,6 +675,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         };
       });
       drivers.sort((a, b) => b.score - a.score);
+      drivers = await rerankDriversWithEta(drivers, session.pickupLat, session.pickupLng, 4);
     } else {
       drivers = await findDriversInRadius(
         session.pickupLat,
@@ -638,6 +687,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         config.driversPerStep,
         session.femaleOnlyPass
       );
+      drivers = await rerankDriversWithEta(drivers, session.pickupLat, session.pickupLng);
     }
 
     if (session.status !== "searching" && session.status !== "offered") return;
