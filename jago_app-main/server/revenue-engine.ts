@@ -14,7 +14,7 @@
  *  anni admin ki ravali — all three must flow to admin wallet/revenue.
  */
 
-import { db } from "./db";
+import { db, pool } from "./db";
 import { sql } from "drizzle-orm";
 import { getRevenueConfig } from "./revenue-config";
 
@@ -133,43 +133,61 @@ export async function applyWalletChange(params: {
 
   await ensureWalletEventsTable();
 
-  const updated = params.type === "CREDIT"
-    ? await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance = wallet_balance + ${amount},
-            updated_at = NOW()
-        WHERE id=${userId}::uuid
-        RETURNING wallet_balance
-      `)
-    : await rawDb.execute(rawSql`
-        UPDATE users
-        SET wallet_balance = wallet_balance - ${amount},
-            updated_at = NOW()
-        WHERE id=${userId}::uuid
-          AND (${params.requireSufficientFunds ? amount : 0} = 0 OR wallet_balance >= ${amount})
-        RETURNING wallet_balance
-      `);
+  // Atomic wallet operation: lock row → update balance → insert event log, all in one transaction.
+  // SELECT FOR UPDATE prevents concurrent requests from reading stale balance before either UPDATE commits.
+  const client = await pool.connect();
+  let newBalance: number;
+  try {
+    await client.query("BEGIN");
 
-  if (!updated.rows.length) {
-    if (params.type === "DEBIT" && params.requireSufficientFunds) {
+    // Lock the user row for this transaction
+    const lockRes = await client.query(
+      "SELECT wallet_balance FROM users WHERE id=$1::uuid FOR UPDATE",
+      [userId]
+    );
+    if (!lockRes.rows.length) {
+      await client.query("ROLLBACK");
+      throw new Error("Wallet owner not found");
+    }
+
+    const currentBalance = parseFloat(lockRes.rows[0].wallet_balance || 0);
+
+    if (params.type === "DEBIT" && params.requireSufficientFunds && currentBalance < amount) {
+      await client.query("ROLLBACK");
       throw new Error("Insufficient wallet balance");
     }
-    throw new Error("Wallet owner not found");
+
+    const updateRes = params.type === "CREDIT"
+      ? await client.query(
+          "UPDATE users SET wallet_balance = wallet_balance + $1, updated_at = NOW() WHERE id=$2::uuid RETURNING wallet_balance",
+          [amount, userId]
+        )
+      : await client.query(
+          "UPDATE users SET wallet_balance = wallet_balance - $1, updated_at = NOW() WHERE id=$2::uuid AND wallet_balance >= $1 RETURNING wallet_balance",
+          [amount, userId]
+        );
+
+    if (!updateRes.rows.length) {
+      await client.query("ROLLBACK");
+      if (params.type === "DEBIT" && params.requireSufficientFunds) throw new Error("Insufficient wallet balance");
+      throw new Error("Wallet owner not found");
+    }
+
+    newBalance = parseFloat(updateRes.rows[0].wallet_balance || 0);
+
+    await client.query(
+      "INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata) VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb)",
+      [userId, amount, params.type, params.reason, params.refId || null, JSON.stringify(params.metadata || {})]
+    );
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 
-  const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
-
-  await rawDb.execute(rawSql`
-    INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
-    VALUES (
-      ${userId}::uuid,
-      ${amount},
-      ${params.type},
-      ${params.reason},
-      ${params.refId || null},
-      ${JSON.stringify(params.metadata || {})}::jsonb
-    )
-  `).catch(() => {});
 
   return {
     userId,
@@ -194,39 +212,51 @@ export async function applyCompanyWalletChange(params: {
   if (!(amount > 0)) throw new Error("amount must be positive");
   const tripDelta = Number(params.tripDelta || 0);
 
-  const updated = params.type === "CREDIT"
-    ? await rawDb.execute(rawSql`
-        UPDATE b2b_companies
-        SET wallet_balance = wallet_balance + ${amount},
-            total_trips = GREATEST(0, total_trips + ${tripDelta}),
-            updated_at = NOW()
-        WHERE id=${companyId}::uuid
-        RETURNING wallet_balance
-      `)
-    : await rawDb.execute(rawSql`
-        UPDATE b2b_companies
-        SET wallet_balance = wallet_balance - ${amount},
-            total_trips = GREATEST(0, total_trips + ${tripDelta}),
-            updated_at = NOW()
-        WHERE id=${companyId}::uuid
-        RETURNING wallet_balance
-      `);
-
-  if (!updated.rows.length) throw new Error("Company not found");
-  const newBalance = parseFloat((updated.rows[0] as any)?.wallet_balance || 0);
-
   await ensureWalletEventsTable();
-  await rawDb.execute(rawSql`
-    INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
-    VALUES (
-      ${companyId}::uuid,
-      ${amount},
-      ${params.type},
-      ${params.reason},
-      ${params.refId || null},
-      ${JSON.stringify({ ...(params.metadata || {}), entityType: "b2b" })}::jsonb
-    )
-  `).catch(() => {});
+
+  const client = await pool.connect();
+  let newBalance: number;
+  try {
+    await client.query("BEGIN");
+
+    const lockRes = await client.query(
+      "SELECT wallet_balance FROM b2b_companies WHERE id=$1::uuid FOR UPDATE",
+      [companyId]
+    );
+    if (!lockRes.rows.length) {
+      await client.query("ROLLBACK");
+      throw new Error("Company not found");
+    }
+
+    const updateRes = params.type === "CREDIT"
+      ? await client.query(
+          "UPDATE b2b_companies SET wallet_balance = wallet_balance + $1, total_trips = GREATEST(0, total_trips + $2), updated_at = NOW() WHERE id=$3::uuid RETURNING wallet_balance",
+          [amount, tripDelta, companyId]
+        )
+      : await client.query(
+          "UPDATE b2b_companies SET wallet_balance = wallet_balance - $1, total_trips = GREATEST(0, total_trips + $2), updated_at = NOW() WHERE id=$3::uuid RETURNING wallet_balance",
+          [amount, tripDelta, companyId]
+        );
+
+    if (!updateRes.rows.length) {
+      await client.query("ROLLBACK");
+      throw new Error("Company not found");
+    }
+
+    newBalance = parseFloat(updateRes.rows[0].wallet_balance || 0);
+
+    await client.query(
+      "INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata) VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb)",
+      [companyId, amount, params.type, params.reason, params.refId || null, JSON.stringify({ ...(params.metadata || {}), entityType: "b2b" })]
+    );
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return { companyId, amount, type: params.type, newBalance };
 }

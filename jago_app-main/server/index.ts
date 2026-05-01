@@ -58,19 +58,11 @@ app.use((_req, res, next) => {
   if (isDev || !_req.headers.origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    const allowedOrigins = [
-      "https://jagopro.org",
-      "https://www.jagopro.org",
-      "http://localhost:5173",
-      "http://localhost:5000",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:5000",
-      "http://192.168.0.234:5000",
-      "http://192.168.0.143:5000",
-      "http://192.168.1.62:5000",
-      "http://192.168.1.89:5000",
-      "http://192.168.1.89:5173",
-    ];
+    const defaultOrigins = "https://jagopro.org,https://www.jagopro.org,http://localhost:5173,http://localhost:5000,http://127.0.0.1:5173,http://127.0.0.1:5000";
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultOrigins)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (allowedOrigins.includes(origin as string)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
     }
@@ -131,7 +123,7 @@ app.use((req, res, next) => {
   try {
     const migrationsFolder = path.join(process.cwd(), "migrations");
     log(`[db] Running migrations from: ${migrationsFolder}`);
-    // await migrate(drizzleDb, { migrationsFolder });
+    await migrate(drizzleDb, { migrationsFolder });
     log("[db] Migrations applied OK — all tables ready");
   } catch (e: any) {
     console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);

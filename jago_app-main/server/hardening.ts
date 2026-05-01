@@ -18,6 +18,7 @@ import { io } from "./socket";
 import { notifyUser } from "./notification-service";
 import { applyWalletChange } from "./revenue-engine";
 import { restartDispatchForTrip } from "./dispatch";
+import { sendAlert as observabilitySendAlert } from "./observability";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -115,12 +116,15 @@ export async function logCritical(tag: string, message: string, data?: any) {
 }
 
 /**
- * Send critical alert to monitoring system (Slack, email, DataDog, etc.)
+ * Send critical alert via observability webhook (ALERT_WEBHOOK_URL env var) + console fallback.
  */
 export async function sendAlert(opts: { severity: string; title: string; body: string }) {
-  // Slack webhook or email
-  // TODO: Implement based on your alert infrastructure
   console.warn(`[ALERT-${opts.severity.toUpperCase()}] ${opts.title}: ${opts.body}`);
+  await observabilitySendAlert({
+    level: opts.severity === "critical" ? "critical" : "error",
+    source: opts.title,
+    message: opts.body,
+  }).catch(() => {});
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
