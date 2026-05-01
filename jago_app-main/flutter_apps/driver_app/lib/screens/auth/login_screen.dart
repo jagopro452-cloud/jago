@@ -179,6 +179,26 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
+    firebaseError ??= 'OTP send failed. Retrying once...';
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      forceResend: true,
+      onCodeSent: (verificationId) {
+        _firebaseVerificationId = verificationId;
+        firebaseSent = true;
+      },
+      onError: (error) { firebaseError = error; },
+    );
+    if (!mounted) return;
+    if (firebaseSent) {
+      _otpProvider = 'firebase';
+      setState(() { _otpSent = true; _loading = false; });
+      _startTimer();
+      _snack('OTP sent to +91$phone');
+      listenForCode();
+      return;
+    }
+
     // FALLBACK: Server SMS OTP (when Firebase is blocked/unavailable)
     final res = await AuthService.sendOtp(phone, 'driver', true);
     if (!mounted) return;

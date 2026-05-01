@@ -94,6 +94,27 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
+    firebaseError ??= 'OTP send failed. Retrying once...';
+    await FirebaseOtpService.sendOtp(
+      phoneNumber: '+91$phone',
+      forceResend: true,
+      onCodeSent: (vId) {
+        _firebaseVerificationId = vId;
+        firebaseSent = true;
+      },
+      onError: (err) {
+        firebaseError = err;
+      },
+    );
+    if (!mounted) return;
+    if (firebaseSent) {
+      _otpProvider = 'firebase';
+      setState(() { _loading = false; _step = 1; });
+      _startTimer();
+      _showSnack('OTP sent to +91$phone');
+      return;
+    }
+
     final serverOtp = await AuthService.sendOtp(phone, 'customer', true);
     if (!mounted) return;
     if (serverOtp['success'] != true) {
