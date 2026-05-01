@@ -106,6 +106,7 @@ class ApiConfig {
   static String get placesAutocomplete => '$baseUrl/api/app/places/autocomplete';
   static String get placeDetails => '$baseUrl/api/app/places/details';
   static String get placesNearby => '$baseUrl/api/app/places/nearby';
+  static String get route => '$baseUrl/api/app/route';
   static String get routeMultiWaypoint => '$baseUrl/api/app/route/multi-waypoint';
 
   // ── Parcel ───────────────────────────────────────────────────────────

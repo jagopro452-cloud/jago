@@ -35,6 +35,10 @@ class SocketService {
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _newParcelController = StreamController<Map<String, dynamic>>.broadcast();
   final _walletRechargedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _walletUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _driverStateChangedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _kycUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _serviceUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
@@ -53,6 +57,10 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onNewParcel => _newParcelController.stream;
   Stream<Map<String, dynamic>> get onWalletRecharged => _walletRechargedController.stream;
+  Stream<Map<String, dynamic>> get onWalletUpdated => _walletUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onDriverStateChanged => _driverStateChangedController.stream;
+  Stream<Map<String, dynamic>> get onKycUpdated => _kycUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onServiceUpdated => _serviceUpdatedController.stream;
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
   Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
@@ -210,6 +218,18 @@ class SocketService {
     // Wallet recharged (after Razorpay payment verified)
     _socket!.on('wallet:recharged', (data) {
       _walletRechargedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('wallet:updated', (data) {
+      _walletUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('driver:state_changed', (data) {
+      _driverStateChangedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('kyc:updated', (data) {
+      _kycUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('service:updated', (data) {
+      _serviceUpdatedController.add(Map<String, dynamic>.from(data));
     });
 
     // ── WebRTC Call Signaling ──────────────────────────────────

@@ -32,6 +32,7 @@ class TrackingScreen extends StatefulWidget {
 
 class _TrackingScreenState extends State<TrackingScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _driverLocationStaleAfter = Duration(seconds: 15);
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
@@ -56,9 +57,12 @@ class _TrackingScreenState extends State<TrackingScreen>
   List<Map<String, dynamic>> _nearbyDrivers = [];
 
   bool _isConnected = true;
+  bool _trackingDelayed = false;
   bool _hasMapLocationPermission = false;
   StreamSubscription? _connSub;
   Timer? _pollTimer;
+  Timer? _driverLocationStaleTimer;
+  DateTime? _lastDriverLocationAt;
 
   bool _isArriving = false; // "Pilot is about to arrive" flag
 
@@ -77,7 +81,10 @@ class _TrackingScreenState extends State<TrackingScreen>
           ..repeat(reverse: true);
     _connSub = _socket.onConnectionChanged.listen((connected) {
       if (mounted) {
-        setState(() => _isConnected = connected);
+        setState(() {
+          _isConnected = connected;
+          _trackingDelayed = !connected;
+        });
         if (!connected) {
           _showStatusBanner('Waiting for connection...', Colors.orange);
         } else {
@@ -146,9 +153,11 @@ class _TrackingScreenState extends State<TrackingScreen>
       final lat = double.tryParse(data['lat']?.toString() ?? '');
       final lng = double.tryParse(data['lng']?.toString() ?? '');
       if (lat != null && lng != null) {
-        _checkArrivingStatus(lat, lng);
+        final nextLocation = _smoothDriverLocation(lat, lng);
+        _markDriverLocationFresh();
+        _checkArrivingStatus(nextLocation.latitude, nextLocation.longitude);
         setState(() {
-          _driverLatLng = LatLng(lat, lng);
+          _driverLatLng = nextLocation;
           _updateMapMarkers();
           _fetchRouteForStatus(); // Keep route updated as driver moves
         });
@@ -836,6 +845,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     for (final s in _subs) s.cancel();
     _incomingCallSub?.cancel();
     _pollTimer?.cancel();
+    _driverLocationStaleTimer?.cancel();
     _searchTimeoutTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
@@ -851,8 +861,51 @@ class _TrackingScreenState extends State<TrackingScreen>
         _socket.connect(ApiConfig.socketUrl);
       }
       _socket.trackTrip(widget.tripId);
+      _markDriverLocationFresh(resetOnly: true);
       _pollStatus();
     }
+  }
+
+  void _markDriverLocationFresh({bool resetOnly = false}) {
+    _lastDriverLocationAt = DateTime.now();
+    _driverLocationStaleTimer?.cancel();
+    _driverLocationStaleTimer = Timer(_driverLocationStaleAfter, () {
+      if (!mounted) return;
+      setState(() => _trackingDelayed = true);
+      _showStatusBanner('Tracking delayed. Reconnecting live location…',
+          const Color(0xFFF59E0B));
+    });
+    if (!resetOnly && mounted && _trackingDelayed) {
+      setState(() => _trackingDelayed = false);
+    }
+  }
+
+  LatLng _smoothDriverLocation(double lat, double lng) {
+    final current = _driverLatLng;
+    if (current == null) return LatLng(lat, lng);
+
+    final distanceMeters = Geolocator.distanceBetween(
+      current.latitude,
+      current.longitude,
+      lat,
+      lng,
+    );
+
+    // Ignore tiny GPS jitter.
+    if (distanceMeters < 4) {
+      return current;
+    }
+
+    // Large jumps should snap immediately to avoid stale ghost movement.
+    if (distanceMeters > 250) {
+      return LatLng(lat, lng);
+    }
+
+    // Smooth ordinary movement to reduce marker jitter.
+    return LatLng(
+      current.latitude + ((lat - current.latitude) * 0.45),
+      current.longitude + ((lng - current.longitude) * 0.45),
+    );
   }
 
   void _listenForIncomingCalls() {

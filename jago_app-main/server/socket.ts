@@ -32,12 +32,14 @@ export let io: SocketIOServer;
 const driverSockets = new Map<string, string>();
 const customerSockets = new Map<string, string>();
 const activeCallSessions = new Map<string, { callerId: string; targetId: string; startedAt: number }>();
+const driverLastTrackingAt = new Map<string, number>();
 
 // Grace-period timers: when a driver socket disconnects we wait before marking them offline.
 // If they reconnect within the grace window the timer is cancelled and they stay online.
 // This prevents momentary network blips from removing drivers from active dispatch searches.
 const pendingOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DRIVER_OFFLINE_GRACE_MS = 90_000; // 90 seconds
+const DRIVER_TRACKING_STALE_MS = 20_000;
 const DRIVER_ROOM_PREFIX = "drivers_";
 
 function camelize(obj: any): any {
@@ -227,6 +229,12 @@ export function setupSocket(httpServer: HttpServer) {
         try {
           const { lat, lng, heading = 0, speed = 0 } = data;
           if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) return; // ignore invalid GPS
+          const now = Date.now();
+          const previousSeenAt = driverLastTrackingAt.get(userId);
+          if (previousSeenAt && now - previousSeenAt > DRIVER_TRACKING_STALE_MS) {
+            console.log(`[TRACKING_RESUMED] driver=${userId} gapMs=${now - previousSeenAt}`);
+          }
+          driverLastTrackingAt.set(userId, now);
           // Update location; also set is_online=true — active location streaming means driver IS online
           await rawDb.execute(rawSql`
             INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
@@ -311,7 +319,7 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           if (r.rows.length) {
             socket.join(`trip:${tripId}`);
-            console.log(`[SOCKET] Driver ${userId} rejoined trip room trip:${tripId} after reconnect`);
+            console.log(`[ROOM_REJOIN] driver=${userId} trip=${tripId}`);
           }
         } catch (_) { }
       });
@@ -798,7 +806,7 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           socket.join(`trip:${tripId}`);
-          console.log(`[SOCKET] Customer ${userId} tracking trip ${tripId}`);
+          console.log(`[ROOM_REJOIN] customer=${userId} trip=${tripId}`);
         } catch (e: any) {
           console.error("[SOCKET] customer:track_trip error:", e.message);
         }

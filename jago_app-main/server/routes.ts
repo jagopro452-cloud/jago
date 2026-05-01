@@ -499,6 +499,79 @@ async function logAdminAction(action: string, entityType: string, entityId?: str
   `).catch(dbCatch("db"));
 }
 
+async function emitWalletUpdated(userId: string, reason: string, extra: Record<string, any> = {}) {
+  if (!userId) return;
+  const walletR = await rawDb.execute(rawSql`
+    SELECT id, user_type, wallet_balance, is_locked, lock_reason, pending_payment_amount, updated_at
+    FROM users WHERE id=${userId}::uuid LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  const row = walletR.rows[0] as any;
+  if (!row) return;
+  io.to(`user:${userId}`).emit("wallet:updated", {
+    userId,
+    userType: row.user_type,
+    walletBalance: parseFloat(row.wallet_balance || 0),
+    isLocked: !!row.is_locked,
+    lockReason: row.lock_reason || null,
+    pendingPaymentAmount: parseFloat(row.pending_payment_amount || 0),
+    reason,
+    updatedAt: row.updated_at,
+    ...extra,
+  });
+}
+
+async function emitDriverStateChanged(driverId: string, reason: string, extra: Record<string, any> = {}) {
+  if (!driverId) return;
+  const driverR = await rawDb.execute(rawSql`
+    SELECT id, verification_status, is_active, is_locked, lock_reason, vehicle_status,
+           rejection_note, model_selected_at, launch_free_active, free_period_end, wallet_balance
+    FROM users WHERE id=${driverId}::uuid AND user_type='driver' LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  const row = driverR.rows[0] as any;
+  if (!row) return;
+  io.to(`user:${driverId}`).emit("driver:state_changed", {
+    driverId,
+    verificationStatus: row.verification_status || "pending",
+    vehicleStatus: row.vehicle_status || null,
+    isActive: !!row.is_active,
+    isLocked: !!row.is_locked,
+    lockReason: row.lock_reason || null,
+    rejectionNote: row.rejection_note || null,
+    modelSelectedAt: row.model_selected_at || null,
+    launchFreeActive: !!row.launch_free_active,
+    freePeriodEnd: row.free_period_end || null,
+    walletBalance: parseFloat(row.wallet_balance || 0),
+    reason,
+    ...extra,
+  });
+}
+
+async function emitKycUpdated(driverId: string, reason: string, extra: Record<string, any> = {}) {
+  if (!driverId) return;
+  const docsR = await rawDb.execute(rawSql`
+    SELECT document_type, status, admin_note, updated_at
+    FROM driver_kyc_documents
+    WHERE driver_id=${driverId}::uuid
+    ORDER BY updated_at DESC
+  `).catch(() => ({ rows: [] as any[] }));
+  io.to(`user:${driverId}`).emit("kyc:updated", {
+    driverId,
+    reason,
+    documents: camelize(docsR.rows),
+    ...extra,
+  });
+}
+
+function emitServiceUpdated(serviceKey: string, serviceStatus: string, extra: Record<string, any> = {}) {
+  if (!serviceKey) return;
+  io.emit("service:updated", {
+    serviceKey,
+    status: serviceStatus,
+    updatedAt: new Date().toISOString(),
+    ...extra,
+  });
+}
+
 
 // Login rate limiter � max 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
@@ -5722,6 +5795,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         requireSufficientFunds: type === "deduct",
       });
       const newBalance = walletChange.newBalance;
+      await emitWalletUpdated(String(userId), type === "deduct" ? "admin_deduct" : "admin_credit", {
+        amount: parsedAmount,
+      });
       res.json({ success: true, newBalance, type });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -6071,6 +6147,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         description: description || 'Platform fee deduction',
         tripId: tripId ? String(tripId) : null,
       });
+      await emitWalletUpdated(id, "admin_deduct", {
+        amount: totalAmt,
+        tripId: tripId ? String(tripId) : null,
+      });
+      await emitDriverStateChanged(id, "admin_deduct");
       res.json({
         success: true,
         newBalance: result.newWalletBalance,
@@ -6092,6 +6173,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         await rawDb.execute(rawSql`UPDATE users SET is_locked=false, lock_reason=NULL, locked_at=NULL WHERE id=${id}::uuid`);
       }
+      await emitWalletUpdated(String(id), lock ? "admin_lock" : "admin_unlock", {
+        lockReason: lock ? (reason || "Locked by admin") : null,
+      });
+      await emitDriverStateChanged(String(id), lock ? "admin_lock" : "admin_unlock", {
+        lockReason: lock ? (reason || "Locked by admin") : null,
+      });
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -6205,6 +6292,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         settlementType: 'manual_credit',
         createDriverPayment: true,
       });
+      await emitWalletUpdated(String(id), "admin_credit", { amount: paidAmt });
+      await emitDriverStateChanged(String(id), "admin_credit");
       res.json({
         success: true,
         newBalance: result.newWalletBalance,
@@ -7401,6 +7490,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (vehicleModel) updateData.vehicleModel = vehicleModel;
       if (status === "approved") updateData.isActive = true;
       await storage.updateUser(String(req.params.id), updateData);
+      await emitDriverStateChanged(String(req.params.id), "admin_verify_driver", {
+        verificationStatus: status,
+        note: note || null,
+      });
+      await emitKycUpdated(String(req.params.id), "admin_verify_driver", {
+        verificationStatus: status,
+        note: note || null,
+      });
       res.json({ success: true, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13115,6 +13212,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         sendFcmNotification({ fcmToken, title: "KYC Update", body: msg }).catch(dbCatch("db"));
       }
 
+      await emitKycUpdated(String(driverId), "admin_kyc_review", {
+        action,
+        documentType: documentType || null,
+        note: note || null,
+      });
+      await emitDriverStateChanged(String(driverId), "admin_kyc_review", {
+        action,
+        documentType: documentType || null,
+      });
+
       res.json({ success: true, action, driverId });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13770,6 +13877,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           reviewed_at=NOW(), updated_at=NOW()
         WHERE driver_id=${id}::uuid AND doc_type=${docType}
       `);
+      await emitKycUpdated(String(id), "admin_doc_review", {
+        docType,
+        status,
+        adminNote: adminNote || null,
+      });
+      await emitDriverStateChanged(String(id), "admin_doc_review", {
+        docType,
+        status,
+      });
       res.json({ success: true, docType, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -13814,6 +13930,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         } catch (_) { }
       }
+      await emitDriverStateChanged(String(id), "admin_verify_driver_full", {
+        verificationStatus: status,
+        vehicleStatus: vehicleStatus || status,
+        note: note || null,
+      });
+      await emitKycUpdated(String(id), "admin_verify_driver_full", {
+        verificationStatus: status,
+        note: note || null,
+      });
       res.json({ success: true, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -15124,6 +15249,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }
       }
 
+      emitServiceUpdated(key, String((r.rows as any[])[0]?.service_status || service_status || "inactive"), {
+        revenueModel: (r.rows as any[])[0]?.revenue_model ?? revenue_model ?? null,
+        commissionRate: (r.rows as any[])[0]?.commission_rate ?? commission_rate ?? null,
+      });
       res.json((r.rows as any[])[0]);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -17065,6 +17194,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       }
 
       await logAdminAction("toggle_service", "platform_services", undefined, { serviceKey, status }, (req as any).adminUser?.email);
+      emitServiceUpdated(String(serviceKey), String(status));
 
       res.json({ success: true, serviceKey, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }

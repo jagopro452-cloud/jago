@@ -1491,20 +1491,23 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       }
     } catch (_) {}
 
-    // Attempt 2: OSRM public routing fallback
+    // Attempt 2: simpler backend route proxy fallback
     if (!success) {
       try {
-        final uri = Uri.parse(
-          'https://router.project-osrm.org/route/v1/driving/${widget.pickupLng},${widget.pickupLat};${widget.destLng},${widget.destLat}?overview=full&geometries=polyline'
-        );
-        final res = await http.get(uri).timeout(const Duration(seconds: 4));
+        final headers = await AuthService.getHeaders();
+        final uri = Uri.parse(ApiConfig.route).replace(queryParameters: {
+          'originLat': widget.pickupLat.toString(),
+          'originLng': widget.pickupLng.toString(),
+          'destLat': widget.destLat.toString(),
+          'destLng': widget.destLng.toString(),
+        });
+        final res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
-            final route = data['routes'][0];
-            final encoded = route['geometry'];
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          final encoded = data['polyline']?.toString() ?? '';
+          if (encoded.isNotEmpty) {
             points = _decodePolyline(encoded);
-            fetchedDistMeters = (route['distance'] as num).toDouble();
+            fetchedDistMeters = ((data['distanceKm'] as num?)?.toDouble() ?? 0.0) * 1000;
             success = points.isNotEmpty;
           }
         }

@@ -353,6 +353,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }));
 
     // ── FCM foreground stream: app is open, direct-show IncomingTripSheet ─
+    _subs.add(_socket.onWalletUpdated.listen((data) async {
+      if (!mounted) return;
+      final nextBalance = (data['walletBalance'] ?? data['newBalance'] ?? _walletBalance).toDouble();
+      setState(() => _walletBalance = nextBalance);
+      await _fetchDashboard();
+    }));
+    _subs.add(_socket.onDriverStateChanged.listen((data) async {
+      if (!mounted) return;
+      await _fetchDashboard();
+      await _checkVerificationStatus();
+      final isLocked = data['isLocked'] == true;
+      final verificationStatus = (data['verificationStatus'] ?? '').toString();
+      final lockReason = (data['lockReason'] ?? '').toString().trim();
+      if (isLocked || verificationStatus == 'rejected') {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            isLocked
+              ? (lockReason.isNotEmpty ? lockReason : 'Your account was updated by admin.')
+              : 'Your verification status was updated by admin.',
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+          backgroundColor: isLocked ? JT.error : JT.warning,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ));
+      }
+    }));
+    _subs.add(_socket.onKycUpdated.listen((_) async {
+      if (!mounted) return;
+      await _checkVerificationStatus();
+    }));
+    _subs.add(_socket.onServiceUpdated.listen((data) async {
+      if (!mounted) return;
+      await _fetchEligibleServices();
+      final serviceKey = (data['serviceKey'] ?? '').toString();
+      final status = (data['status'] ?? '').toString();
+      if (serviceKey.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            status == 'inactive'
+              ? 'Service $serviceKey was paused by admin'
+              : 'Service $serviceKey was updated',
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+          backgroundColor: status == 'inactive' ? JT.warning : JT.success,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    }));
     // Fires when FCM arrives while app is in foreground (no notification shown).
     // Also fires after notification tap when app is in background/terminated.
     _subs.add(FcmService().onForegroundAlert.listen((data) {

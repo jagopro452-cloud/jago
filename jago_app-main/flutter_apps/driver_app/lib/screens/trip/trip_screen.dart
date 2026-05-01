@@ -57,6 +57,7 @@ class TripScreen extends StatefulWidget {
 
 class _TripScreenState extends State<TripScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _locationStaleAfter = Duration(seconds: 15);
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
@@ -73,10 +74,13 @@ class _TripScreenState extends State<TripScreen>
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
+  StreamSubscription? _connSub;
   bool _locationWarningShown = false;
   bool _hasLiveLocationAccess = false;
+  bool _trackingDelayed = false;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  Timer? _locationStaleTimer;
 
   // Live stats
   double _distanceToTargetM = 0;
@@ -100,6 +104,24 @@ class _TripScreenState extends State<TripScreen>
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
+    _connSub = _socket.onConnectionChanged.listen((connected) {
+      if (!mounted) return;
+      if (!connected) {
+        setState(() => _trackingDelayed = true);
+        _showSnack('Connection lost. Reconnecting live trip…', error: true);
+        return;
+      }
+
+      final wasDelayed = _trackingDelayed;
+      setState(() => _trackingDelayed = false);
+      if (wasDelayed) {
+        _showSnack('Reconnected. Live trip resumed.');
+      }
+      final tid = _trip?['id']?.toString() ?? _trip?['tripId']?.toString();
+      if (tid != null && tid.isNotEmpty) {
+        _socket.setActiveTrip(tid);
+      }
+    });
     _socket.connect(ApiConfig.socketUrl);
     _trip = widget.trip;
     if (_trip != null) {
@@ -339,7 +361,9 @@ class _TripScreenState extends State<TripScreen>
     _stopTripTimer();
     _stopStatePoll();
     _cancelSub?.cancel();
+    _connSub?.cancel();
     _incomingCallSub?.cancel();
+    _locationStaleTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -354,6 +378,7 @@ class _TripScreenState extends State<TripScreen>
       if (tid != null) {
         _socket.setActiveTrip(tid);
       }
+      _markLocationFresh(resetOnly: true);
       _syncTripState();
     }
   }
@@ -408,17 +433,56 @@ class _TripScreenState extends State<TripScreen>
   }
 
   void _updateSelfMarker(double lat, double lng) {
+    final smoothed = _smoothLocation(lat, lng);
     if (!mounted) return;
     setState(() {
       _markers.removeWhere((m) => m.markerId.value == 'self');
       _markers.add(Marker(
         markerId: const MarkerId('self'),
-        position: LatLng(lat, lng),
+        position: smoothed,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: const InfoWindow(title: 'You'),
         zIndex: 2,
       ));
     });
+  }
+
+  LatLng _smoothLocation(double lat, double lng) {
+    final current = _lastTripPosition;
+    if (current == null) return LatLng(lat, lng);
+
+    final distanceMeters = Geolocator.distanceBetween(
+      current.latitude,
+      current.longitude,
+      lat,
+      lng,
+    );
+
+    if (distanceMeters < 4) {
+      return LatLng(current.latitude, current.longitude);
+    }
+    if (distanceMeters > 250) {
+      return LatLng(lat, lng);
+    }
+
+    return LatLng(
+      current.latitude + ((lat - current.latitude) * 0.45),
+      current.longitude + ((lng - current.longitude) * 0.45),
+    );
+  }
+
+  void _markLocationFresh({bool resetOnly = false}) {
+    _locationStaleTimer?.cancel();
+    _locationStaleTimer = Timer(_locationStaleAfter, () {
+      if (!mounted) return;
+      setState(() => _trackingDelayed = true);
+      _showSnack('GPS updates delayed. Keep app open for live tracking.',
+          error: true);
+    });
+
+    if (!resetOnly && mounted && _trackingDelayed) {
+      setState(() => _trackingDelayed = false);
+    }
   }
 
   Future<void> _showLocationPrompt({
@@ -593,6 +657,7 @@ class _TripScreenState extends State<TripScreen>
       return;
     }
     _lastTripPosition = initialPos;
+    _markLocationFresh();
     if (mounted) {
       setState(
           () => _center = LatLng(initialPos.latitude, initialPos.longitude));
@@ -620,6 +685,7 @@ class _TripScreenState extends State<TripScreen>
         ),
       ),
     ).listen((pos) {
+      _markLocationFresh();
       _lastTripPosition = pos;
       if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));
