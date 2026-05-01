@@ -7059,7 +7059,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/local-pool/accept/:rideId", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { rideId } = req.params;
+      const rideId = String(req.params.rideId || "");
       const r = await rawDb.execute(rawSql`
         UPDATE local_pool_rides
         SET driver_id = ${driver.id}::uuid,
@@ -7137,7 +7137,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/local-pool/:rideId/complete", authApp, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { rideId } = req.params;
+      const rideId = String(req.params.rideId || "");
       const claimR = await rawDb.execute(rawSql`
         UPDATE local_pool_rides
         SET status = 'completed', updated_at = NOW()
@@ -7154,14 +7154,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const passengers = passR.rows as any[];
       const totalRevenue = passengers.reduce((s, p) => s + parseFloat(p.total_fare || 0), 0);
 
-      const breakdown = await calculateRevenueBreakdown(totalRevenue, "local_pool", driver.id);
+      const breakdown = await calculateRevenueBreakdown(totalRevenue, "city_pool", driver.id);
       const settlement = await settleRevenue({
         driverId: driver.id,
         tripId: rideId,
         fare: totalRevenue,
         paymentMethod: "cash",
         breakdown,
-        serviceCategory: "local_pool",
+        serviceCategory: "city_pool",
         serviceLabel: "local_pool",
       });
 
