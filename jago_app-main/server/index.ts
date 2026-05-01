@@ -176,17 +176,22 @@ httpServer.listen(port, "0.0.0.0", () => {
 });
 
 (async () => {
-  // Run Drizzle migrations at startup — this creates ALL tables including admins
+  // Run Drizzle migrations at startup. Non-fatal: ensureOperationalSchema() covers
+  // all DDL with IF NOT EXISTS, so a migration failure (e.g. Neon cold-start timeout)
+  // does not prevent the server from becoming ready.
   try {
     const migrationsFolder = path.join(process.cwd(), "migrations");
     log(`[db] Running migrations from: ${migrationsFolder}`);
     await migrate(drizzleDb, { migrationsFolder });
     log("[db] Migrations applied OK — all tables ready");
   } catch (e: any) {
-    bootstrapError = `migration_failed:${e.message}`;
-    console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
-    console.error("[db] Full error:", e.stack || e);
-    process.exit(1);
+    console.error("[db] MIGRATION WARNING — continuing (ensureOperationalSchema will cover schema):", e.message);
+    sendAlert({
+      level: "error",
+      source: "db",
+      message: "Drizzle migrate() failed at startup (non-fatal)",
+      details: String(e.message),
+    }).catch(() => { });
   }
 
   // Setup error handler early
