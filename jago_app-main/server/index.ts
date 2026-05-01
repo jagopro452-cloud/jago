@@ -10,6 +10,7 @@ import { createServer } from "http";
 import { setupSocket } from "./socket";
 import { parseEnv, validateProductionReadiness } from "./config/env";
 import { makeErrorId, sendAlert } from "./observability";
+import { recordRequest, recordError } from "./metrics";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db as drizzleDb } from "./db";
 import path from "path";
@@ -134,6 +135,8 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      recordRequest();
+      if (res.statusCode >= 500) recordError();
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         const sanitized = { ...capturedJsonResponse };
@@ -249,6 +252,16 @@ httpServer.listen(port, "0.0.0.0", () => {
   bootstrapReady = true;
   bootstrapError = null;
   console.log(`Server ready on port ${port}`);
+
+  // Start autonomous alert + auto-action engine (non-blocking — first check at 30s)
+  (async () => {
+    try {
+      const { startAlertEngine } = await import("./alert-engine");
+      startAlertEngine();
+    } catch (e: any) {
+      console.error("[alert-engine] Failed to start:", e.message);
+    }
+  })();
 
   // ─── BACKGROUND INITIALIZATION (non-blocking) ───
 

@@ -35,3 +35,6 @@ export async function sendAlert(event: {
     // Do not crash request flow on observability failures.
   }
 }
+
+// Alias used by alert-engine and other internal modules
+export const sendOpsAlert = sendAlert;

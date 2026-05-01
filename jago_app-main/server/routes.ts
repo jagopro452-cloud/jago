@@ -172,6 +172,7 @@ import {
   getAIDashboardData,
   getBrainStatus,
 } from "./ai-brain";
+import { getDashboardMetrics, getAlertEngineStatus, getDailyHealthReport } from "./alert-engine";
 import {
   checkBookingRateLimit,
   detectBookingFraud,
@@ -3840,6 +3841,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── END QA TRACKING ───────────────────────────────────────────────────────────
+
+  // ── LIVE ADMIN DASHBOARD ───────────────────────────────────────────────────────
+
+  // GET /api/admin/dashboard — all system vitals in one call (30s cache, ?refresh=1 to force)
+  app.get("/api/admin/dashboard", requireAdminAuth, async (req, res) => {
+    try {
+      const forceRefresh = req.query.refresh === "1";
+      const metrics = await getDashboardMetrics(forceRefresh);
+      res.json(metrics);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/status — active alerts, rule states, engine uptime
+  app.get("/api/admin/alert-engine/status", requireAdminAuth, (_req, res) => {
+    try {
+      res.json(getAlertEngineStatus());
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/alert-engine/test — force a fresh metrics check and return result
+  app.post("/api/admin/alert-engine/test", requireAdminAuth, async (_req, res) => {
+    try {
+      const metrics = await getDashboardMetrics(true);
+      const status = getAlertEngineStatus();
+      res.json({ metrics, engineStatus: status });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/health-report — daily health report (?date=YYYY-MM-DD for historical)
+  app.get("/api/admin/health-report", requireAdminAuth, async (req, res) => {
+    try {
+      const dateStr = typeof req.query.date === "string" ? req.query.date : undefined;
+      const report = await getDailyHealthReport(dateStr);
+      res.json(report);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ── END LIVE ADMIN DASHBOARD ──────────────────────────────────────────────────
 
   app.get("/api/dashboard/chart", requireAdminAuth, async (req, res) => {
     try {
