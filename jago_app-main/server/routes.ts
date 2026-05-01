@@ -7430,7 +7430,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const recentCooldown = await rawDb.execute(rawSql`
         SELECT id
         FROM otp_logs
-        WHERE phone=${phoneStr} AND created_at > NOW() - INTERVAL '30 seconds'
+        WHERE phone=${phoneStr}
+          AND user_type=${userType}
+          AND created_at > NOW() - INTERVAL '30 seconds'
+          AND (
+            CASE
+              WHEN ${wantsSms} THEN otp <> 'firebase'
+              ELSE true
+            END
+          )
         ORDER BY created_at DESC
         LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
