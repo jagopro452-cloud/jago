@@ -49,6 +49,28 @@ app.get("/_health", (_req, res) => {
   });
 });
 
+app.get("/health", (_req, res) => {
+  return res.status(200).json({
+    ok: true,
+    ready: bootstrapReady,
+    error: bootstrapError,
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/api/health", (_req, res, next) => {
+  if (bootstrapReady) {
+    return next();
+  }
+
+  return res.status(200).json({
+    status: "starting",
+    ready: false,
+    error: bootstrapError,
+    ts: new Date().toISOString(),
+  });
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -130,7 +152,7 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  if (bootstrapReady || req.path === "/_health") {
+  if (bootstrapReady || req.path === "/" || req.path === "/_health" || req.path === "/health" || req.path === "/api/health") {
     return next();
   }
 
@@ -138,6 +160,14 @@ app.use((req, res, next) => {
     message: "Server is starting. Please try again in a few seconds.",
     ready: false,
   });
+});
+
+app.get("/", (_req, res, next) => {
+  if (bootstrapReady) {
+    return next();
+  }
+
+  return res.status(200).send("starting");
 });
 
 const port = parseInt(process.env.PORT || "5000", 10);
