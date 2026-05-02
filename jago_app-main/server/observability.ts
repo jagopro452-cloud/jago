@@ -36,5 +36,56 @@ export async function sendAlert(event: {
   }
 }
 
-// Alias used by alert-engine and other internal modules
-export const sendOpsAlert = sendAlert;
+/**
+ * Multi-channel alert routing based on priority.
+ *
+ * P0 → PAGER_WEBHOOK_URL + WHATSAPP_WEBHOOK_URL + ALERT_WEBHOOK_URL (all channels)
+ * P1 → WHATSAPP_WEBHOOK_URL + ALERT_WEBHOOK_URL
+ * P2/P3/default → ALERT_WEBHOOK_URL only
+ *
+ * Any channel URL not set is silently skipped.
+ * Falls back to ALERT_WEBHOOK_URL for all calls without a priority field.
+ */
+export async function sendOpsAlert(event: {
+  level: "error" | "critical";
+  source: string;
+  message: string;
+  priority?: 0 | 1 | 2 | 3;
+  details?: string;
+}): Promise<void> {
+  const payload = {
+    text: `[P${event.priority ?? "?"}/${event.level.toUpperCase()}] ${event.source}: ${event.message}`,
+    source: event.source,
+    priority: event.priority,
+    level: event.level,
+    message: event.message,
+    details: event.details ? redactSecrets(event.details).slice(0, 1800) : undefined,
+    ts: new Date().toISOString(),
+  };
+
+  const channels: string[] = [];
+  const p = event.priority ?? 99;
+
+  if (p === 0) {
+    // P0: all available channels
+    if (process.env.PAGER_WEBHOOK_URL)     channels.push(process.env.PAGER_WEBHOOK_URL);
+    if (process.env.WHATSAPP_WEBHOOK_URL)  channels.push(process.env.WHATSAPP_WEBHOOK_URL);
+  } else if (p === 1) {
+    // P1: WhatsApp + default
+    if (process.env.WHATSAPP_WEBHOOK_URL)  channels.push(process.env.WHATSAPP_WEBHOOK_URL);
+  }
+  // P2/P3/default: default webhook only
+  if (process.env.ALERT_WEBHOOK_URL) channels.push(process.env.ALERT_WEBHOOK_URL);
+
+  if (channels.length === 0) return;
+
+  await Promise.allSettled(
+    channels.map(url =>
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+    )
+  );
+}

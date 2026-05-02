@@ -9,11 +9,14 @@
  *   Debounce         — N consecutive breaches required before firing
  *   Grace period     — N consecutive clears required before restoring
  *   Safety caps      — MAX_SURGE=2.5x, booking_pause hard-capped at 10 min
- *   Idempotency      — 5-min action tokens prevent double-apply under retries
+ *   Idempotency      — zone-scoped tokens + Redis NX (multi-pod safe), in-memory fallback
  *   Priority order   — P0 (redis) > P1 (payments) > P2 (queue/rate) > P3 (OTP)
  *   Conflict guard   — booking_pause suppresses surge (no point surging paused)
+ *   Scope guard      — surge actions only from per_zone rules; booking_pause only global
  *   Safety toggles   — AUTO_ACTIONS_ENABLED, ENABLE_SURGE_AUTOMATION, ENABLE_BOOKING_PAUSE
- *   Alert agg.       — batches simultaneous alerts into one ops-channel message
+ *   Shadow mode      — LOG_INTENDED_ACTIONS=true logs what would fire without executing
+ *   Alert agg.       — batches simultaneous alerts into one ops-channel message with routing
+ *   Metric sanity    — clamp() guards against bad DB reads or log anomalies
  *   Audit schema     — every action logged with rule/scope/prev/new state/metrics
  */
 
@@ -57,9 +60,10 @@ export interface DashboardMetrics {
   driverOnlineChurnPerMin: number; // (online + offline events) / 5 min
 
   // Dispatch quality
-  acceptRatePct:      number; // offers accepted / total offers, last 30 min
-  avgWaitToAcceptMs:  number; // ms from offer sent to driver accept
-  dispatchLatencyMs:  number; // ms from trip created to first driver offer
+  acceptRatePct:        number; // offers accepted / total offers, last 30 min
+  avgWaitToAcceptMs:    number; // ms from offer sent to driver accept
+  dispatchLatencyMs:    number; // ms from trip created to first driver offer
+  dispatchOffersLast30m: number; // total offer events (used to gate accept-rate rule)
 
   // Payments
   pendingPayments: number;
@@ -201,9 +205,10 @@ const ALERT_RULES: AlertRule[] = [
     priority: 2,
     severity: "warning",
     scope: "per_zone",
-    triggerCheck: m => m.acceptRatePct < 40 && m.searchingRides > 2,
-    clearCheck:   m => m.acceptRatePct >= 60 || m.searchingRides <= 1,
-    minConsecutiveBreaches: 3,  // more patience — accept rate naturally fluctuates
+    // Min 5 samples required — avoids flapping from tiny windows (e.g. 1/2 offers = 50%)
+    triggerCheck: m => m.acceptRatePct < 40 && m.searchingRides > 2 && m.dispatchOffersLast30m >= 5,
+    clearCheck:   m => (m.acceptRatePct >= 60 || m.searchingRides <= 1) && m.dispatchOffersLast30m >= 5,
+    minConsecutiveBreaches: 3,  // 3 checks × 60s = 3 min minimum observation window
     minConsecutiveClears:   3,
     message: m => `Driver accept rate: ${m.acceptRatePct}% (threshold: 40%). Surge increased.`,
     action:         "surge_increase",
@@ -292,29 +297,82 @@ function getState(ruleId: string): AlertState {
   };
 }
 
-// ── Idempotency tokens ────────────────────────────────────────────────────────
+// ── Idempotency tokens (zone-scoped + Redis NX for multi-instance safety) ────
 
 const appliedActionTokens = new Set<string>();
+let _engineRedis: any = null;
 
-function makeActionToken(actionId: string): string {
+// Token format: actionId:zoneKey:timeSlot — prevents cross-zone bleed
+function makeActionToken(actionId: string, zoneKey = "all"): string {
   const slot = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS);
-  return `${actionId}:${slot}`;
+  return `${actionId}:${zoneKey}:${slot}`;
 }
 
-function isActionAlreadyApplied(actionId: string): boolean {
-  return appliedActionTokens.has(makeActionToken(actionId));
+async function getEngineRedis(): Promise<any | null> {
+  if (_engineRedis?.status === "ready") return _engineRedis;
+  try {
+    const { default: IORedis } = await import("ioredis");
+    _engineRedis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {
+      lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: 0,
+      retryStrategy: () => null, connectTimeout: 1500,
+    });
+    _engineRedis.on("error", () => { _engineRedis = null; });
+    await _engineRedis.connect();
+    return _engineRedis;
+  } catch { _engineRedis = null; return null; }
 }
 
-function markActionApplied(actionId: string): void {
-  appliedActionTokens.add(makeActionToken(actionId));
-  // Prune stale tokens
+// Returns true if already applied (caller should skip), false if successfully claimed.
+// Tries Redis SET NX EX first — safe across multiple pods/restarts.
+// Falls back to in-memory Set when Redis is unavailable.
+async function checkAndClaimAction(actionId: string, zoneKey = "all"): Promise<boolean> {
+  const token = makeActionToken(actionId, zoneKey);
+  try {
+    const r = await getEngineRedis();
+    if (r) {
+      const result = await r.set(`engine:action:${token}`, "1", "EX", 600, "NX");
+      if (result === null) return true; // already claimed (this or another pod)
+      appliedActionTokens.add(token);
+      return false;
+    }
+  } catch { /* fall through */ }
+  // In-memory fallback (single-instance safe)
+  if (appliedActionTokens.has(token)) return true;
+  appliedActionTokens.add(token);
+  // Prune stale in-memory tokens
   if (appliedActionTokens.size > 200) {
     const cutoff = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS) - 10;
     Array.from(appliedActionTokens).forEach(t => {
-      const slot = parseInt(t.split(":")[1] ?? "0");
-      if (slot < cutoff) appliedActionTokens.delete(t);
+      const parts = t.split(":");
+      if (parseInt(parts[parts.length - 1] ?? "0") < cutoff) appliedActionTokens.delete(t);
     });
   }
+  return false;
+}
+
+// ── Scope enforcement — prevents accidental global impact from zone rules ─────
+
+const ACTION_REQUIRED_SCOPE: Partial<Record<string, ActionScope>> = {
+  surge_increase:   "per_zone",
+  surge_restore:    "per_zone",
+  booking_pause:    "global",
+  booking_restore:  "global",
+};
+
+function validateActionScope(actionId: AutoActionId, rule: AlertRule): boolean {
+  if (!actionId) return true;
+  const required = ACTION_REQUIRED_SCOPE[actionId];
+  if (required && required !== rule.scope) {
+    console.error(`[ALERT-ENGINE] SCOPE GUARD: ${actionId} requires ${required} but rule ${rule.id} is ${rule.scope} — blocked`);
+    return false;
+  }
+  return true;
+}
+
+// ── Shadow mode — observe-only mode before enabling live actions ──────────────
+
+function isShadowMode(): boolean {
+  return !isAutoActionsEnabled() && process.env.LOG_INTENDED_ACTIONS === "true";
 }
 
 // ── Conflict resolution ───────────────────────────────────────────────────────
@@ -460,9 +518,10 @@ export async function getDashboardMetrics(forceRefresh = false): Promise<Dashboa
     onlineDrivers:           parseInt(drivers.cnt ?? "0"),
     driverOnlineChurnPerMin: Math.round(parseInt(churn.cnt ?? "0") / 5),
 
-    acceptRatePct:     totalOffers > 0 ? Math.round((accepted / totalOffers) * 100) : 100,
-    avgWaitToAcceptMs: Math.round(parseFloat(dispatch.avg_wait_ms ?? "0")),
-    dispatchLatencyMs: Math.round(parseFloat(rides.avg_dispatch_ms ?? "0")),
+    acceptRatePct:         totalOffers > 0 ? Math.round((accepted / totalOffers) * 100) : 100,
+    avgWaitToAcceptMs:     Math.round(parseFloat(dispatch.avg_wait_ms ?? "0")),
+    dispatchLatencyMs:     Math.round(parseFloat(rides.avg_dispatch_ms ?? "0")),
+    dispatchOffersLast30m: totalOffers,
 
     pendingPayments: parseInt(pay.pending_payments ?? "0"),
     failedPayments:  parseInt(pay.failed_payments  ?? "0"),
@@ -479,9 +538,31 @@ export async function getDashboardMetrics(forceRefresh = false): Promise<Dashboa
     uptimeSeconds: Math.round(process.uptime()),
   };
 
-  cachedMetrics   = metrics;
+  const safe = sanitizeMetrics(metrics);
+  cachedMetrics   = safe;
   cacheExpiresAt  = Date.now() + METRICS_CACHE_MS;
-  return metrics;
+  return safe;
+}
+
+// Clamp impossible values — guards against bad DB reads or log anomalies
+function sanitizeMetrics(m: DashboardMetrics): DashboardMetrics {
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  return {
+    ...m,
+    acceptRatePct:        clamp(m.acceptRatePct,        0, 100),
+    avgWaitToAcceptMs:    clamp(m.avgWaitToAcceptMs,    0, 10 * 60 * 1000),
+    dispatchLatencyMs:    clamp(m.dispatchLatencyMs,    0,  5 * 60 * 1000),
+    apiErrorRatePct:      clamp(m.apiErrorRatePct,      0, 100),
+    loginSuccessRatePct:  clamp(m.loginSuccessRatePct,  0, 100),
+    completionRateLive:   clamp(m.completionRateLive,   0, 100),
+    rideCompletionRatePct: clamp(m.rideCompletionRatePct, 0, 100),
+    searchingRides:       Math.max(0, m.searchingRides),
+    onlineDrivers:        Math.max(0, m.onlineDrivers),
+    failedPayments:       Math.max(0, m.failedPayments),
+    pendingPayments:      Math.max(0, m.pendingPayments),
+    otpFailLast1h:        Math.max(0, m.otpFailLast1h),
+    dispatchOffersLast30m: Math.max(0, m.dispatchOffersLast30m),
+  };
 }
 
 // ── Audit log helper ──────────────────────────────────────────────────────────
@@ -516,25 +597,41 @@ async function executeAction(
   actionId: AutoActionId,
   rule: AlertRule,
   metrics: DashboardMetrics,
+  zoneKey = "all",
 ): Promise<void> {
   if (!actionId) return;
 
-  if (!isAutoActionsEnabled()) {
-    console.log(`[ALERT-ENGINE] AUTO_ACTIONS_ENABLED=false — skipping ${actionId}`);
-    return;
-  }
-
-  if (isActionAlreadyApplied(actionId)) {
-    console.log(`[ALERT-ENGINE] ${actionId} already applied in this 5-min window — idempotent skip`);
-    return;
-  }
+  // Scope guard — e.g. surge actions must only come from per_zone rules
+  if (!validateActionScope(actionId, rule)) return;
 
   const snap = {
     searchingRides: metrics.searchingRides, onlineDrivers: metrics.onlineDrivers,
     failedPayments: metrics.failedPayments, acceptRatePct: metrics.acceptRatePct,
     apiErrorRatePct: metrics.apiErrorRatePct,
   };
-  const token = makeActionToken(actionId);
+
+  // Shadow mode — log intended action without executing
+  if (!isAutoActionsEnabled()) {
+    if (isShadowMode()) {
+      console.log(`[ALERT-ENGINE] SHADOW: would execute ${actionId} (rule=${rule.id}, scope=${rule.scope}, zone=${zoneKey})`);
+      logAudit({
+        tag: "SHADOW_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
+        message: `SHADOW: would execute ${actionId} — AUTO_ACTIONS_ENABLED=false`, metrics: snap,
+      });
+    } else {
+      console.log(`[ALERT-ENGINE] AUTO_ACTIONS_ENABLED=false — skipping ${actionId}`);
+    }
+    return;
+  }
+
+  // Idempotency — zone-scoped token, Redis NX then in-memory fallback
+  const alreadyApplied = await checkAndClaimAction(actionId, zoneKey);
+  if (alreadyApplied) {
+    console.log(`[ALERT-ENGINE] ${actionId}:${zoneKey} already applied in this 5-min window — idempotent skip`);
+    return;
+  }
+
+  const token = makeActionToken(actionId, zoneKey);
 
   try {
     switch (actionId) {
@@ -554,7 +651,6 @@ async function executeAction(
           WHERE is_active = true AND surge_factor < ${MAX_SURGE_CAP}
         `);
 
-        markActionApplied(actionId);
         logAudit({
           tag: "AUTO_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
           previousState: `${prevAvg}x`, newState: `+0.3x (cap ${MAX_SURGE_CAP}x)`,
@@ -569,7 +665,6 @@ async function executeAction(
         await rawDb.execute(rawSql`
           UPDATE zones SET surge_factor = 1.0 WHERE is_active = true AND surge_factor > 1.0
         `);
-        markActionApplied(actionId);
         logAudit({
           tag: "AUTO_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
           previousState: "elevated", newState: "1.0x", actionId: token, metrics: snap,
@@ -594,7 +689,6 @@ async function executeAction(
         const s = getState(rule.id);
         alertStates.set(rule.id, { ...s, bookingPausedAt: Date.now() });
 
-        markActionApplied(actionId);
         logAudit({
           tag: "AUTO_ACTION", rule: rule.id, scope: "global", action: actionId,
           previousState: "active", newState: "paused",
@@ -615,7 +709,6 @@ async function executeAction(
         const s = getState(rule.id);
         alertStates.set(rule.id, { ...s, bookingPausedAt: undefined });
 
-        markActionApplied(actionId);
         logAudit({
           tag: "AUTO_ACTION", rule: rule.id, scope: "global", action: actionId,
           previousState: "paused", newState: "active", actionId: token, metrics: snap,
@@ -638,7 +731,7 @@ async function enforceHardCaps(metrics: DashboardMetrics): Promise<void> {
       console.log(`[ALERT-ENGINE] ⏰ Hard cap hit (${BOOKING_PAUSE_MAX_MS / 60000}min) — force-restoring bookings for rule: ${rule.id}`);
       await executeAction("booking_restore", rule, metrics);
       sendOpsAlert({
-        level: "error", source: "alert-engine",
+        level: "error", source: "alert-engine", priority: 1,
         message: `booking_pause hard cap (${BOOKING_PAUSE_MAX_MS / 60000}min) reached — bookings auto-restored. Rule: ${rule.label}`,
       }).catch(() => { });
     }
@@ -670,7 +763,7 @@ async function runAlertCheck(): Promise<void> {
   const nowMs = Date.now();
   const newlyFiring: { rule: AlertRule; msg: string }[] = [];
 
-  for (const rule of sortedRules) {
+  ruleLoop: for (const rule of sortedRules) {
     const state    = getState(rule.id);
     const breaching = rule.triggerCheck(metrics);
     const clearing  = rule.clearCheck(metrics);
@@ -721,6 +814,15 @@ async function runAlertCheck(): Promise<void> {
       alertStates.set(rule.id, { ...state, consecutiveBreaches: 0, consecutiveClears: newClears });
 
       if (state.firing && newClears >= rule.minConsecutiveClears) {
+        // Completion-rate guard: hold surge/booking restore if rides are still cancelling
+        const isRestoreAction = rule.recoveryAction === "surge_restore" || rule.recoveryAction === "booking_restore";
+        if (isRestoreAction && metrics.completionRateLive < 80) {
+          console.log(`[ALERT-ENGINE] Recovery held — completionRateLive=${metrics.completionRateLive}% < 80% (holding ${rule.recoveryAction})`);
+          // Reset clear counter — must accumulate a fresh run of clears with healthy completion
+          alertStates.set(rule.id, { ...getState(rule.id), consecutiveClears: 0 });
+          continue ruleLoop;
+        }
+
         alertStates.set(rule.id, { ...getState(rule.id), firing: false, consecutiveClears: 0 });
         currentlyFiring.delete(rule.id);
 
@@ -747,12 +849,14 @@ async function runAlertCheck(): Promise<void> {
       `Checks: ${rule.runbook.checks.join(" | ")}`,
       `Rollback: ${rule.runbook.rollback}`,
     ].join("\n");
-    sendOpsAlert({ level: rule.severity === "critical" ? "critical" : "error", source: "alert-engine", message: body }).catch(() => { });
+    sendOpsAlert({ level: rule.severity === "critical" ? "critical" : "error", source: "alert-engine", message: body, priority: rule.priority }).catch(() => { });
   } else if (newlyFiring.length > 1) {
     const lines = newlyFiring.map(({ rule, msg }) => `  [P${rule.priority}] ${msg}`).join("\n");
+    const topPriority = Math.min(...newlyFiring.map(f => f.rule.priority)) as RulePriority;
     sendOpsAlert({
       level: "critical", source: "alert-engine",
       message: `${newlyFiring.length} alerts firing simultaneously:\n${lines}`,
+      priority: topPriority,
     }).catch(() => { });
   }
 }

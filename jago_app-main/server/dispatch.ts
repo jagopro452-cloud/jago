@@ -34,6 +34,18 @@ import { applyWalletChange } from "./revenue-engine";
 import { getDistanceWithCache } from "./maps-cache";
 import { getSurgeInfo, recordDispatchOutcome } from "./surge";
 
+// Driver fatigue backoff — avoid hammering the same driver across concurrent trips
+// If a driver was offered any ride within this window, skip them to prevent burnout
+// and improve acceptance (a driver already reviewing one offer won't accept another)
+const DRIVER_FATIGUE_BACKOFF_MS = 25_000;
+const driverLastOfferedAt = new Map<string, number>();
+setInterval(() => {
+  const cutoff = Date.now() - DRIVER_FATIGUE_BACKOFF_MS * 4;
+  Array.from(driverLastOfferedAt.entries()).forEach(([id, t]) => {
+    if (t < cutoff) driverLastOfferedAt.delete(id);
+  });
+}, 60_000);
+
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
 export interface DispatchConfig {
@@ -814,6 +826,12 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
       continue; // Skip already-notified or rejected drivers
     }
 
+    // Fatigue backoff — skip if this driver was offered another ride recently
+    const lastOffered = driverLastOfferedAt.get(driver.driverId) ?? 0;
+    if (Date.now() - lastOffered < DRIVER_FATIGUE_BACKOFF_MS) {
+      continue;
+    }
+
     // Verify driver is still available (online, no active trip)
     const isAvailable = await checkDriverAvailability(driver.driverId);
     if (!isAvailable) continue;
@@ -849,6 +867,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
+  driverLastOfferedAt.set(driver.driverId, Date.now()); // fatigue backoff stamp
 
   // ETA from score breakdown (set by rerankDriversWithEta); fallback to distance estimate
   const etaMinutes: number =
