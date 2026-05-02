@@ -174,7 +174,7 @@ app.get("/", (_req, res, next) => {
 });
 
 const port = parseInt(process.env.PORT || "5000", 10);
-httpServer.listen(port, "0.0.0.0", () => {
+httpServer.listen(port, () => {
   console.log(`Server bootstrap listening on port ${port}`);
 });
 
