@@ -684,7 +684,7 @@ function checkPhoneOtpLimit(phone: string, maxPerHour = 8): boolean {
 }
 setInterval(() => {
   const now = Date.now();
-  for (const [phone, entry] of phoneOtpWindow) {
+  for (const [phone, entry] of Array.from(phoneOtpWindow.entries())) {
     if (now > entry.resetAt) phoneOtpWindow.delete(phone);
   }
 }, 60 * 60 * 1000);
