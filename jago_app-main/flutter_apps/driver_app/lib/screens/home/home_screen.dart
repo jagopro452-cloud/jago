@@ -164,9 +164,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _fetchEligibleServices();
       _fetchRevenueConfig();
       _watchVehicleAvailability();
-      _connectSocket();
       
       await _recoverActiveTrip();
+      await _checkPendingDriverOffer();
+      _connectSocket();
       await _consumeQueuedAlertAction();
       await _checkPendingFcmTrip();
     });
@@ -262,6 +263,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _showIncomingParcel();
         }
       }
+    } catch (_) {}
+  }
+
+  Future<void> _checkPendingDriverOffer() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse(ApiConfig.driverPendingOffer),
+        headers: headers,
+      ).timeout(const Duration(seconds: 4));
+      if (res.statusCode != 200 || !mounted) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final offer = data['offer'] as Map<String, dynamic>?;
+      if (offer == null || _incomingTrip != null) return;
+      final trip = offer['trip'] as Map<String, dynamic>?;
+      if (trip == null) return;
+      final tripMap = Map<String, dynamic>.from(trip);
+      tripMap['tripId'] = tripMap['tripId'] ?? offer['tripId'] ?? tripMap['id'];
+      tripMap['offerId'] = offer['offerId'];
+      tripMap['expiresAt'] = offer['expiresAt'];
+      if (!_canReceiveTripPayload(tripMap)) {
+        _showUnavailableByAdminOnce();
+        return;
+      }
+      setState(() => _incomingTrip = tripMap);
+      await _ackPendingTripOffer(tripMap);
+      _showIncomingTrip();
+    } catch (_) {}
+  }
+
+  Future<void> _ackPendingTripOffer(Map<String, dynamic> trip) async {
+    final tripId = (trip['tripId'] ?? trip['id'] ?? '').toString();
+    final offerId = (trip['offerId'] ?? '').toString();
+    if (tripId.isEmpty || offerId.isEmpty) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      await http.post(
+        Uri.parse(ApiConfig.driverOfferAck),
+        headers: headers,
+        body: jsonEncode({'tripId': tripId, 'offerId': offerId}),
+      ).timeout(const Duration(seconds: 4));
     } catch (_) {}
   }
 
@@ -1061,6 +1103,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   void _showIncomingTrip() {
     if (_incomingTrip == null) return;
+    _ackPendingTripOffer(_incomingTrip!);
     Navigator.push(
       context,
       PageRouteBuilder(

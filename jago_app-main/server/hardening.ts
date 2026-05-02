@@ -18,6 +18,7 @@ import { io } from "./socket";
 import { notifyUser } from "./notification-service";
 import { applyWalletChange } from "./revenue-engine";
 import { restartDispatchForTrip } from "./dispatch";
+import { resetRideForRedispatch } from "./ride-state";
 import { sendAlert as observabilitySendAlert } from "./observability";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
@@ -210,6 +211,36 @@ async function reassignTripToNextDriver(
   const trip = tripR.rows[0] as any;
 
   try {
+    const currentTripR = await rawDb.execute(rawSql`
+      SELECT current_status, driver_id
+      FROM trip_requests
+      WHERE id=${tripId}::uuid
+      LIMIT 1
+    `);
+    const currentTrip = currentTripR.rows[0] as any;
+    const currentStatus = String(currentTrip?.current_status || "");
+    const assignedDriverId = currentTrip?.driver_id ? String(currentTrip.driver_id) : null;
+
+    if (
+      ["accepted", "driver_assigned", "searching"].includes(currentStatus) &&
+      (!assignedDriverId || assignedDriverId === failedDriverId)
+    ) {
+      await resetRideForRedispatch(tripId, {
+        actorType: "system",
+        reason,
+        rejectedDriverId: failedDriverId,
+        clearPickupOtp: true,
+      });
+      if (assignedDriverId) {
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET current_trip_id=NULL
+          WHERE id=${assignedDriverId}::uuid
+            AND current_trip_id=${tripId}::uuid
+        `).catch(() => {});
+      }
+    }
+
     await restartDispatchForTrip(tripId, {
       additionalRejectedDriverIds: [failedDriverId],
       preserveSessionRejections: true,

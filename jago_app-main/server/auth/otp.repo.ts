@@ -115,6 +115,13 @@ export async function replaceOtpCode(params: {
       ${params.maxAttempts},
       NOW()
     )
+    ON CONFLICT (phone, country_code)
+    DO UPDATE SET
+      otp_hash     = EXCLUDED.otp_hash,
+      expires_at   = EXCLUDED.expires_at,
+      attempts     = 0,
+      max_attempts = EXCLUDED.max_attempts,
+      created_at   = NOW()
   `);
 }
 

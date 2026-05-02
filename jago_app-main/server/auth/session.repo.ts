@@ -112,6 +112,8 @@ export async function findRefreshToken(token: string) {
     FROM refresh_tokens rt
     JOIN users u ON u.id = rt.user_id
     WHERE rt.token=${token}
+      AND rt.revoked=false
+      AND rt.expires_at > NOW()
     LIMIT 1
   `);
   return (result.rows[0] as any) || null;
@@ -172,6 +174,71 @@ export async function syncLegacyUserAuthColumns(
         refresh_token_expires_at=${refreshTokenExpiresAt}::timestamp
     WHERE id=${userId}::uuid
   `);
+}
+
+export async function countRecentOtpSendAttempts(params: {
+  phone: string;
+  countryCode: string;
+  sinceMinutes: number;
+}): Promise<number> {
+  const result = await rawDb.execute(rawSql`
+    SELECT COUNT(*)::int AS count
+    FROM otp_request_events
+    WHERE phone=${params.phone}
+      AND country_code=${params.countryCode}
+      AND event_type='send'
+      AND outcome='OTP_ATTEMPT'
+      AND created_at > NOW() - (${params.sinceMinutes} * INTERVAL '1 minute')
+  `);
+  return Number((result.rows[0] as any)?.count || 0);
+}
+
+/**
+ * Atomically check rate limit AND insert the attempt event in a single SQL statement.
+ * Returns { allowed: true } if the insert succeeded (under limit),
+ * or { allowed: false, currentCount } if the limit was already reached.
+ * Using a CTE prevents the TOCTOU race where two concurrent requests both pass
+ * a sequential count-then-insert check.
+ */
+export async function tryInsertOtpAttemptAtomic(params: {
+  phone: string;
+  countryCode: string;
+  deviceId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  userType: string;
+  maxRequests: number;
+  windowMinutes: number;
+}): Promise<{ allowed: boolean; currentCount: number }> {
+  const result = await rawDb.execute(rawSql`
+    WITH recent AS (
+      SELECT COUNT(*)::int AS cnt
+      FROM otp_request_events
+      WHERE phone=${params.phone}
+        AND country_code=${params.countryCode}
+        AND event_type='send'
+        AND outcome='OTP_ATTEMPT'
+        AND created_at > NOW() - (${params.windowMinutes} * INTERVAL '1 minute')
+    ),
+    inserted AS (
+      INSERT INTO otp_request_events
+        (phone, country_code, device_id, ip_address, user_agent, user_type, event_type, outcome)
+      SELECT
+        ${params.phone}, ${params.countryCode},
+        ${params.deviceId || null}, ${params.ipAddress || null}, ${params.userAgent || null},
+        ${params.userType}, 'send', 'OTP_ATTEMPT'
+      FROM recent
+      WHERE cnt < ${params.maxRequests}
+      RETURNING id
+    )
+    SELECT (SELECT cnt FROM recent) AS current_count,
+           (SELECT COUNT(*) FROM inserted)::int AS did_insert
+  `);
+  const row = result.rows[0] as any;
+  return {
+    allowed: Number(row?.did_insert || 0) > 0,
+    currentCount: Number(row?.current_count || 0),
+  };
 }
 
 export async function countDistinctOtpPhonesForDevice(

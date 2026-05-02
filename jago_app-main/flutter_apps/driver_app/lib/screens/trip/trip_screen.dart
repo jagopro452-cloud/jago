@@ -71,6 +71,7 @@ class _TripScreenState extends State<TripScreen>
   Position? _lastTripPosition;
   Timer? _tripTimer;
   Timer? _statePollTimer; // 5s poll — server is source of truth
+  int _missingTripConfirmations = 0;
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
@@ -165,7 +166,10 @@ class _TripScreenState extends State<TripScreen>
         final data = jsonDecode(res.body);
         final serverTrip = data['trip'];
         if (serverTrip == null) {
-          // No active trip on server — this screen is stale
+          _missingTripConfirmations++;
+          if (_missingTripConfirmations < 2) {
+            return;
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content: Text('Trip no longer active. Returning home.'),
@@ -175,7 +179,9 @@ class _TripScreenState extends State<TripScreen>
               context,
               MaterialPageRoute(builder: (_) => const HomeScreen()),
               (_) => false);
+          return;
         }
+        _missingTripConfirmations = 0;
       }
     } catch (_) {
       // Network error — keep screen, socket cancel handler will catch real cancels
@@ -209,7 +215,10 @@ class _TripScreenState extends State<TripScreen>
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final serverTrip = data['trip'] as Map<String, dynamic>?;
         if (serverTrip == null) {
-          // Trip ended on server — pop to home
+          _missingTripConfirmations++;
+          if (_missingTripConfirmations < 2) {
+            return;
+          }
           _stopStatePoll();
           if (mounted) {
             Navigator.pushAndRemoveUntil(
@@ -219,6 +228,7 @@ class _TripScreenState extends State<TripScreen>
           }
           return;
         }
+        _missingTripConfirmations = 0;
         final serverStatus =
             (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
                 .toString();

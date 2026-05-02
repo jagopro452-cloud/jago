@@ -2,7 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { onDriverAccepted as dispatchOnDriverAccepted, cancelDispatch as dispatchCancelTrip } from "./dispatch";
+import { atomicAcceptDispatchOffer, rollbackAtomicAcceptDispatchOffer, onDriverAccepted as dispatchOnDriverAccepted, cancelDispatch as dispatchCancelTrip } from "./dispatch";
 import { getRebalancingSuggestion } from "./intelligence";
 import { emitParcelLifecycle, notifyAllReceivers, notifyReceiver } from "./parcel-advanced";
 import { notifyUser } from "./notification-service";
@@ -184,14 +184,26 @@ async function verifySocketToken(token: string | undefined, claimedUserId: strin
 
 export function setupSocket(httpServer: HttpServer) {
   const env = parseEnv();
-  const socketAllowedOrigins = (env.SOCKET_ALLOWED_ORIGINS || "*")
+  const socketAllowedOrigins = (env.SOCKET_ALLOWED_ORIGINS || "")
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+  const isProd = env.NODE_ENV === "production";
+  if (isProd && (!socketAllowedOrigins.length || socketAllowedOrigins.includes("*"))) {
+    throw new Error("SOCKET_ALLOWED_ORIGINS must be explicitly configured in production");
+  }
 
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: socketAllowedOrigins.length === 1 ? socketAllowedOrigins[0] : socketAllowedOrigins,
+      origin: isProd
+        ? (origin, callback) => {
+            if (!origin || socketAllowedOrigins.includes(origin)) {
+              callback(null, true);
+              return;
+            }
+            callback(new Error("Origin not allowed"));
+          }
+        : (socketAllowedOrigins.length === 1 ? socketAllowedOrigins[0] : socketAllowedOrigins),
       methods: ["GET", "POST"],
     },
     transports: ["websocket", "polling"],
@@ -488,9 +500,28 @@ export function setupSocket(httpServer: HttpServer) {
           }
           const trip = camelize(tripR.rows[0]) as any;
 
+          const dispatchAccept = await atomicAcceptDispatchOffer(tripId, userId, { pickupOtp });
+          if (!dispatchAccept.ok) {
+            const messageMap: Record<string, string> = {
+              OWNER_MISMATCH: "Dispatch ownership changed. Please wait for a fresh offer.",
+              NO_OWNER: "Offer expired. Please wait for a fresh offer.",
+              NO_OFFER: "Offer no longer active.",
+              OFFER_MISMATCH: "Offer no longer active.",
+              NO_SESSION: "Offer expired. Please wait for a fresh offer.",
+              STALE_OFFER: "This offer is stale. Please wait for a fresh request.",
+              ACCEPT_FAILED: "Trip acceptance failed. Please retry.",
+            };
+            emitSelf(socket, "driver:accept_trip_error", {
+              message: messageMap[dispatchAccept.code] || "Trip acceptance failed",
+              code: dispatchAccept.code,
+            });
+            return;
+          }
+
           if (trip.currentStatus === "searching") {
             const assigned = await assignRideToDriver(tripId, userId, { source: "socket_accept" });
             if (!assigned) {
+              await rollbackAtomicAcceptDispatchOffer(tripId, userId).catch(() => undefined);
               emitSelf(socket, "driver:accept_trip_error", { message: "Trip was already accepted by another pilot" });
               return;
             }
@@ -574,6 +605,7 @@ export function setupSocket(httpServer: HttpServer) {
           socket.join(`trip:${tripId}`);
           emitSelf(socket, "driver:accept_trip_ok", { tripId });
         } catch (e: any) {
+          await rollbackAtomicAcceptDispatchOffer(data.tripId, userId).catch(() => undefined);
           console.error("[SOCKET] driver:accept_trip error:", e.message);
           emitSelf(socket, "driver:accept_trip_error", { message: e.message });
         }
@@ -883,6 +915,16 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("customer:cancel_trip", async (data: { tripId: string }) => {
         try {
           const { tripId } = data;
+          const ownershipR = await rawDb.execute(rawSql`
+            SELECT customer_id
+            FROM trip_requests
+            WHERE id=${tripId}::uuid
+            LIMIT 1
+          `);
+          if (ownershipR.rows.length && String((ownershipR.rows[0] as any).customer_id || "") !== userId) {
+            emitSelf(socket, "error", { message: "Forbidden", code: "FORBIDDEN" });
+            return;
+          }
           const tripR = await rawDb.execute(rawSql`
             SELECT driver_id FROM trip_requests
             WHERE id=${tripId}::uuid AND customer_id=${userId}::uuid AND current_status NOT IN ('completed','cancelled')

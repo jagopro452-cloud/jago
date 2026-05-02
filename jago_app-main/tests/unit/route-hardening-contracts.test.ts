@@ -60,9 +60,10 @@ describe("route hardening contracts", () => {
     expect(hardeningRoutesSource).toContain("type: 'trip_cancelled'");
   });
 
-  it("emits trip completion events to both direct user and trip room listeners", () => {
-    // Completion is emitted via socketPayload variable to both direct user room and trip room
-    expect(routesSource).toContain('io.to(`user:${completedTrip.customerId}`).emit("trip:completed", socketPayload)');
-    expect(routesSource).toContain('io.to(`trip:${tripId}`).emit("trip:completed", socketPayload)');
+  it("queues trip completion notifications through the outbox processor", () => {
+    expect(routesSource).toContain("processOutboxBatch(io, 5).catch(dbCatch(\"db\"));");
+    expect(routesSource).toContain("CREATE TABLE IF NOT EXISTS outbox_events");
+    expect(routesSource).toContain("CREATE UNIQUE INDEX IF NOT EXISTS uq_driver_one_active_trip");
+    expect(routesSource).toContain("CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_one_active_trip");
   });
 });

@@ -1136,5 +1136,325 @@ export async function initRevenueEngineTables() {
     ALTER TABLE driver_payments ADD COLUMN IF NOT EXISTS description TEXT;
   `).catch(() => {});
 
+  // C6: ledger_entries table for double-entry audit trail on every trip
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS ledger_entries (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      trip_id     UUID,
+      type        VARCHAR(16) NOT NULL CHECK (type IN ('DEBIT','CREDIT')),
+      amount      NUMERIC(12,2) NOT NULL,
+      status      VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
+      description TEXT,
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await rawDb.execute(rawSql`
+    CREATE INDEX IF NOT EXISTS idx_ledger_trip ON ledger_entries (trip_id)
+  `).catch(() => {});
+
   console.log("[revenue-engine] Tables and settings initialized");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C6: Atomic trip completion — single DB transaction for state + all money
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CompleteTripParams = {
+  tripId: string;
+  driverId: string;
+  fare: number;
+  actualDistance: number;
+  tipsVal: number;
+  rideFullFare: number;
+  userDiscount: number;
+  userPayable: number;
+  gstAmount: number;
+  deductAmount: number;
+  driverWalletCredit: number;
+  commissionOwed: number;
+  vehicleTypeName: string | null;
+  seatsBooked: number;
+  seatPrice: number;
+  tripPaymentMethod: string;
+  tripCustomerId: string | null;
+  serviceCategory: string;
+  serviceLabel: string;
+  revenueModel: string;
+};
+
+export type CompleteTripResult = {
+  alreadyCompleted: boolean;
+  tripId: string;
+  customerId: string | null;
+  currentStatus: string;
+  walletPaidAmount: number;
+  walletPendingAmount: number;
+  newDriverBalance: number;
+  isLocked: boolean;
+};
+
+export async function completeTripAtomic(params: CompleteTripParams): Promise<CompleteTripResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) Lock the trip row — prevents double-complete under concurrency
+    const tripRes = await client.query(
+      `SELECT id, current_status, payment_status, customer_id
+       FROM trip_requests WHERE id=$1::uuid AND driver_id=$2::uuid
+       FOR UPDATE`,
+      [params.tripId, params.driverId]
+    );
+    if (!tripRes.rows.length) {
+      await client.query("ROLLBACK");
+      throw { status: 404, code: "TRIP_NOT_FOUND", message: "Trip not found" };
+    }
+    const trip = tripRes.rows[0];
+
+    // Idempotency guard — safe retry
+    if (trip.current_status === "completed") {
+      await client.query("ROLLBACK");
+      return {
+        alreadyCompleted: true,
+        tripId: String(trip.id),
+        customerId: trip.customer_id ? String(trip.customer_id) : null,
+        currentStatus: String(trip.current_status),
+        walletPaidAmount: 0,
+        walletPendingAmount: 0,
+        newDriverBalance: 0,
+        isLocked: false,
+      };
+    }
+    if (trip.current_status !== "on_the_way") {
+      await client.query("ROLLBACK");
+      throw { status: 409, code: "INVALID_STATE", message: `Cannot complete trip in status: ${trip.current_status}` };
+    }
+
+    // 2) Customer wallet deduction (inline — no nested transaction)
+    let walletPaidAmount = 0;
+    let walletPendingAmount = 0;
+    let paymentStatus = "paid";
+
+    if (params.tripPaymentMethod === "wallet" && params.tripCustomerId) {
+      // Atomic full deduction: WHERE balance >= amount prevents overdraft
+      const fullRes = await client.query(
+        `UPDATE users SET wallet_balance = wallet_balance - $1, updated_at = NOW()
+         WHERE id=$2::uuid AND wallet_balance >= $1
+         RETURNING wallet_balance`,
+        [params.userPayable, params.tripCustomerId]
+      );
+      if (fullRes.rows.length) {
+        walletPaidAmount = params.userPayable;
+        const newBal = parseFloat(fullRes.rows[0].wallet_balance || "0");
+        await client.query(
+          `INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+           VALUES ($1::uuid, $2, 'DEBIT', 'ride_wallet_payment', $3, '{}')`,
+          [params.tripCustomerId, params.userPayable, params.tripId]
+        );
+        await client.query(
+          `INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+           VALUES ($1::uuid, 'Ride payment via Wallet', 0, $2, $3, 'ride_payment', $4)`,
+          [params.tripCustomerId, params.userPayable, newBal, params.tripId]
+        );
+      } else {
+        // Insufficient funds — attempt partial using locked balance
+        const balRes = await client.query(
+          "SELECT wallet_balance FROM users WHERE id=$1::uuid FOR UPDATE",
+          [params.tripCustomerId]
+        );
+        const custBal = parseFloat(balRes.rows[0]?.wallet_balance || "0");
+        if (custBal > 0) {
+          const deducted = parseFloat(custBal.toFixed(2));
+          const partialRes = await client.query(
+            `UPDATE users SET wallet_balance = wallet_balance - $1, updated_at = NOW()
+             WHERE id=$2::uuid AND wallet_balance >= $1
+             RETURNING wallet_balance`,
+            [deducted, params.tripCustomerId]
+          );
+          if (partialRes.rows.length) {
+            const remaining = parseFloat((params.userPayable - deducted).toFixed(2));
+            walletPaidAmount = deducted;
+            walletPendingAmount = remaining;
+            paymentStatus = "partial_payment";
+            const newBal2 = parseFloat(partialRes.rows[0].wallet_balance || "0");
+            await client.query(
+              `INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+               VALUES ($1::uuid, $2, 'DEBIT', 'ride_wallet_partial_payment', $3, '{}')`,
+              [params.tripCustomerId, deducted, params.tripId]
+            );
+            await client.query(
+              `INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+               VALUES ($1::uuid, 'Partial ride payment via Wallet', 0, $2, $3, 'ride_payment', $4)`,
+              [params.tripCustomerId, deducted, newBal2, params.tripId]
+            );
+          } else {
+            walletPendingAmount = params.userPayable;
+            paymentStatus = "pending_payment";
+          }
+        } else {
+          walletPendingAmount = params.userPayable;
+          paymentStatus = "pending_payment";
+        }
+      }
+    }
+
+    // 3) Driver wallet settlement (inline)
+    let newDriverBalance = 0;
+    let isLocked = false;
+    if (params.deductAmount > 0) {
+      const isOnline = ["online", "wallet", "upi", "razorpay", "card", "prepaid"].includes(params.tripPaymentMethod);
+      if (isOnline) {
+        const driverRes = await client.query(
+          `UPDATE users SET wallet_balance = wallet_balance + $1, updated_at = NOW()
+           WHERE id=$2::uuid RETURNING wallet_balance, is_locked`,
+          [params.driverWalletCredit, params.driverId]
+        );
+        newDriverBalance = parseFloat(driverRes.rows[0]?.wallet_balance || "0");
+        isLocked = driverRes.rows[0]?.is_locked === true;
+        await client.query(
+          `INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+           VALUES ($1::uuid, $2, 'CREDIT', 'trip_settlement_credit', $3, $4::jsonb)`,
+          [params.driverId, params.driverWalletCredit, params.tripId, JSON.stringify({ serviceCategory: params.serviceCategory })]
+        );
+      } else {
+        // Cash ride: deduct platform dues from driver wallet
+        const driverRes = await client.query(
+          `UPDATE users SET wallet_balance = wallet_balance - $1, updated_at = NOW()
+           WHERE id=$2::uuid RETURNING wallet_balance, is_locked`,
+          [params.deductAmount, params.driverId]
+        );
+        newDriverBalance = parseFloat(driverRes.rows[0]?.wallet_balance || "0");
+        isLocked = driverRes.rows[0]?.is_locked === true;
+        await client.query(
+          `INSERT INTO wallet_events (user_id, amount, type, reason, ref_id, metadata)
+           VALUES ($1::uuid, $2, 'DEBIT', 'cash_ride_dues', $3, $4::jsonb)`,
+          [params.driverId, params.deductAmount, params.tripId, JSON.stringify({ serviceCategory: params.serviceCategory })]
+        );
+      }
+      // Commission settlement audit row
+      if (params.commissionOwed > 0) {
+        await client.query(
+          `INSERT INTO commission_settlements
+             (driver_id, trip_id, settlement_type, commission_amount, gst_amount,
+              total_amount, direction, ride_fare, service_type, description)
+           VALUES ($1::uuid, $2::uuid, 'commission_debit', $3, $4, $5, 'debit', $6, $7, $8)`,
+          [params.driverId, params.tripId, params.commissionOwed, params.gstAmount,
+           params.deductAmount, params.fare, params.serviceLabel,
+           `Commission (${params.revenueModel}) for ${params.serviceLabel} ${params.tripId.slice(0, 8)}`]
+        ).catch(() => {});
+      }
+    }
+
+    // 4) Ledger entries — double-entry audit trail (one debit + one credit per trip)
+    if (!params.tripCustomerId) {
+      throw new Error("LEDGER_INVARIANT_VIOLATION");
+    }
+    await client.query(
+      `INSERT INTO ledger_entries (user_id, trip_id, type, amount, status, description)
+       VALUES ($1::uuid, $2::uuid, 'DEBIT', $3, $4, 'Ride fare')`,
+      [params.tripCustomerId, params.tripId, params.userPayable,
+       walletPaidAmount > 0 ? "SUCCESS" : "PENDING"]
+    );
+    await client.query(
+      `INSERT INTO ledger_entries (user_id, trip_id, type, amount, status, description)
+       VALUES ($1::uuid, $2::uuid, 'CREDIT', $3, 'SUCCESS', 'Driver earnings')`,
+      [params.driverId, params.tripId, params.driverWalletCredit]
+    );
+    const ledgerInvariant = await client.query(
+      `SELECT
+          COALESCE(SUM(CASE WHEN type='DEBIT' THEN 1 ELSE 0 END), 0)::int AS debits,
+          COALESCE(SUM(CASE WHEN type='CREDIT' THEN 1 ELSE 0 END), 0)::int AS credits
+       FROM ledger_entries
+       WHERE trip_id = $1::uuid`,
+      [params.tripId]
+    );
+    const debits = Number(ledgerInvariant.rows[0]?.debits || 0);
+    const credits = Number(ledgerInvariant.rows[0]?.credits || 0);
+    if (debits !== 1 || credits !== 1) {
+      throw new Error("LEDGER_INVARIANT_VIOLATION");
+    }
+
+    // 5) Finalize trip status — last write in the transaction
+    const preservedStatuses = new Set(["paid_online", "wallet_paid", "partial_payment"]);
+    const finalPaymentStatus = preservedStatuses.has(trip.payment_status)
+      ? trip.payment_status
+      : (walletPendingAmount > 0 ? paymentStatus : "paid");
+
+    await client.query(
+      `UPDATE trip_requests
+       SET current_status        = 'completed',
+           ride_ended_at         = NOW(),
+           actual_fare           = $1,
+           actual_distance       = $2,
+           tips                  = $3,
+           payment_status        = $4,
+           pending_payment_amount= $5,
+           ride_full_fare        = $6,
+           user_discount         = $7,
+           user_payable          = $8,
+           gst_amount            = $9,
+           commission_amount     = $10,
+           driver_wallet_credit  = $11,
+           driver_fare           = $11,
+           customer_fare         = $8,
+           vehicle_type_name     = $12,
+           seats_booked          = $13,
+           seat_price            = $14
+       WHERE id = $15::uuid`,
+      [params.fare, params.actualDistance, params.tipsVal,
+       finalPaymentStatus, walletPendingAmount,
+       params.rideFullFare, params.userDiscount, params.userPayable, params.gstAmount,
+       params.deductAmount, params.driverWalletCredit,
+       params.vehicleTypeName, params.seatsBooked, params.seatPrice,
+       params.tripId]
+    );
+
+    // 6) Free driver for next trip
+    await client.query(
+      "UPDATE users SET current_trip_id = NULL WHERE id = $1::uuid",
+      [params.driverId]
+    );
+
+    await client.query(
+      `INSERT INTO outbox_events (id, type, payload)
+       VALUES (gen_random_uuid(), 'TRIP_COMPLETED', $1::jsonb)`,
+      [JSON.stringify({
+        tripId: params.tripId,
+        customerId: params.tripCustomerId,
+        currentStatus: "completed",
+        fare: params.rideFullFare,
+        actualFare: params.userPayable,
+        userDiscount: params.userDiscount,
+        userPayable: params.userPayable,
+        gstAmount: params.gstAmount,
+        driverWalletCredit: params.driverWalletCredit,
+        actualDistance: params.actualDistance,
+        paymentMethod: params.tripPaymentMethod,
+        platformDeduction: params.deductAmount,
+        launchOfferApplied: params.userDiscount > 0,
+        walletPaidAmount,
+        walletPendingAmount,
+        requiresCashPayment: walletPendingAmount > 0,
+        uiState: "trip_completed",
+      })]
+    );
+
+    await client.query("COMMIT");
+    return {
+      alreadyCompleted: false,
+      tripId: params.tripId,
+      customerId: params.tripCustomerId,
+      currentStatus: "completed",
+      walletPaidAmount,
+      walletPendingAmount,
+      newDriverBalance,
+      isLocked,
+    };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
 }

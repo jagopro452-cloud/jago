@@ -11,6 +11,7 @@
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
+import crypto from "crypto";
 import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
 import { notifyUser } from "./notification-service";
@@ -38,18 +39,166 @@ import { getSurgeInfo, recordDispatchOutcome } from "./surge";
 // If a driver was offered any ride within this window, skip them to prevent burnout
 // and improve acceptance (a driver already reviewing one offer won't accept another)
 const DRIVER_FATIGUE_BACKOFF_MS = 25_000;
-const DRIVER_MAX_CONCURRENT_OFFERS = 1; // skip if driver already reviewing this many offers
-const driverLastOfferedAt   = new Map<string, number>();
+const DRIVER_OFFER_LOCK_TTL_SEC = 30; // Redis key TTL — auto-releases if ack is never received
+const DISPATCH_OWNER_TTL_SEC = 10 * 60;
+const DISPATCH_SESSION_TTL_SEC = 15 * 60;
+const driverLastOfferedAt = new Map<string, number>();
+// In-process fallback (single pod or Redis unavailable)
 const driverActiveOfferCount = new Map<string, number>();
 
-function driverOfferStart(driverId: string): void {
-  driverLastOfferedAt.set(driverId, Date.now());
-  driverActiveOfferCount.set(driverId, (driverActiveOfferCount.get(driverId) ?? 0) + 1);
+let _redisOffer: import("ioredis").Redis | null = null;
+let _redisOfferReady = false;
+(async () => {
+  try {
+    const { default: IORedis } = await import("ioredis");
+    const url = process.env.REDIS_URL;
+    if (!url) return;
+    const client = new IORedis(url, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    await client.connect();
+    _redisOffer = client;
+    _redisOfferReady = true;
+  } catch { /* Redis unavailable — in-process fallback active */ }
+})();
+
+function driverOfferKey(driverId: string): string {
+  return `driver_offer:${driverId}`;
 }
-function driverOfferEnd(driverId: string): void {
+
+function dispatchOwnerKey(tripId: string): string {
+  return `dispatch_owner:${tripId}`;
+}
+
+function dispatchSessionKey(tripId: string): string {
+  return `dispatch_session:${tripId}`;
+}
+
+async function tryClaimDriverOffer(driverId: string, tripId: string): Promise<boolean> {
+  driverLastOfferedAt.set(driverId, Date.now());
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const result = await _redisOffer.set(driverOfferKey(driverId), tripId, "EX", DRIVER_OFFER_LOCK_TTL_SEC, "NX");
+      return result === "OK";
+    } catch { /* fall through to in-process */ }
+  }
+  const active = driverActiveOfferCount.get(driverId) ?? 0;
+  if (active >= 1) return false;
+  driverActiveOfferCount.set(driverId, active + 1);
+  return true;
+}
+
+async function releaseDriverOffer(driverId: string, tripId?: string): Promise<void> {
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const key = driverOfferKey(driverId);
+      if (tripId) {
+        const current = await _redisOffer.get(key);
+        if (current && current !== tripId) return;
+      }
+      await _redisOffer.del(key);
+      return;
+    } catch { /* fall through to in-process */ }
+  }
   const n = driverActiveOfferCount.get(driverId) ?? 0;
   if (n <= 1) driverActiveOfferCount.delete(driverId);
   else driverActiveOfferCount.set(driverId, n - 1);
+}
+
+async function claimDispatchOwner(tripId: string): Promise<string | null> {
+  const token = crypto.randomUUID();
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const result = await _redisOffer.set(dispatchOwnerKey(tripId), token, "EX", DISPATCH_OWNER_TTL_SEC, "NX");
+      return result === "OK" ? token : null;
+    } catch { /* fall through */ }
+  }
+  return !activeDispatches.has(tripId) ? token : null;
+}
+
+async function refreshDispatchOwner(tripId: string, ownerToken?: string | null): Promise<void> {
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const key = dispatchOwnerKey(tripId);
+      if (ownerToken) {
+        const current = await _redisOffer.get(key);
+        if (current !== ownerToken) return;
+      }
+      await _redisOffer.expire(key, DISPATCH_OWNER_TTL_SEC);
+    } catch { /* ignore */ }
+  }
+}
+
+async function releaseDispatchOwner(tripId: string, ownerToken?: string | null): Promise<void> {
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const key = dispatchOwnerKey(tripId);
+      if (ownerToken) {
+        const current = await _redisOffer.get(key);
+        if (current && current !== ownerToken) return;
+      }
+      await _redisOffer.del(key);
+      return;
+    } catch { /* fall through */ }
+  }
+}
+
+async function getDispatchOwnerToken(tripId: string): Promise<string | null> {
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      return await _redisOffer.get(dispatchOwnerKey(tripId));
+    } catch {
+      return null;
+    }
+  }
+  return activeDispatches.has(tripId) ? (activeDispatches.get(tripId)?.ownerToken || null) : null;
+}
+
+async function stillOwnsDispatch(session: DispatchSession): Promise<boolean> {
+  const active = activeDispatches.get(session.tripId);
+  if (active && active !== session) return false;
+  if (!session.ownerToken) return !_redisOfferReady || !_redisOffer;
+  const current = await getDispatchOwnerToken(session.tripId);
+  return !current || current === session.ownerToken;
+}
+
+async function reacquireDispatchOwner(session: DispatchSession): Promise<boolean> {
+  const current = await getDispatchOwnerToken(session.tripId);
+  if (current) {
+    session.ownerToken = current;
+    await persistDispatchSession(session);
+    return false;
+  }
+  const claimed = await claimDispatchOwner(session.tripId);
+  if (!claimed) return false;
+  session.ownerToken = claimed;
+  await persistDispatchSession(session);
+  console.info("[DISPATCH] dispatch_owner_acquired", JSON.stringify({ tripId: session.tripId, source: "reaper" }));
+  return true;
+}
+
+async function listPersistedDispatchTripIds(): Promise<string[]> {
+  if (!_redisOfferReady || !_redisOffer) return [];
+  const ids = new Set<string>();
+  try {
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await _redisOffer.scan(cursor, "MATCH", "dispatch_session:*", "COUNT", 100);
+      cursor = String(nextCursor);
+      for (const key of keys || []) {
+        const tripId = String(key).slice("dispatch_session:".length);
+        if (tripId) ids.add(tripId);
+      }
+    } while (cursor !== "0");
+  } catch {
+    return [];
+  }
+  return Array.from(ids);
+}
+
+async function getActiveDispatchTripIds(): Promise<string[]> {
+  const ids = new Set<string>(Array.from(activeDispatches.keys()));
+  const persisted = await listPersistedDispatchTripIds();
+  for (const tripId of persisted) ids.add(tripId);
+  return Array.from(ids);
 }
 
 setInterval(() => {
@@ -117,6 +266,11 @@ interface DispatchSession {
   driverQueue: DriverMatchScore[];
   queueIndex: number;
   currentOfferedDriverId: string | null;
+  currentOfferId: string | null;
+  ownerToken: string | null;
+  offerExpiresAt: number | null;
+  acceptedDriverId: string | null;
+  pickupOtp: string | null;
   offerTimer: ReturnType<typeof setTimeout> | null;
   notifiedDriverIds: Set<string>;
   rejectedDriverIds: Set<string>;
@@ -128,6 +282,34 @@ interface DispatchSession {
   femaleOnlyPass: boolean;
   femalePreferenceEnabled: boolean;
 }
+
+type DispatchSessionSnapshot = {
+  tripId: string;
+  customerId: string;
+  pickupLat: number;
+  pickupLng: number;
+  vehicleCategoryId?: string;
+  vehicleType?: string;
+  parcelVehicleCategory?: string;
+  serviceType: string;
+  tripMeta: TripMeta;
+  radiusIndex: number;
+  queueIndex: number;
+  driverQueue: DriverMatchScore[];
+  currentOfferedDriverId: string | null;
+  currentOfferId: string | null;
+  ownerToken: string | null;
+  offerExpiresAt: number | null;
+  acceptedDriverId: string | null;
+  pickupOtp: string | null;
+  notifiedDriverIds: string[];
+  rejectedDriverIds: string[];
+  status: DispatchSession["status"];
+  createdAt: number;
+  retryCount: number;
+  femaleOnlyPass: boolean;
+  femalePreferenceEnabled: boolean;
+};
 
 type DispatchAuditStatus = "sent" | "rejected" | "timeout" | "accepted";
 
@@ -146,6 +328,14 @@ export interface TripMeta {
   tripType: string;
   vehicleType?: string | null;
   vehicleCategoryName?: string | null;
+}
+
+export interface PendingDriverOfferPayload {
+  offerId: string;
+  tripId: string;
+  expiresAt: number | null;
+  timeoutMs: number;
+  trip: Record<string, unknown>;
 }
 
 function logDispatchAudit(rideId: string, driverId: string, status: DispatchAuditStatus): void {
@@ -352,6 +542,166 @@ async function loadDispatchGenderPreference(customerId: string, serviceType: str
 
 const activeDispatches = new Map<string, DispatchSession>();
 
+function snapshotDispatchSession(session: DispatchSession): DispatchSessionSnapshot {
+  return {
+    tripId: session.tripId,
+    customerId: session.customerId,
+    pickupLat: session.pickupLat,
+    pickupLng: session.pickupLng,
+    vehicleCategoryId: session.vehicleCategoryId,
+    vehicleType: session.vehicleType,
+    parcelVehicleCategory: session.parcelVehicleCategory,
+    serviceType: session.serviceType,
+    tripMeta: session.tripMeta,
+    radiusIndex: session.radiusIndex,
+    queueIndex: session.queueIndex,
+    driverQueue: session.driverQueue,
+    currentOfferedDriverId: session.currentOfferedDriverId,
+    currentOfferId: session.currentOfferId,
+    ownerToken: session.ownerToken,
+    offerExpiresAt: session.offerExpiresAt,
+    acceptedDriverId: session.acceptedDriverId,
+    pickupOtp: session.pickupOtp,
+    notifiedDriverIds: Array.from(session.notifiedDriverIds),
+    rejectedDriverIds: Array.from(session.rejectedDriverIds),
+    status: session.status,
+    createdAt: session.createdAt,
+    retryCount: session.retryCount,
+    femaleOnlyPass: session.femaleOnlyPass,
+    femalePreferenceEnabled: session.femalePreferenceEnabled,
+  };
+}
+
+async function persistDispatchSession(session: DispatchSession): Promise<void> {
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      await _redisOffer.set(
+        dispatchSessionKey(session.tripId),
+        JSON.stringify(snapshotDispatchSession(session)),
+        "EX",
+        DISPATCH_SESSION_TTL_SEC,
+      );
+    } catch { /* ignore */ }
+  }
+  await refreshDispatchOwner(session.tripId, session.ownerToken);
+}
+
+async function clearDispatchSessionPersistence(tripId: string, ownerToken?: string | null): Promise<void> {
+  const session = activeDispatches.get(tripId);
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      await _redisOffer.del(dispatchSessionKey(tripId));
+    } catch { /* ignore */ }
+  }
+  await releaseDispatchOwner(tripId, session?.ownerToken || ownerToken || null);
+}
+
+async function restoreDispatchSession(tripId: string): Promise<DispatchSession | null> {
+  const existing = activeDispatches.get(tripId);
+  if (existing) return existing;
+  if (!_redisOfferReady || !_redisOffer) return null;
+  try {
+    const raw = await _redisOffer.get(dispatchSessionKey(tripId));
+    if (!raw) return null;
+    const snap = JSON.parse(raw) as DispatchSessionSnapshot;
+    const restored: DispatchSession = {
+      tripId: snap.tripId,
+      customerId: snap.customerId,
+      pickupLat: snap.pickupLat,
+      pickupLng: snap.pickupLng,
+      vehicleCategoryId: snap.vehicleCategoryId,
+      vehicleType: snap.vehicleType,
+      parcelVehicleCategory: snap.parcelVehicleCategory,
+      serviceType: snap.serviceType,
+      config: getConfig(snap.serviceType),
+      tripMeta: snap.tripMeta,
+      radiusIndex: snap.radiusIndex,
+      driverQueue: snap.driverQueue || [],
+      queueIndex: snap.queueIndex,
+      currentOfferedDriverId: snap.currentOfferedDriverId,
+      currentOfferId: snap.currentOfferId,
+      ownerToken: snap.ownerToken,
+      offerExpiresAt: snap.offerExpiresAt,
+      acceptedDriverId: snap.acceptedDriverId,
+      pickupOtp: snap.pickupOtp,
+      offerTimer: null,
+      notifiedDriverIds: new Set(snap.notifiedDriverIds || []),
+      rejectedDriverIds: new Set(snap.rejectedDriverIds || []),
+      status: snap.status,
+      createdAt: snap.createdAt,
+      totalTimer: null,
+      retryCount: snap.retryCount,
+      retryTimer: null,
+      femaleOnlyPass: snap.femaleOnlyPass,
+      femalePreferenceEnabled: snap.femalePreferenceEnabled,
+    };
+    activeDispatches.set(tripId, restored);
+    return restored;
+  } catch {
+    return null;
+  }
+}
+
+export async function getPendingDriverOffer(driverId: string): Promise<PendingDriverOfferPayload | null> {
+  let tripId: string | null = null;
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      tripId = await _redisOffer.get(driverOfferKey(driverId));
+    } catch {
+      tripId = null;
+    }
+  }
+  if (!tripId) {
+    const local = Array.from(activeDispatches.values()).find(
+      (session) => session.currentOfferedDriverId === driverId && session.status === "offered",
+    );
+    tripId = local?.tripId || null;
+  }
+  if (!tripId) return null;
+
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
+  if (!session || session.currentOfferedDriverId !== driverId || session.status !== "offered" || !session.currentOfferId) {
+    return null;
+  }
+
+  return {
+    offerId: session.currentOfferId,
+    tripId: session.tripId,
+    expiresAt: session.offerExpiresAt,
+    timeoutMs: session.config.driverTimeoutMs,
+    trip: {
+      tripId: session.tripId,
+      ...session.tripMeta,
+      timeoutMs: session.config.driverTimeoutMs,
+    },
+  };
+}
+
+export async function acknowledgePendingDriverOffer(
+  driverId: string,
+  tripId: string,
+  offerId: string,
+): Promise<boolean> {
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
+  if (!session || session.currentOfferedDriverId !== driverId || session.currentOfferId !== offerId || session.status !== "offered") {
+    return false;
+  }
+
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const currentTripId = await _redisOffer.get(driverOfferKey(driverId));
+      if (currentTripId !== tripId) return false;
+      const ttlMs = Math.max((session.offerExpiresAt || Date.now()) - Date.now(), 1000);
+      await _redisOffer.expire(driverOfferKey(driverId), Math.max(1, Math.ceil(ttlMs / 1000)));
+    } catch {
+      return false;
+    }
+  }
+
+  await persistDispatchSession(session);
+  return true;
+}
+
 /**
  * Resolve the service type from trip_type and vehicle category name.
  * Maps the various trip_type values to dispatch config keys.
@@ -394,6 +744,11 @@ export async function startDispatch(
 ): Promise<void> {
   // Cancel any existing dispatch for this trip (defensive)
   cancelDispatch(tripId);
+  const ownerClaimed = await claimDispatchOwner(tripId);
+  if (!ownerClaimed) {
+    console.log(`[DISPATCH] Another pod already owns trip ${tripId}; skipping duplicate start`);
+    return;
+  }
 
   const config = getConfig(serviceType);
   const femalePreferenceEnabled = await loadDispatchGenderPreference(customerId, serviceType);
@@ -413,6 +768,11 @@ export async function startDispatch(
     driverQueue: [],
     queueIndex: 0,
     currentOfferedDriverId: null,
+    currentOfferId: null,
+    ownerToken: ownerClaimed,
+    offerExpiresAt: null,
+    acceptedDriverId: null,
+    pickupOtp: null,
     offerTimer: null,
     notifiedDriverIds: new Set(),
     rejectedDriverIds: new Set(initialRejectedDriverIds.filter(Boolean)),
@@ -426,11 +786,13 @@ export async function startDispatch(
   };
 
   activeDispatches.set(tripId, session);
+  await persistDispatchSession(session);
 
   // Set max total timeout — auto-cancel if no driver found in time
-  session.totalTimer = setTimeout(() => {
+  session.totalTimer = setTimeout(async () => {
+    if (!await stillOwnsDispatch(session)) return;
     if (session.status === "searching" || session.status === "offered") {
-      expireDispatch(session, "No pilots available nearby. Please try again.");
+      await expireDispatch(session, "No pilots available nearby. Please try again.");
     }
   }, config.maxTotalTimeMs);
 
@@ -473,6 +835,7 @@ export async function restartDispatchForTrip(
       t.payment_method,
       t.trip_type,
       t.vehicle_category_id,
+      t.driver_id,
       t.ref_id,
       t.current_status,
       t.rejected_driver_ids,
@@ -491,7 +854,23 @@ export async function restartDispatchForTrip(
   }
 
   const trip = tripRes.rows[0] as any;
-  if (!["searching", "driver_assigned"].includes(String(trip.current_status || ""))) {
+  const currentStatus = String(trip.current_status || "");
+  if (currentStatus === "accepted") {
+    await resetRideForRedispatch(tripId, {
+      actorType: "system",
+      reason: "redispatch_recovery",
+      rejectedDriverId: trip.driver_id ? String(trip.driver_id) : null,
+      clearPickupOtp: true,
+    });
+    if (trip.driver_id) {
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET current_trip_id=NULL
+        WHERE id=${trip.driver_id}::uuid
+          AND current_trip_id=${tripId}::uuid
+      `).catch(() => {});
+    }
+  } else if (!["searching", "driver_assigned"].includes(currentStatus)) {
     throw new Error(`Trip ${tripId} is not dispatchable from status ${trip.current_status}`);
   }
 
@@ -535,17 +914,127 @@ export async function restartDispatchForTrip(
   );
 }
 
+const ATOMIC_ACCEPT_LUA = `
+local owner = redis.call("GET", KEYS[1])
+if not owner then
+  return cjson.encode({ err = "NO_OWNER" })
+end
+
+if owner ~= ARGV[1] then
+  return cjson.encode({ err = "OWNER_MISMATCH" })
+end
+
+local offerTrip = redis.call("GET", KEYS[2])
+if not offerTrip then
+  return cjson.encode({ err = "NO_OFFER" })
+end
+
+if offerTrip ~= ARGV[2] then
+  return cjson.encode({ err = "OFFER_MISMATCH" })
+end
+
+local sessionRaw = redis.call("GET", KEYS[3])
+if not sessionRaw then
+  return cjson.encode({ err = "NO_SESSION" })
+end
+
+local decoded = cjson.decode(sessionRaw)
+if decoded.currentOfferId ~= ARGV[3] then
+  return cjson.encode({ err = "STALE_OFFER" })
+end
+
+decoded.status = "accepted"
+decoded.acceptedDriverId = ARGV[4]
+decoded.currentOfferedDriverId = ARGV[4]
+decoded.pickupOtp = ARGV[6]
+redis.call("SET", KEYS[3], cjson.encode(decoded), "EX", ARGV[5])
+redis.call("DEL", KEYS[2])
+return cjson.encode({ ok = "ACCEPTED" })
+`;
+
+type AtomicAcceptResult =
+  | { ok: true; ownerToken: string; offerId: string }
+  | { ok: false; code: "NO_OWNER" | "OWNER_MISMATCH" | "NO_OFFER" | "OFFER_MISMATCH" | "NO_SESSION" | "STALE_OFFER" | "ACCEPT_FAILED" };
+
+export async function atomicAcceptDispatchOffer(
+  tripId: string,
+  driverId: string,
+  options?: { pickupOtp?: string | null },
+): Promise<AtomicAcceptResult> {
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
+  if (!session || !session.ownerToken || !session.currentOfferId) {
+    return { ok: false, code: "NO_SESSION" };
+  }
+  if (session.currentOfferedDriverId !== driverId) {
+    return { ok: false, code: "STALE_OFFER" };
+  }
+
+  if (_redisOfferReady && _redisOffer) {
+    try {
+      const raw = await _redisOffer.eval(
+        ATOMIC_ACCEPT_LUA,
+        3,
+        dispatchOwnerKey(tripId),
+        driverOfferKey(driverId),
+        dispatchSessionKey(tripId),
+        session.ownerToken,
+        tripId,
+        session.currentOfferId,
+        driverId,
+        String(DISPATCH_SESSION_TTL_SEC),
+        options?.pickupOtp || "",
+      );
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (parsed?.ok === "ACCEPTED") {
+        session.status = "accepted";
+        session.acceptedDriverId = driverId;
+        session.pickupOtp = options?.pickupOtp || null;
+        await persistDispatchSession(session);
+        return { ok: true, ownerToken: session.ownerToken, offerId: session.currentOfferId };
+      }
+      return {
+        ok: false,
+        code: (parsed?.err || "ACCEPT_FAILED") as "NO_OWNER" | "OWNER_MISMATCH" | "NO_OFFER" | "OFFER_MISMATCH" | "NO_SESSION" | "STALE_OFFER" | "ACCEPT_FAILED",
+      };
+    } catch {
+      return { ok: false, code: "ACCEPT_FAILED" };
+    }
+  }
+
+  session.status = "accepted";
+  session.acceptedDriverId = driverId;
+  session.pickupOtp = options?.pickupOtp || null;
+  await releaseDriverOffer(driverId, tripId);
+  await persistDispatchSession(session);
+  return { ok: true, ownerToken: session.ownerToken, offerId: session.currentOfferId };
+}
+
+export async function rollbackAtomicAcceptDispatchOffer(tripId: string, driverId: string): Promise<void> {
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
+  if (!session) return;
+  if (session.currentOfferedDriverId && session.currentOfferedDriverId !== driverId) return;
+  session.status = "searching";
+  session.currentOfferedDriverId = null;
+  session.currentOfferId = null;
+  session.offerExpiresAt = null;
+  session.acceptedDriverId = null;
+  session.pickupOtp = null;
+  await persistDispatchSession(session);
+}
+
 /**
  * Called when a driver accepts a trip (from accept-trip endpoint or socket).
  * Clears the dispatch session and verifies driver is still online.
  */
 export async function onDriverAccepted(tripId: string, driverId: string): Promise<void> {
-  const session = activeDispatches.get(tripId);
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
   if (!session) return;
 
   session.status = "accepted";
+  session.acceptedDriverId = driverId;
+  session.offerExpiresAt = null;
   clearTimers(session);
-  driverOfferEnd(driverId); // release concurrent offer slot
+  await releaseDriverOffer(driverId, tripId); // release concurrent offer slot
 
   // Notify all previously-notified (but not accepted) drivers that trip is taken
   if (io) {
@@ -560,6 +1049,7 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
   const waitMs = Date.now() - session.createdAt;
   recordDispatchOutcome(session.pickupLat, session.pickupLng, true, waitMs);
 
+  await clearDispatchSessionPersistence(tripId, session.ownerToken);
   activeDispatches.delete(tripId);
   console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId} waitMs=${waitMs}`);
   logDispatchAudit(tripId, driverId, "accepted");
@@ -591,7 +1081,7 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
  * Immediately moves to next driver in queue.
  */
 export async function onDriverRejected(tripId: string, driverId: string): Promise<void> {
-  const session = activeDispatches.get(tripId);
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
   if (!session) return;
 
   // Clear offer timer for current driver
@@ -602,7 +1092,10 @@ export async function onDriverRejected(tripId: string, driverId: string): Promis
 
   session.rejectedDriverIds.add(driverId);
   session.currentOfferedDriverId = null;
-  driverOfferEnd(driverId); // release concurrent offer slot
+  session.currentOfferId = null;
+  session.offerExpiresAt = null;
+  await releaseDriverOffer(driverId, tripId); // release concurrent offer slot
+  await persistDispatchSession(session);
 
   // Emit timeout/rejection to driver
   if (io) {
@@ -628,6 +1121,8 @@ export function cancelDispatch(tripId: string): void {
 
   session.status = "cancelled";
   clearTimers(session);
+  session.currentOfferId = null;
+  session.offerExpiresAt = null;
 
   // Notify current offered driver that trip was cancelled
   if (session.currentOfferedDriverId && io) {
@@ -637,6 +1132,7 @@ export function cancelDispatch(tripId: string): void {
     });
   }
 
+  clearDispatchSessionPersistence(tripId, session.ownerToken).catch(() => undefined);
   activeDispatches.delete(tripId);
   console.log(`[DISPATCH] Cancelled for trip ${tripId}`);
 }
@@ -685,6 +1181,7 @@ export function getActiveDispatchCount(): number {
  * Search for drivers within the current radius step and start dispatching.
  */
 async function searchAndDispatchNextRadius(session: DispatchSession): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
   if (session.status !== "searching" && session.status !== "offered") return;
 
   const config = session.config;
@@ -694,6 +1191,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
       session.radiusIndex = 0;
       session.driverQueue = [];
       session.queueIndex = 0;
+      await persistDispatchSession(session);
       console.log(`[DISPATCH] trip=${session.tripId} no female pilots found; falling back to nearest eligible ${session.vehicleType || session.serviceType} drivers`);
       emitCustomerSearchStatus(session);
       await searchAndDispatchNextRadius(session);
@@ -705,6 +1203,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
   }
 
   const radiusKm = config.radiusStepsKm[session.radiusIndex];
+  await persistDispatchSession(session);
 
   // Build exclude list: all previously notified + rejected drivers
   const excludeIds: string[] = [
@@ -779,6 +1278,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
     if (drivers.length === 0) {
       // No drivers at this radius — try next
       session.radiusIndex++;
+      await persistDispatchSession(session);
       if (session.status === "searching" || session.status === "offered") {
         emitCustomerSearchStatus(session);
       }
@@ -789,6 +1289,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
     // Set up the driver queue for this radius
     session.driverQueue = drivers;
     session.queueIndex = 0;
+    await persistDispatchSession(session);
 
     // Notify customer about search progress
     if (session.status === "searching" || session.status === "offered") {
@@ -810,6 +1311,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
  * If queue exhausted, expand to next radius.
  */
 async function dispatchNextDriver(session: DispatchSession): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
   if (session.status !== "searching" && session.status !== "offered") return;
 
   // Verify trip is still in 'searching' status in DB
@@ -831,6 +1333,11 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
 
   session.status = "searching";
   session.currentOfferedDriverId = null;
+  session.currentOfferId = null;
+  session.offerExpiresAt = null;
+  session.acceptedDriverId = null;
+  session.pickupOtp = null;
+  await persistDispatchSession(session);
 
   // Find next un-notified, un-rejected driver in queue
   while (session.queueIndex < session.driverQueue.length) {
@@ -841,16 +1348,16 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
       continue; // Skip already-notified or rejected drivers
     }
 
-    // Fatigue backoff — skip if offered recently or already reviewing max concurrent offers
-    const lastOffered     = driverLastOfferedAt.get(driver.driverId) ?? 0;
-    const activeOffers    = driverActiveOfferCount.get(driver.driverId) ?? 0;
-    if (Date.now() - lastOffered < DRIVER_FATIGUE_BACKOFF_MS || activeOffers >= DRIVER_MAX_CONCURRENT_OFFERS) {
-      continue;
-    }
+    // Fatigue backoff — skip if offered recently
+    const lastOffered = driverLastOfferedAt.get(driver.driverId) ?? 0;
+    if (Date.now() - lastOffered < DRIVER_FATIGUE_BACKOFF_MS) continue;
+
+    // Atomically claim offer slot (Redis NX across pods, in-process fallback)
+    if (!await tryClaimDriverOffer(driver.driverId, session.tripId)) continue;
 
     // Verify driver is still available (online, no active trip)
     const isAvailable = await checkDriverAvailability(driver.driverId);
-    if (!isAvailable) continue;
+    if (!isAvailable) { await releaseDriverOffer(driver.driverId, session.tripId); continue; }
 
     // Send request to this single driver
     await offerTripToDriver(session, driver);
@@ -861,6 +1368,7 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
   session.radiusIndex++;
   session.driverQueue = [];
   session.queueIndex = 0;
+  await persistDispatchSession(session);
   await searchAndDispatchNextRadius(session);
 }
 
@@ -868,6 +1376,7 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
  * Send trip request to a single driver and start the acceptance timer.
  */
 async function offerTripToDriver(session: DispatchSession, driver: DriverMatchScore): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
   const assignedRide = await assignRideToDriver(session.tripId, driver.driverId, {
     serviceType: session.serviceType,
     vehicleType: session.vehicleType || null,
@@ -882,8 +1391,13 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
 
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
+  session.currentOfferId = crypto.randomUUID();
+  session.offerExpiresAt = Date.now() + session.config.driverTimeoutMs;
+  session.acceptedDriverId = null;
+  session.pickupOtp = null;
   session.notifiedDriverIds.add(driver.driverId);
-  driverOfferStart(driver.driverId); // fatigue backoff + concurrent offer tracking
+  await persistDispatchSession(session);
+  // Offer slot already claimed atomically in dispatchNextDriver via tryClaimDriverOffer
 
   // ETA from score breakdown (set by rerankDriversWithEta); fallback to distance estimate
   const etaMinutes: number =
@@ -893,6 +1407,8 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   const payload = {
     tripId: session.tripId,
     ...session.tripMeta,
+    offerId: session.currentOfferId,
+    expiresAt: session.offerExpiresAt,
     aiScore: driver.score,
     driverDistanceKm: driver.distanceKm,
     etaMinutes,
@@ -918,7 +1434,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   // FCM notification (background/killed app)
   const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);
   const socketConnected = !!(socketRoom && socketRoom.size > 0);
-  if (false && driver.fcmToken) {
+  if (!socketConnected && driver.fcmToken) {
     notifyDriverNewRide({
       fcmToken: driver.fcmToken || null,
       driverName: driver.fullName,
@@ -950,39 +1466,108 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
 
   // Start timeout timer — if driver doesn't respond, auto-skip
   session.offerTimer = setTimeout(async () => {
+    if (!await stillOwnsDispatch(session)) return;
     if (session.currentOfferedDriverId !== driver.driverId) return;
     if (session.status !== "offered") return;
-
-    console.log(`[DISPATCH] Driver ${driver.driverId} timed out on trip ${session.tripId}`);
-    logDispatchAudit(session.tripId, driver.driverId, "timeout");
-    driverOfferEnd(driver.driverId); // release concurrent offer slot
-
-    // Record non-accept outcome for surge feedback loop
-    recordDispatchOutcome(session.pickupLat, session.pickupLng, false, session.config.driverTimeoutMs);
-
-    // Record this driver as timed out (equivalent to soft rejection)
-    session.rejectedDriverIds.add(driver.driverId);
-    session.currentOfferedDriverId = null;
-    await resetRideForRedispatch(session.tripId, {
-      actorId: driver.driverId,
-      actorType: "driver",
-      reason: "Driver offer timed out",
-      rejectedDriverId: driver.driverId,
-    }).catch((err: any) => {
-      console.error(`[DISPATCH] Failed to reset timed-out trip ${session.tripId}:`, err.message);
-    });
-
-    // Notify driver their time expired
-    if (io) {
-      io.to(`user:${driver.driverId}`).emit("trip:offer_timeout", { tripId: session.tripId });
-    }
-
-    // Update customer
-    emitCustomerSearchStatus(session);
-
-    // Move to next driver
-    await dispatchNextDriver(session);
+    await handleOfferTimeout(session, "Driver offer timed out");
   }, session.config.driverTimeoutMs);
+}
+
+async function handleOfferTimeout(session: DispatchSession, reason: string): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
+  const driverId = session.currentOfferedDriverId;
+  if (!driverId || session.status !== "offered") return;
+
+  console.log(`[DISPATCH] Driver ${driverId} timed out on trip ${session.tripId}`);
+  logDispatchAudit(session.tripId, driverId, "timeout");
+  console.info("[DISPATCH] offer_timeout_count", JSON.stringify({ tripId: session.tripId, driverId }));
+
+  await releaseDriverOffer(driverId, session.tripId);
+  recordDispatchOutcome(session.pickupLat, session.pickupLng, false, session.config.driverTimeoutMs);
+
+  session.rejectedDriverIds.add(driverId);
+  session.currentOfferedDriverId = null;
+  session.currentOfferId = null;
+  session.offerExpiresAt = null;
+  await persistDispatchSession(session);
+
+  await resetRideForRedispatch(session.tripId, {
+    actorId: driverId,
+    actorType: "driver",
+    reason,
+    rejectedDriverId: driverId,
+  }).catch((err: any) => {
+    console.error(`[DISPATCH] Failed to reset timed-out trip ${session.tripId}:`, err.message);
+  });
+
+  if (io) {
+    io.to(`user:${driverId}`).emit("trip:offer_timeout", { tripId: session.tripId });
+  }
+
+  emitCustomerSearchStatus(session);
+  await dispatchNextDriver(session);
+}
+
+async function reconcileAcceptedDispatch(session: DispatchSession): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
+  const acceptedDriverId = session.acceptedDriverId || session.currentOfferedDriverId;
+  if (!acceptedDriverId) return;
+
+  const tripR = await rawDb.execute(rawSql`
+    SELECT id, current_status, driver_id
+    FROM trip_requests
+    WHERE id=${session.tripId}::uuid
+    LIMIT 1
+  `);
+  if (!tripR.rows.length) {
+    session.status = "cancelled";
+    await persistDispatchSession(session);
+    return;
+  }
+
+  const trip = tripR.rows[0] as any;
+  const currentStatus = String(trip.current_status || "");
+  if (currentStatus === "accepted" && String(trip.driver_id || "") === acceptedDriverId) {
+    await onDriverAccepted(session.tripId, acceptedDriverId);
+    return;
+  }
+
+  if (!["searching", "driver_assigned"].includes(currentStatus)) {
+    session.status = "cancelled";
+    await persistDispatchSession(session);
+    return;
+  }
+
+  await rawDb.transaction(async (trx) => {
+    const locked = await trx.execute(rawSql`
+      SELECT id, current_status, driver_id
+      FROM trip_requests
+      WHERE id=${session.tripId}::uuid
+      FOR UPDATE
+    `);
+    const row = locked.rows[0] as any;
+    const status = String(row?.current_status || "");
+    if (!row || !["searching", "driver_assigned"].includes(status)) return;
+
+    await trx.execute(rawSql`
+      UPDATE trip_requests
+      SET current_status='accepted',
+          driver_id=${acceptedDriverId}::uuid,
+          pickup_otp=COALESCE(pickup_otp, ${session.pickupOtp || null}),
+          driver_accepted_at=COALESCE(driver_accepted_at, NOW()),
+          driver_arriving_at=COALESCE(driver_arriving_at, NOW()),
+          updated_at=NOW()
+      WHERE id=${session.tripId}::uuid
+    `);
+    await trx.execute(rawSql`
+      UPDATE users
+      SET current_trip_id=${session.tripId}::uuid
+      WHERE id=${acceptedDriverId}::uuid
+    `);
+  });
+
+  console.info("[DISPATCH] accept_success", JSON.stringify({ tripId: session.tripId, driverId: acceptedDriverId, source: "reaper" }));
+  await onDriverAccepted(session.tripId, acceptedDriverId);
 }
 
 /**
@@ -990,6 +1575,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
  * Before giving up: retry once from radius step 0 after 45s (catches drivers who just came online).
  */
 async function expireDispatch(session: DispatchSession, message: string): Promise<void> {
+  if (!await stillOwnsDispatch(session)) return;
   if (session.status === "accepted" || session.status === "cancelled") return;
 
   // Allow ONE retry from scratch — a driver may have just come online
@@ -1000,12 +1586,15 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
     session.driverQueue = [];
     session.queueIndex = 0;
     session.status = "searching";
+    session.offerExpiresAt = null;
+    await persistDispatchSession(session);
     console.log(`[DISPATCH] No drivers found for trip ${session.tripId} — scheduling retry #${session.retryCount} in 45s`);
 
     // Notify customer we're still searching
     emitCustomerSearchStatus(session);
 
     session.retryTimer = setTimeout(async () => {
+      if (!await stillOwnsDispatch(session)) return;
       session.retryTimer = null;
       if (session.status !== "searching") return; // may have been accepted/cancelled
       console.log(`[DISPATCH] Retry #${session.retryCount} starting for trip ${session.tripId}`);
@@ -1016,6 +1605,8 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
 
   session.status = "no_drivers";
   clearTimers(session);
+  session.currentOfferId = null;
+  await persistDispatchSession(session);
 
   // Notify customer
   if (io) {
@@ -1088,6 +1679,7 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
     console.error(`[DISPATCH-REFUND] Failed auto-refund for trip ${session.tripId}:`, err.message);
   }
 
+  await clearDispatchSessionPersistence(session.tripId, session.ownerToken);
   activeDispatches.delete(session.tripId);
   console.log(`[DISPATCH] Trip ${session.tripId} expired — ${message}`);
 }
@@ -1497,6 +2089,88 @@ export function startScheduledRideDispatcher(): void {
  * Periodic cleanup of dispatch sessions that got stuck.
  * Runs every 60 seconds.
  */
+async function processDispatchReaperTrip(tripId: string): Promise<void> {
+  const session = activeDispatches.get(tripId) || await restoreDispatchSession(tripId);
+  if (!session) return;
+
+  const ownerToken = await getDispatchOwnerToken(tripId);
+  if (!ownerToken) {
+    const claimed = await reacquireDispatchOwner(session);
+    if (!claimed) {
+      console.info("[DISPATCH] dispatch_owner_conflict", JSON.stringify({ tripId, reason: "reacquire_failed" }));
+      return;
+    }
+  } else if (session.ownerToken && ownerToken !== session.ownerToken) {
+    session.ownerToken = ownerToken;
+    activeDispatches.set(tripId, session);
+    await persistDispatchSession(session);
+    console.info("[DISPATCH] dispatch_recovery_count", JSON.stringify({ tripId, reason: "owner_token_changed" }));
+    return;
+  } else if (!session.ownerToken) {
+    session.ownerToken = ownerToken;
+    await persistDispatchSession(session);
+  }
+
+  if (!await stillOwnsDispatch(session)) return;
+
+  const now = Date.now();
+  if (session.status === "accepted") {
+    await reconcileAcceptedDispatch(session);
+    return;
+  }
+
+  if (session.status === "offered" && session.offerExpiresAt && session.offerExpiresAt <= now) {
+    await handleOfferTimeout(session, "Driver offer timed out");
+    return;
+  }
+
+  if ((session.status === "searching" || session.status === "offered") && now - session.createdAt > session.config.maxTotalTimeMs) {
+    await expireDispatch(session, "No pilots available nearby. Please try again.");
+    return;
+  }
+
+  if (session.status === "searching" && !session.currentOfferedDriverId) {
+    if (session.driverQueue.length && session.queueIndex < session.driverQueue.length) {
+      await dispatchNextDriver(session);
+    } else {
+      await searchAndDispatchNextRadius(session);
+    }
+    return;
+  }
+
+  await persistDispatchSession(session);
+}
+
+export function startDispatchReaper(intervalMs = 7000): void {
+  const tick = async () => {
+    const tripIds = await getActiveDispatchTripIds();
+    for (const tripId of tripIds) {
+      try {
+        await processDispatchReaperTrip(tripId);
+      } catch (error: any) {
+        console.error("[DISPATCH] REAPER_TRIP_ERROR", JSON.stringify({
+          tripId,
+          message: error?.message || String(error),
+        }));
+      }
+    }
+  };
+
+  const handle = setInterval(() => {
+    tick().catch((error) => {
+      console.error("[DISPATCH] REAPER_LOOP_ERROR", error?.message || error);
+    });
+  }, intervalMs);
+  (handle as any).unref?.();
+  setTimeout(() => {
+    tick().catch((error) => {
+      console.error("[DISPATCH] REAPER_BOOT_ERROR", error?.message || error);
+    });
+  }, 1500);
+
+  console.log(`[DISPATCH] Reaper started (${intervalMs}ms interval)`);
+}
+
 export function startDispatchCleanup(): void {
   setInterval(() => {
     const now = Date.now();
@@ -1507,7 +2181,11 @@ export function startDispatchCleanup(): void {
         console.warn(`[DISPATCH] Cleaning up stale session for trip ${tripId} (age: ${Math.round((now - session.createdAt) / 1000)}s)`);
         session.status = "expired";
         clearTimers(session);
+        if (session.currentOfferedDriverId) {
+          releaseDriverOffer(session.currentOfferedDriverId, tripId).catch(() => undefined);
+        }
         activeDispatches.delete(tripId);
+        clearDispatchSessionPersistence(tripId).catch(() => undefined);
       }
     }
   }, 60000);

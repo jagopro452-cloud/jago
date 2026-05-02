@@ -51,6 +51,8 @@ class ApiConfig {
   static String get driverOnlineStatus => '$baseUrl/api/app/driver/online-status';
   static String get driverActiveTrip => '$baseUrl/api/app/driver/active-trip';
   static String get driverIncomingTrip => '$baseUrl/api/app/driver/incoming-trip';
+  static String get driverPendingOffer => '$baseUrl/api/app/driver/pending-offer';
+  static String get driverOfferAck => '$baseUrl/api/app/driver/offer-ack';
   static String get driverAcceptTrip => '$baseUrl/api/app/driver/accept-trip';
   static String get driverRejectTrip => '$baseUrl/api/app/driver/reject-trip';
   static String get driverArrived => '$baseUrl/api/app/driver/arrived';

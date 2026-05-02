@@ -1,8 +1,3 @@
-// Allow self-signed DB certificates in development only (not in production).
-if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
-
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -17,6 +12,10 @@ import path from "path";
 
 const env = parseEnv();
 validateProductionReadiness(env);
+
+if (process.env.NODE_ENV === "production" && String(process.env.AUTH_DEV_CONSOLE_SMS || "").trim().toLowerCase() === "true") {
+  throw new Error("FATAL: AUTH_DEV_CONSOLE_SMS=true is set in production — SMS would be silently skipped. Remove this env var before deploying.");
+}
 
 const app = express();
 app.set("trust proxy", 1);
@@ -86,20 +85,19 @@ export function log(message: string, source = "express") {
 // Security headers
 app.use((_req, res, next) => {
   // CORS headers — allow requests from frontend domain(s)
-  const origin = _req.headers.origin || "*";
-  const isDev = process.env.NODE_ENV !== "production";
+  const origin = _req.headers.origin;
+  const defaultOrigins = "https://jagopro.org,https://www.jagopro.org,http://localhost:5173,http://localhost:5000,http://127.0.0.1:5173,http://127.0.0.1:5000";
+  const allowedOrigins = ((process.env.ALLOWED_ORIGINS || defaultOrigins))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  if (isDev || !_req.headers.origin) {
+  if (!origin) {
+    // Native mobile requests usually do not send Origin.
+  } else if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    const defaultOrigins = "https://jagopro.org,https://www.jagopro.org,http://localhost:5173,http://localhost:5000,http://127.0.0.1:5173,http://127.0.0.1:5000";
-    const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultOrigins)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (allowedOrigins.includes(origin as string)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-    }
+    return res.status(403).json({ message: "Origin not allowed" });
   }
 
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -366,8 +364,14 @@ httpServer.listen(port, () => {
       const { keyId: RAZORPAY_KEY_ID, keySecret: RAZORPAY_KEY_SECRET } = await getRazorpayKeys();
       if (!RAZORPAY_KEY_ID) return;
       // Find trips stuck in payment_pending for > 5 minutes
-      const stuckTrips = await rawDb.execute(rawSql`
-        SELECT t.id as trip_id, t.customer_id, dp.razorpay_order_id, dp.id as payment_id, dp.driver_id
+      const pendingDriverPayments = await rawDb.execute(rawSql`
+        SELECT
+          'driver'::text AS payment_source,
+          t.id as trip_id,
+          t.customer_id,
+          dp.razorpay_order_id,
+          dp.id as payment_id,
+          dp.driver_id
         FROM trip_requests t
         JOIN driver_payments dp ON dp.trip_id = t.id
         WHERE t.current_status = 'payment_pending'
@@ -376,7 +380,27 @@ httpServer.listen(port, () => {
           AND dp.razorpay_order_id IS NOT NULL
         LIMIT 20
       `);
-      for (const row of stuckTrips.rows as any[]) {
+      const pendingCustomerPayments = await rawDb.execute(rawSql`
+        SELECT
+          'customer'::text AS payment_source,
+          t.id as trip_id,
+          t.customer_id,
+          cp.razorpay_order_id,
+          cp.id as payment_id,
+          NULL::uuid AS driver_id
+        FROM trip_requests t
+        JOIN customer_payments cp ON cp.trip_id = t.id
+        WHERE t.current_status = 'payment_pending'
+          AND t.updated_at < NOW() - INTERVAL '5 minutes'
+          AND cp.status = 'pending'
+          AND cp.razorpay_order_id IS NOT NULL
+        LIMIT 20
+      `);
+      const stuckTrips = [
+        ...((pendingDriverPayments.rows as any[]) || []),
+        ...((pendingCustomerPayments.rows as any[]) || []),
+      ];
+      for (const row of stuckTrips) {
         try {
           // Query Razorpay for order payment status
           const rzpRes = await fetch(`https://api.razorpay.com/v1/orders/${row.razorpay_order_id}/payments`, {
@@ -387,10 +411,17 @@ httpServer.listen(port, () => {
           const captured = rzpData?.items?.find((p: any) => p.status === "captured");
           if (captured) {
             // Payment confirmed — complete the trip
-            await rawDb.execute(rawSql`
-              UPDATE driver_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
-              WHERE id=${row.payment_id}::uuid
-            `);
+            if (row.payment_source === "driver") {
+              await rawDb.execute(rawSql`
+                UPDATE driver_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
+                WHERE id=${row.payment_id}::uuid
+              `);
+            } else {
+              await rawDb.execute(rawSql`
+                UPDATE customer_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
+                WHERE id=${row.payment_id}::uuid
+              `);
+            }
             const tripState = await rawDb.execute(rawSql`
               SELECT current_status
               FROM trip_requests

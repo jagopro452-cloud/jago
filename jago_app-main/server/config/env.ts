@@ -22,8 +22,6 @@ const EnvSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 
-  // Removed legacy SMS/Twilio/2FA keys. Only Firebase OTP is supported.
-
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
   FIREBASE_WEB_API_KEY: z.string().optional(),
 
@@ -58,31 +56,37 @@ export function validateProductionReadiness(env: AppEnv): void {
   const critical: string[] = [];
   const warnings: string[] = [];
 
-  // These must be set in production — app cannot function securely without them
   if (!env.ADMIN_PASSWORD) critical.push("ADMIN_PASSWORD");
 
-  // 2FA delivery check: warn if no phone is set to receive OTP
   const twoFaOn = !isFalse(env.ADMIN_2FA_REQUIRED);
   if (twoFaOn && !env.ADMIN_PHONE) {
-    warnings.push("ADMIN_PHONE not set — admin 2FA is enabled but OTP has no delivery target; set ADMIN_PHONE=+91xxxxxxxxxx");
+    warnings.push("ADMIN_PHONE not set - admin 2FA is enabled but OTP has no delivery target; set ADMIN_PHONE=+91xxxxxxxxxx");
   }
   if (!twoFaOn) {
-    warnings.push("ADMIN_2FA_REQUIRED=false — admin logins have NO second factor; set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE for security");
+    warnings.push("ADMIN_2FA_REQUIRED=false - admin logins have no second factor; set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE for security");
   }
 
-  // These are important but app can degrade gracefully
   if (!env.GOOGLE_MAPS_API_KEY) warnings.push("GOOGLE_MAPS_API_KEY");
   if (!env.OPS_API_KEY) warnings.push("OPS_API_KEY");
   if (!env.RAZORPAY_KEY_ID) warnings.push("RAZORPAY_KEY_ID");
   if (!env.RAZORPAY_KEY_SECRET) warnings.push("RAZORPAY_KEY_SECRET");
   if (!env.RAZORPAY_WEBHOOK_SECRET) warnings.push("RAZORPAY_WEBHOOK_SECRET");
-  if (!env.SOCKET_ALLOWED_ORIGINS) warnings.push("SOCKET_ALLOWED_ORIGINS (defaults to * — set to restrict WebSocket origins)");
-  if (!env.REDIS_URL) warnings.push("REDIS_URL not set — driver presence cache and Socket.IO multi-server sync will be disabled (in-memory fallback only)");
+  if (!env.ALLOWED_ORIGINS) critical.push("ALLOWED_ORIGINS");
+  if (!env.SOCKET_ALLOWED_ORIGINS) critical.push("SOCKET_ALLOWED_ORIGINS");
+  if (env.ALLOWED_ORIGINS?.split(",").map((v) => v.trim()).includes("*")) {
+    critical.push("ALLOWED_ORIGINS must not contain * in production");
+  }
+  if (env.SOCKET_ALLOWED_ORIGINS?.split(",").map((v) => v.trim()).includes("*")) {
+    critical.push("SOCKET_ALLOWED_ORIGINS must not contain * in production");
+  }
+  if (!env.REDIS_URL) {
+    warnings.push("REDIS_URL not set - driver presence cache and Socket.IO multi-server sync will be disabled (in-memory fallback only)");
+  }
 
   if (critical.length) {
-    throw new Error(`[config] FATAL: Critical production env vars not set: ${critical.join(", ")} — cannot start in production without these.`);
+    throw new Error(`[config] FATAL: Critical production env vars not set: ${critical.join(", ")} - cannot start in production without these.`);
   }
   if (warnings.length) {
-    console.warn(`[config] WARNING: Production env vars not set: ${warnings.join(", ")} — some features will be unavailable.`);
+    console.warn(`[config] WARNING: Production env vars not set: ${warnings.join(", ")} - some features will be unavailable.`);
   }
 }

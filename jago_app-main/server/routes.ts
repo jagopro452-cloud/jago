@@ -1,7 +1,7 @@
 ﻿import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
-import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
+import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { notifyUser } from "./notification-service";
 import { sendAlert as sendOpsAlert } from "./observability";
 import { sendCustomSms } from "./sms";
@@ -15,7 +15,7 @@ import multer from "multer";
 const _require = createRequire(import.meta.url);
 import path from "path";
 import fs from "fs";
-import { db } from "./db";
+import { db, pool as dbPool } from "./db";
 const rawDb = db;
 import { parcelAttributes, admins, cancellationReasons } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
@@ -67,10 +67,15 @@ import {
   onDriverRejected,
   cancelDispatch,
   restartDispatchForTrip,
+  atomicAcceptDispatchOffer,
+  acknowledgePendingDriverOffer,
+  rollbackAtomicAcceptDispatchOffer,
+  getPendingDriverOffer,
   hasActiveDispatch,
   getDispatchStatus,
   getActiveDispatchCount,
   startScheduledRideDispatcher,
+  startDispatchReaper,
   startDispatchCleanup,
   resolveServiceType,
   type TripMeta,
@@ -157,7 +162,9 @@ import {
   applyCompanyWalletChange,
   applyPendingBalanceDebit,
   applyPendingBalanceCredit,
+  completeTripAtomic,
 } from "./revenue-engine";
+import { processOutboxBatch, startOutboxProcessor } from "./outbox";
 import type { ServiceCategory, PaymentMethod } from "./revenue-engine";
 import {
   assignParcelDriver,
@@ -723,15 +730,14 @@ setInterval(() => {
 
 const ADMIN_SESSION_TTL_HOURS = Math.max(1, Number(process.env.ADMIN_SESSION_TTL_HOURS || 24));
 // SECURITY: Never expose OTPs in production responses, regardless of env var setting
-const isDevOtpResponseEnabled = process.env.ENABLE_DEV_OTP_RESPONSES === "true" && process.env.NODE_ENV !== "production";
+const isDevOtpResponseEnabled =
+  process.env.ENABLE_DEV_OTP_RESPONSES === "true" &&
+  process.env.NODE_ENV === "development";
 
 // AI microservice is optional — null disables voice intent without crashing server
 const AI_ASSISTANT_SERVICE_URL = process.env.AI_ASSISTANT_SERVICE_URL
   ? process.env.AI_ASSISTANT_SERVICE_URL.replace(/\/$/, "")
   : null;
-if (false) { // placeholder kept to preserve surrounding line numbers; remove next cleanup
-  console.warn("[WARN] AI_ASSISTANT_SERVICE_URL localhost removed� set AI_ASSISTANT_SERVICE_URL env var to enable it.");
-}
 
 // -- Claude AI voice intent parser --------------------------------------------
 async function parseVoiceIntentWithClaude(text: string): Promise<any | null> {
@@ -954,7 +960,7 @@ async function requireAdminAuth(req: Request, res: Response, next: NextFunction)
     const r = await rawDb.execute(rawSql`
       SELECT id, name, email, role, is_active FROM admins
       WHERE auth_token=${token} AND is_active=true
-        AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+        AND auth_token_expires_at > NOW()
       LIMIT 1
     `);
     if (!r.rows.length) return res.status(401).json({ message: "Admin session expired. Please login again." });
@@ -1086,7 +1092,18 @@ async function ensureAdminExists() {
   }
 }
 
+const SCHEMA_MIGRATION_LOCK_KEY = 9876543210; // arbitrary stable pg_advisory_lock key
+
 async function ensureOperationalSchema() {
+  // Acquire session-level advisory lock so concurrent pod starts don't race on DDL.
+  // pg_advisory_lock blocks until acquired; auto-released when the client disconnects.
+  const migrationClient = await dbPool.connect();
+  try {
+    await migrationClient.query("SELECT pg_advisory_lock($1)", [SCHEMA_MIGRATION_LOCK_KEY]);
+  } catch {
+    // If advisory lock fails (e.g. old PG version), proceed without it — IF NOT EXISTS guards are still safe
+    migrationClient.release();
+  }
   try {
     await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
 
@@ -1368,6 +1385,62 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active ON refresh_tokens(user_id, revoked, expires_at DESC);
       CREATE INDEX IF NOT EXISTS idx_otp_request_events_device_created ON otp_request_events(device_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_users_phone_type ON users(phone, user_type);
+      CREATE INDEX IF NOT EXISTS idx_driver_locations_online_updated ON driver_locations(is_online, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS outbox_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        type TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        processed BOOLEAN NOT NULL DEFAULT false,
+        processed_at TIMESTAMP,
+        processing BOOLEAN NOT NULL DEFAULT false,
+        processing_started_at TIMESTAMP,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        next_attempt_at TIMESTAMP,
+        failed BOOLEAN NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+        ON outbox_events(processed, processing, failed, next_attempt_at, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_driver_one_active_trip
+        ON trip_requests (driver_id)
+        WHERE driver_id IS NOT NULL
+          AND current_status IN ('driver_assigned','accepted','arrived','on_the_way','ongoing');
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_one_active_trip
+        ON trip_requests (customer_id)
+        WHERE customer_id IS NOT NULL
+          AND current_status IN ('searching','driver_assigned','accepted','arrived','on_the_way','ongoing');
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'fk_trip_requests_customer'
+        ) THEN
+          ALTER TABLE trip_requests
+          ADD CONSTRAINT fk_trip_requests_customer
+          FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE NOT VALID;
+        END IF;
+      END$$;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'fk_trip_requests_driver'
+        ) THEN
+          ALTER TABLE trip_requests
+          ADD CONSTRAINT fk_trip_requests_driver
+          FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE SET NULL NOT VALID;
+        END IF;
+      END$$;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'fk_trip_requests_vehicle_category'
+        ) THEN
+          ALTER TABLE trip_requests
+          ADD CONSTRAINT fk_trip_requests_vehicle_category
+          FOREIGN KEY (vehicle_category_id) REFERENCES vehicle_categories(id) ON DELETE SET NULL NOT VALID;
+        END IF;
+      END$$;
       UPDATE users SET email = NULL WHERE TRIM(COALESCE(email, '')) = '';
       ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
@@ -1934,14 +2007,6 @@ async function ensureOperationalSchema() {
     `).catch(dbCatch("db"));
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
-    // -- Auto-promote pending drivers to verified so they can go online ------
-    // Drivers who registered but were never admin-reviewed stay stuck at 'pending'.
-    // 'verified' = registered and active, 'approved' = explicitly admin-approved.
-    // Both 'verified' and 'approved' are allowed to go online and receive trips.
-    await rawDb.execute(rawSql`
-      UPDATE users SET verification_status='verified'
-      WHERE user_type='driver' AND verification_status='pending' AND is_active=true
-    `).catch(dbCatch("db"));
     // Backfill model_selected_at so drivers aren't blocked by the model selection gate
     await rawDb.execute(rawSql`
       UPDATE users SET
@@ -1949,7 +2014,7 @@ async function ensureOperationalSchema() {
         model_selected_at = COALESCE(model_selected_at, NOW())
       WHERE user_type='driver' AND is_active=true
     `).catch(dbCatch("db"));
-    console.log('[seed] pending drivers promoted to verified, model_selected_at backfilled');
+    console.log('[seed] model_selected_at backfilled for active drivers');
 
     // -- Seed trip_fares using vehicle_categories pricing as source of truth --
     // Inserts only where no fare row exists yet. Safe to re-run.
@@ -2338,8 +2403,43 @@ async function ensureOperationalSchema() {
       CREATE INDEX IF NOT EXISTS idx_ride_events_trip_id ON ride_events(trip_id);
     `).catch(dbCatch("db"));
 
+  // H5: fast partial index for refresh token lookup
+  await rawDb.execute(rawSql`
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_lookup
+    ON refresh_tokens (token)
+    WHERE revoked = false
+  `).catch(dbCatch("db"));
+
+  // H4: backfill NULL admin token expiry — NULL means "never expires" which is the vulnerability
+  await rawDb.execute(rawSql`
+    UPDATE admins
+    SET auth_token_expires_at = NOW() + INTERVAL '7 days'
+    WHERE auth_token_expires_at IS NULL
+      AND auth_token IS NOT NULL
+  `).catch(dbCatch("db"));
+
+  // H6: indexes for otp_request_events rate-limit queries
+  await rawDb.execute(rawSql`
+    CREATE INDEX IF NOT EXISTS idx_otp_events_phone_time
+    ON otp_request_events (phone, country_code, created_at DESC)
+  `).catch(dbCatch("db"));
+  await rawDb.execute(rawSql`
+    CREATE INDEX IF NOT EXISTS idx_otp_events_device_time
+    ON otp_request_events (device_id, created_at DESC)
+  `).catch(dbCatch("db"));
+
+  // C2: ensure UNIQUE on otp_codes so UPSERT works
+  await rawDb.execute(rawSql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_otp_phone_cc
+    ON otp_codes (phone, country_code)
+  `).catch(dbCatch("db"));
+
   } catch (e: any) {
     console.error("[schema] ensureOperationalSchema error:", formatDbError(e));
+  } finally {
+    // Release advisory lock and return connection to pool
+    migrationClient.query("SELECT pg_advisory_unlock($1)", [SCHEMA_MIGRATION_LOCK_KEY]).catch(() => undefined);
+    migrationClient.release();
   }
 }
 
@@ -2351,12 +2451,16 @@ function startAuthCleanupJobs() {
     await rawDb.execute(rawSql`DELETE FROM otp_codes WHERE expires_at <= NOW()`).catch(dbCatch("db"));
     await rawDb.execute(rawSql`DELETE FROM sessions WHERE revoked=true OR expires_at <= NOW()`).catch(dbCatch("db"));
     await rawDb.execute(rawSql`DELETE FROM refresh_tokens WHERE revoked=true OR expires_at <= NOW()`).catch(dbCatch("db"));
+    // Prevent otp_request_events table bloat — keep 7 days for audit, discard older rows
+    await rawDb.execute(rawSql`DELETE FROM otp_request_events WHERE created_at < NOW() - INTERVAL '7 days'`).catch(dbCatch("db"));
+    await rawDb.execute(rawSql`DELETE FROM outbox_events WHERE processed=true AND created_at < NOW() - INTERVAL '7 days'`).catch(dbCatch("db"));
   }, 10 * 60 * 1000);
-  console.log("[AUTH] Cleanup jobs started (10m interval)");
+  console.log("[AUTH] Cleanup jobs started (10m interval, otp_events TTL=7d)");
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   startAuthCleanupJobs();
+  startOutboxProcessor(io);
   const loginController = createLoginController(issueUserSession);
   const sendOtpController = createSendOtpController();
   const verifyOtpController = createVerifyOtpController(issueUserSession);
@@ -2391,7 +2495,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM admins
         WHERE auth_token=${token}
           AND is_active=true
-          AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+          AND auth_token_expires_at > NOW()
         LIMIT 1
       `);
       if (!r.rows.length) return res.status(401).json({ message: "Admin session expired. Please login again." });
@@ -3171,7 +3275,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT destination_lat as lat, destination_lng as lng, 0.6 as intensity FROM trip_requests WHERE destination_lat IS NOT NULL ORDER BY created_at DESC LIMIT 5000
       `);
       res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      if (e?.status && e?.code) {
+        return res.status(e.status).json({ success: false, code: e.code, message: e.message });
+      }
+      if (String(e?.message || "") === "LEDGER_INVARIANT_VIOLATION") {
+        return res.status(500).json({ success: false, code: "LEDGER_INVARIANT_VIOLATION", message: "Trip settlement integrity check failed" });
+      }
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Live vehicle tracking � use actual driver telemetry instead of synthetic positions
@@ -4270,7 +4382,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.post("/api/admin/complaints", async (req, res) => {
+  app.post("/api/admin/complaints", requireAdminAuth, async (req, res) => {
     try {
       const { tripId, customerId, driverId, complaintType = 'general', description } = req.body;
       if (!tripId || !description) return res.status(400).json({ message: 'tripId and description are required' });
@@ -6561,23 +6673,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const type = settingsType || "pages_settings";
       await rawDb.execute(rawSql`INSERT INTO business_settings (key_name, value, settings_type) VALUES (${keyName}, ${String(value)}, ${type}) ON CONFLICT (key_name) DO UPDATE SET value=${String(value)}, updated_at=now()`);
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-  });
-
-  // Admin password change
-  app.post("/api/admin/change-password", async (req, res) => {
-    try {
-      const { currentPassword, newPassword } = req.body;
-      if (!currentPassword || !newPassword) return res.status(400).json({ message: "Current and new passwords required" });
-      if (newPassword.length < 8) return res.status(400).json({ message: "New password must be at least 8 characters" });
-      const r = await rawDb.execute(rawSql`SELECT id, password FROM admins WHERE role='superadmin' LIMIT 1`);
-      if (!r.rows.length) return res.status(404).json({ message: "Admin not found" });
-      const admin = r.rows[0] as any;
-      const valid = await verifyPassword(String(currentPassword), admin.password);
-      if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
-      const hash = await hashPassword(String(newPassword));
-      await rawDb.execute(rawSql`UPDATE admins SET password=${hash} WHERE id=${admin.id}::uuid`);
-      res.json({ success: true, message: "Password changed successfully" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -9187,7 +9282,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM users
           WHERE refresh_token=${refreshToken}
             AND is_active=true
-            AND (refresh_token_expires_at IS NULL OR refresh_token_expires_at > NOW())
+            AND refresh_token_expires_at > NOW()
           LIMIT 1
         `).catch(() => ({ rows: [] as any[] }));
         const legacyUser = legacyUserR.rows[0] as any;
@@ -9386,7 +9481,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM users
           WHERE auth_token=${token}
             AND is_active=true
-            AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+            AND auth_token_expires_at > NOW()
           LIMIT 1
         `).catch(() => ({ rows: [] as any[] }));
         if (!legacyUserR.rows.length) {
@@ -9724,6 +9819,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  app.get("/api/app/driver/pending-offer", authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const offer = await getPendingDriverOffer(String(driver.id));
+      if (!offer) {
+        return res.json({ offer: null });
+      }
+      return res.json({ success: true, offer });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: safeErrMsg(e) });
+    }
+  });
+
+  app.post("/api/app/driver/offer-ack", authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { tripId, offerId } = req.body || {};
+      if (!tripId || !offerId) {
+        return res.status(400).json({ success: false, code: "INVALID_INPUT", message: "Trip ID and offer ID are required" });
+      }
+      const ok = await acknowledgePendingDriverOffer(String(driver.id), String(tripId), String(offerId));
+      if (!ok) {
+        return res.status(409).json({ success: false, code: "STALE_OFFER", message: "Offer is no longer active" });
+      }
+      return res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ success: false, code: "SERVER_ERROR", message: safeErrMsg(e) });
+    }
+  });
+
   // -- DRIVER: Active trip (app state recovery) -----------------------------
   // Returns the driver's current in-progress trip so the app can restore TripScreen
   // after a crash, kill, or network loss.
@@ -9802,6 +9927,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Generate pickup OTP
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
+      const dispatchAccept = await atomicAcceptDispatchOffer(tripId, driver.id, { pickupOtp: otp });
+      if (!dispatchAccept.ok) {
+        const messageMap: Record<string, string> = {
+          OWNER_MISMATCH: "Dispatch ownership changed. Please wait for a fresh offer.",
+          NO_OWNER: "Offer expired. Please wait for a fresh offer.",
+          NO_OFFER: "Offer no longer active.",
+          OFFER_MISMATCH: "Offer no longer active.",
+          NO_SESSION: "Offer expired. Please wait for a fresh offer.",
+          STALE_OFFER: "This offer is stale. Please wait for a fresh request.",
+          ACCEPT_FAILED: "Trip acceptance failed. Please retry.",
+        };
+        const codeMap: Record<string, number> = {
+          OWNER_MISMATCH: 409,
+          NO_OWNER: 409,
+          NO_OFFER: 409,
+          OFFER_MISMATCH: 409,
+          NO_SESSION: 409,
+          STALE_OFFER: 409,
+          ACCEPT_FAILED: 500,
+        };
+        return res.status(codeMap[dispatchAccept.code] || 409).json({
+          success: false,
+          code: dispatchAccept.code,
+          message: messageMap[dispatchAccept.code] || "Trip acceptance failed",
+        });
+      }
+
       // Atomically claim trip � busy check embedded in WHERE to prevent TOCTOU race:
       // if driver already has an active trip this UPDATE returns 0 rows.
       const r = await rawDb.execute(rawSql`
@@ -9814,6 +9966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       console.log(`[DRIVER_ACCEPT] Claiming trip ${tripId} for driver ${driver.id}`);
       if (!r.rows.length) {
+        await rollbackAtomicAcceptDispatchOffer(tripId, driver.id).catch(() => undefined);
         // Fallback: Check what the real status is, in case it was hijacked or already completed
         const exists = await rawDb.execute(rawSql`SELECT * FROM trip_requests WHERE id=${tripId}::uuid`);
         if (!exists.rows.length) {
@@ -10178,7 +10331,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE tr.id=${tripId}::uuid AND tr.driver_id=${driver.id}::uuid`);
       if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
       const tripRow = tripInfo.rows[0] as any;
-      if (tripRow.current_status !== 'on_the_way') return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
+      if (tripRow.current_status === 'completed') {
+        console.info("[METRIC] trip_complete_conflict", JSON.stringify({ tripId, reason: "idempotent_return" }));
+        return res.json({
+          success: true,
+          id: tripId,
+          customerId: tripRow.customer_id || null,
+          currentStatus: tripRow.current_status,
+        });
+      }
+      if (tripRow.current_status !== 'on_the_way') {
+        console.info("[METRIC] trip_complete_conflict", JSON.stringify({ tripId, reason: "INVALID_STATE", status: tripRow.current_status }));
+        return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
+      }
       if ((tripRow.trip_type === 'parcel' || tripRow.trip_type === 'delivery') && tripRow.delivery_otp) {
         return res.status(400).json({ message: "Verify delivery OTP before completing this parcel trip." });
       }
@@ -10226,27 +10391,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const gstPaise = Math.round(farePaise * rideGstRatePct / 10000);
       const gstAmount = gstPaise / 100;
 
-      const r = await rawDb.execute(rawSql`
-        UPDATE trip_requests
-        SET current_status='completed', ride_ended_at=NOW(),
-            actual_fare=${fare}, actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
-            tips=${tipsVal}, payment_status=CASE WHEN payment_status IN ('paid_online','wallet_paid','partial_payment') THEN payment_status ELSE 'paid' END,
-            ride_full_fare=${rideFullFare}, user_discount=${userDiscount},
-            user_payable=${userPayable}, gst_amount=${gstAmount},
-            vehicle_type_name=${vehicleTypeName},
-            seats_booked=${seatsBooked}, seat_price=${seatPrice}
-        WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
-          AND current_status = 'on_the_way'
-        RETURNING *
-      `);
-      if (!r.rows.length) {
-        const exists = await rawDb.execute(rawSql`SELECT current_status FROM trip_requests WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
-        const s = (exists.rows[0] as any)?.current_status;
-        if (!s) return res.status(404).json({ message: "Trip not found" });
-        return res.status(400).json({ message: `Cannot complete trip in status: ${s}. Ride must be on_the_way.` });
-      }
-
-      // -- Revenue: Calculate breakdown + settle (unified engine) --------------
+      // -- Revenue: Calculate breakdown (pure, no side effects) ----------------
       const tripServiceType = (tripRow.trip_type || tripRow.type || 'normal');
       const serviceCategory: any =
         tripServiceType === 'parcel' ? 'parcel'
@@ -10260,172 +10405,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const deductAmount = breakdown.total;
       const driverWalletCredit = breakdown.driverEarnings;
       const launchFreeApplied = breakdown.model === 'launch_free';
-
-      // Save pricing fields on trip
-      await rawDb.execute(rawSql`
-        UPDATE trip_requests
-        SET commission_amount=${deductAmount},
-            driver_wallet_credit=${driverWalletCredit},
-            driver_fare=${driverWalletCredit},
-            customer_fare=${userPayable}
-        WHERE id=${tripId}::uuid
-      `);
-
-      // Customer wallet pre-check for wallet?cash fallback
-      const paymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
-      let customerWalletBalance: number | undefined;
-      if (paymentMethod === 'wallet' && tripRow.customer_id) {
-        try {
-          const cwRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripRow.customer_id}::uuid`);
-          customerWalletBalance = parseFloat((cwRes.rows[0] as any)?.wallet_balance || '0');
-        } catch (_) { }
-      }
-
-      // Settle: driver wallet, commission_settlements, GST wallet, admin_revenue, auto-lock
-      if (deductAmount > 0) {
-        await settleRevenue({
-          driverId: driver.id,
-          tripId,
-          fare,
-          paymentMethod: paymentMethod as any,
-          breakdown,
-          serviceCategory,
-          serviceLabel: tripServiceType || 'ride',
-          customerWalletBalance,
-        });
-      }
-
-      // -- Customer wallet deduction: use userPayable (discounted amount) ----
-      const tripPaymentMethod = tripRow.payment_method || 'cash';
+      const tripPaymentMethod = (tripRow.payment_method || 'cash').toLowerCase();
       const tripCustomerId = tripRow.customer_id;
-      let walletPendingAmount = 0; // amount still owed after wallet attempt
-      let walletPaidAmount = 0;    // amount successfully deducted from wallet
-      if (tripPaymentMethod === 'wallet' && tripCustomerId) {
-        try {
-          // ATOMIC: Single UPDATE prevents race condition � balance can never go negative
-          const balRes = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
-          const custBal = parseFloat((balRes.rows[0] as any)?.wallet_balance || '0');
-          if (custBal >= userPayable) {
-            // Full wallet deduction succeeded atomically
-            const walletChange = await applyWalletChange({
-              userId: String(tripCustomerId),
-              amount: userPayable,
-              type: "DEBIT",
-              reason: "ride_wallet_payment",
-              refId: String(tripId),
-              requireSufficientFunds: true,
-            });
-            walletPaidAmount = userPayable;
-            await rawDb.execute(rawSql`
-              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-              VALUES (${tripCustomerId}::uuid, ${'Ride payment via Wallet'}, 0, ${userPayable}, ${walletChange.newBalance}, ${'ride_payment'}, ${tripId})
-            `).catch(dbCatch("db"));
-            console.log(`[WALLET] ? Full deduction ?${userPayable} from customer ${tripCustomerId}`);
-          } else if (custBal > 0) {
-            const deducted = parseFloat(custBal.toFixed(2));
-            const walletChange = await applyWalletChange({
-              userId: String(tripCustomerId),
-              amount: deducted,
-              type: "DEBIT",
-              reason: "ride_wallet_partial_payment",
-              refId: String(tripId),
-              requireSufficientFunds: true,
-            });
-            const remaining = parseFloat((userPayable - deducted).toFixed(2));
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET payment_status='partial_payment',
-                pending_payment_amount=${remaining} WHERE id=${tripId}::uuid
-            `).catch(dbCatch("db"));
-            await rawDb.execute(rawSql`
-              INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-              VALUES (${tripCustomerId}::uuid, ${'Partial ride payment via Wallet'}, 0, ${deducted}, ${walletChange.newBalance}, ${'ride_payment'}, ${tripId})
-            `).catch(dbCatch("db"));
-            walletPaidAmount = deducted;
-            walletPendingAmount = remaining;
-            console.log(`[WALLET] Partial: ?${deducted} from wallet, ?${remaining} pending (cash/UPI) customer ${tripCustomerId}`);
-          } else {
-            // No wallet balance � full amount must be paid by cash/UPI
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET payment_status='pending_payment',
-                pending_payment_amount=${userPayable} WHERE id=${tripId}::uuid
-            `).catch(dbCatch("db"));
-            walletPendingAmount = userPayable;
-            console.log(`[WALLET] ??  No balance: full ?${userPayable} pending (cash/UPI) � customer ${tripCustomerId}`);
-          }
-        } catch (_) { }
+
+      // -- C6: Single atomic transaction -- trip state + all money in one COMMIT --
+      const txResult = await completeTripAtomic({
+        tripId,
+        driverId: driver.id,
+        fare,
+        actualDistance: parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0,
+        tipsVal,
+        rideFullFare,
+        userDiscount,
+        userPayable,
+        gstAmount,
+        deductAmount,
+        driverWalletCredit,
+        commissionOwed: parseFloat((deductAmount - gstAmount).toFixed(2)),
+        vehicleTypeName,
+        seatsBooked,
+        seatPrice,
+        tripPaymentMethod,
+        tripCustomerId: tripCustomerId || null,
+        serviceCategory,
+        serviceLabel: tripServiceType || 'ride',
+        revenueModel: breakdown.model,
+      });
+
+      if (txResult.alreadyCompleted) {
+        console.info("[METRIC] trip_complete_conflict", JSON.stringify({ tripId, reason: "atomic_idempotent_return" }));
+        return res.json({ success: true, alreadyCompleted: true });
       }
 
-      // Record transaction for online/razorpay payments
-      if ((tripPaymentMethod === 'online' || tripPaymentMethod === 'upi' || tripPaymentMethod === 'razorpay') && tripCustomerId) {
-        try {
-          const custWalRes2 = await rawDb.execute(rawSql`SELECT wallet_balance FROM users WHERE id=${tripCustomerId}::uuid`);
-          const custBal2 = parseFloat((custWalRes2.rows[0] as any)?.wallet_balance || '0');
-          await rawDb.execute(rawSql`
-            INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
-            VALUES (${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${userPayable}, ${custBal2}, ${'ride_payment'}, ${tripId})
-            ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
-          `).catch((e: any) => console.error('[CUST-ONLINE-TX]', e.message));
-        } catch (e: any) { console.error('[CUST-ONLINE-TX-OUTER]', e.message); }
+      const { walletPaidAmount, walletPendingAmount } = txResult;
+
+      // Post-commit: online/UPI transaction record (informational, no money moved)
+      if (['online','upi','razorpay'].includes(tripPaymentMethod) && tripCustomerId) {
+        rawDb.execute(rawSql`
+          INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type, ref_transaction_id)
+          SELECT ${tripCustomerId}::uuid, ${'Ride payment via UPI/Online'}, 0, ${userPayable}, wallet_balance, ${'ride_payment'}, ${tripId}
+          FROM users WHERE id=${tripCustomerId}::uuid
+          ON CONFLICT (ref_transaction_id, transaction_type) WHERE ref_transaction_id IS NOT NULL DO NOTHING
+        `).catch((e: any) => console.error('[CUST-ONLINE-TX]', e.message));
       }
 
-      // Driver earnings transaction handled by settleRevenue()
-
-      // -- Increment customer's completed_rides_count ----------------------
-      if (tripCustomerId) {
-        await rawDb.execute(rawSql`
-          UPDATE users SET completed_rides_count = completed_rides_count + 1 WHERE id=${tripCustomerId}::uuid
+      // Post-commit: admin_revenue + GST wallet (best-effort, not on critical path)
+      rawDb.execute(rawSql`
+        INSERT INTO admin_revenue (driver_id, trip_id, amount, revenue_type, breakdown)
+        VALUES (${driver.id}::uuid, ${tripId}::uuid, ${deductAmount}, ${breakdown.model === 'launch_free' ? 'gst_only' : 'commission'}, ${JSON.stringify(breakdown)}::jsonb)
+      `).catch(dbCatch("db"));
+      if (gstAmount > 0) {
+        rawDb.execute(rawSql`
+          UPDATE company_gst_wallet SET balance=balance+${gstAmount}, total_collected=total_collected+${gstAmount}, total_trips=total_trips+1, updated_at=NOW() WHERE id=1
         `).catch(dbCatch("db"));
       }
 
-      // ? Clear driver's current trip � driver is now free for the next ride
-      await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driver.id}::uuid`);
+      // Post-commit: auto-lock if wallet overdrawn (cash rides)
+      if (txResult.newDriverBalance < -200 && !txResult.isLocked) {
+        const lockReason = `Wallet balance ₹${txResult.newDriverBalance.toFixed(2)} is below -₹200. Recharge to unlock.`;
+        rawDb.execute(rawSql`UPDATE users SET is_locked=true, lock_reason=${lockReason}, locked_at=NOW() WHERE id=${driver.id}::uuid AND NOT is_locked`).catch(dbCatch("db"));
+      }
 
+      // Post-commit: increment customer completed_rides_count
+      if (tripCustomerId) {
+        rawDb.execute(rawSql`UPDATE users SET completed_rides_count=completed_rides_count+1 WHERE id=${tripCustomerId}::uuid`).catch(dbCatch("db"));
+      }
       // AI: Update driver performance stats + clear trip waypoints
       updateDriverStats(driver.id).catch(dbCatch("db"));
       clearTripWaypoints(tripId);
 
-      const completedTrip = camelize(r.rows[0]) as any;
       await appendTripStatus(tripId, 'trip_completed', 'driver', 'Trip completed by driver');
       await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', { fare, actualDistance });
-
-      // ?? Socket: notify customer ? enriched with discount/GST breakdown + wallet status
-      if (io && completedTrip.customerId) {
-        const socketPayload = {
-          tripId,
-          status: "completed",
-          currentStatus: "completed",
-          fare: rideFullFare,
-          actualFare: userPayable,
-          userDiscount,
-          userPayable,
-          gstAmount,
-          driverWalletCredit,
-          actualDistance: parseFloat(actualDistance) || parseFloat((tripRow as any).estimated_distance) || 0,
-          paymentMethod: tripRow.payment_method || 'cash',
-          platformDeduction: deductAmount,
-          launchOfferApplied: userDiscount > 0,
-          uiState: 'trip_completed',
-          walletPaidAmount,
-          walletPendingAmount,
-          requiresCashPayment: walletPendingAmount > 0,
-        };
-        // Emit to status_update for TrackingScreen
-        io.to(`user:${completedTrip.customerId}`).emit("trip:status_update", socketPayload);
-        io.to(`trip:${tripId}`).emit("trip:status_update", socketPayload);
-
-        // Also emit to specific completed event if needed
-        io.to(`user:${completedTrip.customerId}`).emit("trip:completed", socketPayload);
-        io.to(`trip:${tripId}`).emit("trip:completed", socketPayload);
+      processOutboxBatch(io, 5).catch(dbCatch("db"));
+      if (walletPendingAmount > 0) {
+        console.info("[METRIC] trip_complete_pending_payment", JSON.stringify({ tripId, walletPendingAmount }));
+      } else {
+        console.info("[METRIC] trip_complete_success", JSON.stringify({ tripId }));
       }
-
-      // ?? FCM: notify customer
-      const custDevResComp = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${completedTrip.customerId}::uuid`);
-      const custFcmComp = (custDevResComp.rows[0] as any)?.fcm_token || null;
-      notifyCustomerTripCompleted({ fcmToken: custFcmComp, fare: userPayable, tripId }).catch(dbCatch("db"));
 
       res.json({
         success: true,
-        trip: completedTrip,
+        trip: { id: tripId, customerId: tripCustomerId, currentStatus: 'completed' },
         pricing: {
           rideFare: rideFullFare,
           userDiscount,
@@ -10511,44 +10571,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // AI-scored reassignment after driver cancellation
       await restartDispatchForTrip(tripId, { additionalRejectedDriverIds: [driver.id] });
-      if (false) { const cancelNextBest = await findBestDrivers(
-        Number(trip.pickupLat), Number(trip.pickupLng),
-        trip.vehicleCategoryId || undefined,
-        [driver.id],
-        3
-      );
-
-      if (cancelNextBest.length) {
-        for (const nd of cancelNextBest) {
-          if (io) io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-            tripId,
-            pickupAddress: trip.pickupAddress,
-            destinationAddress: trip.destinationAddress,
-            pickupLat: trip.pickupLat,
-            pickupLng: trip.pickupLng,
-            estimatedFare: trip.estimatedFare || 0,
-            tripType: trip.tripType || 'ride',
-          });
-          const dDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nd.driverId}::uuid`);
-          const dFcm = (dDevRes.rows[0] as any)?.fcm_token;
-          if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(dbCatch("db"));
-        }
-      } else {
-        // No drivers available � cancel trip and notify customer via both socket + FCM
-        await rawDb.execute(rawSql`
-          UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
-          WHERE id=${tripId}::uuid AND current_status='searching'
-        `).catch(dbCatch("db"));
-        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
-        const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(dbCatch("db"));
-        if (io && trip.customerId) {
-          io.to(`user:${trip.customerId}`).emit("trip:no_drivers", {
-            tripId, message: "Sorry, no pilots available in your area right now. Please try again.",
-          });
-        }
-      }
-      }
       res.json({ success: true, reassigned: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -11275,12 +11297,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
 
       // -- Service activation gate -------------------------------------------
+      const normalizedCategoryKey = normalizeBookingVehicleType(resolvedVehicleCategoryName || resolvedVehicleType || "");
+      const rideServiceKey =
+        resolvedVehicleType === "bike" ? "bike_ride" :
+        resolvedVehicleType === "auto" ? "auto_ride" :
+        normalizedCategoryKey === "sedan" ? "sedan" :
+        normalizedCategoryKey === "suv" ? "suv" :
+        "mini_car";
       const rideGate = await rawDb.execute(rawSql`
-        SELECT service_status FROM platform_services WHERE service_key = 'bike_ride' LIMIT 1
+        SELECT service_status FROM platform_services WHERE service_key = ${rideServiceKey} LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       // Only block if the record explicitly says inactive (if table missing, allow through)
       if (rideGate.rows.length && (rideGate.rows[0] as any).service_status !== 'active') {
-        return res.status(503).json({ message: "Bike Ride service is currently unavailable. Please try again later.", code: "SERVICE_INACTIVE" });
+        return res.status(503).json({
+          message: `${resolvedVehicleCategoryName || resolvedVehicleType} service is currently unavailable. Please try again later.`,
+          code: "SERVICE_INACTIVE",
+          serviceKey: rideServiceKey,
+        });
       }
 
       // -- Server-side fare calculation (fallback when client sends 0 or missing) --
@@ -11497,30 +11530,121 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // Always start as 'searching'� driver must ACCEPT before being assigned
-      const trip = await rawDb.execute(rawSql`
-        INSERT INTO trip_requests (
-          ref_id, customer_id, driver_id, vehicle_category_id, vehicle_type, vehicle_type_name,
-          pickup_address, pickup_lat, pickup_lng,
-          destination_address, destination_lat, destination_lng,
-          estimated_fare, estimated_distance, payment_method,
-          trip_type, current_status, is_scheduled, scheduled_at,
-          is_for_someone_else, passenger_name, passenger_phone,
-          receiver_name, receiver_phone, delivery_otp,
-          pickup_short_name, destination_short_name
-        ) VALUES (
-          ${refId}, ${customer.id}::uuid,
-          NULL,
-          ${resolvedVehicleCategoryId}::uuid, ${resolvedVehicleType}, ${resolvedVehicleCategoryName || null},
-          ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
-          ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
-          ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
-          ${normalizedTripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
-          ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
-          ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
-          ${finalPickupShort || null}, ${finalDestShort || null}
-        ) RETURNING *
-      `);
+      // Always start as 'searching' - driver must ACCEPT before being assigned.
+      // If a coupon is used, re-check limits under row lock to prevent parallel overuse.
+      let trip;
+      try {
+        if (validatedCouponCode) {
+          trip = await rawDb.transaction(async (trx) => {
+            const couponLock = await trx.execute(rawSql`
+              SELECT id, code, total_usage_limit, limit_per_user
+              FROM coupon_setups
+              WHERE UPPER(code) = UPPER(${validatedCouponCode})
+                AND is_active = true
+                AND (end_date IS NULL OR end_date >= NOW())
+              FOR UPDATE
+            `);
+            if (!couponLock.rows.length) {
+              const err: any = new Error("Coupon is no longer available");
+              err.status = 409;
+              err.code = "COUPON_UNAVAILABLE";
+              throw err;
+            }
+            const lockedCoupon = camelize(couponLock.rows[0]) as any;
+            if (lockedCoupon.totalUsageLimit) {
+              const usageR = await trx.execute(rawSql`
+                SELECT COUNT(*) AS cnt FROM trip_requests
+                WHERE coupon_code = UPPER(${validatedCouponCode}) AND current_status != 'cancelled'
+              `);
+              const usedCount = parseInt((usageR.rows[0] as any).cnt || "0", 10);
+              if (usedCount >= parseInt(lockedCoupon.totalUsageLimit, 10)) {
+                const err: any = new Error("Coupon usage limit reached");
+                err.status = 409;
+                err.code = "COUPON_USAGE_LIMIT_REACHED";
+                throw err;
+              }
+            }
+            if (lockedCoupon.limitPerUser) {
+              const userUsageR = await trx.execute(rawSql`
+                SELECT COUNT(*) AS cnt FROM trip_requests
+                WHERE coupon_code = UPPER(${validatedCouponCode}) AND customer_id = ${customer.id}::uuid
+                  AND current_status != 'cancelled'
+              `);
+              const userUsed = parseInt((userUsageR.rows[0] as any).cnt || "0", 10);
+              if (userUsed >= parseInt(lockedCoupon.limitPerUser, 10)) {
+                const err: any = new Error("You have already used this coupon");
+                err.status = 409;
+                err.code = "COUPON_USER_LIMIT_REACHED";
+                throw err;
+              }
+            }
+
+            return trx.execute(rawSql`
+              INSERT INTO trip_requests (
+                ref_id, customer_id, driver_id, vehicle_category_id, vehicle_type, vehicle_type_name,
+                pickup_address, pickup_lat, pickup_lng,
+                destination_address, destination_lat, destination_lng,
+                estimated_fare, estimated_distance, payment_method,
+                trip_type, current_status, is_scheduled, scheduled_at,
+                is_for_someone_else, passenger_name, passenger_phone,
+                receiver_name, receiver_phone, delivery_otp,
+                pickup_short_name, destination_short_name, coupon_code, promo_discount
+              ) VALUES (
+                ${refId}, ${customer.id}::uuid,
+                NULL,
+                ${resolvedVehicleCategoryId}::uuid, ${resolvedVehicleType}, ${resolvedVehicleCategoryName || null},
+                ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
+                ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
+                ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
+                ${normalizedTripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
+                ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
+                ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
+                ${finalPickupShort || null}, ${finalDestShort || null}, ${validatedCouponCode}, ${discountAmount}
+              ) RETURNING *
+            `);
+          });
+        } else {
+          trip = await rawDb.execute(rawSql`
+            INSERT INTO trip_requests (
+              ref_id, customer_id, driver_id, vehicle_category_id, vehicle_type, vehicle_type_name,
+              pickup_address, pickup_lat, pickup_lng,
+              destination_address, destination_lat, destination_lng,
+              estimated_fare, estimated_distance, payment_method,
+              trip_type, current_status, is_scheduled, scheduled_at,
+              is_for_someone_else, passenger_name, passenger_phone,
+              receiver_name, receiver_phone, delivery_otp,
+              pickup_short_name, destination_short_name
+            ) VALUES (
+              ${refId}, ${customer.id}::uuid,
+              NULL,
+              ${resolvedVehicleCategoryId}::uuid, ${resolvedVehicleType}, ${resolvedVehicleCategoryName || null},
+              ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
+              ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
+              ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
+              ${normalizedTripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
+              ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
+              ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
+              ${finalPickupShort || null}, ${finalDestShort || null}
+            ) RETURNING *
+          `);
+        }
+      } catch (bookingInsertErr: any) {
+        if (bookingInsertErr?.code === "23505") {
+          return res.status(409).json({
+            success: false,
+            code: "ACTIVE_TRIP_EXISTS",
+            message: "User or driver already has an active trip",
+          });
+        }
+        if (bookingInsertErr?.code === "COUPON_UNAVAILABLE" || bookingInsertErr?.code === "COUPON_USAGE_LIMIT_REACHED" || bookingInsertErr?.code === "COUPON_USER_LIMIT_REACHED") {
+          return res.status(409).json({
+            success: false,
+            code: bookingInsertErr.code,
+            message: bookingInsertErr.message,
+          });
+        }
+        throw bookingInsertErr;
+      }
       // Store zone_id + coupon/discount on trip (best-effort)
       const newTripId2 = (trip.rows[0] as any).id;
       detectZoneId(validPickupCoords.lat, validPickupCoords.lng).then(zid => {
@@ -11870,6 +11994,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const customer = (req as any).currentUser;
       const { tripId, reason } = req.body;
+      if (tripId) {
+        const ownerCheck = await rawDb.execute(rawSql`
+          SELECT customer_id, current_status
+          FROM trip_requests
+          WHERE id=${tripId}::uuid
+          LIMIT 1
+        `);
+        if (ownerCheck.rows.length) {
+          const row = ownerCheck.rows[0] as any;
+          if (String(row.customer_id || "") !== String(customer.id)) {
+            return res.status(403).json({ success: false, code: "FORBIDDEN", message: "You cannot cancel another user's trip" });
+          }
+        }
+      }
       // If no tripId provided, find the active trip for this customer
       const effectiveTripId = tripId || await rawDb.execute(rawSql`
         SELECT id FROM trip_requests WHERE customer_id=${customer.id}::uuid
@@ -14623,7 +14761,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
-  app.get("/api/admin/drivers/pending-verification", async (req, res) => {
+  app.get("/api/admin/drivers/pending-verification", requireAdminAuth, async (req, res) => {
     try {
       const status = (req.query.status as string) || 'pending';
       const r = await rawDb.execute(rawSql`
@@ -17129,7 +17267,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Admin: list all parcel orders with filters
-  app.get("/api/admin/parcel-orders", async (req, res) => {
+  app.get("/api/admin/parcel-orders", requireAdminAuth, async (req, res) => {
     try {
       const { status, b2b, limit = 100, offset = 0 } = req.query;
       const rows = await rawDb.execute(rawSql`
@@ -17440,6 +17578,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   // -- Start dispatch engine background processes --------------------------
   startScheduledRideDispatcher();
+  startDispatchReaper();
   startDispatchCleanup();
   console.log("[DISPATCH] Smart dispatch engine initialized");
 

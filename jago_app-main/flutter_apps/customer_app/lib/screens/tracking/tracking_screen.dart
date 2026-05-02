@@ -32,6 +32,8 @@ class TrackingScreen extends StatefulWidget {
 
 class _TrackingScreenState extends State<TrackingScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _defaultPollInterval = Duration(seconds: 2);
+  static const Duration _networkBackoffPollInterval = Duration(seconds: 6);
   static const Duration _driverLocationStaleAfter = Duration(seconds: 15);
   final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
@@ -63,6 +65,8 @@ class _TrackingScreenState extends State<TrackingScreen>
   Timer? _pollTimer;
   Timer? _driverLocationStaleTimer;
   DateTime? _lastDriverLocationAt;
+  int _pollFailureCount = 0;
+  Duration _currentPollInterval = _defaultPollInterval;
 
   bool _isArriving = false; // "Pilot is about to arrive" flag
 
@@ -86,8 +90,11 @@ class _TrackingScreenState extends State<TrackingScreen>
           _trackingDelayed = !connected;
         });
         if (!connected) {
+          _startPolling(_networkBackoffPollInterval);
           _showStatusBanner('Waiting for connection...', Colors.orange);
         } else {
+          _pollFailureCount = 0;
+          _startPolling(_defaultPollInterval);
           _showStatusBanner('Reconnected!', const Color(0xFF10B981));
           // Re-join trip room on every reconnect
           _socket.trackTrip(widget.tripId);
@@ -105,11 +112,18 @@ class _TrackingScreenState extends State<TrackingScreen>
     _listenForIncomingCalls();
     // HTTP polling as fallback — 2s for active states, 4s for in-progress
     // Socket handles real-time but poll catches missed events and reconciles data
-    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollStatus());
+    _startPolling();
     // Start 90-second timeout warning for searching state
     _startSearchTimeoutTimer();
     _startNearbyDriversPolling();
     _ensureMapLocationPermission();
+  }
+
+  void _startPolling([Duration? interval]) {
+    final nextInterval = interval ?? _currentPollInterval;
+    _currentPollInterval = nextInterval;
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(nextInterval, (_) => _pollStatus());
   }
 
   Future<void> _ensureMapLocationPermission() async {
@@ -1251,6 +1265,10 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (!mounted) return;
 
       if (res.statusCode == 200) {
+        _pollFailureCount = 0;
+        if (_currentPollInterval != _defaultPollInterval) {
+          _startPolling(_defaultPollInterval);
+        }
         final data = jsonDecode(res.body);
         final trip = data['trip'];
         if (trip != null) {
@@ -1342,6 +1360,18 @@ class _TrackingScreenState extends State<TrackingScreen>
         // The socket will likely still keep them updated.
       }
     } catch (e) {
+      _pollFailureCount++;
+      if (_pollFailureCount >= 3 &&
+          _currentPollInterval != _networkBackoffPollInterval) {
+        if (mounted) {
+          setState(() => _trackingDelayed = true);
+        }
+        _startPolling(_networkBackoffPollInterval);
+        _showStatusBanner(
+          'Network is unstable. Retrying ride updates...',
+          Colors.orange,
+        );
+      }
       debugPrint('[POLL] Network error in status sync: $e');
     }
   }

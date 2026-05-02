@@ -2,7 +2,6 @@ import { sendCustomSms } from "../sms";
 import { hashPassword, verifyPassword } from "../utils/crypto";
 import { AuthApiError } from "./auth.errors";
 import {
-  countRecentOtpRequests,
   createOtpUser,
   deleteOtpCode,
   findLatestOtpCode,
@@ -10,7 +9,7 @@ import {
   incrementOtpAttempts,
   replaceOtpCode,
 } from "./otp.repo";
-import { countDistinctOtpPhonesForDevice, insertOtpRequestEvent } from "./session.repo";
+import { countDistinctOtpPhonesForDevice, insertOtpRequestEvent, tryInsertOtpAttemptAtomic } from "./session.repo";
 
 type IssueSession = (
   userId: string,
@@ -126,53 +125,39 @@ export async function sendOtpServiceWithMeta(
     throw new AuthApiError(400, "INVALID_INPUT", "Device ID required");
   }
 
-  const recentRequests = await countRecentOtpRequests({
-    phone,
-    countryCode,
-    sinceMinutes: OTP_REQUEST_WINDOW_MINUTES,
-  });
-  if (recentRequests >= OTP_MAX_REQUESTS) {
-    await insertOtpRequestEvent({
-      phone,
-      countryCode,
-      deviceId,
-      ipAddress: requestMeta.ipAddress,
-      userAgent: requestMeta.userAgent,
-      userType,
-      eventType: "send",
-      outcome: "TOO_MANY_REQUESTS",
-    });
-    logOtp("error", "OTP_FAIL", {
-      phone,
-      countryCode,
-      userType,
-      reason: "TOO_MANY_REQUESTS",
-    });
-    throw new AuthApiError(429, "TOO_MANY_REQUESTS", "Please try again later");
-  }
-
+  // Device-level check first (counts distinct phones attempted from this device)
   const recentDistinctPhones = await countDistinctOtpPhonesForDevice(deviceId, OTP_REQUEST_WINDOW_MINUTES);
   if (recentDistinctPhones >= 5) {
     await insertOtpRequestEvent({
-      phone,
-      countryCode,
-      deviceId,
-      ipAddress: requestMeta.ipAddress,
-      userAgent: requestMeta.userAgent,
-      userType,
-      eventType: "send",
-      outcome: "DEVICE_FLAGGED",
+      phone, countryCode, deviceId,
+      ipAddress: requestMeta.ipAddress, userAgent: requestMeta.userAgent,
+      userType, eventType: "send", outcome: "DEVICE_FLAGGED",
     });
-    logOtp("error", "OTP_FAIL", {
-      phone,
-      countryCode,
-      userType,
-      deviceId,
-      reason: "TOO_MANY_REQUESTS",
-      suspicious: true,
-    });
+    logOtp("error", "OTP_FAIL", { phone, countryCode, userType, deviceId, reason: "TOO_MANY_REQUESTS", suspicious: true });
     throw new AuthApiError(429, "TOO_MANY_REQUESTS", "Please try again later");
   }
+
+  // Atomic per-phone rate limit check + event insert in one SQL statement (no TOCTOU race)
+  const { allowed, currentCount } = await tryInsertOtpAttemptAtomic({
+    phone,
+    countryCode,
+    deviceId,
+    ipAddress: requestMeta.ipAddress,
+    userAgent: requestMeta.userAgent,
+    userType,
+    maxRequests: OTP_MAX_REQUESTS,
+    windowMinutes: OTP_REQUEST_WINDOW_MINUTES,
+  });
+  if (!allowed) {
+    await insertOtpRequestEvent({
+      phone, countryCode, deviceId,
+      ipAddress: requestMeta.ipAddress, userAgent: requestMeta.userAgent,
+      userType, eventType: "send", outcome: "TOO_MANY_REQUESTS",
+    });
+    logOtp("error", "OTP_FAIL", { phone, countryCode, userType, reason: "TOO_MANY_REQUESTS", currentCount });
+    throw new AuthApiError(429, "TOO_MANY_REQUESTS", "Please try again later");
+  }
+  // OTP_ATTEMPT event already inserted atomically above — SMS failures also consume the slot
 
   const otp = generateOtp();
   const otpHash = await hashPassword(otp);
@@ -191,22 +176,13 @@ export async function sendOtpServiceWithMeta(
   );
 
   if (!smsSent) {
+    // Mark the pre-inserted attempt as failed delivery so ops can distinguish outage from abuse
     await insertOtpRequestEvent({
-      phone,
-      countryCode,
-      deviceId,
-      ipAddress: requestMeta.ipAddress,
-      userAgent: requestMeta.userAgent,
-      userType,
-      eventType: "send",
-      outcome: "SERVER_ERROR",
+      phone, countryCode, deviceId,
+      ipAddress: requestMeta.ipAddress, userAgent: requestMeta.userAgent,
+      userType, eventType: "send", outcome: "SERVER_ERROR",
     });
-    logOtp("error", "OTP_FAIL", {
-      phone,
-      countryCode,
-      userType,
-      reason: "SERVER_ERROR",
-    });
+    logOtp("error", "OTP_FAIL", { phone, countryCode, userType, reason: "SERVER_ERROR" });
     throw new AuthApiError(503, "SERVER_ERROR", "OTP delivery unavailable");
   }
 
@@ -220,16 +196,6 @@ export async function sendOtpServiceWithMeta(
     userType,
     deviceId,
     expiresAt: new Date(Date.now() + OTP_EXPIRY_MS).toISOString(),
-  });
-  await insertOtpRequestEvent({
-    phone,
-    countryCode,
-    deviceId,
-    ipAddress: requestMeta.ipAddress,
-    userAgent: requestMeta.userAgent,
-    userType,
-    eventType: "send",
-    outcome: "OTP_SENT",
   });
 
   return {

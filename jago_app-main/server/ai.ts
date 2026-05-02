@@ -827,11 +827,20 @@ export async function refreshAllDriverStats(): Promise<void> {
 export async function autoOfflineInactiveDrivers(): Promise<void> {
   try {
     const r = await rawDb.execute(rawSql`
-      UPDATE driver_locations
+      UPDATE driver_locations dl
       SET is_online = false
-      WHERE is_online = true
-        AND updated_at < NOW() - INTERVAL '5 minutes'
-      RETURNING driver_id
+      FROM users u
+      WHERE dl.driver_id = u.id
+        AND dl.is_online = true
+        AND dl.updated_at < NOW() - INTERVAL '5 minutes'
+        AND u.current_trip_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM trip_requests tr
+          WHERE tr.driver_id = dl.driver_id
+            AND tr.current_status IN ('accepted', 'arrived', 'on_the_way', 'payment_pending')
+        )
+      RETURNING dl.driver_id
     `);
     if (r.rows.length > 0) {
       const ids = (r.rows as any[]).map(row => row.driver_id);

@@ -171,20 +171,26 @@ export async function assignRideToDriver(
   if (!snapshot) return null;
   if (snapshot.current_status !== "searching") return null;
 
-  const updated = await rawDb.execute(sql`
-    UPDATE trip_requests
-    SET driver_id=${driverId}::uuid,
-        current_status='driver_assigned',
-        status='DRIVER_ASSIGNED',
-        assigned_at=COALESCE(assigned_at, NOW()),
-        version=COALESCE(version, 0) + 1,
-        updated_at=NOW()
-    WHERE id=${rideId}::uuid
-      AND current_status='searching'
-      AND COALESCE(version, 0)=${snapshot.version}
-      AND (driver_id IS NULL OR driver_id=${driverId}::uuid)
-    RETURNING *
-  `);
+  let updated;
+  try {
+    updated = await rawDb.execute(sql`
+      UPDATE trip_requests
+      SET driver_id=${driverId}::uuid,
+          current_status='driver_assigned',
+          status='DRIVER_ASSIGNED',
+          assigned_at=COALESCE(assigned_at, NOW()),
+          version=COALESCE(version, 0) + 1,
+          updated_at=NOW()
+      WHERE id=${rideId}::uuid
+        AND current_status='searching'
+        AND COALESCE(version, 0)=${snapshot.version}
+        AND (driver_id IS NULL OR driver_id=${driverId}::uuid)
+      RETURNING *
+    `);
+  } catch (error: any) {
+    if (error?.code === "23505") return null;
+    throw error;
+  }
 
   if (!updated.rows.length) return null;
 
