@@ -27,11 +27,14 @@ import { sendOpsAlert } from "./observability";
 
 // ── Safety constants ──────────────────────────────────────────────────────────
 
-const MAX_SURGE_CAP         = 2.5;
-const BOOKING_PAUSE_MAX_MS  = 10 * 60 * 1000; // hard cap: auto-restore after 10 min
-const ALERT_COOLDOWN_MS     = 15 * 60 * 1000; // min gap between same alert re-fires
-const CHECK_INTERVAL_MS     = 60_000;
-const ACTION_TOKEN_WINDOW_MS = 5 * 60 * 1000; // idempotency window per action
+const MAX_SURGE_CAP          = 2.5;
+const BOOKING_PAUSE_MAX_MS   = 10 * 60 * 1000; // hard cap: auto-restore after 10 min
+const ALERT_COOLDOWN_MS      = 15 * 60 * 1000; // min gap between same alert re-fires
+const CHECK_INTERVAL_MS      = 60_000;
+const ACTION_TOKEN_WINDOW_MS = 5 * 60 * 1000;  // idempotency window per action
+const ACTION_TOKEN_TTL_S     = 360;             // Redis EX: slot window + 60s buffer
+const MIN_DWELL_MS           = 2 * 60 * 1000;  // minimum time firing before recovery allowed
+const LEADER_TTL_S           = 75;             // leader lock: covers one full check cycle
 
 // ── Safety toggles (read each tick — changeable at runtime without restart) ───
 
@@ -281,6 +284,7 @@ const ALERT_RULES: AlertRule[] = [
 
 interface AlertState {
   firing:               boolean;
+  firedAt?:             number; // when alert first fired — used for MIN_DWELL_MS check
   consecutiveBreaches:  number;
   consecutiveClears:    number;
   lastFiredAt:          number;
@@ -322,24 +326,29 @@ async function getEngineRedis(): Promise<any | null> {
   } catch { _engineRedis = null; return null; }
 }
 
-// Returns true if already applied (caller should skip), false if successfully claimed.
-// Tries Redis SET NX EX first — safe across multiple pods/restarts.
+// Returns { alreadyApplied, redisAvailable }.
+// alreadyApplied=true  → caller must skip (another pod or this pod already ran it)
+// redisAvailable=false → caller should suppress per_zone actions (cross-pod inconsistency risk)
+// Tries Redis SET NX EX first — aligned TTL = slot window + 60s buffer (no adjacent window overlap).
 // Falls back to in-memory Set when Redis is unavailable.
-async function checkAndClaimAction(actionId: string, zoneKey = "all"): Promise<boolean> {
+async function checkAndClaimAction(
+  actionId: string,
+  zoneKey = "all",
+): Promise<{ alreadyApplied: boolean; redisAvailable: boolean }> {
   const token = makeActionToken(actionId, zoneKey);
   try {
     const r = await getEngineRedis();
     if (r) {
-      const result = await r.set(`engine:action:${token}`, "1", "EX", 600, "NX");
-      if (result === null) return true; // already claimed (this or another pod)
+      const result = await r.set(`engine:action:${token}`, "1", "EX", ACTION_TOKEN_TTL_S, "NX");
+      if (result === null) return { alreadyApplied: true,  redisAvailable: true };
       appliedActionTokens.add(token);
-      return false;
+      return { alreadyApplied: false, redisAvailable: true };
     }
-  } catch { /* fall through */ }
-  // In-memory fallback (single-instance safe)
-  if (appliedActionTokens.has(token)) return true;
+  } catch { /* fall through to in-memory */ }
+
+  // Redis unavailable — in-memory fallback (single-instance only)
+  if (appliedActionTokens.has(token)) return { alreadyApplied: true, redisAvailable: false };
   appliedActionTokens.add(token);
-  // Prune stale in-memory tokens
   if (appliedActionTokens.size > 200) {
     const cutoff = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS) - 10;
     Array.from(appliedActionTokens).forEach(t => {
@@ -347,7 +356,18 @@ async function checkAndClaimAction(actionId: string, zoneKey = "all"): Promise<b
       if (parseInt(parts[parts.length - 1] ?? "0") < cutoff) appliedActionTokens.delete(t);
     });
   }
-  return false;
+  return { alreadyApplied: false, redisAvailable: false };
+}
+
+// Acquire a soft leader lock — used to gate external alert dispatch so only one pod
+// sends the external webhook per check cycle (others still evaluate rules internally).
+async function acquireLeaderLock(): Promise<boolean> {
+  try {
+    const r = await getEngineRedis();
+    if (!r) return true; // Redis unavailable — assume single instance, always leader
+    const result = await r.set("engine:leader", "1", "EX", LEADER_TTL_S, "NX");
+    return result !== null;
+  } catch { return true; }
 }
 
 // ── Scope enforcement — prevents accidental global impact from zone rules ─────
@@ -576,6 +596,8 @@ interface AuditParams {
   previousState?: string;
   newState?:      string;
   actionId?:      string;
+  suppressedBy?:  string[];  // rules that blocked this action
+  shadow?:        boolean;   // true when AUTO_ACTIONS_ENABLED=false
   metrics?:       Partial<DashboardMetrics>;
 }
 
@@ -585,7 +607,10 @@ function logAudit(p: AuditParams): void {
     VALUES ('info', ${p.tag}, ${p.message}, ${JSON.stringify({
       rule: p.rule, scope: p.scope, action: p.action,
       previousState: p.previousState, newState: p.newState,
-      actionId: p.actionId, triggeredAt: new Date().toISOString(),
+      actionId: p.actionId,
+      suppressedBy: p.suppressedBy ?? [],
+      shadow: p.shadow ?? false,
+      triggeredAt: new Date().toISOString(),
       metrics: p.metrics,
     })}::jsonb)
   `).catch(() => { });
@@ -616,6 +641,7 @@ async function executeAction(
       console.log(`[ALERT-ENGINE] SHADOW: would execute ${actionId} (rule=${rule.id}, scope=${rule.scope}, zone=${zoneKey})`);
       logAudit({
         tag: "SHADOW_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
+        shadow: true, actionId: makeActionToken(actionId, zoneKey),
         message: `SHADOW: would execute ${actionId} — AUTO_ACTIONS_ENABLED=false`, metrics: snap,
       });
     } else {
@@ -624,10 +650,19 @@ async function executeAction(
     return;
   }
 
-  // Idempotency — zone-scoped token, Redis NX then in-memory fallback
-  const alreadyApplied = await checkAndClaimAction(actionId, zoneKey);
+  // Idempotency — zone-scoped token, Redis NX (multi-pod), in-memory fallback
+  const { alreadyApplied, redisAvailable } = await checkAndClaimAction(actionId, zoneKey);
   if (alreadyApplied) {
-    console.log(`[ALERT-ENGINE] ${actionId}:${zoneKey} already applied in this 5-min window — idempotent skip`);
+    console.log(`[ALERT-ENGINE] ${actionId}:${zoneKey} already applied this window — idempotent skip`);
+    return;
+  }
+
+  // Redis-down fail-safe: suppress per_zone surge actions when Redis is unavailable.
+  // Booking pause/restore are still allowed (global, tolerate cross-pod inconsistency).
+  if (!redisAvailable && ACTION_REQUIRED_SCOPE[actionId] === "per_zone") {
+    console.log(`[ALERT-ENGINE] Redis down — suppressing per_zone ${actionId} (cross-pod inconsistency risk)`);
+    logAudit({ tag: "ACTION_SUPPRESSED_REDIS_DOWN", rule: rule.id, scope: rule.scope, action: actionId,
+      message: `${actionId} suppressed — Redis unavailable, per_zone action unsafe across pods`, metrics: snap });
     return;
   }
 
@@ -777,11 +812,13 @@ async function runAlertCheck(): Promise<void> {
 
       if (shouldFire && (!state.firing || cooldownOk)) {
         const msg = rule.message(metrics);
+        const newState = getState(rule.id);
         alertStates.set(rule.id, {
-          ...getState(rule.id),
-          firing: true,
+          ...newState,
+          firing:      true,
+          firedAt:     newState.firedAt ?? nowMs, // preserve original fire time for dwell check
           lastFiredAt: nowMs,
-          fireCount: state.fireCount + 1,
+          fireCount:   state.fireCount + 1,
         });
         currentlyFiring.add(rule.id);
 
@@ -797,12 +834,21 @@ async function runAlertCheck(): Promise<void> {
             searchingRides: metrics.searchingRides, onlineDrivers: metrics.onlineDrivers,
             failedPayments: metrics.failedPayments, apiErrorRatePct: metrics.apiErrorRatePct,
             acceptRatePct: metrics.acceptRatePct, otpFailLast1h: metrics.otpFailLast1h,
+            dispatchOffersLast30m: metrics.dispatchOffersLast30m,
           },
         });
 
         if (rule.action) {
-          if (isActionSuppressed(rule.action, currentlyFiring)) {
-            console.log(`[ALERT-ENGINE] ${rule.action} suppressed — higher-priority booking_pause already active`);
+          const suppressors = Array.from(currentlyFiring).filter(id =>
+            (SUPPRESSED_BY[rule.action!] ?? []).includes(id)
+          );
+          if (suppressors.length > 0) {
+            console.log(`[ALERT-ENGINE] ${rule.action} suppressed by [${suppressors.join(", ")}]`);
+            logAudit({
+              tag: "ACTION_SUPPRESSED", rule: rule.id, scope: rule.scope, action: rule.action,
+              suppressedBy: suppressors,
+              message: `${rule.action} suppressed — ${suppressors.join(", ")} already firing`,
+            });
           } else {
             await executeAction(rule.action, rule, metrics);
           }
@@ -814,23 +860,35 @@ async function runAlertCheck(): Promise<void> {
       alertStates.set(rule.id, { ...state, consecutiveBreaches: 0, consecutiveClears: newClears });
 
       if (state.firing && newClears >= rule.minConsecutiveClears) {
-        // Completion-rate guard: hold surge/booking restore if rides are still cancelling
         const isRestoreAction = rule.recoveryAction === "surge_restore" || rule.recoveryAction === "booking_restore";
-        if (isRestoreAction && metrics.completionRateLive < 80) {
-          console.log(`[ALERT-ENGINE] Recovery held — completionRateLive=${metrics.completionRateLive}% < 80% (holding ${rule.recoveryAction})`);
-          // Reset clear counter — must accumulate a fresh run of clears with healthy completion
+
+        // Dwell time guard — alert must have been firing for at least MIN_DWELL_MS before recovery.
+        // Prevents quick on/off bounce when a metric briefly crosses threshold and immediately clears.
+        if (isRestoreAction && state.firedAt && (nowMs - state.firedAt) < MIN_DWELL_MS) {
+          const dwellSec = Math.round((nowMs - state.firedAt) / 1000);
+          console.log(`[ALERT-ENGINE] Recovery held — dwell ${dwellSec}s < ${MIN_DWELL_MS / 1000}s (holding ${rule.recoveryAction})`);
           alertStates.set(rule.id, { ...getState(rule.id), consecutiveClears: 0 });
           continue ruleLoop;
         }
 
-        alertStates.set(rule.id, { ...getState(rule.id), firing: false, consecutiveClears: 0 });
+        // Completion-rate guard — hold restore if rides are still cancelling
+        if (isRestoreAction && metrics.completionRateLive < 80) {
+          console.log(`[ALERT-ENGINE] Recovery held — completionRateLive=${metrics.completionRateLive}% < 80% (holding ${rule.recoveryAction})`);
+          alertStates.set(rule.id, { ...getState(rule.id), consecutiveClears: 0 });
+          continue ruleLoop;
+        }
+
+        alertStates.set(rule.id, {
+          ...getState(rule.id), firing: false, firedAt: undefined, consecutiveClears: 0,
+        });
         currentlyFiring.delete(rule.id);
 
-        console.log(`[ALERT-ENGINE] ✅ P${rule.priority} RESOLVED (${rule.minConsecutiveClears} clear checks) — ${rule.label}`);
+        const dwellMs = state.firedAt ? nowMs - state.firedAt : 0;
+        console.log(`[ALERT-ENGINE] ✅ P${rule.priority} RESOLVED after ${Math.round(dwellMs / 1000)}s — ${rule.label}`);
 
         logAudit({
           tag: "ALERT_RESOLVED", rule: rule.id, scope: rule.scope,
-          message: `${rule.label} resolved after ${rule.minConsecutiveClears} consecutive clear checks`,
+          message: `${rule.label} resolved after ${rule.minConsecutiveClears} clears + ${Math.round(dwellMs / 1000)}s dwell`,
         });
 
         if (rule.recoveryAction) {
@@ -840,24 +898,36 @@ async function runAlertCheck(): Promise<void> {
     }
   }
 
-  // Alert aggregation — single ops-channel message regardless of how many fire
-  if (newlyFiring.length === 1) {
-    const { rule, msg } = newlyFiring[0];
-    const body = [
-      `[P${rule.priority}/${rule.severity}] ${msg}`,
-      `Cause: ${rule.runbook.cause}`,
-      `Checks: ${rule.runbook.checks.join(" | ")}`,
-      `Rollback: ${rule.runbook.rollback}`,
-    ].join("\n");
-    sendOpsAlert({ level: rule.severity === "critical" ? "critical" : "error", source: "alert-engine", message: body, priority: rule.priority }).catch(() => { });
-  } else if (newlyFiring.length > 1) {
-    const lines = newlyFiring.map(({ rule, msg }) => `  [P${rule.priority}] ${msg}`).join("\n");
-    const topPriority = Math.min(...newlyFiring.map(f => f.rule.priority)) as RulePriority;
-    sendOpsAlert({
-      level: "critical", source: "alert-engine",
-      message: `${newlyFiring.length} alerts firing simultaneously:\n${lines}`,
-      priority: topPriority,
-    }).catch(() => { });
+  // Only the leader pod sends external alerts — prevents N-pod alert duplication.
+  // All pods still evaluate rules, execute actions, and write audit logs.
+  if (newlyFiring.length > 0) {
+    const isLeader = await acquireLeaderLock();
+    if (isLeader) {
+      const slot = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS);
+      if (newlyFiring.length === 1) {
+        const { rule, msg } = newlyFiring[0];
+        const body = [
+          `[P${rule.priority}/${rule.severity}] ${msg}`,
+          `Cause: ${rule.runbook.cause}`,
+          `Checks: ${rule.runbook.checks.join(" | ")}`,
+          `Rollback: ${rule.runbook.rollback}`,
+        ].join("\n");
+        sendOpsAlert({
+          level: rule.severity === "critical" ? "critical" : "error",
+          source: "alert-engine", message: body, priority: rule.priority,
+          dedupKey: `${rule.id}:${rule.scope}:${slot}`,
+        }).catch(() => { });
+      } else {
+        const lines = newlyFiring.map(({ rule, msg }) => `  [P${rule.priority}] ${msg}`).join("\n");
+        const topPriority = Math.min(...newlyFiring.map(f => f.rule.priority)) as RulePriority;
+        const ruleIds = newlyFiring.map(f => f.rule.id).join(",");
+        sendOpsAlert({
+          level: "critical", source: "alert-engine", priority: topPriority,
+          message: `${newlyFiring.length} alerts firing simultaneously:\n${lines}`,
+          dedupKey: `multi:${ruleIds}:${slot}`,
+        }).catch(() => { });
+      }
+    }
   }
 }
 

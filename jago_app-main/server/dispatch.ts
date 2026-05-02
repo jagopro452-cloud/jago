@@ -38,11 +38,24 @@ import { getSurgeInfo, recordDispatchOutcome } from "./surge";
 // If a driver was offered any ride within this window, skip them to prevent burnout
 // and improve acceptance (a driver already reviewing one offer won't accept another)
 const DRIVER_FATIGUE_BACKOFF_MS = 25_000;
-const driverLastOfferedAt = new Map<string, number>();
+const DRIVER_MAX_CONCURRENT_OFFERS = 1; // skip if driver already reviewing this many offers
+const driverLastOfferedAt   = new Map<string, number>();
+const driverActiveOfferCount = new Map<string, number>();
+
+function driverOfferStart(driverId: string): void {
+  driverLastOfferedAt.set(driverId, Date.now());
+  driverActiveOfferCount.set(driverId, (driverActiveOfferCount.get(driverId) ?? 0) + 1);
+}
+function driverOfferEnd(driverId: string): void {
+  const n = driverActiveOfferCount.get(driverId) ?? 0;
+  if (n <= 1) driverActiveOfferCount.delete(driverId);
+  else driverActiveOfferCount.set(driverId, n - 1);
+}
+
 setInterval(() => {
   const cutoff = Date.now() - DRIVER_FATIGUE_BACKOFF_MS * 4;
   Array.from(driverLastOfferedAt.entries()).forEach(([id, t]) => {
-    if (t < cutoff) driverLastOfferedAt.delete(id);
+    if (t < cutoff) { driverLastOfferedAt.delete(id); driverActiveOfferCount.delete(id); }
   });
 }, 60_000);
 
@@ -532,6 +545,7 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
 
   session.status = "accepted";
   clearTimers(session);
+  driverOfferEnd(driverId); // release concurrent offer slot
 
   // Notify all previously-notified (but not accepted) drivers that trip is taken
   if (io) {
@@ -588,6 +602,7 @@ export async function onDriverRejected(tripId: string, driverId: string): Promis
 
   session.rejectedDriverIds.add(driverId);
   session.currentOfferedDriverId = null;
+  driverOfferEnd(driverId); // release concurrent offer slot
 
   // Emit timeout/rejection to driver
   if (io) {
@@ -826,9 +841,10 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
       continue; // Skip already-notified or rejected drivers
     }
 
-    // Fatigue backoff — skip if this driver was offered another ride recently
-    const lastOffered = driverLastOfferedAt.get(driver.driverId) ?? 0;
-    if (Date.now() - lastOffered < DRIVER_FATIGUE_BACKOFF_MS) {
+    // Fatigue backoff — skip if offered recently or already reviewing max concurrent offers
+    const lastOffered     = driverLastOfferedAt.get(driver.driverId) ?? 0;
+    const activeOffers    = driverActiveOfferCount.get(driver.driverId) ?? 0;
+    if (Date.now() - lastOffered < DRIVER_FATIGUE_BACKOFF_MS || activeOffers >= DRIVER_MAX_CONCURRENT_OFFERS) {
       continue;
     }
 
@@ -867,7 +883,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
-  driverLastOfferedAt.set(driver.driverId, Date.now()); // fatigue backoff stamp
+  driverOfferStart(driver.driverId); // fatigue backoff + concurrent offer tracking
 
   // ETA from score breakdown (set by rerankDriversWithEta); fallback to distance estimate
   const etaMinutes: number =
@@ -939,6 +955,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
 
     console.log(`[DISPATCH] Driver ${driver.driverId} timed out on trip ${session.tripId}`);
     logDispatchAudit(session.tripId, driver.driverId, "timeout");
+    driverOfferEnd(driver.driverId); // release concurrent offer slot
 
     // Record non-accept outcome for surge feedback loop
     recordDispatchOutcome(session.pickupLat, session.pickupLng, false, session.config.driverTimeoutMs);

@@ -52,6 +52,7 @@ export async function sendOpsAlert(event: {
   message: string;
   priority?: 0 | 1 | 2 | 3;
   details?: string;
+  dedupKey?: string; // downstream channel can use this to collapse duplicate webhooks
 }): Promise<void> {
   const payload = {
     text: `[P${event.priority ?? "?"}/${event.level.toUpperCase()}] ${event.source}: ${event.message}`,
@@ -59,6 +60,7 @@ export async function sendOpsAlert(event: {
     priority: event.priority,
     level: event.level,
     message: event.message,
+    dedupKey: event.dedupKey,
     details: event.details ? redactSecrets(event.details).slice(0, 1800) : undefined,
     ts: new Date().toISOString(),
   };
