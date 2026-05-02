@@ -119,6 +119,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   bool _mapReadyToLoad = false;
 
+  Map<String, dynamic>? get _driverStateNotice {
+    if (_walletBalance < 0) {
+      return {
+        'icon': Icons.account_balance_wallet_rounded,
+        'color': const Color(0xFFF59E0B),
+        'bg': const Color(0xFFFFF7ED),
+        'border': const Color(0xFFFED7AA),
+        'title': 'Wallet due pending',
+        'message': '₹${_walletBalance.abs().toStringAsFixed(0)} pending. Recharge or continue with online trips to clear dues.',
+      };
+    }
+    if (!_inFreePeriod && _eligibleServices.isEmpty) {
+      return {
+        'icon': Icons.verified_user_rounded,
+        'color': const Color(0xFF2D8CFF),
+        'bg': const Color(0xFFF2F7FF),
+        'border': const Color(0xFFD8E6F8),
+        'title': 'Service activation needed',
+        'message': 'Your account is active, but no ride services are currently enabled. Contact admin or activate your plan.',
+      };
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1744,6 +1768,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             ],
           ),
           const SizedBox(height: 24),
+          if (_driverStateNotice != null) ...[
+            _buildDriverStateBanner(_driverStateNotice!),
+            const SizedBox(height: 16),
+          ],
           Row(
             children: [
               Expanded(
@@ -1847,6 +1875,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDriverStateBanner(Map<String, dynamic> notice) {
+    final Color color = notice['color'] as Color;
+    final Color bg = notice['bg'] as Color;
+    final Color border = notice['border'] as Color;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(notice['icon'] as IconData, color: color, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  notice['title'] as String,
+                  style: GoogleFonts.poppins(
+                    color: const Color(0xFF0F172A),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  notice['message'] as String,
+                  style: GoogleFonts.poppins(
+                    color: const Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/splash_screen.dart';
+import 'device_identity_service.dart';
 import 'fcm_service.dart';
 
 enum SessionValidationState { valid, unauthorized, retryableFailure }
@@ -235,6 +236,9 @@ class AuthService {
               ..._base,
               'Authorization': 'Bearer $refreshToken',
             },
+            body: jsonEncode({
+              'deviceId': await DeviceIdentityService.getDeviceId(),
+            }),
           )
           .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return false;
@@ -328,6 +332,7 @@ class AuthService {
             body: jsonEncode({
               'phone': phone,
               'userType': userType,
+              'deviceId': await DeviceIdentityService.getDeviceId(),
               if (forceServerOtp) 'provider': 'sms',
               if (forceServerOtp) 'forceServerOtp': true,
             }),
@@ -336,19 +341,22 @@ class AuthService {
       if (!(res.headers['content-type'] ?? '').contains('application/json')) {
         return {
           'success': false,
-          'message': 'Server error. Please try again.',
+          'code': 'SERVER_UNAVAILABLE',
+          'message': 'Server unavailable. Please try again shortly.',
         };
       }
       return jsonDecode(res.body) as Map<String, dynamic>;
     } on TimeoutException {
       return {
         'success': false,
+        'code': 'REQUEST_TIMEOUT',
         'message': 'Request timed out. Check your connection.',
       };
     } catch (_) {
       return {
         'success': false,
-        'message': 'Network error. Check your connection.',
+        'code': 'NETWORK_ERROR',
+        'message': 'Could not reach server. Check your connection.',
       };
     }
   }
@@ -363,31 +371,39 @@ class AuthService {
           .post(
             Uri.parse(ApiConfig.verifyOtp),
             headers: _base,
-            body: jsonEncode({'phone': phone, 'otp': otp, 'userType': userType}),
+            body: jsonEncode({
+              'phone': phone,
+              'otp': otp,
+              'userType': userType,
+              'deviceId': await DeviceIdentityService.getDeviceId(),
+            }),
           )
           .timeout(const Duration(seconds: 30));
-      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
-        return {
-          'success': false,
-          'message': 'Server error. Please try again.',
-        };
-      }
+        if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+          return {
+            'success': false,
+            'code': 'SERVER_UNAVAILABLE',
+            'message': 'Server unavailable. Please try again shortly.',
+          };
+        }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 && data['token'] != null) {
         await _persistAuthPayload(data, fallbackPhone: phone);
       }
       return data;
-    } on TimeoutException {
-      return {
-        'success': false,
-        'message': 'Request timed out. Check your connection.',
-      };
-    } catch (_) {
-      return {
-        'success': false,
-        'message': 'Network error. Check your connection.',
-      };
-    }
+      } on TimeoutException {
+        return {
+          'success': false,
+          'code': 'REQUEST_TIMEOUT',
+          'message': 'Request timed out. Check your connection.',
+        };
+      } catch (_) {
+        return {
+          'success': false,
+          'code': 'NETWORK_ERROR',
+          'message': 'Could not reach server. Check your connection.',
+        };
+      }
   }
 
   static Future<Map<String, dynamic>> updateProfile({
@@ -432,32 +448,37 @@ class AuthService {
             body: jsonEncode({
               'phone': phone,
               'password': password,
+              'countryCode': '+91',
               'userType': 'customer',
+              'deviceId': await DeviceIdentityService.getDeviceId(),
             }),
           )
           .timeout(const Duration(seconds: 30));
-      if (!(res.headers['content-type'] ?? '').contains('application/json')) {
-        return {
-          'success': false,
-          'message': 'Server error. Please try again.',
-        };
-      }
+        if (!(res.headers['content-type'] ?? '').contains('application/json')) {
+          return {
+            'success': false,
+            'code': 'SERVER_UNAVAILABLE',
+            'message': 'Server unavailable. Please try again shortly.',
+          };
+        }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 && data['token'] != null) {
         await _persistAuthPayload(data, fallbackPhone: phone);
       }
       return data;
-    } on TimeoutException {
-      return {
-        'success': false,
-        'message': 'Request timed out. Check your connection.',
-      };
-    } catch (_) {
-      return {
-        'success': false,
-        'message': 'Network error. Check your connection.',
-      };
-    }
+      } on TimeoutException {
+        return {
+          'success': false,
+          'code': 'REQUEST_TIMEOUT',
+          'message': 'Request timed out. Check your connection.',
+        };
+      } catch (_) {
+        return {
+          'success': false,
+          'code': 'NETWORK_ERROR',
+          'message': 'Could not reach server. Check your connection.',
+        };
+      }
   }
 
   static Future<Map<String, dynamic>> verifyFirebaseToken(
@@ -474,6 +495,7 @@ class AuthService {
               'firebaseIdToken': idToken,
               'phone': phone,
               'userType': userType,
+              'deviceId': await DeviceIdentityService.getDeviceId(),
             }),
           )
           .timeout(const Duration(seconds: 30));
@@ -513,6 +535,7 @@ class AuthService {
         'password': password,
         'fullName': fullName,
         'userType': 'customer',
+        'deviceId': await DeviceIdentityService.getDeviceId(),
       };
       if (email != null && email.isNotEmpty) body['email'] = email;
 

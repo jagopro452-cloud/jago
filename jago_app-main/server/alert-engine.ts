@@ -20,10 +20,482 @@
  *   Audit schema     — every action logged with rule/scope/prev/new state/metrics
  */
 
+import fs     from "fs";
+import path   from "path";
+import crypto from "crypto";
+import { fileURLToPath } from "url";
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { getApiErrorStats } from "./metrics";
 import { sendOpsAlert } from "./observability";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ── Rules config (hot-reloadable via POST /api/admin/alert-engine/config/reload) ─
+
+interface EngineConfigSchema {
+  engine: {
+    maxSurgeCap:                  number;
+    bookingPauseMaxMinutes:       number;
+    alertCooldownMinutes:         number;
+    minDwellMinutes:              number;
+    checkIntervalSeconds:         number;
+    recoveryCompletionRateMinPct: number;
+  };
+  rules: Record<string, {
+    enabled?:               boolean;
+    minConsecutiveBreaches?: number;
+    minConsecutiveClears?:   number;
+    triggerThreshold?:       number;
+    clearThreshold?:         number;
+    triggerPct?:             number;
+    clearPct?:               number;
+    clearDrivers?:           number;
+    minSamples?:             number;
+  }>;
+  dispatch: {
+    driverFatigueBackoffSeconds: number;
+    driverMaxConcurrentOffers:   number;
+  };
+}
+
+const CONFIG_PATH = path.join(__dirname, "alert-engine.config.json");
+const DEFAULT_CFG: EngineConfigSchema = {
+  engine: { maxSurgeCap: 2.5, bookingPauseMaxMinutes: 10, alertCooldownMinutes: 15,
+            minDwellMinutes: 2, checkIntervalSeconds: 60, recoveryCompletionRateMinPct: 80 },
+  rules: {},
+  dispatch: { driverFatigueBackoffSeconds: 25, driverMaxConcurrentOffers: 1 },
+};
+
+let _cfg:          EngineConfigSchema | null = null;
+let _cfgVersion    = "default";
+let _cfgChecksum   = "";
+let _cfgLoadedAt   = 0;
+
+function loadEngineConfig(): { cfg: EngineConfigSchema; raw: string } {
+  const raw = fs.readFileSync(CONFIG_PATH, "utf8");
+  return { cfg: JSON.parse(raw) as EngineConfigSchema, raw };
+}
+
+function getCfg(): EngineConfigSchema {
+  if (!_cfg) {
+    try {
+      const { cfg, raw } = loadEngineConfig();
+      _cfg = cfg;
+      _cfgChecksum = computeChecksum(raw);
+      _cfgVersion  = new Date().toISOString();
+      _cfgLoadedAt = Date.now();
+    } catch {
+      _cfg = DEFAULT_CFG;
+    }
+  }
+  return _cfg;
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+interface ValidationResult { ok: boolean; errors: string[] }
+
+function validateEngineConfig(cfg: EngineConfigSchema): ValidationResult {
+  const errors: string[] = [];
+  const { engine, rules, dispatch } = cfg;
+  if (!engine)   errors.push("Missing 'engine' section");
+  if (!rules)    errors.push("Missing 'rules' section");
+  if (!dispatch) errors.push("Missing 'dispatch' section");
+  if (errors.length > 0) return { ok: false, errors };
+
+  const inRange = (v: unknown, lo: number, hi: number, name: string) => {
+    if (typeof v !== "number" || v < lo || v > hi)
+      errors.push(`${name} must be ${lo}–${hi} (got ${v})`);
+  };
+  inRange(engine.maxSurgeCap,                  1.0, 5.0,  "engine.maxSurgeCap");
+  inRange(engine.bookingPauseMaxMinutes,        1,   60,   "engine.bookingPauseMaxMinutes");
+  inRange(engine.alertCooldownMinutes,          1,   120,  "engine.alertCooldownMinutes");
+  inRange(engine.minDwellMinutes,               0,   30,   "engine.minDwellMinutes");
+  inRange(engine.checkIntervalSeconds,          10,  300,  "engine.checkIntervalSeconds");
+  inRange(engine.recoveryCompletionRateMinPct,  0,   100,  "engine.recoveryCompletionRateMinPct");
+
+  for (const [ruleId, r] of Object.entries(rules ?? {})) {
+    if (!r) continue;
+    const pct = (v: unknown, name: string) => {
+      if (v !== undefined && (typeof v !== "number" || v < 0 || v > 100))
+        errors.push(`rules.${ruleId}.${name} must be 0–100 (got ${v})`);
+    };
+    const pos = (v: unknown, name: string) => {
+      if (v !== undefined && (typeof v !== "number" || (v as number) < 0))
+        errors.push(`rules.${ruleId}.${name} must be ≥ 0 (got ${v})`);
+    };
+    const bounded = (v: unknown, lo: number, hi: number, name: string) => {
+      if (v !== undefined && (typeof v !== "number" || (v as number) < lo || (v as number) > hi))
+        errors.push(`rules.${ruleId}.${name} must be ${lo}–${hi} (got ${v})`);
+    };
+    pct(r.triggerPct,   "triggerPct");
+    pct(r.clearPct,     "clearPct");
+    pos(r.triggerThreshold, "triggerThreshold");
+    pos(r.clearThreshold,   "clearThreshold");
+    pos(r.clearDrivers,     "clearDrivers");
+    bounded(r.minSamples,             1, 100, "minSamples");
+    bounded(r.minConsecutiveBreaches, 1, 10,  "minConsecutiveBreaches");
+    bounded(r.minConsecutiveClears,   1, 10,  "minConsecutiveClears");
+    // Hysteresis sanity: clear threshold must be less restrictive than trigger
+    if (r.triggerThreshold !== undefined && r.clearThreshold !== undefined &&
+        r.clearThreshold >= r.triggerThreshold)
+      errors.push(`rules.${ruleId}: clearThreshold (${r.clearThreshold}) must be < triggerThreshold (${r.triggerThreshold})`);
+    if (r.triggerPct !== undefined && r.clearPct !== undefined &&
+        r.clearPct <= r.triggerPct)
+      errors.push(`rules.${ruleId}: clearPct (${r.clearPct}) must be > triggerPct (${r.triggerPct})`);
+  }
+
+  inRange(dispatch.driverFatigueBackoffSeconds, 0,   300, "dispatch.driverFatigueBackoffSeconds");
+  inRange(dispatch.driverMaxConcurrentOffers,   1,   5,   "dispatch.driverMaxConcurrentOffers");
+  return { ok: errors.length === 0, errors };
+}
+
+// ── Safe-delta guard — blocks extreme single-reload changes ───────────────────
+
+interface DeltaResult { ok: boolean; violations: string[] }
+
+function checkSafeDelta(prev: EngineConfigSchema, next: EngineConfigSchema): DeltaResult {
+  const violations: string[] = [];
+
+  const surgeDelta = Math.abs((next.engine.maxSurgeCap ?? 2.5) - (prev.engine.maxSurgeCap ?? 2.5));
+  if (surgeDelta > 0.5)
+    violations.push(`engine.maxSurgeCap change ${surgeDelta.toFixed(2)} exceeds 0.5 per-reload limit`);
+
+  const cooldown = next.engine.alertCooldownMinutes ?? 15;
+  if (cooldown < 5 || cooldown > 30)
+    violations.push(`engine.alertCooldownMinutes ${cooldown} outside safe range [5, 30]`);
+
+  for (const ruleId of Object.keys(next.rules ?? {})) {
+    const p = prev.rules?.[ruleId] ?? {};
+    const n = next.rules[ruleId] ?? {};
+    const bd = Math.abs((n.minConsecutiveBreaches ?? 2) - (p.minConsecutiveBreaches ?? 2));
+    const cd = Math.abs((n.minConsecutiveClears   ?? 2) - (p.minConsecutiveClears   ?? 2));
+    if (bd > 2) violations.push(`rules.${ruleId}.minConsecutiveBreaches change ${bd} exceeds 2-step limit`);
+    if (cd > 2) violations.push(`rules.${ruleId}.minConsecutiveClears change ${cd} exceeds 2-step limit`);
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+// ── Diff + checksum helpers ───────────────────────────────────────────────────
+
+function computeChecksum(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 12);
+}
+
+function diffConfigs(prev: EngineConfigSchema, next: EngineConfigSchema): Record<string, string> {
+  const diff: Record<string, string> = {};
+  const walk = (pObj: Record<string, unknown>, nObj: Record<string, unknown>, prefix: string) => {
+    const keys = Array.from(new Set([...Object.keys(pObj), ...Object.keys(nObj)]));
+    for (const k of keys) {
+      if (k.startsWith("_")) continue;
+      const pv = pObj[k]; const nv = nObj[k];
+      if (typeof pv === "object" && typeof nv === "object" && pv && nv)
+        walk(pv as Record<string, unknown>, nv as Record<string, unknown>, `${prefix}.${k}`);
+      else if (pv !== nv)
+        diff[`${prefix}.${k}`] = `${pv} → ${nv}`;
+    }
+  };
+  walk(prev as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>, "cfg");
+  return diff;
+}
+
+// ── Config history (rollback support) ────────────────────────────────────────
+
+const CONFIG_HISTORY_MAX = 5;
+const configHistory: Array<{
+  cfg:      EngineConfigSchema;
+  version:  string;
+  checksum: string;
+  reason?:  string;
+  by?:      string;
+}> = [];
+
+function pushConfigHistory(entry: typeof configHistory[0]): void {
+  configHistory.push(entry);
+  if (configHistory.length > CONFIG_HISTORY_MAX) configHistory.shift();
+}
+
+export function getConfigHistory() {
+  return [...configHistory].reverse(); // newest first
+}
+
+// ── Redis pub/sub config sync (multi-pod) ─────────────────────────────────────
+
+const CONFIG_SYNC_CHANNEL = "engine:config:reload";
+
+async function broadcastConfigReload(version: string, checksum: string): Promise<void> {
+  try {
+    const r = await getEngineRedis();
+    if (!r) return;
+    await r.publish(CONFIG_SYNC_CHANNEL, JSON.stringify({ version, checksum, ts: Date.now() }));
+  } catch { /* non-critical — pods will pick up config on their own next read */ }
+}
+
+export async function subscribeConfigSync(): Promise<void> {
+  try {
+    const { default: IORedis } = await import("ioredis");
+    const sub = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {
+      lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: 0,
+      retryStrategy: () => null, connectTimeout: 2000,
+    });
+    sub.on("error", () => {});
+    await sub.connect();
+    await sub.subscribe(CONFIG_SYNC_CHANNEL);
+    sub.on("message", (_ch, msg) => {
+      try {
+        const { checksum } = JSON.parse(msg) as { checksum: string };
+        if (checksum === _cfgChecksum) return; // this pod already has it
+        console.log("[ALERT-ENGINE] Config sync broadcast received — reloading");
+        reloadEngineConfig({ reason: "pod-sync broadcast", requestedBy: "system" });
+      } catch { /* malformed message — ignore */ }
+    });
+    console.log("[ALERT-ENGINE] Config sync subscriber ready");
+  } catch {
+    console.log("[ALERT-ENGINE] Redis unavailable — config sync disabled (single-pod mode)");
+  }
+}
+
+// ── Public config API ─────────────────────────────────────────────────────────
+
+export interface ReloadResult {
+  ok:                boolean;
+  error?:            string;
+  validationErrors?: string[];
+  safetyViolations?: string[];
+  incidentLock?:     string;   // set when a P0/P1 incident blocked the reload
+  diff?:             Record<string, string>;
+  version?:          string;
+  checksum?:         string;
+  changedKeys?:      number;
+}
+
+/**
+ * Reload config from disk with full guardrails:
+ *   1. Incident lock (P0/P1 firing → blocked unless force)
+ *   2. JSON parse check
+ *   3. Schema + range validation (fail → keep old config)
+ *   4. Safe-delta guard (blocks extreme single-reload changes unless force)
+ *   5. Config history snapshot (enables rollback)
+ *   6. Audit log written to system_logs
+ *   7. Redis broadcast for pod-sync
+ */
+export function reloadEngineConfig(options?: {
+  reason?:      string;
+  requestedBy?: string;
+  force?:       boolean;
+  _internal?:   boolean; // set by pod-sync subscriber to skip broadcast loop
+}): ReloadResult {
+  // Incident lock — refuse config changes during active P0/P1 unless forced
+  if (!options?.force && !options?._internal) {
+    const firingCritical = ALERT_RULES.filter(r => r.priority <= 1 && getState(r.id).firing);
+    if (firingCritical.length > 0) {
+      const names = firingCritical.map(r => r.label).join(", ");
+      return { ok: false, incidentLock: names, error: `Config locked — P0/P1 incident active: ${names}. Use force:true to override.` };
+    }
+  }
+
+  let raw: string;
+  try { raw = fs.readFileSync(CONFIG_PATH, "utf8"); }
+  catch (e: any) { return { ok: false, error: `Cannot read config file: ${e.message}` }; }
+
+  let next: EngineConfigSchema;
+  try { next = JSON.parse(raw) as EngineConfigSchema; }
+  catch (e: any) { return { ok: false, error: `Invalid JSON: ${e.message}` }; }
+
+  const validation = validateEngineConfig(next);
+  if (!validation.ok)
+    return { ok: false, error: "Validation failed — old config retained", validationErrors: validation.errors };
+
+  const prev = _cfg ?? DEFAULT_CFG;
+  if (!options?.force) {
+    const delta = checkSafeDelta(prev, next);
+    if (!delta.ok)
+      return { ok: false, error: "Safe-change guard blocked — pass force:true to override", safetyViolations: delta.violations };
+  }
+
+  const diff     = diffConfigs(prev, next);
+  const checksum = computeChecksum(raw);
+  const version  = new Date().toISOString();
+  const prevVer  = _cfgVersion;
+
+  // Snapshot current config into history before overwriting
+  if (_cfg) pushConfigHistory({ cfg: _cfg, version: prevVer, checksum: _cfgChecksum, reason: options?.reason, by: options?.requestedBy ?? "admin" });
+
+  // Audit log (fire-and-forget)
+  rawDb.execute(rawSql`
+    INSERT INTO system_logs (level, tag, message, details)
+    VALUES ('info', 'CONFIG_RELOAD',
+      ${`Alert engine config reloaded${options?.reason ? " — " + options.reason : ""}`},
+      ${JSON.stringify({
+        prevVersion: prevVer, newVersion: version, checksum,
+        diff, changedKeys: Object.keys(diff).length,
+        by: options?.requestedBy ?? "admin",
+        reason: options?.reason ?? null,
+        forced: options?.force ?? false,
+      })}::jsonb)
+  `).catch(() => {});
+
+  _cfg = next; _cfgVersion = version; _cfgChecksum = checksum; _cfgLoadedAt = Date.now();
+  console.log(`[ALERT-ENGINE] Config reloaded — ${Object.keys(diff).length} change(s)${Object.keys(diff).length > 0 ? ": " + JSON.stringify(diff) : ""}`);
+
+  // Broadcast to other pods (skip if we're already handling a broadcast)
+  if (!options?._internal) broadcastConfigReload(version, checksum).catch(() => {});
+
+  return { ok: true, diff, version, checksum, changedKeys: Object.keys(diff).length };
+}
+
+/** Roll back to a previous config version (from in-memory history). */
+export function rollbackConfig(targetVersion: string, options?: {
+  requestedBy?: string;
+  reason?:      string;
+}): ReloadResult {
+  const entry = configHistory.find(h => h.version === targetVersion);
+  if (!entry)
+    return { ok: false, error: `Version ${targetVersion} not found in history (max ${CONFIG_HISTORY_MAX} kept)` };
+
+  const validation = validateEngineConfig(entry.cfg);
+  if (!validation.ok)
+    return { ok: false, error: "Historical config failed current validation", validationErrors: validation.errors };
+
+  const prev = _cfg ?? DEFAULT_CFG;
+  const diff = diffConfigs(prev, entry.cfg);
+  const newVersion = new Date().toISOString();
+
+  if (_cfg) pushConfigHistory({ cfg: _cfg, version: _cfgVersion, checksum: _cfgChecksum, reason: "pre-rollback snapshot", by: options?.requestedBy });
+
+  rawDb.execute(rawSql`
+    INSERT INTO system_logs (level, tag, message, details)
+    VALUES ('info', 'CONFIG_ROLLBACK',
+      ${`Config rolled back to ${entry.version}`},
+      ${JSON.stringify({ targetVersion: entry.version, newVersion, diff, by: options?.requestedBy ?? "admin", reason: options?.reason ?? null })}::jsonb)
+  `).catch(() => {});
+
+  _cfg = entry.cfg; _cfgVersion = newVersion; _cfgChecksum = entry.checksum; _cfgLoadedAt = Date.now();
+  broadcastConfigReload(newVersion, entry.checksum).catch(() => {});
+  console.log(`[ALERT-ENGINE] Config rolled back to ${entry.version} by ${options?.requestedBy ?? "admin"}`);
+  return { ok: true, diff, version: newVersion, checksum: entry.checksum, changedKeys: Object.keys(diff).length };
+}
+
+/** Return current in-memory config with metadata. */
+export function getEngineConfig(): EngineConfigSchema & {
+  _meta: { version: string; checksum: string; loadedAt: number; configPath: string; hasIncidentLock: boolean };
+} {
+  const firingCritical = ALERT_RULES.filter(r => r.priority <= 1 && getState(r.id).firing);
+  return {
+    ...getCfg(),
+    _meta: {
+      version: _cfgVersion, checksum: _cfgChecksum, loadedAt: _cfgLoadedAt,
+      configPath: CONFIG_PATH, hasIncidentLock: firingCritical.length > 0,
+    },
+  };
+}
+
+// ── Dry-run simulation ────────────────────────────────────────────────────────
+
+export interface DryRunResult {
+  valid:             boolean;
+  validationErrors?: string[];
+  safetyViolations?: string[];
+  diff:              Record<string, string>;
+  simulation: {
+    wouldFire:    string[];  // rules that would start firing given current metrics + new thresholds
+    wouldClear:   string[];  // currently firing rules that would clear
+    suppressions: string[];  // actions blocked by higher-priority rules
+    unchanged:    string[];  // no change in evaluated state
+  };
+  metricsSnapshot?: Partial<DashboardMetrics>;
+}
+
+export async function dryRunConfig(configJson: string): Promise<DryRunResult> {
+  let next: EngineConfigSchema;
+  try { next = JSON.parse(configJson) as EngineConfigSchema; }
+  catch (e: any) {
+    return { valid: false, validationErrors: [`Invalid JSON: ${e.message}`], diff: {},
+      simulation: { wouldFire: [], wouldClear: [], suppressions: [], unchanged: [] } };
+  }
+
+  const validation = validateEngineConfig(next);
+  const prev = _cfg ?? DEFAULT_CFG;
+  const diff = diffConfigs(prev, next);
+
+  if (!validation.ok)
+    return { valid: false, validationErrors: validation.errors, diff, simulation: { wouldFire: [], wouldClear: [], suppressions: [], unchanged: [] } };
+
+  const deltaCheck = checkSafeDelta(prev, next);
+
+  let metrics: DashboardMetrics;
+  try { metrics = await getDashboardMetrics(false); }
+  catch {
+    return { valid: true, safetyViolations: deltaCheck.ok ? undefined : deltaCheck.violations, diff,
+      simulation: { wouldFire: [], wouldClear: [], suppressions: [], unchanged: [] } };
+  }
+
+  // Temporarily apply new config for simulation (restore immediately after)
+  const savedCfg = _cfg;
+  _cfg = next;
+
+  const wouldFire: string[] = [], wouldClear: string[] = [], suppressions: string[] = [], unchanged: string[] = [];
+  const currentlyFiringIds = new Set(ALERT_RULES.filter(r => getState(r.id).firing).map(r => r.id));
+
+  for (const rule of ALERT_RULES) {
+    if (!isRuleEnabled(rule)) continue;
+    const state = getState(rule.id);
+    const breaches = rule.triggerCheck(metrics);
+    const clears   = rule.clearCheck(metrics);
+
+    if (breaches && !state.firing) {
+      const suppressors = rule.action
+        ? (SUPPRESSED_BY[rule.action] ?? []).filter(id => currentlyFiringIds.has(id))
+        : [];
+      if (suppressors.length > 0)
+        suppressions.push(`${rule.action} (rule: ${rule.id}) suppressed by [${suppressors.join(", ")}]`);
+      else
+        wouldFire.push(`${rule.label} (P${rule.priority})`);
+    } else if (clears && state.firing) {
+      wouldClear.push(`${rule.label} (P${rule.priority})`);
+    } else {
+      unchanged.push(rule.id);
+    }
+  }
+
+  _cfg = savedCfg; // restore
+
+  return {
+    valid: true,
+    safetyViolations: deltaCheck.ok ? undefined : deltaCheck.violations,
+    diff, simulation: { wouldFire, wouldClear, suppressions, unchanged },
+    metricsSnapshot: {
+      searchingRides: metrics.searchingRides, onlineDrivers: metrics.onlineDrivers,
+      acceptRatePct: metrics.acceptRatePct, completionRateLive: metrics.completionRateLive,
+      failedPayments: metrics.failedPayments, apiErrorRatePct: metrics.apiErrorRatePct,
+    },
+  };
+}
+
+// Per-rule config helpers — checked at evaluation time so hot-reload takes effect immediately
+function ruleN(ruleId: string, key: string, fallback: number): number {
+  return (getCfg().rules[ruleId] as any)?.[key] ?? fallback;
+}
+function ruleBool(ruleId: string, key: string, fallback: boolean): boolean {
+  const v = (getCfg().rules[ruleId] as any)?.[key];
+  return v === undefined ? fallback : Boolean(v);
+}
+function engineN(key: keyof EngineConfigSchema["engine"], fallback: number): number {
+  return getCfg().engine?.[key] ?? fallback;
+}
+
+// Used in runAlertCheck — replaces rule.minConsecutiveBreaches / rule.minConsecutiveClears
+function getMinBreaches(rule: AlertRule): number {
+  return ruleN(rule.id, "minConsecutiveBreaches", rule.minConsecutiveBreaches);
+}
+function getMinClears(rule: AlertRule): number {
+  return ruleN(rule.id, "minConsecutiveClears", rule.minConsecutiveClears);
+}
+function isRuleEnabled(rule: AlertRule): boolean {
+  return ruleBool(rule.id, "enabled", true);
+}
 
 // ── Safety constants ──────────────────────────────────────────────────────────
 
@@ -149,8 +621,8 @@ const ALERT_RULES: AlertRule[] = [
     priority: 1,
     severity: "critical",
     scope: "global",
-    triggerCheck: m => m.failedPayments > 5,
-    clearCheck:   m => m.failedPayments <= 1,   // hysteresis: clear at ≤1, not ≤5
+    triggerCheck: m => m.failedPayments > ruleN("payment_failures_high", "triggerThreshold", 5),
+    clearCheck:   m => m.failedPayments <= ruleN("payment_failures_high", "clearThreshold", 1),
     minConsecutiveBreaches: 2,
     minConsecutiveClears:   2,
     message: m => `${m.failedPayments} payment failures today. New bookings paused automatically.`,
@@ -170,8 +642,8 @@ const ALERT_RULES: AlertRule[] = [
     priority: 2,
     severity: "critical",
     scope: "per_zone",
-    triggerCheck: m => m.searchingRides >= 8,   // trigger at ≥8
-    clearCheck:   m => m.searchingRides <= 3,   // clear at ≤3 (gap = 5 — prevents oscillation)
+    triggerCheck: m => m.searchingRides >= ruleN("searching_rides_high", "triggerThreshold", 8),
+    clearCheck:   m => m.searchingRides <= ruleN("searching_rides_high", "clearThreshold", 3),
     minConsecutiveBreaches: 2,
     minConsecutiveClears:   2,
     message: m => `${m.searchingRides} rides searching — driver supply shortage. Surge increased.`,
@@ -190,7 +662,7 @@ const ALERT_RULES: AlertRule[] = [
     severity: "critical",
     scope: "per_zone",
     triggerCheck: m => m.onlineDrivers === 0 && m.searchingRides > 0,
-    clearCheck:   m => m.onlineDrivers > 2 || m.searchingRides === 0,
+    clearCheck:   m => m.onlineDrivers > ruleN("no_online_drivers", "clearDrivers", 2) || m.searchingRides === 0,
     minConsecutiveBreaches: 1,  // act immediately — zero drivers is severe
     minConsecutiveClears:   2,
     message: m => `0 drivers online, ${m.searchingRides} rides searching. Surge raised to attract supply.`,
@@ -208,9 +680,9 @@ const ALERT_RULES: AlertRule[] = [
     priority: 2,
     severity: "warning",
     scope: "per_zone",
-    // Min 5 samples required — avoids flapping from tiny windows (e.g. 1/2 offers = 50%)
-    triggerCheck: m => m.acceptRatePct < 40 && m.searchingRides > 2 && m.dispatchOffersLast30m >= 5,
-    clearCheck:   m => (m.acceptRatePct >= 60 || m.searchingRides <= 1) && m.dispatchOffersLast30m >= 5,
+    // Min-sample gate — avoids flapping from tiny windows (e.g. 1/2 offers = 50%)
+    triggerCheck: m => m.acceptRatePct < ruleN("low_accept_rate", "triggerPct", 40) && m.searchingRides > 2 && m.dispatchOffersLast30m >= ruleN("low_accept_rate", "minSamples", 5),
+    clearCheck:   m => (m.acceptRatePct >= ruleN("low_accept_rate", "clearPct", 60) || m.searchingRides <= 1) && m.dispatchOffersLast30m >= ruleN("low_accept_rate", "minSamples", 5),
     minConsecutiveBreaches: 3,  // 3 checks × 60s = 3 min minimum observation window
     minConsecutiveClears:   3,
     message: m => `Driver accept rate: ${m.acceptRatePct}% (threshold: 40%). Surge increased.`,
@@ -228,8 +700,8 @@ const ALERT_RULES: AlertRule[] = [
     priority: 2,
     severity: "critical",
     scope: "global",
-    triggerCheck: m => m.apiErrorRatePct > 3,
-    clearCheck:   m => m.apiErrorRatePct <= 1,
+    triggerCheck: m => m.apiErrorRatePct > ruleN("api_error_rate_high", "triggerPct", 3),
+    clearCheck:   m => m.apiErrorRatePct <= ruleN("api_error_rate_high", "clearPct", 1),
     minConsecutiveBreaches: 2,
     minConsecutiveClears:   2,
     message: m => `API error rate: ${m.apiErrorRatePct}% (threshold: 3%). Check server logs.`,
@@ -246,8 +718,8 @@ const ALERT_RULES: AlertRule[] = [
     priority: 2,
     severity: "warning",
     scope: "global",
-    triggerCheck: m => m.pendingPayments > 5,
-    clearCheck:   m => m.pendingPayments <= 2,
+    triggerCheck: m => m.pendingPayments > ruleN("pending_payments_high", "triggerThreshold", 5),
+    clearCheck:   m => m.pendingPayments <= ruleN("pending_payments_high", "clearThreshold", 2),
     minConsecutiveBreaches: 2,
     minConsecutiveClears:   2,
     message: m => `${m.pendingPayments} payments pending — likely gateway delay. Monitoring.`,
@@ -266,8 +738,8 @@ const ALERT_RULES: AlertRule[] = [
     priority: 3,
     severity: "warning",
     scope: "global",
-    triggerCheck: m => m.otpFailLast1h > 15,
-    clearCheck:   m => m.otpFailLast1h <= 6,
+    triggerCheck: m => m.otpFailLast1h > ruleN("otp_fail_high", "triggerThreshold", 15),
+    clearCheck:   m => m.otpFailLast1h <= ruleN("otp_fail_high", "clearThreshold", 6),
     minConsecutiveBreaches: 2,
     minConsecutiveClears:   2,
     message: m => `${m.otpFailLast1h} OTP failures in last 1h — possible provider issue or abuse.`,
@@ -680,15 +1152,16 @@ async function executeAction(
         `).catch(() => ({ rows: [{ avg: 1.0 }] }));
         const prevAvg = parseFloat((beforeR.rows[0] as any)?.avg ?? "1.0").toFixed(1);
 
+        const cap = engineN("maxSurgeCap", MAX_SURGE_CAP);
         await rawDb.execute(rawSql`
           UPDATE zones
-          SET surge_factor = LEAST(${MAX_SURGE_CAP}, COALESCE(surge_factor, 1.0) + 0.3)
-          WHERE is_active = true AND surge_factor < ${MAX_SURGE_CAP}
+          SET surge_factor = LEAST(${cap}, COALESCE(surge_factor, 1.0) + 0.3)
+          WHERE is_active = true AND surge_factor < ${cap}
         `);
 
         logAudit({
           tag: "AUTO_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
-          previousState: `${prevAvg}x`, newState: `+0.3x (cap ${MAX_SURGE_CAP}x)`,
+          previousState: `${prevAvg}x`, newState: `+0.3x (cap ${cap}x)`,
           actionId: token, metrics: snap,
           message: `surge_increase — searching=${metrics.searchingRides}, acceptRate=${metrics.acceptRatePct}%`,
         });
@@ -760,16 +1233,90 @@ async function executeAction(
 // ── Hard cap enforcement (booking pause timeout) ──────────────────────────────
 
 async function enforceHardCaps(metrics: DashboardMetrics): Promise<void> {
+  const pauseMaxMs = engineN("bookingPauseMaxMinutes", 10) * 60_000;
   for (const rule of ALERT_RULES) {
     const state = getState(rule.id);
-    if (state.bookingPausedAt && Date.now() - state.bookingPausedAt > BOOKING_PAUSE_MAX_MS) {
-      console.log(`[ALERT-ENGINE] ⏰ Hard cap hit (${BOOKING_PAUSE_MAX_MS / 60000}min) — force-restoring bookings for rule: ${rule.id}`);
+    if (state.bookingPausedAt && Date.now() - state.bookingPausedAt > pauseMaxMs) {
+      console.log(`[ALERT-ENGINE] ⏰ Hard cap hit (${pauseMaxMs / 60000}min) — force-restoring bookings for rule: ${rule.id}`);
       await executeAction("booking_restore", rule, metrics);
       sendOpsAlert({
         level: "error", source: "alert-engine", priority: 1,
-        message: `booking_pause hard cap (${BOOKING_PAUSE_MAX_MS / 60000}min) reached — bookings auto-restored. Rule: ${rule.label}`,
+        message: `booking_pause hard cap (${pauseMaxMs / 60000}min) reached — bookings auto-restored. Rule: ${rule.label}`,
       }).catch(() => { });
     }
+  }
+}
+
+// ── Alert check cycle ─────────────────────────────────────────────────────────
+
+// ── Metric history ring buffer (sparklines + trend) ──────────────────────────
+
+const METRIC_HISTORY_MAX = 20;
+const metricHistory: Array<{
+  ts:               number;
+  searchingRides:   number;
+  onlineDrivers:    number;
+  acceptRatePct:    number;
+  completionRateLive: number;
+  apiErrorRatePct:  number;
+}> = [];
+
+function recordMetricSnapshot(m: DashboardMetrics): void {
+  metricHistory.push({
+    ts: Date.now(),
+    searchingRides:    m.searchingRides,
+    onlineDrivers:     m.onlineDrivers,
+    acceptRatePct:     m.acceptRatePct,
+    completionRateLive: m.completionRateLive,
+    apiErrorRatePct:   m.apiErrorRatePct,
+  });
+  if (metricHistory.length > METRIC_HISTORY_MAX) metricHistory.shift();
+}
+
+export function getMetricHistory() { return [...metricHistory]; }
+
+// ── Manual override (bypasses automation guards, always audited) ──────────────
+
+export async function executeManualAction(
+  actionId: "booking_pause" | "booking_restore" | "surge_restore",
+  requestedBy = "admin",
+  reason?: string,
+): Promise<{ ok: boolean; message: string }> {
+  const token = `manual:${actionId}:${Date.now()}`;
+  try {
+    switch (actionId) {
+      case "surge_restore":
+        await rawDb.execute(rawSql`
+          UPDATE zones SET surge_factor = 1.0 WHERE is_active = true AND surge_factor > 1.0
+        `);
+        break;
+      case "booking_pause":
+        await rawDb.execute(rawSql`
+          UPDATE platform_services SET service_status = 'paused'
+          WHERE service_key IN ('bike_ride','auto_ride','cab_ride','parcel')
+            AND service_status = 'active'
+        `).catch(() => {});
+        break;
+      case "booking_restore":
+        await rawDb.execute(rawSql`
+          UPDATE platform_services SET service_status = 'active'
+          WHERE service_key IN ('bike_ride','auto_ride','cab_ride','parcel')
+            AND service_status = 'paused'
+        `).catch(() => {});
+        break;
+      default:
+        return { ok: false, message: "Unknown action" };
+    }
+    rawDb.execute(rawSql`
+      INSERT INTO system_logs (level, tag, message, details)
+      VALUES ('info', 'MANUAL_ACTION',
+        ${`Manual ${actionId}${reason ? " — " + reason : ""}`},
+        ${JSON.stringify({ action: actionId, by: requestedBy, reason: reason ?? null, token })}::jsonb)
+    `).catch(() => {});
+    console.log(`[ALERT-ENGINE] MANUAL_ACTION: ${actionId} by ${requestedBy}${reason ? " (" + reason + ")" : ""}`);
+    return { ok: true, message: `${actionId} executed` };
+  } catch (e: any) {
+    return { ok: false, message: e.message };
   }
 }
 
@@ -783,6 +1330,8 @@ async function runAlertCheck(): Promise<void> {
     console.error("[ALERT-ENGINE] metrics fetch failed:", e.message);
     return;
   }
+
+  recordMetricSnapshot(metrics);
 
   // Hard cap check first — safety before anything else
   await enforceHardCaps(metrics);
@@ -799,6 +1348,8 @@ async function runAlertCheck(): Promise<void> {
   const newlyFiring: { rule: AlertRule; msg: string }[] = [];
 
   ruleLoop: for (const rule of sortedRules) {
+    if (!isRuleEnabled(rule)) continue ruleLoop;
+
     const state    = getState(rule.id);
     const breaching = rule.triggerCheck(metrics);
     const clearing  = rule.clearCheck(metrics);
@@ -807,8 +1358,8 @@ async function runAlertCheck(): Promise<void> {
       const newBreaches = state.consecutiveBreaches + 1;
       alertStates.set(rule.id, { ...state, consecutiveBreaches: newBreaches, consecutiveClears: 0 });
 
-      const shouldFire = newBreaches >= rule.minConsecutiveBreaches;
-      const cooldownOk = nowMs - state.lastFiredAt > ALERT_COOLDOWN_MS;
+      const shouldFire = newBreaches >= getMinBreaches(rule);
+      const cooldownOk = nowMs - state.lastFiredAt > engineN("alertCooldownMinutes", 15) * 60_000;
 
       if (shouldFire && (!state.firing || cooldownOk)) {
         const msg = rule.message(metrics);
@@ -855,25 +1406,26 @@ async function runAlertCheck(): Promise<void> {
         }
       }
     } else {
-      // Condition not breaching — accumulate clears toward grace period
+      // Not breaching — accumulate clears toward grace period
       const newClears = clearing ? state.consecutiveClears + 1 : 0;
       alertStates.set(rule.id, { ...state, consecutiveBreaches: 0, consecutiveClears: newClears });
 
-      if (state.firing && newClears >= rule.minConsecutiveClears) {
+      if (state.firing && newClears >= getMinClears(rule)) {
         const isRestoreAction = rule.recoveryAction === "surge_restore" || rule.recoveryAction === "booking_restore";
+        const minDwellMs = engineN("minDwellMinutes", 2) * 60_000;
+        const completionMin = engineN("recoveryCompletionRateMinPct", 80);
 
-        // Dwell time guard — alert must have been firing for at least MIN_DWELL_MS before recovery.
-        // Prevents quick on/off bounce when a metric briefly crosses threshold and immediately clears.
-        if (isRestoreAction && state.firedAt && (nowMs - state.firedAt) < MIN_DWELL_MS) {
+        // Dwell time guard — alert must have been firing for at least minDwellMs before recovery.
+        if (isRestoreAction && state.firedAt && (nowMs - state.firedAt) < minDwellMs) {
           const dwellSec = Math.round((nowMs - state.firedAt) / 1000);
-          console.log(`[ALERT-ENGINE] Recovery held — dwell ${dwellSec}s < ${MIN_DWELL_MS / 1000}s (holding ${rule.recoveryAction})`);
+          console.log(`[ALERT-ENGINE] Recovery held — dwell ${dwellSec}s < ${minDwellMs / 1000}s (holding ${rule.recoveryAction})`);
           alertStates.set(rule.id, { ...getState(rule.id), consecutiveClears: 0 });
           continue ruleLoop;
         }
 
         // Completion-rate guard — hold restore if rides are still cancelling
-        if (isRestoreAction && metrics.completionRateLive < 80) {
-          console.log(`[ALERT-ENGINE] Recovery held — completionRateLive=${metrics.completionRateLive}% < 80% (holding ${rule.recoveryAction})`);
+        if (isRestoreAction && metrics.completionRateLive < completionMin) {
+          console.log(`[ALERT-ENGINE] Recovery held — completionRateLive=${metrics.completionRateLive}% < ${completionMin}% (holding ${rule.recoveryAction})`);
           alertStates.set(rule.id, { ...getState(rule.id), consecutiveClears: 0 });
           continue ruleLoop;
         }
@@ -939,6 +1491,8 @@ let engineStartedAt = 0;
 export function startAlertEngine(): void {
   if (engineInterval) return;
   engineStartedAt = Date.now();
+  // Subscribe to Redis config-sync channel (multi-pod support)
+  subscribeConfigSync().catch(() => {});
   // Delay first check 30s — let server finish bootstrapping
   setTimeout(() => {
     runAlertCheck().catch(e => console.error("[ALERT-ENGINE] initial check error:", e.message));
@@ -946,7 +1500,7 @@ export function startAlertEngine(): void {
       runAlertCheck().catch(e => console.error("[ALERT-ENGINE] check error:", e.message));
     }, CHECK_INTERVAL_MS);
   }, 30_000);
-  console.log("[ALERT-ENGINE] Started — 60s interval, hysteresis + debounce + grace period active");
+  console.log("[ALERT-ENGINE] Started — 60s interval, hysteresis + debounce + grace period + multi-pod sync active");
 }
 
 export function getAlertEngineStatus(): {
@@ -955,13 +1509,15 @@ export function getAlertEngineStatus(): {
   autoActionsEnabled:    boolean;
   surgeAutomationEnabled: boolean;
   bookingPauseEnabled:   boolean;
+  configPath:            string;
+  effectiveMaxSurgeCap:  number;
   activeAlerts: {
     ruleId: string; label: string; priority: RulePriority;
     severity: AlertSeverity; since: number; fireCount: number; scope: ActionScope;
   }[];
   allRules: {
     id: string; label: string; priority: RulePriority; severity: AlertSeverity;
-    firing: boolean; consecutiveBreaches: number; consecutiveClears: number; scope: ActionScope;
+    enabled: boolean; firing: boolean; consecutiveBreaches: number; consecutiveClears: number; scope: ActionScope;
     runbook: Runbook;
   }[];
 } {
@@ -971,6 +1527,8 @@ export function getAlertEngineStatus(): {
     autoActionsEnabled:    isAutoActionsEnabled(),
     surgeAutomationEnabled: isSurgeAutomationEnabled(),
     bookingPauseEnabled:   isBookingPauseEnabled(),
+    configPath:            CONFIG_PATH,
+    effectiveMaxSurgeCap:  engineN("maxSurgeCap", MAX_SURGE_CAP),
     activeAlerts: ALERT_RULES.filter(r => getState(r.id).firing).map(r => {
       const s = getState(r.id);
       return { ruleId: r.id, label: r.label, priority: r.priority, severity: r.severity,
@@ -980,7 +1538,8 @@ export function getAlertEngineStatus(): {
       const s = getState(r.id);
       return {
         id: r.id, label: r.label, priority: r.priority, severity: r.severity,
-        firing: s.firing, consecutiveBreaches: s.consecutiveBreaches,
+        enabled: isRuleEnabled(r), firing: s.firing,
+        consecutiveBreaches: s.consecutiveBreaches,
         consecutiveClears: s.consecutiveClears, scope: r.scope, runbook: r.runbook,
       };
     }),

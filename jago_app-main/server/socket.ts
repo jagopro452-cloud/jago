@@ -149,14 +149,30 @@ async function verifySocketToken(token: string | undefined, claimedUserId: strin
   if (!token || !claimedUserId) return null;
   try {
     const r = await rawDb.execute(rawSql`
-      SELECT id, user_type FROM users
-      WHERE id = ${claimedUserId}::uuid
-        AND auth_token = ${token}
-        AND is_active = true
-        AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+      SELECT u.id, u.user_type FROM sessions s
+      JOIN users u ON u.id = s.user_id
+      WHERE u.id = ${claimedUserId}::uuid
+        AND s.token = ${token}
+        AND s.revoked = false
+        AND s.expires_at > NOW()
+        AND u.is_active = true
       LIMIT 1
     `);
-    if (!r.rows.length) return null;
+    if (!r.rows.length) {
+      const legacy = await rawDb.execute(rawSql`
+        SELECT id, user_type FROM users
+        WHERE id = ${claimedUserId}::uuid
+          AND auth_token = ${token}
+          AND is_active = true
+          AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (!legacy.rows.length) return null;
+      return {
+        userId: (legacy.rows[0] as any).id as string,
+        userType: String((legacy.rows[0] as any).user_type || "").toLowerCase(),
+      };
+    }
     return {
       userId: (r.rows[0] as any).id as string,
       userType: String((r.rows[0] as any).user_type || "").toLowerCase(),
@@ -1390,4 +1406,3 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
     console.error("[SOCKET] notifyDriverNearbyTrips error:", e.message);
   }
 }
-

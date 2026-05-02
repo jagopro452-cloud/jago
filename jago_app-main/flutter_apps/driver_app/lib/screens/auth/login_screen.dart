@@ -118,6 +118,82 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
+  String _friendlyOtpMessage(String? message) {
+    final text = (message ?? '').trim();
+    final lower = text.toLowerCase();
+    if (lower.contains('too many') || lower.contains('attempt')) {
+      return 'Too many OTP attempts detected. Please wait a moment before trying again.';
+    }
+    if (lower.contains('expired')) {
+      return 'This OTP expired. Please resend and enter the latest code.';
+    }
+    if (lower.contains('cooldown') || lower.contains('wait')) {
+      return 'Please wait a few seconds before requesting another OTP.';
+    }
+    return text.isNotEmpty ? text : 'Please check the latest OTP and try again.';
+  }
+
+  Widget _buildOtpHelpCard() {
+    final isFirebase = (_otpProvider ?? 'firebase') == 'firebase';
+    final title = isFirebase ? 'Use the latest OTP' : 'SMS OTP in progress';
+    final message = isFirebase
+        ? 'Enter the newest 6-digit code. If the OTP expires, resend and use the fresh code only.'
+        : 'SMS OTP may take a few seconds. Avoid repeated taps until resend becomes available.';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isFirebase ? Icons.shield_outlined : Icons.sms_outlined,
+              color: _blue,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _dark,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _startTimer() {
     _timer?.cancel();
     _seconds = 60;
@@ -204,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
     if (res['success'] != true) {
       setState(() => _loading = false);
-      _snack(firebaseError ?? res['message'] ?? 'Failed to send OTP', error: true);
+      _snack(_friendlyOtpMessage(firebaseError ?? res['message']), error: true);
       return;
     }
     _firebaseVerificationId = null;
@@ -289,7 +365,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           setState(() => _loading = false);
           _showErrorDialog(
             'Verification Failed',
-            fallback['message'] ?? firebaseResendError ?? e.toString().replaceAll('Exception: ', ''),
+            _friendlyOtpMessage(fallback['message'] ?? firebaseResendError ?? e.toString().replaceAll('Exception: ', '')),
           );
         }
         _otpVerifyInFlight = false;
@@ -314,14 +390,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else {
         _otpVerifyCompleted = false;
         _otpCtrl.clear();
-        _showErrorDialog('Login Failed', res['message'] ?? 'Wrong OTP. Please try again.');
+        _showErrorDialog('Login Failed', _friendlyOtpMessage(res['message'] ?? 'Wrong OTP. Please try again.'));
       }
     } catch (e) {
       if (!mounted) return;
       _otpVerifyCompleted = false;
       setState(() => _loading = false);
       _otpCtrl.clear();
-      _showErrorDialog('Verification Failed', 'Network error. Please try again.');
+      _showErrorDialog('Verification Failed', _friendlyOtpMessage('Network error. Please try again.'));
     } finally {
       _otpVerifyInFlight = false;
     }
@@ -491,6 +567,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 child: Text('Resend OTP', style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w500, fontSize: 13)),
                               ),
                         ),
+                        const SizedBox(height: 12),
+                        _buildOtpHelpCard(),
                         const SizedBox(height: 28),
                         _buildButton('Verify & Login', _verifyOtp),
                         const SizedBox(height: 12),

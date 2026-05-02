@@ -21,6 +21,26 @@ import { parcelAttributes, admins, cancellationReasons } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 const rawSql = sql;
 import bcrypt from "bcryptjs";
+import { createLoginController } from "./auth/auth.controller";
+import { createSendOtpController, createVerifyOtpController } from "./auth/otp.controller";
+import { AuthApiError } from "./auth/auth.errors";
+import {
+  createOpaqueToken,
+  createRefreshTokenRecord,
+  createSessionRecord,
+  findRefreshToken,
+  findSessionByToken,
+  findActiveSessionByUser,
+  revokeAllRefreshTokensForUser,
+  revokeRefreshToken,
+  revokeRefreshTokensBySession,
+  revokeSessionByToken,
+  revokeSessionsForUser,
+  revokeUserAuthColumns,
+  syncLegacyUserAuthColumns,
+  touchSession,
+  type SessionContext,
+} from "./auth/session.repo";
 import { hashPassword, verifyPassword } from "./utils/crypto";
 import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
 import { getConf } from "./config-db";
@@ -172,7 +192,7 @@ import {
   getAIDashboardData,
   getBrainStatus,
 } from "./ai-brain";
-import { getDashboardMetrics, getAlertEngineStatus, getDailyHealthReport } from "./alert-engine";
+import { getDashboardMetrics, getAlertEngineStatus, getDailyHealthReport, getEngineConfig, reloadEngineConfig, getMetricHistory, executeManualAction, dryRunConfig, getConfigHistory, rollbackConfig } from "./alert-engine";
 import {
   checkBookingRateLimit,
   detectBookingFraud,
@@ -436,7 +456,7 @@ function validateEnumValue(value: any, allowed: string[]): string {
 }
 
 /** Returns a safe error message: generic in production, detailed in development. */
-function safeErrMsg(e: any, fallback = "An unexpected error occurred. Please try again."): string {
+function safeErrMsg(e: any, fallback = "Server error"): string {
   if (process.env.NODE_ENV === "production") return fallback;
   return e?.message || fallback;
 }
@@ -585,7 +605,11 @@ function emitServiceUpdated(serviceKey: string, serviceStatus: string, extra: Re
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { message: "Too many login attempts. Please try again after 15 minutes." },
+  message: {
+    success: false,
+    code: "TOO_MANY_ATTEMPTS",
+    message: "Too many login attempts. Please try again after 15 minutes.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -595,7 +619,11 @@ const loginLimiter = rateLimit({
 const otpSendLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
-  message: { message: "Too many OTP requests. Please try again after an hour." },
+  message: {
+    success: false,
+    code: "TOO_MANY_REQUESTS",
+    message: "Please try again later",
+  },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -605,7 +633,11 @@ const otpSendLimiter = rateLimit({
 const otpVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
-  message: { message: "Too many OTP verification attempts. Please wait 15 minutes and try again." },
+  message: {
+    success: false,
+    code: "TOO_MANY_ATTEMPTS",
+    message: "Too many attempts",
+  },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -850,23 +882,33 @@ function extractBearerToken(req: Request): string | null {
 const USER_ACCESS_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USER_REFRESH_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
-async function issueUserSession(userId: string) {
-  const accessToken = `${userId}:${crypto.randomBytes(32).toString("hex")}`;
-  const refreshToken = `${userId}:${crypto.randomBytes(48).toString("hex")}`;
+async function issueUserSession(userId: string, context: SessionContext, options: { allowDeviceReset?: boolean } = {}) {
+  const existingSession = await findActiveSessionByUser(userId);
+  if (existingSession && String(existingSession.device_id || "") !== context.deviceId) {
+    if (!options.allowDeviceReset) {
+      throw new AuthApiError(403, "DEVICE_MISMATCH", "Account already active on another device");
+    }
+  }
+
+  const accessToken = createOpaqueToken(userId, 32);
+  const refreshToken = createOpaqueToken(userId, 48);
   const accessTokenExpiresAt = new Date(Date.now() + USER_ACCESS_TOKEN_TTL_MS).toISOString();
   const refreshTokenExpiresAt = new Date(Date.now() + USER_REFRESH_TOKEN_TTL_MS).toISOString();
 
-  await rawDb.execute(rawSql`
-    UPDATE users
-    SET auth_token=${accessToken},
-        auth_token_expires_at=${accessTokenExpiresAt},
-        refresh_token=${refreshToken},
-        refresh_token_expires_at=${refreshTokenExpiresAt},
-        last_login_at=NOW()
-    WHERE id=${userId}::uuid
-  `);
+  await revokeSessionsForUser(userId);
+  await revokeAllRefreshTokensForUser(userId);
+  const sessionId = await createSessionRecord(userId, accessToken, accessTokenExpiresAt, context);
+  await createRefreshTokenRecord(userId, sessionId, refreshToken, refreshTokenExpiresAt, context);
+  await syncLegacyUserAuthColumns(
+    userId,
+    accessToken,
+    accessTokenExpiresAt,
+    refreshToken,
+    refreshTokenExpiresAt,
+  );
 
   return {
+    sessionId,
     accessToken,
     refreshToken,
     accessTokenExpiresAt,
@@ -1269,6 +1311,63 @@ async function ensureOperationalSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token_expires_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token_expires_at TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+      CREATE TABLE IF NOT EXISTS otp_codes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone VARCHAR(20) NOT NULL,
+        country_code VARCHAR(10) NOT NULL DEFAULT '+91',
+        otp_hash VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 5,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_otp_codes_phone_country_created
+        ON otp_codes(phone, country_code, created_at DESC);
+      CREATE TABLE IF NOT EXISTS sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL,
+        last_active_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        revoked BOOLEAN NOT NULL DEFAULT false,
+        revoked_at TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL,
+        revoked BOOLEAN NOT NULL DEFAULT false,
+        revoked_at TIMESTAMP,
+        replaced_by_token TEXT
+      );
+      CREATE TABLE IF NOT EXISTS otp_request_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone VARCHAR(20) NOT NULL,
+        country_code VARCHAR(10) NOT NULL DEFAULT '+91',
+        device_id TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        user_type VARCHAR(20) NOT NULL DEFAULT 'customer',
+        event_type VARCHAR(20) NOT NULL,
+        outcome VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions(user_id, revoked, expires_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active ON refresh_tokens(user_id, revoked, expires_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_otp_request_events_device_created ON otp_request_events(device_id, created_at DESC);
       UPDATE users SET email = NULL WHERE TRIM(COALESCE(email, '')) = '';
       ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
@@ -2244,7 +2343,24 @@ async function ensureOperationalSchema() {
   }
 }
 
+let authCleanupStarted = false;
+function startAuthCleanupJobs() {
+  if (authCleanupStarted) return;
+  authCleanupStarted = true;
+  setInterval(async () => {
+    await rawDb.execute(rawSql`DELETE FROM otp_codes WHERE expires_at <= NOW()`).catch(dbCatch("db"));
+    await rawDb.execute(rawSql`DELETE FROM sessions WHERE revoked=true OR expires_at <= NOW()`).catch(dbCatch("db"));
+    await rawDb.execute(rawSql`DELETE FROM refresh_tokens WHERE revoked=true OR expires_at <= NOW()`).catch(dbCatch("db"));
+  }, 10 * 60 * 1000);
+  console.log("[AUTH] Cleanup jobs started (10m interval)");
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  startAuthCleanupJobs();
+  const loginController = createLoginController(issueUserSession);
+  const sendOtpController = createSendOtpController();
+  const verifyOtpController = createVerifyOtpController(issueUserSession);
+
   // Always run schema bootstrap on startup to ensure all columns/tables exist
   try {
     await ensureOperationalSchema();
@@ -2286,8 +2402,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Health check endpoint
+  // Health check endpoint: keep this DB-free for readiness and liveness probes.
   app.get("/api/health", async (_req, res) => {
+    res.json({ status: "ok", ts: new Date().toISOString() });
+  });
+
+  // Deep DB health is separate so container readiness is not coupled to DB latency.
+  app.get("/api/health/db", async (_req, res) => {
     try {
       const { pool: dbPool } = await import("./db");
       await dbPool.query("SELECT 1");
@@ -3875,6 +3996,117 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const dateStr = typeof req.query.date === "string" ? req.query.date : undefined;
       const report = await getDailyHealthReport(dateStr);
       res.json(report);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/config — current in-memory thresholds (hot-reloadable)
+  app.get("/api/admin/alert-engine/config", requireAdminAuth, (_req, res) => {
+    try {
+      res.json(getEngineConfig());
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/alert-engine/config/reload — re-read alert-engine.config.json from disk.
+  // Body: { reason?: string, force?: boolean }
+  // force=true: admin role required; bypasses safe-delta + incident lock.
+  app.post("/api/admin/alert-engine/config/reload", requireAdminAuth, (req, res) => {
+    try {
+      const body        = req.body ?? {};
+      const reason      = typeof body.reason === "string" ? body.reason.slice(0, 200) : undefined;
+      const force       = body.force === true;
+      const admin       = (req as any).admin ?? {};
+      const requestedBy = admin.email ?? admin.name ?? "admin";
+      // RBAC: force requires admin role (not operator/viewer)
+      if (force && admin.role === "operator")
+        return res.status(403).json({ message: "force:true requires admin role — operators can reload without force" });
+      const result = reloadEngineConfig({ reason, force, requestedBy });
+      res.status(result.ok ? 200 : 400).json(result);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/alert-engine/config/dry-run — simulate effect of a config JSON on current metrics
+  // Body: { config: string } — raw JSON string of proposed EngineConfigSchema
+  app.post("/api/admin/alert-engine/config/dry-run", requireAdminAuth, async (req, res) => {
+    try {
+      const configJson = typeof req.body?.config === "string" ? req.body.config : JSON.stringify(req.body?.config ?? {});
+      const result = await dryRunConfig(configJson);
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/config/history — last N config snapshots (for rollback)
+  app.get("/api/admin/alert-engine/config/history", requireAdminAuth, (_req, res) => {
+    try {
+      res.json(getConfigHistory().map(h => ({ version: h.version, checksum: h.checksum, reason: h.reason, by: h.by })));
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/alert-engine/config/rollback — restore a previous config snapshot
+  // Body: { version: string, reason?: string } — admin role only
+  app.post("/api/admin/alert-engine/config/rollback", requireAdminAuth, (req, res) => {
+    try {
+      const admin = (req as any).admin ?? {};
+      if (admin.role === "operator")
+        return res.status(403).json({ message: "Rollback requires admin role" });
+      const { version, reason } = req.body ?? {};
+      if (typeof version !== "string")
+        return res.status(400).json({ message: "version is required" });
+      const requestedBy = admin.email ?? admin.name ?? "admin";
+      const result = rollbackConfig(version, { requestedBy, reason: typeof reason === "string" ? reason.slice(0, 200) : undefined });
+      res.status(result.ok ? 200 : 400).json(result);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/metrics-history — last N metric snapshots (60s cadence) for sparklines
+  app.get("/api/admin/alert-engine/metrics-history", requireAdminAuth, (_req, res) => {
+    try { res.json(getMetricHistory()); }
+    catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/recent-actions — last 10 AUTO_ACTION / MANUAL_ACTION / CONFIG_RELOAD entries
+  app.get("/api/admin/alert-engine/recent-actions", requireAdminAuth, async (_req, res) => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT tag, message, details, created_at
+        FROM system_logs
+        WHERE tag IN ('AUTO_ACTION','MANUAL_ACTION','SHADOW_ACTION','CONFIG_RELOAD','ACTION_SUPPRESSED_REDIS_DOWN')
+        ORDER BY created_at DESC LIMIT 10
+      `);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // GET /api/admin/alert-engine/rule-history/:ruleId — last 10 fire/resolve events for a rule
+  app.get("/api/admin/alert-engine/rule-history/:ruleId", requireAdminAuth, async (req, res) => {
+    try {
+      const ruleId = req.params.ruleId;
+      const rows = await db.execute(sql`
+        SELECT tag, message, details, created_at
+        FROM system_logs
+        WHERE tag IN ('ALERT_WARNING','ALERT_CRITICAL','ALERT_RESOLVED','AUTO_ACTION','ACTION_SUPPRESSED')
+          AND details->>'rule' = ${ruleId}
+        ORDER BY created_at DESC LIMIT 10
+      `);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // POST /api/admin/alert-engine/manual-action — emergency human override
+  // body: { action: "booking_pause"|"booking_restore"|"surge_restore", reason?: string }
+  app.post("/api/admin/alert-engine/manual-action", requireAdminAuth, async (req, res) => {
+    try {
+      const body   = req.body ?? {};
+      const action = body.action as string;
+      if (!["booking_pause", "booking_restore", "surge_restore"].includes(action))
+        return res.status(400).json({ message: "action must be booking_pause | booking_restore | surge_restore" });
+      const reason      = typeof body.reason === "string" ? body.reason.slice(0, 200) : undefined;
+      const admin       = (req as any).admin ?? {};
+      const requestedBy = admin.email ?? admin.name ?? "admin";
+      const result = await executeManualAction(
+        action as "booking_pause" | "booking_restore" | "surge_restore",
+        requestedBy, reason,
+      );
+      res.status(result.ok ? 200 : 500).json(result);
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8743,227 +8975,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ��  MOBILE APP APIs � Driver App + Customer App                       ��
   // -----------------------------------------------------------------------
 
-  // -- OTP SEND (Firebase Only) ----------------------------------------------
-  // Mobile apps use Firebase Phone Auth on-device. The server keeps only a
-  // lightweight request marker for rate limiting / telemetry and never sends SMS.
-  app.post("/api/app/send-otp", otpSendLimiter, async (req, res) => {
-    try {
-      const { phone, userType = "customer", provider, forceServerOtp = false } = req.body;
-      if (!phone) return res.status(400).json({ message: "Phone required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
-      if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
-      // Per-phone rate guard (IP-independent) — max 8 OTPs per phone per hour
-      if (!checkPhoneOtpLimit(phoneStr)) {
-        return res.status(429).json({ message: "Too many OTP requests for this number. Try again in an hour." });
-      }
+  // -- OTP SEND / VERIFY -----------------------------------------------------
+  app.post("/api/app/send-otp", otpSendLimiter, sendOtpController);
+  app.post("/auth/send-otp", otpSendLimiter, sendOtpController);
 
-      const otpSettingsR = await rawDb.execute(rawSql`
-        SELECT primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds
-        FROM otp_settings
-        LIMIT 1
-      `).catch(() => ({ rows: [] as any[] }));
-      const otpSettings = (otpSettingsR.rows[0] as any) || {};
-      const primaryProvider = String(otpSettings.primary_provider || "firebase").toLowerCase();
-      const smsEnabled = otpSettings.sms_enabled === true;
-      const firebaseEnabled = otpSettings.firebase_enabled !== false;
-      const fallbackEnabled = otpSettings.fallback_enabled === true;
-      const otpExpirySeconds = Math.min(
-        Math.max(parseInt(String(otpSettings.otp_expiry_seconds || "120"), 10) || 120, 60),
-        600,
-      );
-      const wantsSms = forceServerOtp === true || String(provider || "").toLowerCase() === "sms";
-
-      const recentCooldown = await rawDb.execute(rawSql`
-        SELECT id
-        FROM otp_logs
-        WHERE phone=${phoneStr}
-          AND user_type=${userType}
-          AND created_at > NOW() - INTERVAL '30 seconds'
-          AND (
-            CASE
-              WHEN ${wantsSms} THEN otp <> 'firebase'
-              ELSE true
-            END
-          )
-        ORDER BY created_at DESC
-        LIMIT 1
-      `).catch(() => ({ rows: [] as any[] }));
-      if (recentCooldown.rows.length) {
-        return res.status(429).json({ message: "Please wait 30 seconds before requesting another OTP." });
-      }
-
-      // Rate limiting: max 8 real SMS OTP sends per phone per hour.
-      // Firebase telemetry markers should not block genuine fallback usage.
-      const recentCount = await rawDb.execute(rawSql`
-        SELECT COUNT(*) as cnt
-        FROM otp_logs
-        WHERE phone=${phoneStr}
-          AND created_at > NOW() - INTERVAL '1 hour'
-          AND otp <> 'firebase'
-      `);
-      if (parseInt((recentCount.rows[0] as any)?.cnt || "0") >= 8) {
-        return res.status(429).json({ message: "Too many OTP requests. Try again after 1 hour." });
-      }
-
-      if (wantsSms || (!firebaseEnabled && smsEnabled) || (primaryProvider === "sms" && smsEnabled)) {
-        if (!smsEnabled) {
-          return res.status(503).json({ success: false, message: "SMS OTP is currently unavailable. Please try Firebase login again." });
-        }
-
-        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        await rawDb.execute(rawSql`
-          INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
-          VALUES (${phoneStr}, ${generatedOtp}, ${userType}, NOW(), NOW() + (${otpExpirySeconds} * INTERVAL '1 second'))
-        `).catch(dbCatch("db"));
-
-        const smsSent = await sendCustomSms(
-          phoneStr,
-          `Your JAGO OTP is ${generatedOtp}. Valid for ${Math.max(1, Math.round(otpExpirySeconds / 60))} minutes. Do not share it.`,
-        );
-
-        if (!smsSent) {
-          return res.status(503).json({
-            success: false,
-            message: "SMS OTP service is unavailable right now. Please try again in a moment.",
-          });
-        }
-
-        return res.json({
-          success: true,
-          provider: "sms",
-          message: "OTP sent via SMS.",
-          ...(process.env.NODE_ENV !== "production" ? { devOtp: generatedOtp } : {}),
-        });
-      }
-
-      await rawDb.execute(rawSql`
-        INSERT INTO otp_logs (phone, otp, user_type, created_at, expires_at)
-        VALUES (${phoneStr}, ${'firebase'}, ${userType}, NOW(), NOW() + INTERVAL '10 minutes')
-        ON CONFLICT DO NOTHING
-      `).catch(dbCatch("db"));
-      console.log(`[OTP] ${phoneStr.slice(-4).padStart(phoneStr.length, '*')} -> Firebase`);
-      return res.json({
-        success: true,
-        provider: 'firebase',
-        fallbackEnabled,
-        message: fallbackEnabled ? 'Use Firebase OTP for verification. SMS fallback is available if Firebase fails.' : 'Use Firebase OTP for verification.',
-      });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-  });
-
-  // -- OTP VERIFY + LOGIN / REGISTER ----------------------------------------
-  app.post("/api/app/verify-otp", otpVerifyLimiter, async (req, res) => {
-    try {
-      const { phone, otp, userType = "customer", name, referralCode } = req.body;
-      if (!phone || !otp) return res.status(400).json({ message: "Phone and OTP required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
-      if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
-
-      // Per-phone OTP brute force protection (max_attempts from otp_settings, default 3)
-      const otpCfg = await rawDb.execute(rawSql`SELECT max_attempts FROM otp_settings LIMIT 1`)
-        .catch(() => ({ rows: [] as any[] }));
-      const maxAttempts = parseInt((otpCfg.rows[0] as any)?.max_attempts ?? '3', 10);
-      const failedAttempts = await rawDb.execute(rawSql`
-        SELECT COUNT(*) AS cnt FROM otp_logs
-        WHERE phone=${phoneStr} AND otp <> 'firebase' AND is_used=false AND created_at > NOW() - INTERVAL '15 minutes'
-          AND attempt_count >= ${maxAttempts}
-        LIMIT 1
-      `).catch(() => ({ rows: [{ cnt: 0 }] as any[] }));
-      const recentFails = parseInt((failedAttempts.rows[0] as any)?.cnt || '0', 10);
-      if (recentFails >= 1) {
-        return res.status(429).json({ message: "Too many failed OTP attempts. Please request a new OTP after 15 minutes." });
-      }
-
-      // Check OTP
-      const otpRow = await rawDb.execute(rawSql`
-        SELECT * FROM otp_logs WHERE phone=${phoneStr} AND otp=${otp} AND is_used=false AND expires_at > NOW()
-        ORDER BY created_at DESC LIMIT 1
-      `);
-      if (!otpRow.rows.length) {
-        // Increment failed attempt counter only on the latest active server OTP.
-        await rawDb.execute(rawSql`
-          WITH latest_active AS (
-            SELECT id
-            FROM otp_logs
-            WHERE phone=${phoneStr}
-              AND otp <> 'firebase'
-              AND is_used=false
-              AND expires_at > NOW()
-            ORDER BY created_at DESC
-            LIMIT 1
-          )
-          UPDATE otp_logs
-          SET attempt_count = COALESCE(attempt_count, 0) + 1
-          WHERE id IN (SELECT id FROM latest_active)
-        `).catch(dbCatch("db"));
-        return res.status(400).json({ message: "Invalid or expired OTP" });
-      }
-
-      // Mark used
-      await rawDb.execute(rawSql`UPDATE otp_logs SET is_used=true WHERE id=${(otpRow.rows[0] as any).id}::uuid`);
-
-      // Find or create user
-      let userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
-      let user: any;
-      let isNew = false;
-
-      if (!userRes.rows.length) {
-        // Register new user
-        isNew = true;
-        const fullName = name || `User_${phone.slice(-4)}`;
-        const newUser = await rawDb.execute(rawSql`
-          INSERT INTO users (full_name, phone, user_type, is_active, wallet_balance)
-          VALUES (${fullName}, ${phoneStr}, ${userType}, true, 0)
-          RETURNING *
-        `);
-        await rawDb.execute(rawSql`UPDATE users SET referral_code=${'JAGOPRO' + phoneStr.slice(-6)} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
-        user = camelize(newUser.rows[0]);
-      } else {
-        user = camelize(userRes.rows[0]);
-        if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
-      }
-
-      // Generate secure auth token (30-day expiry)
-      const session = await issueUserSession(user.id);
-      // Store auth token in users.auth_token (NOT in fcm_token � that's for Firebase)
-
-      // If driver, get wallet info
-      let walletBalance = 0;
-      let isLocked = false;
-      if (userType === "driver") {
-        const walletR = await rawDb.execute(rawSql`SELECT wallet_balance, is_locked, is_online FROM users WHERE id=${user.id}::uuid`);
-        if (walletR.rows.length) {
-          walletBalance = parseFloat((walletR.rows[0] as any).wallet_balance || 0);
-          isLocked = (walletR.rows[0] as any).is_locked || false;
-        }
-      }
-
-      res.json({
-        success: true,
-        isNew,
-        token: session.accessToken,
-        refreshToken: session.refreshToken,
-        user: {
-          id: user.id,
-          fullName: user.fullName,
-          phone: user.phone,
-          email: user.email || null,
-          userType: user.userType,
-          profilePhoto: user.profilePhoto || null,
-          rating: parseFloat(user.rating || "5.0"),
-          isActive: user.isActive,
-          walletBalance,
-          isLocked,
-        }
-      });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-  });
+  app.post("/api/app/verify-otp", otpVerifyLimiter, verifyOtpController);
+  app.post("/auth/verify-otp", otpVerifyLimiter, verifyOtpController);
 
   // -- FIREBASE TOKEN VERIFICATION -------------------------------------------
   app.post("/api/app/verify-firebase-token", async (req, res) => {
     try {
-      const { firebaseIdToken, phone, userType = "customer" } = req.body;
+      const { firebaseIdToken, phone, userType = "customer", deviceId } = req.body;
       if (!firebaseIdToken) return res.status(400).json({ message: "Firebase ID token required" });
+      if (!String(deviceId || "").trim()) return res.status(400).json({ message: "Device ID required" });
       if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
 
       let phoneStr = "";
@@ -9053,7 +9077,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
       }
 
-      const session = await issueUserSession(user.id);
+      const session = await issueUserSession(user.id, {
+        deviceId: String(deviceId).trim(),
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
 
       let walletBalance = 0;
       let isLocked = false;
@@ -9087,8 +9115,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- PASSWORD-BASED REGISTER -----------------------------------------------
   app.post("/api/app/register", loginLimiter, async (req, res) => {
     try {
-      const { phone, password, fullName, userType = "customer", email } = req.body;
+      const { phone, password, fullName, userType = "customer", email, deviceId } = req.body;
       if (!phone || !password || !fullName) return res.status(400).json({ message: "Phone, password and name are required" });
+      if (!String(deviceId || "").trim()) return res.status(400).json({ message: "Device ID required" });
       const phoneStr = phone.toString().replace(/\D/g, "");
       const normalizedEmail = (email?.toString().trim().toLowerCase() || "") || null;
       if (!['customer', 'driver'].includes(userType)) return res.status(400).json({ message: "Invalid user type" });
@@ -9116,7 +9145,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const refCode = 'JAGOPRO' + phoneStr.slice(-6);
       await rawDb.execute(rawSql`UPDATE users SET referral_code=${refCode} WHERE phone=${phoneStr} AND user_type=${userType}`).catch(dbCatch("db"));
       const user = camelize(insertRes.rows[0]) as any;
-      const session = await issueUserSession(user.id);
+      const session = await issueUserSession(user.id, {
+        deviceId: String(deviceId).trim(),
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
       // Handle referral code if provided
       if (req.body.referralCode) {
         try {
@@ -9134,53 +9167,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // -- PASSWORD-BASED LOGIN --------------------------------------------------
-  app.post("/api/app/login-password", loginLimiter, async (req, res) => {
-    log(`Login request received for phone: ${req.body?.phone}`);
-    try {
-      const { phone, password, userType = "customer" } = req.body;
-      if (!phone || !password) return res.status(400).json({ message: "Phone and password are required" });
-      const phoneStr = phone.toString().replace(/\D/g, "");
-      const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} LIMIT 1`);
-      if (!userRes.rows.length) return res.status(404).json({ message: "No account found. Please register first." });
-      const user = camelize(userRes.rows[0]) as any;
-      if (!user.isActive) return res.status(403).json({ message: "Account deactivated. Contact support." });
-      if (!user.passwordHash) return res.status(400).json({ message: "Password not set. Please use Forgot Password to set one." });
-      const match = await verifyPassword(password, user.passwordHash);
-      if (!match) return res.status(401).json({ message: "Incorrect password. Please try again." });
-      const session = await issueUserSession(user.id);
-      const walletBalance = safeFloat(user.walletBalance, 0);
-      res.json({ success: true, token: session.accessToken, refreshToken: session.refreshToken, user: { id: user.id, fullName: user.fullName, phone: user.phone, email: user.email || null, userType: user.userType, profilePhoto: user.profilePhoto || null, rating: safeFloat(user.rating, 5.0), isActive: user.isActive, walletBalance, isLocked: user.isLocked || false } });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
-  });
+  app.post("/api/app/login-password", loginLimiter, loginController);
+  app.post("/auth/login", loginLimiter, loginController);
 
   const refreshAppSession = async (req: Request, res: Response) => {
     try {
       const refreshToken = extractBearerToken(req);
+      const deviceId = String(req.body?.deviceId || req.get("x-device-id") || "").trim();
       if (!refreshToken) {
-        return res.status(401).json({ message: "Refresh token required" });
+        return res.status(401).json({ success: false, code: "UNAUTHORIZED", message: "Refresh token required" });
+      }
+      if (!deviceId) {
+        return res.status(400).json({ success: false, code: "INVALID_INPUT", message: "Device ID required" });
+      }
+      let refreshRecord = await findRefreshToken(refreshToken);
+      if (!refreshRecord) {
+        const legacyUserR = await rawDb.execute(rawSql`
+          SELECT id, refresh_token, refresh_token_expires_at, is_active
+          FROM users
+          WHERE refresh_token=${refreshToken}
+            AND is_active=true
+            AND (refresh_token_expires_at IS NULL OR refresh_token_expires_at > NOW())
+          LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const legacyUser = legacyUserR.rows[0] as any;
+        if (!legacyUser) {
+          return res.status(401).json({ success: false, code: "UNAUTHORIZED", message: "Invalid or expired token" });
+        }
+        const session = await issueUserSession(String(legacyUser.id), {
+          deviceId,
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent") || null,
+        }, {
+          allowDeviceReset: true,
+        });
+        return res.json({
+          success: true,
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          accessTokenExpiresAt: session.accessTokenExpiresAt,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt,
+        });
+      }
+      if (!refreshRecord.is_active) {
+        return res.status(401).json({ success: false, code: "UNAUTHORIZED", message: "Invalid or expired token" });
+      }
+      if (refreshRecord.revoked) {
+        await revokeSessionsForUser(String(refreshRecord.user_id));
+        await revokeAllRefreshTokensForUser(String(refreshRecord.user_id));
+        await revokeUserAuthColumns(String(refreshRecord.user_id));
+        return res.status(401).json({ success: false, code: "TOKEN_REUSED_ATTACK", message: "Session reuse detected. Please login again." });
+      }
+      if (new Date(refreshRecord.expires_at).getTime() <= Date.now()) {
+        await revokeRefreshToken(refreshToken);
+        return res.status(401).json({ success: false, code: "UNAUTHORIZED", message: "Invalid or expired token" });
+      }
+      if (String(refreshRecord.device_id || "") !== deviceId) {
+        return res.status(403).json({ success: false, code: "DEVICE_MISMATCH", message: "Account already active on another device" });
       }
 
-      const parts = refreshToken.split(":");
-      if (parts.length < 2) {
-        return res.status(401).json({ message: "Invalid refresh token format" });
-      }
-
-      const userId = parts[0];
-      const userR = await rawDb.execute(rawSql`
-        SELECT id, is_active, user_type
-        FROM users
-        WHERE id=${userId}::uuid
-          AND refresh_token=${refreshToken}
-          AND is_active=true
-          AND (refresh_token_expires_at IS NULL OR refresh_token_expires_at > NOW())
-        LIMIT 1
-      `);
-
-      if (!userR.rows.length) {
-        return res.status(401).json({ message: "Refresh session expired. Please login again." });
-      }
-
-      const session = await issueUserSession((userR.rows[0] as any).id as string);
+      await revokeRefreshToken(refreshToken);
+      const session = await issueUserSession(String(refreshRecord.user_id), {
+        deviceId,
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
       return res.json({
         success: true,
         accessToken: session.accessToken,
@@ -9189,7 +9240,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         refreshTokenExpiresAt: session.refreshTokenExpiresAt,
       });
     } catch (e: any) {
-      return res.status(500).json({ message: safeErrMsg(e) });
+      if (e instanceof AuthApiError) {
+        return res.status(e.status).json({ success: false, code: e.code, message: e.message });
+      }
+      return res.status(500).json({ success: false, code: "SERVER_ERROR", message: "Server error" });
     }
   };
 
@@ -9309,19 +9363,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   async function authApp(req: Request, res: Response, next: NextFunction) {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) return res.status(401).json({ message: "No token provided" });
-      const parts = token.split(":");
-      if (parts.length < 2) return res.status(401).json({ message: "Invalid token format" });
-      const userId = parts[0];
-      // Validate full token against stored auth_token in DB and check expiry
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "Invalid or expired token",
+        });
+      }
       const userR = await rawDb.execute(rawSql`
-        SELECT * FROM users WHERE id=${userId}::uuid AND is_active=true AND auth_token=${token}
-          AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW()) LIMIT 1
+        SELECT u.*
+        FROM sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token=${token}
+          AND s.revoked=false
+          AND s.expires_at > NOW()
+          AND u.is_active=true
+        LIMIT 1
       `);
-      if (!userR.rows.length) return res.status(401).json({ message: "Session expired or invalid. Please login again." });
+      if (!userR.rows.length) {
+        const legacyUserR = await rawDb.execute(rawSql`
+          SELECT *
+          FROM users
+          WHERE auth_token=${token}
+            AND is_active=true
+            AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+          LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        if (!legacyUserR.rows.length) {
+          return res.status(401).json({
+            success: false,
+            code: "UNAUTHORIZED",
+            message: "Invalid or expired token",
+          });
+        }
+        (req as any).currentUser = camelize(legacyUserR.rows[0]);
+        next();
+        return;
+      }
+      await touchSession(token);
       (req as any).currentUser = camelize(userR.rows[0]);
       next();
-    } catch (e: any) { res.status(401).json({ message: "Auth failed" }); }
+    } catch (_e: any) {
+      res.status(401).json({
+        success: false,
+        code: "UNAUTHORIZED",
+        message: "Invalid or expired token",
+      });
+    }
   }
 
   // Role-specific guards � always used after authApp
@@ -14086,7 +14174,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/logout", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      await rawDb.execute(rawSql`UPDATE users SET auth_token=NULL, auth_token_expires_at=NULL, refresh_token=NULL, refresh_token_expires_at=NULL WHERE id=${user.id}::uuid`);
+      const token = extractBearerToken(req);
+      if (token) {
+        await revokeSessionByToken(token);
+      }
+      await revokeSessionsForUser(user.id);
+      await revokeAllRefreshTokensForUser(user.id);
+      await revokeUserAuthColumns(user.id);
+      res.json({ success: true, message: "Logged out successfully" });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+  app.post("/auth/logout", authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const token = extractBearerToken(req);
+      if (token) {
+        await revokeSessionByToken(token);
+      }
+      await revokeSessionsForUser(user.id);
+      await revokeAllRefreshTokensForUser(user.id);
+      await revokeUserAuthColumns(user.id);
       res.json({ success: true, message: "Logged out successfully" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

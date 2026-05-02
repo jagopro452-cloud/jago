@@ -95,6 +95,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Dashboard", icon: "bi-grid-fill", href: "/admin/dashboard" },
       { label: "System Health", icon: "bi-activity", href: "/admin/system-health" },
+      { label: "Alert Engine", icon: "bi-robot", href: "/admin/alert-engine" },
       { label: "Service Management", icon: "bi-toggles", href: "/admin/service-management" },
       { label: "Heat Map", icon: "bi-pin-map", href: "/admin/heat-map" },
       { label: "Fleet View", icon: "bi-map-fill", href: "/admin/fleet-view" },

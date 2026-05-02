@@ -73,6 +73,11 @@ export async function sendCustomSms(phone: string, text: string): Promise<boolea
     return false;
   }
 
+  if (String(process.env.AUTH_DEV_CONSOLE_SMS || "").trim().toLowerCase() === "true") {
+    console.log(`[SMS-DEV] Sending to ${normalizedPhone}: ${text}`);
+    return true;
+  }
+
   if (await sendViaTwilio(normalizedPhone, text)) {
     console.log(`[SMS] Sent via Twilio to ${normalizedPhone}`);
     return true;

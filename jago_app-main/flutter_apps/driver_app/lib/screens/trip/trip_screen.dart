@@ -1814,6 +1814,10 @@ class _TripScreenState extends State<TripScreen>
                     _buildTopBar(pickup, dest),
                     const SizedBox(height: 10),
                     _buildNavigationInstructions(),
+                    if (_trackingDelayed) ...[
+                      const SizedBox(height: 10),
+                      _buildTrackingStatusBanner(),
+                    ],
                   ],
                 ),
               ),
@@ -2023,6 +2027,42 @@ class _TripScreenState extends State<TripScreen>
                     fontSize: 14),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrackingStatusBanner() {
+    if (!_trackingDelayed) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_tethering_error_rounded, color: Color(0xFFF59E0B), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Live tracking is reconnecting. Keep the app open and GPS on.',
+              style: GoogleFonts.poppins(
+                color: const Color(0xFF9A3412),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ],
       ),
     );
