@@ -890,11 +890,6 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     driver.scoreBreakdown?.etaMinutes ??
     Math.max(1, Math.round((driver.distanceKm / 25) * 60));
 
-  // ETA from score breakdown (set by rerankDriversWithEta); fallback to distance estimate
-  const etaMinutes: number =
-    driver.scoreBreakdown?.etaMinutes ??
-    Math.max(1, Math.round((driver.distanceKm / 25) * 60));
-
   const payload = {
     tripId: session.tripId,
     ...session.tripMeta,
