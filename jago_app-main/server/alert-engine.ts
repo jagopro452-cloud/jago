@@ -1,21 +1,20 @@
 /**
- * Autonomous monitoring, alerting, and auto-action engine.
+ * Autonomous monitoring, alerting, and auto-action engine — hardened edition.
  *
- * Every 60 seconds:
- *   1. getDashboardMetrics() — parallel DB queries for all system vitals
- *   2. evaluateRules()       — compare metrics against thresholds
- *   3. fireAlerts()          — send webhook/SMS for new violations (15-min cooldown)
- *   4. executeActions()      — apply automatic corrections
- *   5. evaluateRecovery()    — reverse actions when conditions clear
+ * Every 60s: fetch metrics → evaluate rules (priority order) → fire alerts →
+ * execute actions → check recovery.
  *
- * Auto-actions:
- *   surge_increase    — bump zone surge_factor +0.3 (cap 2.0) when search queue backs up
- *   surge_restore     — reset surge_factor to 1.0 when queue clears
- *   booking_pause     — set platform_services = paused when payment failures spike
- *   booking_restore   — re-enable booking when failures drop
- *
- * Alert deduplication: same rule does not re-fire within ALERT_COOLDOWN_MS.
- * Every alert + action is written to system_logs for the admin audit trail.
+ * Guarantees:
+ *   Hysteresis       — trigger/clear use different thresholds (no oscillation)
+ *   Debounce         — N consecutive breaches required before firing
+ *   Grace period     — N consecutive clears required before restoring
+ *   Safety caps      — MAX_SURGE=2.5x, booking_pause hard-capped at 10 min
+ *   Idempotency      — 5-min action tokens prevent double-apply under retries
+ *   Priority order   — P0 (redis) > P1 (payments) > P2 (queue/rate) > P3 (OTP)
+ *   Conflict guard   — booking_pause suppresses surge (no point surging paused)
+ *   Safety toggles   — AUTO_ACTIONS_ENABLED, ENABLE_SURGE_AUTOMATION, ENABLE_BOOKING_PAUSE
+ *   Alert agg.       — batches simultaneous alerts into one ops-channel message
+ *   Audit schema     — every action logged with rule/scope/prev/new state/metrics
  */
 
 import { db as rawDb } from "./db";
@@ -23,175 +22,344 @@ import { sql as rawSql } from "drizzle-orm";
 import { getApiErrorStats } from "./metrics";
 import { sendOpsAlert } from "./observability";
 
+// ── Safety constants ──────────────────────────────────────────────────────────
+
+const MAX_SURGE_CAP         = 2.5;
+const BOOKING_PAUSE_MAX_MS  = 10 * 60 * 1000; // hard cap: auto-restore after 10 min
+const ALERT_COOLDOWN_MS     = 15 * 60 * 1000; // min gap between same alert re-fires
+const CHECK_INTERVAL_MS     = 60_000;
+const ACTION_TOKEN_WINDOW_MS = 5 * 60 * 1000; // idempotency window per action
+
+// ── Safety toggles (read each tick — changeable at runtime without restart) ───
+
+function isAutoActionsEnabled():     boolean { return process.env.AUTO_ACTIONS_ENABLED    !== "false"; }
+function isSurgeAutomationEnabled(): boolean { return process.env.ENABLE_SURGE_AUTOMATION !== "false"; }
+function isBookingPauseEnabled():    boolean { return process.env.ENABLE_BOOKING_PAUSE    !== "false"; }
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface DashboardMetrics {
   // Auth
-  otpFailLast1h: number;
-  otpSendLast1h: number;
+  otpFailLast1h:       number;
+  otpSendLast1h:       number;
   loginSuccessRatePct: number;
 
   // Rides
-  activeRides: number;
-  searchingRides: number;
-  completedToday: number;
-  cancelledToday: number;
+  activeRides:           number;
+  searchingRides:        number;
+  completedToday:        number;
+  cancelledToday:        number;
   rideCompletionRatePct: number;
+  completionRateLive:    number; // rolling 30-min window
 
   // Drivers
-  onlineDrivers: number;
+  onlineDrivers:           number;
+  driverOnlineChurnPerMin: number; // (online + offline events) / 5 min
+
+  // Dispatch quality
+  acceptRatePct:      number; // offers accepted / total offers, last 30 min
+  avgWaitToAcceptMs:  number; // ms from offer sent to driver accept
+  dispatchLatencyMs:  number; // ms from trip created to first driver offer
 
   // Payments
   pendingPayments: number;
-  failedPayments: number;
-  revenueToday: number;
+  failedPayments:  number;
+  revenueToday:    number;
 
   // System
   socketConnections: number;
-  redisHealthy: boolean;
-  apiErrorCount: number;
-  apiErrorRatePct: number;
+  redisHealthy:      boolean;
+  apiErrorCount:     number;
+  apiErrorRatePct:   number;
 
   // Fraud
   fraudFlagsToday: number;
 
   // Meta
-  generatedAt: string;
+  generatedAt:   string;
   uptimeSeconds: number;
 }
 
-// ── Alert rules ───────────────────────────────────────────────────────────────
-
 type AlertSeverity = "warning" | "critical";
-type AutoActionId = "surge_increase" | "surge_restore" | "booking_pause" | "booking_restore" | null;
+type AutoActionId  = "surge_increase" | "surge_restore" | "booking_pause" | "booking_restore" | null;
+type RulePriority  = 0 | 1 | 2 | 3;
+type ActionScope   = "global" | "per_zone";
 
-interface AlertRule {
-  id: string;
-  label: string;
-  severity: AlertSeverity;
-  check: (m: DashboardMetrics) => boolean;
-  message: (m: DashboardMetrics) => string;
-  action: AutoActionId;
-  recoveryRule?: string; // id of the rule that reverses this action
+interface Runbook {
+  cause:    string;
+  checks:   string[];
+  rollback: string;
 }
 
+interface AlertRule {
+  id:       string;
+  label:    string;
+  priority: RulePriority;   // 0 = highest — evaluated and acted on first
+  severity: AlertSeverity;
+  scope:    ActionScope;
+
+  triggerCheck: (m: DashboardMetrics) => boolean; // breach condition (higher bar)
+  clearCheck:   (m: DashboardMetrics) => boolean; // clear condition (lower bar — hysteresis)
+
+  minConsecutiveBreaches: number; // debounce: must breach this many checks in a row
+  minConsecutiveClears:   number; // grace:    must clear this many checks before restore
+
+  message:        (m: DashboardMetrics) => string;
+  action:         AutoActionId;
+  recoveryAction?: AutoActionId;
+
+  runbook: Runbook;
+}
+
+// ── Alert rules (priority-ordered) ───────────────────────────────────────────
+
 const ALERT_RULES: AlertRule[] = [
+  // ── P0: Infrastructure ────────────────────────────────────────────────────
   {
-    id: "otp_fail_high",
-    label: "OTP failures high",
-    severity: "warning",
-    check: m => m.otpFailLast1h > 10,
-    message: m => `OTP failures: ${m.otpFailLast1h} in last 1h (threshold: 10)`,
-    action: null,
-  },
-  {
-    id: "searching_rides_high",
-    label: "Searching rides backing up",
+    id: "redis_down",
+    label: "Redis unavailable",
+    priority: 0,
     severity: "critical",
-    check: m => m.searchingRides > 5,
-    message: m => `${m.searchingRides} rides searching — no drivers accepting. Surge increased.`,
-    action: "surge_increase",
-    recoveryRule: "searching_rides_clear",
+    scope: "global",
+    triggerCheck: m => !m.redisHealthy,
+    clearCheck:   m => m.redisHealthy,
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: () => "Redis is down — driver presence degraded to DB fallback. Bookings paused.",
+    action:         "booking_pause",
+    recoveryAction: "booking_restore",
+    runbook: {
+      cause:    "Redis pod crashed, OOM, or network partition",
+      checks:   ["Check Redis process/pod status", "Verify REDIS_URL env var", "Run: redis-cli ping"],
+      rollback: "Set AUTO_ACTIONS_ENABLED=false to re-enable bookings manually while investigating",
+    },
   },
-  {
-    id: "searching_rides_clear",
-    label: "Searching rides normalized",
-    severity: "warning",
-    check: m => m.searchingRides <= 2,
-    message: () => "Searching queue cleared — surge restored to normal.",
-    action: "surge_restore",
-  },
-  {
-    id: "pending_payments_high",
-    label: "Pending payments spike",
-    severity: "warning",
-    check: m => m.pendingPayments > 3,
-    message: m => `${m.pendingPayments} pending payments — investigate payment gateway.`,
-    action: null,
-  },
+
+  // ── P1: Payment integrity ─────────────────────────────────────────────────
   {
     id: "payment_failures_high",
     label: "Payment failures — booking paused",
+    priority: 1,
     severity: "critical",
-    check: m => m.failedPayments > 5,
-    message: m => `${m.failedPayments} payment failures. New bookings paused automatically.`,
-    action: "booking_pause",
-    recoveryRule: "payment_failures_clear",
+    scope: "global",
+    triggerCheck: m => m.failedPayments > 5,
+    clearCheck:   m => m.failedPayments <= 1,   // hysteresis: clear at ≤1, not ≤5
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: m => `${m.failedPayments} payment failures today. New bookings paused automatically.`,
+    action:         "booking_pause",
+    recoveryAction: "booking_restore",
+    runbook: {
+      cause:    "Razorpay gateway down, key rotation, or bank-side processing failure",
+      checks:   ["Check Razorpay status page", "Verify RAZORPAY_KEY_ID/SECRET in business_settings", "GET /api/admin/health-report for error pattern"],
+      rollback: "Set ENABLE_BOOKING_PAUSE=false for manual control, then POST /api/admin/alert-engine/test",
+    },
+  },
+
+  // ── P2: Supply/demand ─────────────────────────────────────────────────────
+  {
+    id: "searching_rides_high",
+    label: "Ride search queue backing up",
+    priority: 2,
+    severity: "critical",
+    scope: "per_zone",
+    triggerCheck: m => m.searchingRides >= 8,   // trigger at ≥8
+    clearCheck:   m => m.searchingRides <= 3,   // clear at ≤3 (gap = 5 — prevents oscillation)
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: m => `${m.searchingRides} rides searching — driver supply shortage. Surge increased.`,
+    action:         "surge_increase",
+    recoveryAction: "surge_restore",
+    runbook: {
+      cause:    "Driver supply shortage, peak demand spike, or dispatch system issue",
+      checks:   ["Check onlineDrivers in /dashboard", "Check dispatch logs for errors", "Verify socket connectivity"],
+      rollback: "Set ENABLE_SURGE_AUTOMATION=false to freeze surge manually",
+    },
   },
   {
-    id: "payment_failures_clear",
-    label: "Payment failures cleared — booking restored",
+    id: "no_online_drivers",
+    label: "Zero drivers online with active search queue",
+    priority: 2,
+    severity: "critical",
+    scope: "per_zone",
+    triggerCheck: m => m.onlineDrivers === 0 && m.searchingRides > 0,
+    clearCheck:   m => m.onlineDrivers > 2 || m.searchingRides === 0,
+    minConsecutiveBreaches: 1,  // act immediately — zero drivers is severe
+    minConsecutiveClears:   2,
+    message: m => `0 drivers online, ${m.searchingRides} rides searching. Surge raised to attract supply.`,
+    action:         "surge_increase",
+    recoveryAction: "surge_restore",
+    runbook: {
+      cause:    "Off-peak hours, mass driver app crash, or socket disconnect storm",
+      checks:   ["Check driver_locations table for recent updates", "Check socket.io connections count", "Verify FCM driver notifications are delivering"],
+      rollback: "Notify drivers via push; set ENABLE_SURGE_AUTOMATION=false if surge is not effective",
+    },
+  },
+  {
+    id: "low_accept_rate",
+    label: "Driver accept rate critically low",
+    priority: 2,
     severity: "warning",
-    check: m => m.failedPayments <= 1,
-    message: () => "Payment failures resolved — booking re-enabled.",
-    action: "booking_restore",
+    scope: "per_zone",
+    triggerCheck: m => m.acceptRatePct < 40 && m.searchingRides > 2,
+    clearCheck:   m => m.acceptRatePct >= 60 || m.searchingRides <= 1,
+    minConsecutiveBreaches: 3,  // more patience — accept rate naturally fluctuates
+    minConsecutiveClears:   3,
+    message: m => `Driver accept rate: ${m.acceptRatePct}% (threshold: 40%). Surge increased.`,
+    action:         "surge_increase",
+    recoveryAction: "surge_restore",
+    runbook: {
+      cause:    "Fare too low for zone, driver fatigue, or surge not propagated to driver app",
+      checks:   ["Check avgWaitToAcceptMs in /dashboard", "Verify zones have updated surge_factor", "Check driver app FCM notification delivery rate"],
+      rollback: "Set ENABLE_SURGE_AUTOMATION=false and adjust fare manually via admin panel",
+    },
   },
   {
     id: "api_error_rate_high",
     label: "API error rate elevated",
+    priority: 2,
     severity: "critical",
-    check: m => m.apiErrorRatePct > 2,
-    message: m => `API error rate: ${m.apiErrorRatePct}% (threshold: 2%). Check server logs.`,
+    scope: "global",
+    triggerCheck: m => m.apiErrorRatePct > 3,
+    clearCheck:   m => m.apiErrorRatePct <= 1,
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: m => `API error rate: ${m.apiErrorRatePct}% (threshold: 3%). Check server logs.`,
     action: null,
+    runbook: {
+      cause:    "DB connection pool exhausted, unhandled exception in route, or memory pressure",
+      checks:   ["Check server logs for 5xx pattern", "GET /api/admin/health-report", "Check DB connection count"],
+      rollback: "Restart server pod; set AUTO_ACTIONS_ENABLED=false as precaution",
+    },
   },
   {
-    id: "no_online_drivers",
-    label: "No drivers online with searching rides",
-    severity: "critical",
-    check: m => m.onlineDrivers === 0 && m.searchingRides > 0,
-    message: m => `0 drivers online but ${m.searchingRides} rides searching. Surge increased.`,
-    action: "surge_increase",
-  },
-  {
-    id: "redis_down",
-    label: "Redis unavailable",
+    id: "pending_payments_high",
+    label: "Pending payments spike",
+    priority: 2,
     severity: "warning",
-    check: m => !m.redisHealthy,
-    message: () => "Redis is down — driver presence cache degraded to DB fallback.",
+    scope: "global",
+    triggerCheck: m => m.pendingPayments > 5,
+    clearCheck:   m => m.pendingPayments <= 2,
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: m => `${m.pendingPayments} payments pending — likely gateway delay. Monitoring.`,
     action: null,
+    runbook: {
+      cause:    "Slow Razorpay webhook delivery or payment_retry_job backlog",
+      checks:   ["Check payment_retry_job logs", "Query: SELECT * FROM trip_requests WHERE payment_status='pending'", "Check Razorpay webhook delivery logs"],
+      rollback: "Manually resolve via /api/admin/trips/{id}/resolve-payment",
+    },
+  },
+
+  // ── P3: Auth / OTP ────────────────────────────────────────────────────────
+  {
+    id: "otp_fail_high",
+    label: "OTP failure rate elevated",
+    priority: 3,
+    severity: "warning",
+    scope: "global",
+    triggerCheck: m => m.otpFailLast1h > 15,
+    clearCheck:   m => m.otpFailLast1h <= 6,
+    minConsecutiveBreaches: 2,
+    minConsecutiveClears:   2,
+    message: m => `${m.otpFailLast1h} OTP failures in last 1h — possible provider issue or abuse.`,
+    action: null,
+    runbook: {
+      cause:    "SMS provider (Fast2SMS/2Factor) down, high user error rate, or brute-force attempt",
+      checks:   ["Check FAST2SMS_API_KEY validity", "Review OTP_RATE_LIMIT entries in system_logs", "Check correlated FRAUD_ flags"],
+      rollback: "Switch OTP provider via business_settings, or raise rate limit threshold temporarily",
+    },
   },
 ];
-
-const ALERT_COOLDOWN_MS = 15 * 60 * 1000; // 15 min between same alert
 
 // ── Alert state ───────────────────────────────────────────────────────────────
 
 interface AlertState {
-  firing: boolean;
-  lastFiredAt: number;
-  fireCount: number;
+  firing:               boolean;
+  consecutiveBreaches:  number;
+  consecutiveClears:    number;
+  lastFiredAt:          number;
+  fireCount:            number;
+  bookingPausedAt?:     number; // tracks when booking_pause applied (for hard cap)
 }
 
 const alertStates = new Map<string, AlertState>();
 
 function getState(ruleId: string): AlertState {
-  return alertStates.get(ruleId) ?? { firing: false, lastFiredAt: 0, fireCount: 0 };
+  return alertStates.get(ruleId) ?? {
+    firing: false, consecutiveBreaches: 0, consecutiveClears: 0,
+    lastFiredAt: 0, fireCount: 0,
+  };
 }
 
-// ── Dashboard metrics collector ───────────────────────────────────────────────
+// ── Idempotency tokens ────────────────────────────────────────────────────────
+
+const appliedActionTokens = new Set<string>();
+
+function makeActionToken(actionId: string): string {
+  const slot = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS);
+  return `${actionId}:${slot}`;
+}
+
+function isActionAlreadyApplied(actionId: string): boolean {
+  return appliedActionTokens.has(makeActionToken(actionId));
+}
+
+function markActionApplied(actionId: string): void {
+  appliedActionTokens.add(makeActionToken(actionId));
+  // Prune stale tokens
+  if (appliedActionTokens.size > 200) {
+    const cutoff = Math.floor(Date.now() / ACTION_TOKEN_WINDOW_MS) - 10;
+    Array.from(appliedActionTokens).forEach(t => {
+      const slot = parseInt(t.split(":")[1] ?? "0");
+      if (slot < cutoff) appliedActionTokens.delete(t);
+    });
+  }
+}
+
+// ── Conflict resolution ───────────────────────────────────────────────────────
+// Keys: actionId that should be suppressed.
+// Values: rule IDs that suppress it when firing (higher-priority rules).
+
+const SUPPRESSED_BY: Record<string, string[]> = {
+  // No point surging when bookings are already paused
+  "surge_increase": ["redis_down", "payment_failures_high"],
+};
+
+function isActionSuppressed(actionId: AutoActionId, firingRuleIds: Set<string>): boolean {
+  if (!actionId) return false;
+  const suppressors = SUPPRESSED_BY[actionId] ?? [];
+  return suppressors.some(id => firingRuleIds.has(id));
+}
+
+// ── Dashboard metrics ─────────────────────────────────────────────────────────
 
 let cachedMetrics: DashboardMetrics | null = null;
 let cacheExpiresAt = 0;
-const METRICS_CACHE_MS = 30_000; // 30s cache — fresh enough for dashboard, not hammering DB
+const METRICS_CACHE_MS = 30_000;
 
 export async function getDashboardMetrics(forceRefresh = false): Promise<DashboardMetrics> {
   if (!forceRefresh && cachedMetrics && Date.now() < cacheExpiresAt) return cachedMetrics;
 
   const apiStats = getApiErrorStats();
 
-  const [
-    rideStatsR, otpR, paymentR, fraudR, driverR, socketCountR,
-  ] = await Promise.all([
-    // Ride stats — active, searching, today completed/cancelled
+  const [rideStatsR, otpR, paymentR, fraudR, driverR, dispatchR, churnR] = await Promise.all([
+    // Ride stats — active, searching, today + 30-min rolling, dispatch latency
     rawDb.execute(rawSql`
       SELECT
         COUNT(*) FILTER (WHERE current_status IN ('accepted','driver_assigned','arrived','on_the_way')) AS active_rides,
         COUNT(*) FILTER (WHERE current_status = 'searching') AS searching_rides,
         COUNT(*) FILTER (WHERE current_status = 'completed' AND DATE(updated_at) = CURRENT_DATE) AS completed_today,
         COUNT(*) FILTER (WHERE current_status = 'cancelled'  AND DATE(updated_at) = CURRENT_DATE) AS cancelled_today,
-        COALESCE(SUM(actual_fare) FILTER (WHERE current_status = 'completed' AND DATE(updated_at) = CURRENT_DATE), 0) AS revenue_today
+        COUNT(*) FILTER (WHERE current_status = 'completed' AND updated_at > NOW() - INTERVAL '30 minutes') AS completed_30m,
+        COUNT(*) FILTER (WHERE current_status = 'cancelled' AND updated_at > NOW() - INTERVAL '30 minutes') AS cancelled_30m,
+        COALESCE(SUM(actual_fare)  FILTER (WHERE current_status = 'completed' AND DATE(updated_at) = CURRENT_DATE), 0) AS revenue_today,
+        COALESCE(AVG(EXTRACT(EPOCH FROM (accepted_at - created_at)) * 1000)
+          FILTER (WHERE accepted_at IS NOT NULL AND created_at > NOW() - INTERVAL '30 minutes'), 0) AS avg_dispatch_ms
       FROM trip_requests
     `).catch(() => ({ rows: [{}] })),
 
-    // OTP fail count last 1h (logged by per-phone rate limiter in routes.ts)
+    // OTP fail count last 1h
     rawDb.execute(rawSql`
       SELECT
         COUNT(*) FILTER (WHERE tag = 'OTP_RATE_LIMIT') AS fail_count,
@@ -200,7 +368,7 @@ export async function getDashboardMetrics(forceRefresh = false): Promise<Dashboa
       WHERE created_at > NOW() - INTERVAL '1 hour'
     `).catch(() => ({ rows: [{ fail_count: 0, send_count: 0 }] })),
 
-    // Payment stats — pending + failed
+    // Payment stats — pending + failed today
     rawDb.execute(rawSql`
       SELECT
         COUNT(*) FILTER (WHERE payment_status IN ('pending','payment_pending')) AS pending_payments,
@@ -215,45 +383,52 @@ export async function getDashboardMetrics(forceRefresh = false): Promise<Dashboa
       WHERE tag LIKE 'FRAUD_%' AND DATE(created_at) = CURRENT_DATE
     `).catch(() => ({ rows: [{ cnt: 0 }] })),
 
-    // Online drivers
+    // Online drivers (active heartbeat within 5 min)
     rawDb.execute(rawSql`
       SELECT COUNT(*) AS cnt FROM driver_locations
       WHERE is_online = true AND updated_at > NOW() - INTERVAL '5 minutes'
     `).catch(() => ({ rows: [{ cnt: 0 }] })),
 
-    // System logs error count last 1h (approximates API errors)
+    // Dispatch accept rate + avg wait (from system_logs tags logged by dispatch.ts)
+    rawDb.execute(rawSql`
+      SELECT
+        COUNT(*) FILTER (WHERE tag = 'DISPATCH_ACCEPT') AS accepted,
+        COUNT(*) FILTER (WHERE tag IN ('DISPATCH_ACCEPT','DISPATCH_REJECT','DISPATCH_TIMEOUT')) AS total_offers,
+        COALESCE(AVG((details->>'waitMs')::float) FILTER (WHERE tag = 'DISPATCH_ACCEPT'), 0) AS avg_wait_ms
+      FROM system_logs
+      WHERE created_at > NOW() - INTERVAL '30 minutes'
+    `).catch(() => ({ rows: [{ accepted: 0, total_offers: 0, avg_wait_ms: 0 }] })),
+
+    // Driver online/offline churn events in last 5 min
     rawDb.execute(rawSql`
       SELECT COUNT(*) AS cnt FROM system_logs
-      WHERE level = 'error' AND created_at > NOW() - INTERVAL '1 hour'
+      WHERE tag IN ('DRIVER_ONLINE','DRIVER_OFFLINE')
+        AND created_at > NOW() - INTERVAL '5 minutes'
     `).catch(() => ({ rows: [{ cnt: 0 }] })),
   ]);
 
-  const rides = (rideStatsR.rows[0] as any) ?? {};
-  const active = parseInt(rides.active_rides ?? "0");
-  const searching = parseInt(rides.searching_rides ?? "0");
-  const completed = parseInt(rides.completed_today ?? "0");
-  const cancelled = parseInt(rides.cancelled_today ?? "0");
-  const completionRate = (completed + cancelled) > 0
-    ? Math.round((completed / (completed + cancelled)) * 100)
-    : 100;
+  const rides    = (rideStatsR.rows[0] as any) ?? {};
+  const otp      = (otpR.rows[0] as any) ?? {};
+  const pay      = (paymentR.rows[0] as any) ?? {};
+  const fraud    = (fraudR.rows[0] as any) ?? {};
+  const drivers  = (driverR.rows[0] as any) ?? {};
+  const dispatch = (dispatchR.rows[0] as any) ?? {};
+  const churn    = (churnR.rows[0] as any) ?? {};
 
-  const otp = (otpR.rows[0] as any) ?? {};
-  const otpFail = parseInt(otp.fail_count ?? "0");
-  const otpSend = parseInt(otp.send_count ?? "0");
-  const loginSuccessRate = otpSend > 0
-    ? Math.round(((otpSend - otpFail) / otpSend) * 100)
-    : 100;
-
-  const pay = (paymentR.rows[0] as any) ?? {};
-  const fraud = (fraudR.rows[0] as any) ?? {};
-  const drivers = (driverR.rows[0] as any) ?? {};
-  const sysErrors = (socketCountR.rows[0] as any) ?? {};
+  const completed   = parseInt(rides.completed_today  ?? "0");
+  const cancelled   = parseInt(rides.cancelled_today  ?? "0");
+  const comp30m     = parseInt(rides.completed_30m    ?? "0");
+  const canc30m     = parseInt(rides.cancelled_30m    ?? "0");
+  const otpFail     = parseInt(otp.fail_count  ?? "0");
+  const otpSend     = parseInt(otp.send_count  ?? "0");
+  const accepted    = parseInt(dispatch.accepted      ?? "0");
+  const totalOffers = parseInt(dispatch.total_offers  ?? "0");
 
   let socketConnections = 0;
   try {
     const { io } = await import("./socket");
     socketConnections = io?.sockets?.sockets?.size ?? 0;
-  } catch { /* socket not initialised yet */ }
+  } catch { /* not yet initialised */ }
 
   const redisHealthy = await (async () => {
     try {
@@ -271,91 +446,203 @@ export async function getDashboardMetrics(forceRefresh = false): Promise<Dashboa
   })();
 
   const metrics: DashboardMetrics = {
-    otpFailLast1h: otpFail,
-    otpSendLast1h: otpSend,
-    loginSuccessRatePct: loginSuccessRate,
+    otpFailLast1h:       otpFail,
+    otpSendLast1h:       otpSend,
+    loginSuccessRatePct: otpSend > 0 ? Math.round(((otpSend - otpFail) / otpSend) * 100) : 100,
 
-    activeRides: active,
-    searchingRides: searching,
-    completedToday: completed,
-    cancelledToday: cancelled,
-    rideCompletionRatePct: completionRate,
+    activeRides:           parseInt(rides.active_rides    ?? "0"),
+    searchingRides:        parseInt(rides.searching_rides ?? "0"),
+    completedToday:        completed,
+    cancelledToday:        cancelled,
+    rideCompletionRatePct: (completed + cancelled) > 0 ? Math.round(completed / (completed + cancelled) * 100) : 100,
+    completionRateLive:    (comp30m + canc30m) > 0 ? Math.round(comp30m / (comp30m + canc30m) * 100) : 100,
 
-    onlineDrivers: parseInt(drivers.cnt ?? "0"),
+    onlineDrivers:           parseInt(drivers.cnt ?? "0"),
+    driverOnlineChurnPerMin: Math.round(parseInt(churn.cnt ?? "0") / 5),
+
+    acceptRatePct:     totalOffers > 0 ? Math.round((accepted / totalOffers) * 100) : 100,
+    avgWaitToAcceptMs: Math.round(parseFloat(dispatch.avg_wait_ms ?? "0")),
+    dispatchLatencyMs: Math.round(parseFloat(rides.avg_dispatch_ms ?? "0")),
 
     pendingPayments: parseInt(pay.pending_payments ?? "0"),
-    failedPayments: parseInt(pay.failed_payments ?? "0"),
-    revenueToday: parseFloat(rides.revenue_today ?? "0"),
+    failedPayments:  parseInt(pay.failed_payments  ?? "0"),
+    revenueToday:    parseFloat(rides.revenue_today ?? "0"),
 
     socketConnections,
     redisHealthy,
-    apiErrorCount: apiStats.errorCount + parseInt(sysErrors.cnt ?? "0"),
+    apiErrorCount:   apiStats.errorCount,
     apiErrorRatePct: apiStats.errorRatePct,
 
     fraudFlagsToday: parseInt(fraud.cnt ?? "0"),
 
-    generatedAt: new Date().toISOString(),
+    generatedAt:   new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
   };
 
-  cachedMetrics = metrics;
-  cacheExpiresAt = Date.now() + METRICS_CACHE_MS;
+  cachedMetrics   = metrics;
+  cacheExpiresAt  = Date.now() + METRICS_CACHE_MS;
   return metrics;
 }
 
-// ── Auto-actions ──────────────────────────────────────────────────────────────
+// ── Audit log helper ──────────────────────────────────────────────────────────
 
-async function executeAction(actionId: AutoActionId, metrics: DashboardMetrics): Promise<void> {
+interface AuditParams {
+  tag:            string;
+  message:        string;
+  rule?:          string;
+  scope?:         string;
+  action?:        string;
+  previousState?: string;
+  newState?:      string;
+  actionId?:      string;
+  metrics?:       Partial<DashboardMetrics>;
+}
+
+function logAudit(p: AuditParams): void {
+  rawDb.execute(rawSql`
+    INSERT INTO system_logs (level, tag, message, details)
+    VALUES ('info', ${p.tag}, ${p.message}, ${JSON.stringify({
+      rule: p.rule, scope: p.scope, action: p.action,
+      previousState: p.previousState, newState: p.newState,
+      actionId: p.actionId, triggeredAt: new Date().toISOString(),
+      metrics: p.metrics,
+    })}::jsonb)
+  `).catch(() => { });
+}
+
+// ── Auto-actions (safety-capped + idempotent) ─────────────────────────────────
+
+async function executeAction(
+  actionId: AutoActionId,
+  rule: AlertRule,
+  metrics: DashboardMetrics,
+): Promise<void> {
   if (!actionId) return;
+
+  if (!isAutoActionsEnabled()) {
+    console.log(`[ALERT-ENGINE] AUTO_ACTIONS_ENABLED=false — skipping ${actionId}`);
+    return;
+  }
+
+  if (isActionAlreadyApplied(actionId)) {
+    console.log(`[ALERT-ENGINE] ${actionId} already applied in this 5-min window — idempotent skip`);
+    return;
+  }
+
+  const snap = {
+    searchingRides: metrics.searchingRides, onlineDrivers: metrics.onlineDrivers,
+    failedPayments: metrics.failedPayments, acceptRatePct: metrics.acceptRatePct,
+    apiErrorRatePct: metrics.apiErrorRatePct,
+  };
+  const token = makeActionToken(actionId);
 
   try {
     switch (actionId) {
-      case "surge_increase":
+      case "surge_increase": {
+        if (!isSurgeAutomationEnabled()) {
+          console.log("[ALERT-ENGINE] ENABLE_SURGE_AUTOMATION=false — skipping surge_increase");
+          return;
+        }
+        const beforeR = await rawDb.execute(rawSql`
+          SELECT COALESCE(AVG(surge_factor), 1.0) AS avg FROM zones WHERE is_active = true
+        `).catch(() => ({ rows: [{ avg: 1.0 }] }));
+        const prevAvg = parseFloat((beforeR.rows[0] as any)?.avg ?? "1.0").toFixed(1);
+
         await rawDb.execute(rawSql`
           UPDATE zones
-          SET surge_factor = LEAST(2.0, COALESCE(surge_factor, 1.0) + 0.3)
-          WHERE is_active = true AND surge_factor < 2.0
+          SET surge_factor = LEAST(${MAX_SURGE_CAP}, COALESCE(surge_factor, 1.0) + 0.3)
+          WHERE is_active = true AND surge_factor < ${MAX_SURGE_CAP}
         `);
-        await logEngineEvent("AUTO_ACTION", `surge_increase applied — searchingRides=${metrics.searchingRides}`);
-        break;
 
-      case "surge_restore":
+        markActionApplied(actionId);
+        logAudit({
+          tag: "AUTO_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
+          previousState: `${prevAvg}x`, newState: `+0.3x (cap ${MAX_SURGE_CAP}x)`,
+          actionId: token, metrics: snap,
+          message: `surge_increase — searching=${metrics.searchingRides}, acceptRate=${metrics.acceptRatePct}%`,
+        });
+        break;
+      }
+
+      case "surge_restore": {
+        if (!isSurgeAutomationEnabled()) return;
         await rawDb.execute(rawSql`
           UPDATE zones SET surge_factor = 1.0 WHERE is_active = true AND surge_factor > 1.0
         `);
-        await logEngineEvent("AUTO_ACTION", "surge_restore — zones reset to 1.0");
+        markActionApplied(actionId);
+        logAudit({
+          tag: "AUTO_ACTION", rule: rule.id, scope: rule.scope, action: actionId,
+          previousState: "elevated", newState: "1.0x", actionId: token, metrics: snap,
+          message: `surge_restore — searching=${metrics.searchingRides}`,
+        });
         break;
+      }
 
-      case "booking_pause":
+      case "booking_pause": {
+        if (!isBookingPauseEnabled()) {
+          console.log("[ALERT-ENGINE] ENABLE_BOOKING_PAUSE=false — skipping booking_pause");
+          return;
+        }
         await rawDb.execute(rawSql`
           UPDATE platform_services
           SET service_status = 'paused'
           WHERE service_key IN ('bike_ride','auto_ride','cab_ride','parcel')
             AND service_status = 'active'
         `).catch(() => { });
-        await logEngineEvent("AUTO_ACTION", `booking_pause — failedPayments=${metrics.failedPayments}`);
-        break;
 
-      case "booking_restore":
+        // Record pause timestamp for hard-cap enforcement
+        const s = getState(rule.id);
+        alertStates.set(rule.id, { ...s, bookingPausedAt: Date.now() });
+
+        markActionApplied(actionId);
+        logAudit({
+          tag: "AUTO_ACTION", rule: rule.id, scope: "global", action: actionId,
+          previousState: "active", newState: "paused",
+          actionId: token, metrics: snap,
+          message: `booking_pause — rule=${rule.id}, hardCapMs=${BOOKING_PAUSE_MAX_MS}`,
+        });
+        break;
+      }
+
+      case "booking_restore": {
         await rawDb.execute(rawSql`
           UPDATE platform_services
           SET service_status = 'active'
           WHERE service_key IN ('bike_ride','auto_ride','cab_ride','parcel')
             AND service_status = 'paused'
         `).catch(() => { });
-        await logEngineEvent("AUTO_ACTION", "booking_restore — payment failures cleared");
+
+        const s = getState(rule.id);
+        alertStates.set(rule.id, { ...s, bookingPausedAt: undefined });
+
+        markActionApplied(actionId);
+        logAudit({
+          tag: "AUTO_ACTION", rule: rule.id, scope: "global", action: actionId,
+          previousState: "paused", newState: "active", actionId: token, metrics: snap,
+          message: `booking_restore — rule=${rule.id}`,
+        });
         break;
+      }
     }
   } catch (e: any) {
     console.error(`[ALERT-ENGINE] Action ${actionId} failed:`, e.message);
   }
 }
 
-async function logEngineEvent(tag: string, message: string, details?: object): Promise<void> {
-  rawDb.execute(rawSql`
-    INSERT INTO system_logs (level, tag, message, details)
-    VALUES ('info', ${tag}, ${message}, ${JSON.stringify(details ?? {})}::jsonb)
-  `).catch(() => { });
+// ── Hard cap enforcement (booking pause timeout) ──────────────────────────────
+
+async function enforceHardCaps(metrics: DashboardMetrics): Promise<void> {
+  for (const rule of ALERT_RULES) {
+    const state = getState(rule.id);
+    if (state.bookingPausedAt && Date.now() - state.bookingPausedAt > BOOKING_PAUSE_MAX_MS) {
+      console.log(`[ALERT-ENGINE] ⏰ Hard cap hit (${BOOKING_PAUSE_MAX_MS / 60000}min) — force-restoring bookings for rule: ${rule.id}`);
+      await executeAction("booking_restore", rule, metrics);
+      sendOpsAlert({
+        level: "error", source: "alert-engine",
+        message: `booking_pause hard cap (${BOOKING_PAUSE_MAX_MS / 60000}min) reached — bookings auto-restored. Rule: ${rule.label}`,
+      }).catch(() => { });
+    }
+  }
 }
 
 // ── Alert check cycle ─────────────────────────────────────────────────────────
@@ -363,138 +650,209 @@ async function logEngineEvent(tag: string, message: string, details?: object): P
 async function runAlertCheck(): Promise<void> {
   let metrics: DashboardMetrics;
   try {
-    metrics = await getDashboardMetrics(true); // force fresh on each engine tick
+    metrics = await getDashboardMetrics(true);
   } catch (e: any) {
     console.error("[ALERT-ENGINE] metrics fetch failed:", e.message);
     return;
   }
 
-  for (const rule of ALERT_RULES) {
-    const fires = rule.check(metrics);
-    const state = getState(rule.id);
-    const now = Date.now();
+  // Hard cap check first — safety before anything else
+  await enforceHardCaps(metrics);
 
-    if (fires) {
-      const cooldownOk = now - state.lastFiredAt > ALERT_COOLDOWN_MS;
+  // Rules sorted by priority (P0 first) — higher-priority rules run and fire first
+  const sortedRules = [...ALERT_RULES].sort((a, b) => a.priority - b.priority);
 
-      if (!state.firing || cooldownOk) {
-        // New fire or re-fire after cooldown
-        alertStates.set(rule.id, { firing: true, lastFiredAt: now, fireCount: state.fireCount + 1 });
+  // Snapshot of currently-firing rules (used for conflict suppression)
+  const currentlyFiring = new Set<string>(
+    ALERT_RULES.filter(r => getState(r.id).firing).map(r => r.id)
+  );
 
+  const nowMs = Date.now();
+  const newlyFiring: { rule: AlertRule; msg: string }[] = [];
+
+  for (const rule of sortedRules) {
+    const state    = getState(rule.id);
+    const breaching = rule.triggerCheck(metrics);
+    const clearing  = rule.clearCheck(metrics);
+
+    if (breaching) {
+      const newBreaches = state.consecutiveBreaches + 1;
+      alertStates.set(rule.id, { ...state, consecutiveBreaches: newBreaches, consecutiveClears: 0 });
+
+      const shouldFire = newBreaches >= rule.minConsecutiveBreaches;
+      const cooldownOk = nowMs - state.lastFiredAt > ALERT_COOLDOWN_MS;
+
+      if (shouldFire && (!state.firing || cooldownOk)) {
         const msg = rule.message(metrics);
-        console.log(`[ALERT-ENGINE] 🔴 ${rule.severity.toUpperCase()} — ${rule.label}: ${msg}`);
+        alertStates.set(rule.id, {
+          ...getState(rule.id),
+          firing: true,
+          lastFiredAt: nowMs,
+          fireCount: state.fireCount + 1,
+        });
+        currentlyFiring.add(rule.id);
 
-        // Send external alert (non-blocking)
-        sendOpsAlert({ level: rule.severity === "critical" ? "critical" : "error", source: "alert-engine", message: msg }).catch(() => { });
+        console.log(`[ALERT-ENGINE] P${rule.priority} ${rule.severity.toUpperCase()} — ${rule.label}`);
+        console.log(`  ${msg}`);
+        console.log(`  Cause: ${rule.runbook.cause}`);
+        newlyFiring.push({ rule, msg });
 
-        // Log to system_logs
-        await logEngineEvent(`ALERT_${rule.severity.toUpperCase()}`, msg, {
-          ruleId: rule.id, metrics: {
-            searchingRides: metrics.searchingRides, otpFailLast1h: metrics.otpFailLast1h,
-            pendingPayments: metrics.pendingPayments, apiErrorRatePct: metrics.apiErrorRatePct,
-          }
+        logAudit({
+          tag: `ALERT_${rule.severity.toUpperCase()}`,
+          rule: rule.id, scope: rule.scope, message: msg,
+          metrics: {
+            searchingRides: metrics.searchingRides, onlineDrivers: metrics.onlineDrivers,
+            failedPayments: metrics.failedPayments, apiErrorRatePct: metrics.apiErrorRatePct,
+            acceptRatePct: metrics.acceptRatePct, otpFailLast1h: metrics.otpFailLast1h,
+          },
         });
 
-        // Execute auto-action
         if (rule.action) {
-          await executeAction(rule.action, metrics);
+          if (isActionSuppressed(rule.action, currentlyFiring)) {
+            console.log(`[ALERT-ENGINE] ${rule.action} suppressed — higher-priority booking_pause already active`);
+          } else {
+            await executeAction(rule.action, rule, metrics);
+          }
         }
       }
     } else {
-      // Condition cleared
-      if (state.firing) {
-        alertStates.set(rule.id, { ...state, firing: false });
-        console.log(`[ALERT-ENGINE] ✅ RESOLVED — ${rule.label}`);
-        await logEngineEvent("ALERT_RESOLVED", `${rule.label} resolved`, { ruleId: rule.id });
+      // Condition not breaching — accumulate clears toward grace period
+      const newClears = clearing ? state.consecutiveClears + 1 : 0;
+      alertStates.set(rule.id, { ...state, consecutiveBreaches: 0, consecutiveClears: newClears });
+
+      if (state.firing && newClears >= rule.minConsecutiveClears) {
+        alertStates.set(rule.id, { ...getState(rule.id), firing: false, consecutiveClears: 0 });
+        currentlyFiring.delete(rule.id);
+
+        console.log(`[ALERT-ENGINE] ✅ P${rule.priority} RESOLVED (${rule.minConsecutiveClears} clear checks) — ${rule.label}`);
+
+        logAudit({
+          tag: "ALERT_RESOLVED", rule: rule.id, scope: rule.scope,
+          message: `${rule.label} resolved after ${rule.minConsecutiveClears} consecutive clear checks`,
+        });
+
+        if (rule.recoveryAction) {
+          await executeAction(rule.recoveryAction, rule, metrics);
+        }
       }
     }
+  }
+
+  // Alert aggregation — single ops-channel message regardless of how many fire
+  if (newlyFiring.length === 1) {
+    const { rule, msg } = newlyFiring[0];
+    const body = [
+      `[P${rule.priority}/${rule.severity}] ${msg}`,
+      `Cause: ${rule.runbook.cause}`,
+      `Checks: ${rule.runbook.checks.join(" | ")}`,
+      `Rollback: ${rule.runbook.rollback}`,
+    ].join("\n");
+    sendOpsAlert({ level: rule.severity === "critical" ? "critical" : "error", source: "alert-engine", message: body }).catch(() => { });
+  } else if (newlyFiring.length > 1) {
+    const lines = newlyFiring.map(({ rule, msg }) => `  [P${rule.priority}] ${msg}`).join("\n");
+    sendOpsAlert({
+      level: "critical", source: "alert-engine",
+      message: `${newlyFiring.length} alerts firing simultaneously:\n${lines}`,
+    }).catch(() => { });
   }
 }
 
 // ── Engine lifecycle ──────────────────────────────────────────────────────────
 
-const CHECK_INTERVAL_MS = 60_000; // every 60 seconds
 let engineInterval: ReturnType<typeof setInterval> | null = null;
 let engineStartedAt = 0;
 
 export function startAlertEngine(): void {
   if (engineInterval) return;
   engineStartedAt = Date.now();
-  // First check after 30s (let server finish bootstrapping)
+  // Delay first check 30s — let server finish bootstrapping
   setTimeout(() => {
     runAlertCheck().catch(e => console.error("[ALERT-ENGINE] initial check error:", e.message));
     engineInterval = setInterval(() => {
       runAlertCheck().catch(e => console.error("[ALERT-ENGINE] check error:", e.message));
     }, CHECK_INTERVAL_MS);
   }, 30_000);
-  console.log("[ALERT-ENGINE] Started — checking every 60s");
+  console.log("[ALERT-ENGINE] Started — 60s interval, hysteresis + debounce + grace period active");
 }
 
 export function getAlertEngineStatus(): {
-  running: boolean;
-  uptimeMs: number;
-  activeAlerts: { ruleId: string; label: string; severity: AlertSeverity; since: number }[];
-  allRules: { id: string; label: string; severity: AlertSeverity; firing: boolean }[];
+  running:               boolean;
+  uptimeMs:              number;
+  autoActionsEnabled:    boolean;
+  surgeAutomationEnabled: boolean;
+  bookingPauseEnabled:   boolean;
+  activeAlerts: {
+    ruleId: string; label: string; priority: RulePriority;
+    severity: AlertSeverity; since: number; fireCount: number; scope: ActionScope;
+  }[];
+  allRules: {
+    id: string; label: string; priority: RulePriority; severity: AlertSeverity;
+    firing: boolean; consecutiveBreaches: number; consecutiveClears: number; scope: ActionScope;
+    runbook: Runbook;
+  }[];
 } {
-  const activeAlerts = ALERT_RULES
-    .filter(r => getState(r.id).firing)
-    .map(r => ({
-      ruleId: r.id,
-      label: r.label,
-      severity: r.severity,
-      since: getState(r.id).lastFiredAt,
-    }));
-
   return {
-    running: engineInterval !== null,
-    uptimeMs: engineStartedAt ? Date.now() - engineStartedAt : 0,
-    activeAlerts,
-    allRules: ALERT_RULES.map(r => ({
-      id: r.id,
-      label: r.label,
-      severity: r.severity,
-      firing: getState(r.id).firing,
-    })),
+    running:               engineInterval !== null,
+    uptimeMs:              engineStartedAt ? Date.now() - engineStartedAt : 0,
+    autoActionsEnabled:    isAutoActionsEnabled(),
+    surgeAutomationEnabled: isSurgeAutomationEnabled(),
+    bookingPauseEnabled:   isBookingPauseEnabled(),
+    activeAlerts: ALERT_RULES.filter(r => getState(r.id).firing).map(r => {
+      const s = getState(r.id);
+      return { ruleId: r.id, label: r.label, priority: r.priority, severity: r.severity,
+        since: s.lastFiredAt, fireCount: s.fireCount, scope: r.scope };
+    }),
+    allRules: ALERT_RULES.map(r => {
+      const s = getState(r.id);
+      return {
+        id: r.id, label: r.label, priority: r.priority, severity: r.severity,
+        firing: s.firing, consecutiveBreaches: s.consecutiveBreaches,
+        consecutiveClears: s.consecutiveClears, scope: r.scope, runbook: r.runbook,
+      };
+    }),
   };
 }
 
 // ── Daily health report ───────────────────────────────────────────────────────
 
 export interface DailyHealthReport {
-  date: string;
-  totalRides: number;
-  completedRides: number;
-  cancelledRides: number;
-  completionRatePct: number;
-  revenueTotal: number;
-  avgFare: number;
-  fraudFlagsTotal: number;
-  topFraudTypes: { type: string; count: number }[];
-  otpFailures: number;
-  apiErrors: number;
-  buildApprovals: number;
-  buildRejections: number;
-  peakOnlineDrivers: number;
-  generatedAt: string;
+  date:                  string;
+  totalRides:            number;
+  completedRides:        number;
+  cancelledRides:        number;
+  completionRatePct:     number;
+  revenueTotal:          number;
+  avgFare:               number;
+  fraudFlagsTotal:       number;
+  topFraudTypes:         { type: string; count: number }[];
+  otpFailures:           number;
+  apiErrors:             number;
+  buildApprovals:        number;
+  buildRejections:       number;
+  avgDispatchLatencyMs:  number;
+  autoActionsExecuted:   number;
+  peakOnlineDrivers:     number; // requires time-series table — 0 until tracked
+  generatedAt:           string;
 }
 
 export async function getDailyHealthReport(dateStr?: string): Promise<DailyHealthReport> {
-  const targetDate = dateStr ?? new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const targetDate = dateStr ?? new Date().toISOString().slice(0, 10);
 
-  const [ridesR, fraudR, logsR, qaR] = await Promise.all([
+  const [ridesR, fraudR, logsR, qaR, actionsR] = await Promise.all([
     rawDb.execute(rawSql`
       SELECT
         COUNT(*) AS total_rides,
         COUNT(*) FILTER (WHERE current_status = 'completed') AS completed,
         COUNT(*) FILTER (WHERE current_status = 'cancelled')  AS cancelled,
         COALESCE(SUM(actual_fare) FILTER (WHERE current_status = 'completed'), 0) AS revenue,
-        COALESCE(AVG(actual_fare) FILTER (WHERE current_status = 'completed'), 0) AS avg_fare
+        COALESCE(AVG(actual_fare) FILTER (WHERE current_status = 'completed'), 0) AS avg_fare,
+        COALESCE(AVG(EXTRACT(EPOCH FROM (accepted_at - created_at)) * 1000)
+          FILTER (WHERE accepted_at IS NOT NULL), 0) AS avg_dispatch_ms
       FROM trip_requests
       WHERE DATE(created_at) = ${targetDate}::date
     `),
     rawDb.execute(rawSql`
-      SELECT tag, COUNT(*) AS cnt
-      FROM system_logs
+      SELECT tag, COUNT(*) AS cnt FROM system_logs
       WHERE tag LIKE 'FRAUD_%' AND DATE(created_at) = ${targetDate}::date
       GROUP BY tag ORDER BY cnt DESC
     `),
@@ -512,61 +870,69 @@ export async function getDailyHealthReport(dateStr?: string): Promise<DailyHealt
       FROM system_logs
       WHERE DATE(created_at) = ${targetDate}::date
     `),
+    rawDb.execute(rawSql`
+      SELECT COUNT(*) AS cnt FROM system_logs
+      WHERE tag = 'AUTO_ACTION' AND DATE(created_at) = ${targetDate}::date
+    `),
   ]);
 
-  const rides = (ridesR.rows[0] as any) ?? {};
-  const total = parseInt(rides.total_rides ?? "0");
+  const rides   = (ridesR.rows[0] as any) ?? {};
+  const logs    = (logsR.rows[0] as any) ?? {};
+  const qa      = (qaR.rows[0] as any) ?? {};
+  const actions = (actionsR.rows[0] as any) ?? {};
   const completed = parseInt(rides.completed ?? "0");
   const cancelled = parseInt(rides.cancelled ?? "0");
-  const logs = (logsR.rows[0] as any) ?? {};
-  const qa = (qaR.rows[0] as any) ?? {};
   const fraudTotal = (fraudR.rows as any[]).reduce((s, r) => s + parseInt(r.cnt), 0);
 
   return {
-    date: targetDate,
-    totalRides: total,
-    completedRides: completed,
-    cancelledRides: cancelled,
-    completionRatePct: (completed + cancelled) > 0 ? Math.round(completed / (completed + cancelled) * 100) : 100,
-    revenueTotal: Math.round(parseFloat(rides.revenue ?? "0")),
-    avgFare: Math.round(parseFloat(rides.avg_fare ?? "0")),
-    fraudFlagsTotal: fraudTotal,
-    topFraudTypes: (fraudR.rows as any[]).map(r => ({ type: r.tag, count: parseInt(r.cnt) })),
-    otpFailures: parseInt(logs.otp_fails ?? "0"),
-    apiErrors: parseInt(logs.api_errors ?? "0"),
-    buildApprovals: parseInt(qa.approvals ?? "0"),
-    buildRejections: parseInt(qa.rejections ?? "0"),
-    peakOnlineDrivers: 0, // would need time-series table for accurate peak; 0 = not tracked yet
-    generatedAt: new Date().toISOString(),
+    date:                 targetDate,
+    totalRides:           parseInt(rides.total_rides ?? "0"),
+    completedRides:       completed,
+    cancelledRides:       cancelled,
+    completionRatePct:    (completed + cancelled) > 0 ? Math.round(completed / (completed + cancelled) * 100) : 100,
+    revenueTotal:         Math.round(parseFloat(rides.revenue ?? "0")),
+    avgFare:              Math.round(parseFloat(rides.avg_fare ?? "0")),
+    fraudFlagsTotal:      fraudTotal,
+    topFraudTypes:        (fraudR.rows as any[]).map(r => ({ type: r.tag, count: parseInt(r.cnt) })),
+    otpFailures:          parseInt(logs.otp_fails   ?? "0"),
+    apiErrors:            parseInt(logs.api_errors  ?? "0"),
+    buildApprovals:       parseInt(qa.approvals     ?? "0"),
+    buildRejections:      parseInt(qa.rejections    ?? "0"),
+    avgDispatchLatencyMs: Math.round(parseFloat(rides.avg_dispatch_ms ?? "0")),
+    autoActionsExecuted:  parseInt(actions.cnt      ?? "0"),
+    peakOnlineDrivers:    0,
+    generatedAt:          new Date().toISOString(),
   };
 }
 
-// Schedule daily report at 23:30 — logs to system_logs and fires alert channel
+// ── Daily report scheduler (23:30 every night) ────────────────────────────────
+
 function scheduleDailyReport(): void {
-  const now = new Date();
+  const now    = new Date();
   const target = new Date(now);
   target.setHours(23, 30, 0, 0);
   if (target <= now) target.setDate(target.getDate() + 1);
-  const msUntil = target.getTime() - now.getTime();
 
   setTimeout(async () => {
     try {
-      const report = await getDailyHealthReport();
+      const report  = await getDailyHealthReport();
       const summary =
-        `📊 Daily Report ${report.date}: ` +
+        `Daily Report ${report.date}: ` +
         `${report.totalRides} rides | ${report.completedRides} completed (${report.completionRatePct}%) | ` +
         `₹${report.revenueTotal} revenue | ${report.fraudFlagsTotal} fraud flags | ` +
-        `${report.apiErrors} API errors`;
+        `${report.autoActionsExecuted} auto-actions | ${report.apiErrors} API errors`;
 
       sendOpsAlert({ level: "error", source: "daily-report", message: summary }).catch(() => { });
-      await logEngineEvent("DAILY_REPORT", summary, report as unknown as object);
+      rawDb.execute(rawSql`
+        INSERT INTO system_logs (level, tag, message, details)
+        VALUES ('info', 'DAILY_REPORT', ${summary}, ${JSON.stringify(report)}::jsonb)
+      `).catch(() => { });
       console.log(`[ALERT-ENGINE] ${summary}`);
     } catch (e: any) {
       console.error("[ALERT-ENGINE] daily report error:", e.message);
     }
     scheduleDailyReport(); // reschedule for tomorrow
-  }, msUntil);
+  }, target.getTime() - now.getTime());
 }
 
-// Start daily report scheduler when module loads
 scheduleDailyReport();
