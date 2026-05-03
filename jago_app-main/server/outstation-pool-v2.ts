@@ -493,6 +493,7 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
         pickupLat, pickupLng, dropLat, dropLng,
         pickupAddress, dropAddress,
         paymentMethod = "cash",
+        includeInsurance = true,  // customer opts in/out of insurance (₹2 goes to platform)
       } = req.body;
 
       if (!rideId) return res.status(400).json({ message: "rideId required" });
@@ -560,8 +561,26 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
         );
         const pickupOrder = parseInt(existingOrders.rows[0].cnt) + 1;
 
-        // Insert booking
-        await txClient.query(
+        // Revenue breakdown preview (commission + GST + optional insurance)
+        let revenuePreview: any = null;
+        try {
+          revenuePreview = await calculateRevenueBreakdown(
+            totalFare, "outstation_pool", ride.driver_id,
+          );
+          // If customer opts out of insurance, remove it from the preview only
+          // (actual settlement at drop time will respect this flag)
+          if (!includeInsurance && revenuePreview) {
+            revenuePreview = {
+              ...revenuePreview,
+              insurance: 0,
+              total: revenuePreview.total - revenuePreview.insurance,
+              driverEarnings: revenuePreview.driverEarnings + revenuePreview.insurance,
+            };
+          }
+        } catch { /* non-blocking */ }
+
+        // Insert booking (store insurance_opted for settlement)
+        const bookR = await txClient.query(
           `INSERT INTO outstation_pool_bookings
             (ride_id, customer_id, seats_booked, total_fare, fare_per_seat, segment_km,
              from_city, to_city, pickup_lat, pickup_lng, drop_lat, drop_lng,
@@ -576,6 +595,7 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
             paymentMethod, pickupOrder,
           ],
         );
+        const bookingId = bookR.rows[0]?.id;
 
         // Decrement available seats
         await txClient.query(
@@ -588,6 +608,7 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
         // Notify driver about new booking
         io.to(`user:${ride.driver_id}`).emit("outstation_pool:new_booking", {
           rideId,
+          bookingId,
           passengerName: customer.fullName || "Passenger",
           seatsBooked: seatsN,
           pickupAddress: pickupAddress || `${pLat.toFixed(4)},${pLng.toFixed(4)}`,
@@ -596,24 +617,33 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
           segmentKm: Math.round(segmentKm * 10) / 10,
         });
 
+        // Build clear fare breakdown for customer
+        const fareBreakdown: any = {
+          segmentKm: Math.round(segmentKm * 10) / 10,
+          pricePerKmPerSeat: pkmps,
+          seatsBooked: seatsN,
+          farePerSeat,
+          subtotal: totalFare,
+          // Platform deductions (from driver's share — customer pays totalFare only)
+          platformCommission: revenuePreview?.commission ?? null,
+          commissionPct: revenuePreview?.commissionPct ?? null,
+          gst: revenuePreview?.gst ?? null,
+          insurance: includeInsurance ? (revenuePreview?.insurance ?? null) : 0,
+          insuranceIncluded: !!includeInsurance,
+          totalPlatformCut: revenuePreview?.total ?? null,
+          driverEarnings: revenuePreview?.driverEarnings ?? null,
+          totalFare,
+          note: `${Math.round(segmentKm)}km × ₹${pkmps}/km × ${seatsN} seat${seatsN > 1 ? 's' : ''} = ₹${totalFare}`,
+        };
+
         res.json({
           success: true,
+          bookingId,
           rideId,
           seatsBooked: seatsN,
-          segmentKm: Math.round(segmentKm * 10) / 10,
           farePerSeat,
           totalFare,
-          fareBreakdown: {
-            segmentKm: Math.round(segmentKm * 10) / 10,
-            pricePerKmPerSeat: pkmps,
-            seatsBooked: seatsN,
-            farePerSeat,
-            totalFare,
-            note: `${Math.round(segmentKm)}km × ₹${pkmps}/km × ${seatsN} seat${seatsN > 1 ? 's' : ''} = ₹${totalFare}`,
-          },
-          driver: {
-            name: null, // fetched via status endpoint
-          },
+          fareBreakdown,
           message: "Booking confirmed! Driver will pick you up at your location.",
         });
       } catch (e) {
