@@ -33,6 +33,22 @@ flutter_apps/driver_app/.flutter-plugins-dependencies
 
 # Logs
 build_output.log
+check2.txt
+check_output.json
+check_output.txt
+db_push_output.txt
+dev_out.txt
+dev_out2.txt
+dev_output.txt
+server_log.txt
+smoke_output.txt
+test_output.txt
+test_output8.txt
+server/apps_output.txt
+server/output.txt
+server/ip.txt
+server/ips.txt
+server/ips_search.txt
 
 # Environment
 .env

@@ -10,6 +10,7 @@ import { createServer } from "http";
 import { setupSocket } from "./socket";
 import { parseEnv, validateProductionReadiness } from "./config/env";
 import { makeErrorId, sendAlert } from "./observability";
+import { noteRedisDegraded, noteRedisHealthy, recordApiRequest } from "./ops-state";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db as drizzleDb } from "./db";
 import path from "path";
@@ -108,6 +109,7 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
+    recordApiRequest(req.method, path, res.statusCode, duration);
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
@@ -250,20 +252,33 @@ app.use((req, res, next) => {
       const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
       const pubClient = new IORedis(REDIS_URL, { lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: 0, retryStrategy: () => null });
       const subClient = pubClient.duplicate();
-      // Prevent unhandled error events from crashing / spamming logs
-      pubClient.on("error", () => { });
-      subClient.on("error", () => { });
+      const onRedisError = (source: string) => (error: any) => {
+        const message = error?.message || String(error);
+        noteRedisDegraded(message, "memory");
+        log(`[Socket.IO] Redis ${source} error, using in-memory adapter: ${message}`);
+      };
+      pubClient.on("error", onRedisError("pub"));
+      subClient.on("error", onRedisError("sub"));
       const { io: socketIo } = await import("./socket");
       Promise.all([
         new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
         new Promise<void>((res, rej) => { subClient.once("ready", res); subClient.once("error", rej); }),
       ]).then(() => {
         socketIo.adapter(createAdapter(pubClient, subClient));
+        noteRedisHealthy("redis");
         log("[Socket.IO] Redis adapter connected");
       }).catch((err: any) => {
+        noteRedisDegraded(err?.message || String(err), "memory");
         log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${err.message}`);
+        sendAlert({
+          level: "error",
+          source: "socket-redis",
+          message: "Redis unavailable, using in-memory adapter",
+          details: String(err?.message || err),
+        }).catch(() => { });
       });
     } catch (err: any) {
+      noteRedisDegraded(err?.message || String(err), "memory");
       log(`[Socket.IO] Redis adapter package not available, using in-memory adapter: ${err.message}`);
     }
   })();

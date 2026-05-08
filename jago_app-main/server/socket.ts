@@ -16,6 +16,7 @@ import {
 } from "./ai";
 import { parseEnv } from "./config/env";
 import { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { noteSocketAuthFailure, noteSocketDisconnect } from "./ops-state";
 
 export let io: SocketIOServer;
 
@@ -110,6 +111,7 @@ export function setupSocket(httpServer: HttpServer) {
     // Verify the token matches the claimed userId (prevents room spoofing)
     const verified = await verifySocketToken(token, claimedUserId);
     if (!verified) {
+      noteSocketAuthFailure();
       console.warn(`[SOCKET] Auth failed for userId=${claimedUserId} — disconnecting`);
       socket.emit("auth:error", { message: "Invalid or expired token. Please reconnect with a valid token." });
       socket.disconnect();
@@ -1004,6 +1006,7 @@ export function setupSocket(httpServer: HttpServer) {
     socket.on("disconnect", (reason) => {
       driverSockets.delete(userId);
       customerSockets.delete(userId);
+      noteSocketDisconnect(reason, userType);
       if (userType === "driver") {
         // Grace period: don't mark offline immediately — reconnect within 90s keeps driver visible.
         // This prevents momentary network blips from removing driver from active dispatch.
@@ -1032,6 +1035,15 @@ export function setupSocket(httpServer: HttpServer) {
 
   console.log("[SOCKET] Socket.IO initialized");
   return io;
+}
+
+export function getSocketHealthSnapshot() {
+  return {
+    connectedDrivers: driverSockets.size,
+    connectedCustomers: customerSockets.size,
+    pendingDriverOfflineGrace: pendingOfflineTimers.size,
+    driverOfflineGraceMs: DRIVER_OFFLINE_GRACE_MS,
+  };
 }
 
 // ── Razorpay webhook: POST /api/app/razorpay/webhook ─────────────────────────

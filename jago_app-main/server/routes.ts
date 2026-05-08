@@ -3,7 +3,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
-import { notifyNearbyDriversNewTrip, io } from "./socket";
+import { getSocketHealthSnapshot, notifyNearbyDriversNewTrip, io } from "./socket";
+import { getOpsSnapshot, noteRuntimeConfigFailure, noteRuntimeConfigPublish } from "./ops-state";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -2210,7 +2211,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/ops/ready", requireOpsKey, async (_req, res) => {
     try {
       await rawDb.execute(rawSql`SELECT 1`);
-      res.json({ status: "ready", ts: new Date().toISOString() });
+      res.json({
+        status: "ready",
+        ts: new Date().toISOString(),
+        ops: getOpsSnapshot(),
+        socket: getSocketHealthSnapshot(),
+      });
     } catch (e: any) {
       res.status(503).json({ status: "not_ready", message: formatDbError(e), ts: new Date().toISOString() });
     }
@@ -2696,6 +2702,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         activeTrips: (activeTrips.rows[0] as any)?.c || 0,
         onlineDrivers: (onlineDrivers.rows[0] as any)?.c || 0,
         openComplaints: (openComplaints.rows[0] as any)?.c || 0,
+        ops: getOpsSnapshot(),
+        socket: getSocketHealthSnapshot(),
       });
     } catch (e: any) {
       res.status(500).json({ message: formatDbError(e) });
@@ -4422,8 +4430,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { keyName, value, settingsType } = req.body;
       const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
+      noteRuntimeConfigPublish([String(keyName || "")], (req as any).adminUser?.email);
       res.json(setting);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      noteRuntimeConfigFailure(safeErrMsg(e), (req as any).adminUser?.email);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Admin-prefixed aliases (admin panel uses /api/admin/business-settings)
@@ -4446,8 +4458,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const value = req.body.value ?? '';
       const settingsType = req.body.settingsType;
       const setting = await storage.upsertBusinessSetting(keyName, value, settingsType);
+      noteRuntimeConfigPublish([String(keyName || "")], (req as any).adminUser?.email);
       res.json(setting);
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      noteRuntimeConfigFailure(safeErrMsg(e), (req as any).adminUser?.email);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // -- OTP Settings (Admin) -------------------------------------------------
@@ -5507,9 +5523,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const [key, value] of Object.entries(settings)) {
         await rawDb.execute(rawSql`INSERT INTO business_settings (key_name, value, settings_type) VALUES (${key}, ${String(value)}, 'business_settings') ON CONFLICT (key_name) DO UPDATE SET value=${String(value)}, updated_at=now()`);
       }
+      noteRuntimeConfigPublish(Object.keys(settings), (req as any).adminUser?.email);
       const r = await rawDb.execute(rawSql`SELECT * FROM business_settings ORDER BY settings_type, key_name`);
       res.json(camelize(r.rows));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      noteRuntimeConfigFailure(safeErrMsg(e), (req as any).adminUser?.email);
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // Business Pages � GET by settings_type
