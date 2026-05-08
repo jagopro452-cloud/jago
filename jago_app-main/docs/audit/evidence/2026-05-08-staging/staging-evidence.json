@@ -1,0 +1,109 @@
+{
+  "baseUrl": "https://jago-staging-ljuq3.ondigitalocean.app",
+  "capturedAt": "2026-05-08T08:14:56.543Z",
+  "probes": [
+    {
+      "name": "health",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/health",
+      "status": 200,
+      "ok": true,
+      "durationMs": 410,
+      "capturedAt": "2026-05-08T08:14:56.543Z",
+      "body": {
+        "status": "ok",
+        "db": "connected",
+        "ts": "2026-05-08T08:14:56.544Z"
+      }
+    },
+    {
+      "name": "ready",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/ops/ready",
+      "status": 200,
+      "ok": true,
+      "durationMs": 331,
+      "capturedAt": "2026-05-08T08:14:56.543Z",
+      "body": {
+        "status": "ready",
+        "ts": "2026-05-08T08:14:56.548Z",
+        "ops": {
+          "redis": {
+            "status": "unknown",
+            "adapterMode": "unknown",
+            "lastChangeAt": null,
+            "lastError": null
+          },
+          "socket": {
+            "authFailures": 0,
+            "disconnects": 0,
+            "lastDisconnectAt": null,
+            "lastDisconnectReason": null,
+            "lastDisconnectUserType": null
+          },
+          "runtimeConfig": {
+            "publishCount": 0,
+            "lastPublishAt": null,
+            "lastPublisher": null,
+            "lastKeys": [],
+            "failureCount": 0,
+            "lastFailureAt": null,
+            "lastFailureMessage": null
+          },
+          "api": {
+            "totalRequests": 4,
+            "errorResponses": 0,
+            "slowRequests": 0,
+            "lastSlowRequest": null,
+            "slowThresholdMs": 1500
+          }
+        },
+        "socket": {
+          "connectedDrivers": 0,
+          "connectedCustomers": 0,
+          "pendingDriverOfflineGrace": 0,
+          "driverOfflineGraceMs": 90000
+        }
+      }
+    },
+    {
+      "name": "metrics",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/ops/metrics",
+      "status": 500,
+      "ok": false,
+      "durationMs": 327,
+      "capturedAt": "2026-05-08T08:14:56.541Z",
+      "body": {
+        "message": "relation \"trip_requests\" does not exist"
+      }
+    },
+    {
+      "name": "env",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/health/env",
+      "status": 200,
+      "ok": true,
+      "durationMs": 329,
+      "capturedAt": "2026-05-08T08:14:56.543Z",
+      "body": {
+        "status": "ok",
+        "ts": "2026-05-08T08:14:56.550Z",
+        "env": {
+          "NODE_ENV": "production",
+          "DATABASE_URL": true,
+          "GOOGLE_MAPS_API_KEY_env": false,
+          "GOOGLE_MAPS_API_KEY_db": false,
+          "GOOGLE_MAPS_API_KEY_resolved": false,
+          "FIREBASE_SERVICE_ACCOUNT_KEY": false,
+          "FIREBASE_WEB_API_KEY": false,
+          "RAZORPAY_KEY_ID": false,
+          "RAZORPAY_KEY_SECRET": false,
+          "RAZORPAY_WEBHOOK_SECRET": false,
+          "TWO_FACTOR_API_KEY": false,
+          "FAST2SMS_API_KEY": false,
+          "ANTHROPIC_API_KEY": false,
+          "REDIS_URL": true,
+          "OPS_API_KEY": true,
+          "ADMIN_PASSWORD": true
+        }
+      }
+    }
+  ]
+}

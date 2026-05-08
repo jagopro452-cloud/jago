@@ -33,6 +33,7 @@ touching production infrastructure or runtime state.
 
 ## 4. Deployment
 
+- Create the Postgres cluster first if it does not already exist
 - Create the Redis cluster first if it does not already exist
 - Run `doctl apps create --spec .do/app.staging.yaml` for first deploy
 - Run `doctl apps update <app-id> --spec .do/app.staging.yaml` for subsequent deploys

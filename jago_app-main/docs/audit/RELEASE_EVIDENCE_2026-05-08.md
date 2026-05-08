@@ -42,15 +42,21 @@ Not yet proven live in staging:
 Observed from operator tooling on this machine:
 
 - DigitalOcean CLI access is available
-- Managed Redis resource exists for JAGO: `jago-redis`
-- No clearly named JAGO App Platform service was present in the visible app list
-- No checked-in staging app spec or `.env.staging.example` was present in this branch
-- No local `.env` file was present in the clean recovered worktree
+- Staging App Platform service exists: `jago-staging`
+- Staging app id: `c628b4a3-e535-4450-87f1-35c9164b28a3`
+- Staging ingress exists and responds at `jago-staging-ljuq3.ondigitalocean.app`
+- Isolated staging Postgres exists: `jago-staging-postgres`
+- Staging Postgres id: `9c736c05-d4a8-4125-bdc5-c5e26b9805dd`
+- Isolated staging cache exists: `jago-staging-redis`
+- Staging cache id: `5aaee7bd-ea75-4ba1-9063-fb3538d25b47`
+- Staging cache engine is `valkey`
+- No checked-in staging app spec or `.env.staging.example` was present in this branch before this pass
+- No local `.env` file was present in the clean recovered worktree before staging bring-up
 
 Conclusion:
 
-- A safe staging bring-up requires explicit staging app configuration and isolated secrets
-- Provisioning should not proceed by guessing production values or reusing production credentials
+- A safe staging bring-up now exists with isolated managed data services and an auditable staging app definition
+- Staging was brought up without reusing production database or Redis resources
 
 ## Device validation findings
 
@@ -76,9 +82,9 @@ Not executed in a live staging environment.
 
 Reason:
 
-- no confirmed JAGO staging backend was available
-- no isolated staging database assignment was confirmed
-- no safe staging runtime secrets were present locally
+- the live staging app now exists, but no outage window has been executed yet
+- alert routing and third-party runtime secrets are still incomplete
+- no real active client sessions are attached for continuity validation
 
 Evidence still required:
 
@@ -97,20 +103,26 @@ Passed:
 - deterministic typecheck/build
 - release artifact cleanup
 - baseline ops instrumentation
+- isolated staging infrastructure provisioning
+- live staging deployment
+- baseline live staging health proof
+- protected live staging ops probe proof
+- staging schema reconciliation for core background jobs
 
 Blocked:
 
-- staging stack provisioning proof
 - real-device validation proof
 - Redis outage drill proof
 - live alert delivery proof
+- runtime-config propagation proof
+- rollback endpoint proof
 - final operational evidence package with screenshots/log bundles
 
 ## Next required actions before production approval
 
-1. Provision or identify an isolated JAGO staging app, database, Redis, and webhook target.
-2. Configure staging-only secrets for DB, Redis, Firebase, Maps, payment gateway, and `ALERT_WEBHOOK_URL`.
-3. Run the manual validation matrix in `docs/MANUAL_TESTING_GUIDE.md` on physical customer and driver devices.
+1. Populate the remaining staging-only third-party secrets, especially Firebase, Maps, payment, and `ALERT_WEBHOOK_URL`.
+2. Run the manual validation matrix in `docs/MANUAL_TESTING_GUIDE.md` on physical customer and driver devices.
+3. Capture runtime-config publish and rollback behavior with timestamps and screenshots.
 4. Capture `/api/health`, `/api/ops/ready`, and `/api/ops/metrics` before, during, and after a Redis outage drill.
-5. Confirm alert delivery and attach screenshots/log correlation evidence.
-6. Archive the resulting screenshots, timings, and logs alongside this report.
+5. Confirm alert delivery and attach screenshots and log correlation evidence.
+6. Archive the resulting screenshots, timings, logs, and outage notes alongside this report.

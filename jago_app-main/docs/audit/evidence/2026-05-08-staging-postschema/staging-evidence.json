@@ -1,0 +1,157 @@
+{
+  "baseUrl": "https://jago-staging-ljuq3.ondigitalocean.app",
+  "capturedAt": "2026-05-08T08:26:42.179Z",
+  "probes": [
+    {
+      "name": "health",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/health",
+      "status": 200,
+      "ok": true,
+      "durationMs": 438,
+      "capturedAt": "2026-05-08T08:26:42.146Z",
+      "body": {
+        "status": "ok",
+        "db": "connected",
+        "ts": "2026-05-08T08:26:42.137Z"
+      }
+    },
+    {
+      "name": "ready",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/ops/ready",
+      "status": 200,
+      "ok": true,
+      "durationMs": 378,
+      "capturedAt": "2026-05-08T08:26:42.157Z",
+      "body": {
+        "status": "ready",
+        "ts": "2026-05-08T08:26:42.172Z",
+        "ops": {
+          "redis": {
+            "status": "unknown",
+            "adapterMode": "unknown",
+            "lastChangeAt": null,
+            "lastError": null
+          },
+          "socket": {
+            "authFailures": 0,
+            "disconnects": 0,
+            "lastDisconnectAt": null,
+            "lastDisconnectReason": null,
+            "lastDisconnectUserType": null
+          },
+          "runtimeConfig": {
+            "publishCount": 0,
+            "lastPublishAt": null,
+            "lastPublisher": null,
+            "lastKeys": [],
+            "failureCount": 0,
+            "lastFailureAt": null,
+            "lastFailureMessage": null
+          },
+          "api": {
+            "totalRequests": 33,
+            "errorResponses": 1,
+            "slowRequests": 0,
+            "lastSlowRequest": null,
+            "slowThresholdMs": 1500
+          }
+        },
+        "socket": {
+          "connectedDrivers": 0,
+          "connectedCustomers": 0,
+          "pendingDriverOfflineGrace": 0,
+          "driverOfflineGraceMs": 90000
+        }
+      }
+    },
+    {
+      "name": "metrics",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/ops/metrics",
+      "status": 200,
+      "ok": true,
+      "durationMs": 398,
+      "capturedAt": "2026-05-08T08:26:42.178Z",
+      "body": {
+        "service": "jago-gateway",
+        "ts": "2026-05-08T08:26:42.191Z",
+        "uptimeSeconds": 822,
+        "memory": {
+          "rss": 164712448,
+          "heapTotal": 31465472,
+          "heapUsed": 24893672,
+          "external": 3773941
+        },
+        "activeTrips": 0,
+        "onlineDrivers": 0,
+        "openComplaints": 0,
+        "ops": {
+          "redis": {
+            "status": "unknown",
+            "adapterMode": "unknown",
+            "lastChangeAt": null,
+            "lastError": null
+          },
+          "socket": {
+            "authFailures": 0,
+            "disconnects": 0,
+            "lastDisconnectAt": null,
+            "lastDisconnectReason": null,
+            "lastDisconnectUserType": null
+          },
+          "runtimeConfig": {
+            "publishCount": 0,
+            "lastPublishAt": null,
+            "lastPublisher": null,
+            "lastKeys": [],
+            "failureCount": 0,
+            "lastFailureAt": null,
+            "lastFailureMessage": null
+          },
+          "api": {
+            "totalRequests": 34,
+            "errorResponses": 1,
+            "slowRequests": 0,
+            "lastSlowRequest": null,
+            "slowThresholdMs": 1500
+          }
+        },
+        "socket": {
+          "connectedDrivers": 0,
+          "connectedCustomers": 0,
+          "pendingDriverOfflineGrace": 0,
+          "driverOfflineGraceMs": 90000
+        }
+      }
+    },
+    {
+      "name": "env",
+      "url": "https://jago-staging-ljuq3.ondigitalocean.app/api/health/env",
+      "status": 200,
+      "ok": true,
+      "durationMs": 367,
+      "capturedAt": "2026-05-08T08:26:42.148Z",
+      "body": {
+        "status": "ok",
+        "ts": "2026-05-08T08:26:42.131Z",
+        "env": {
+          "NODE_ENV": "production",
+          "DATABASE_URL": true,
+          "GOOGLE_MAPS_API_KEY_env": false,
+          "GOOGLE_MAPS_API_KEY_db": false,
+          "GOOGLE_MAPS_API_KEY_resolved": false,
+          "FIREBASE_SERVICE_ACCOUNT_KEY": false,
+          "FIREBASE_WEB_API_KEY": false,
+          "RAZORPAY_KEY_ID": false,
+          "RAZORPAY_KEY_SECRET": false,
+          "RAZORPAY_WEBHOOK_SECRET": false,
+          "TWO_FACTOR_API_KEY": false,
+          "FAST2SMS_API_KEY": false,
+          "ANTHROPIC_API_KEY": false,
+          "REDIS_URL": true,
+          "OPS_API_KEY": true,
+          "ADMIN_PASSWORD": true
+        }
+      }
+    }
+  ]
+}

@@ -41,18 +41,42 @@ doctl apps spec validate .do/app.staging.yaml
 
 Important platform constraint discovered during validation:
 
-- Redis must be attached as a production-managed cluster reference in App Platform spec
-- The staging spec therefore expects a separately provisioned cluster named `jago-staging-redis`
+- Managed Postgres and Valkey must be attached as production-managed cluster references in App Platform spec
+- The staging spec therefore expects separately provisioned clusters named `jago-staging-postgres` and `jago-staging-redis`
 
 ## Current infrastructure findings
 
-Observed from available operator tooling:
+Provisioned and verified from operator tooling:
 
+- Staging app name: `jago-staging`
+- Staging app id: `c628b4a3-e535-4450-87f1-35c9164b28a3`
+- Staging default ingress: `https://jago-staging-ljuq3.ondigitalocean.app`
+- Staging Postgres id: `9c736c05-d4a8-4125-bdc5-c5e26b9805dd`
+- Staging Postgres name: `jago-staging-postgres`
+- Staging cache id: `5aaee7bd-ea75-4ba1-9063-fb3538d25b47`
+- Staging cache name: `jago-staging-redis`
+- Staging cache engine: `valkey`
+- Deployment region for managed data resources: `blr1`
 - DigitalOcean CLI access is available on this machine
-- Existing managed resource visible: `jago-redis`
-- No clearly named JAGO staging app currently exists in App Platform list
-- No dedicated `jago-staging-redis` resource was visible at validation time
 - No local staging `.env` or checked-in `.env.staging.example` exists
+
+## Live staging validation completed
+
+- `doctl apps spec validate .do/app.staging.yaml` passed
+- Live staging app was created successfully from a staging-only spec
+- `GET /api/health` returned `200`
+- `GET /api/ops/ready` returned `200`
+- `GET /api/ops/metrics` returned `200`
+- `GET /api/health/env` returned `200`
+- Protected ops endpoints were confirmed with the `x-ops-key` header
+- Initial runtime errors caused by missing staging schema objects were reconciled
+- Post-reconciliation logs no longer showed the recurring `zones.latitude`, `trip_requests.pickup_short_name`, or `user_devices` runtime failures in the latest log window
+
+Evidence captured under:
+
+- `docs/audit/evidence/2026-05-08-staging/staging-evidence.json`
+- `docs/audit/evidence/2026-05-08-staging-postschema/staging-evidence.json`
+- `docs/audit/evidence/2026-05-08-staging-postreconcile/staging-evidence.json`
 
 ## Device findings
 
@@ -70,25 +94,31 @@ Unavailable for required release validation:
 
 ## What remains blocked
 
-### Staging deployment
+### Remaining staging configuration gaps
 
-Not executed because:
+Still missing or not yet proven in the live app:
 
-- staging-only secret values are not available in this worktree
-- a dedicated staging Redis cluster is not yet confirmed
-- a dedicated staging Postgres mapping is not yet confirmed
-- creating new managed resources would create billable infrastructure and should be done deliberately
+- `GOOGLE_MAPS_API_KEY`
+- `FIREBASE_SERVICE_ACCOUNT_KEY`
+- `FIREBASE_WEB_API_KEY`
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+- `TWO_FACTOR_API_KEY`
+- `FAST2SMS_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `ALERT_WEBHOOK_URL`
 
-### Live operational evidence
+### Live operational evidence still blocked
 
-Not yet captured because there is no confirmed live staging base URL for:
+Not yet completed from this machine:
 
-- `/api/health`
-- `/api/ops/ready`
-- `/api/ops/metrics`
-- socket runtime validation
+- socket connectivity proof with real clients
+- runtime-config propagation proof
+- rollback endpoint validation
 - Redis outage drill
 - alert delivery verification
+- Crashlytics or Sentry delivery proof
 
 ### Real device matrix
 
@@ -96,15 +126,16 @@ Not executable from this machine because no physical mobile devices are connecte
 
 ## Recommended next operator actions
 
-1. Provision `jago-staging-postgres` and `jago-staging-redis`.
-2. Populate staging-only secrets from `.do/staging.secrets.template.env`.
-3. Create the staging app from `.do/app.staging.yaml`.
-4. Run `npm run ops:staging-evidence -- --base-url=<staging-url> --ops-key=<ops-key>`.
-5. Execute the mobile manual matrix from `docs/MANUAL_TESTING_GUIDE.md` on physical devices.
-6. Perform Redis outage drill and alert verification against staging only.
+1. Populate the remaining staging-only third-party secrets from `.do/staging.secrets.template.env`.
+2. Update the live staging app to use the finalized staging domain and socket origin instead of the bootstrap base URL.
+3. Execute runtime-config publish and rollback validation against the live staging app.
+4. Execute the mobile manual matrix from `docs/MANUAL_TESTING_GUIDE.md` on physical devices.
+5. Perform Redis outage drill and alert verification against staging only.
+6. Archive screenshots and timestamps alongside the existing JSON probe captures.
 
 ## Release gate status
 
-Staging is now standardized and reproducible on paper and in tooling, but the
-final operational evidence gate remains blocked until live staging resources,
-staging secrets, and physical devices are available.
+Staging is now standardized and live, with isolated infrastructure and green
+baseline ops probes. The final production gate remains blocked on third-party
+secret completion, real-device validation, Redis outage evidence, and alert
+delivery proof.

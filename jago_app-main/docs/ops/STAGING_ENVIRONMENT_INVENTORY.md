@@ -4,14 +4,19 @@
 
 - App name: `jago-staging`
 - Source branch: `release/preprod-hardening-2026-05-08-recovered`
-- Region: `blr`
-- Expected base URL: `https://staging.jagopro.org`
-- Expected socket origin: `https://staging.jagopro.org`
+- App id: `c628b4a3-e535-4450-87f1-35c9164b28a3`
+- Region: `blr1`
+- Current bootstrap base URL: `https://jago-staging-ljuq3.ondigitalocean.app`
+- Expected final base URL: `https://staging.jagopro.org`
+- Current socket origin: bootstrap/default ingress
+- Expected final socket origin: `https://staging.jagopro.org`
 
 ## Managed services
 
 - PostgreSQL: `jago-staging-postgres`
-- Redis: `jago-staging-redis`
+- PostgreSQL id: `9c736c05-d4a8-4125-bdc5-c5e26b9805dd`
+- Redis/Valkey: `jago-staging-redis`
+- Redis/Valkey id: `5aaee7bd-ea75-4ba1-9063-fb3538d25b47`
 
 ## External integrations
 
@@ -39,9 +44,9 @@
 
 ## Evidence references
 
-- Deployment record: `TODO`
-- Health capture: `TODO`
-- Ready capture: `TODO`
-- Metrics capture: `TODO`
+- Deployment record: `docs/audit/STAGING_STANDARDIZATION_2026-05-08.md`
+- Health capture: `docs/audit/evidence/2026-05-08-staging-postreconcile/staging-evidence.json`
+- Ready capture: `docs/audit/evidence/2026-05-08-staging-postreconcile/staging-evidence.json`
+- Metrics capture: `docs/audit/evidence/2026-05-08-staging-postreconcile/staging-evidence.json`
 - Redis drill record: `TODO`
 - Device validation record: `TODO`
