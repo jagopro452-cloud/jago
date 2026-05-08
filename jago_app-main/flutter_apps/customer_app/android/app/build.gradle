@@ -17,6 +17,8 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
 }
 
+def googleMapsApiKey = System.getenv('GOOGLE_MAPS_KEY') ?: localProperties.getProperty('GOOGLE_MAPS_KEY', '')
+
 android {
     namespace "com.mindwhile.jago_customer"
     compileSdk 36
@@ -57,7 +59,7 @@ android {
         versionCode 59
         versionName "1.0.59"
         multiDexEnabled true
-        manifestPlaceholders = [googleMapsApiKey: localProperties.getProperty('GOOGLE_MAPS_KEY', '')]
+        manifestPlaceholders = [googleMapsApiKey: googleMapsApiKey]
     }
 
     buildTypes {

@@ -8,7 +8,7 @@ class ApiConfig {
   // For Android Emulator use 10.0.2.2. For Physical Device use your PC's IP (e.g. 192.168.0.x)
   static const String _lanDevUrl = 'http://192.168.1.6:5000'; // Target specific physical IP
 
-  static bool _isProd = false; // Set to false to use local server (lanDevUrl)
+  static bool _isProd = const bool.fromEnvironment('dart.vm.product');
 
   static String get baseUrl {
     if (compileTimeBaseUrl.isNotEmpty) {
@@ -23,7 +23,7 @@ class ApiConfig {
 
   // Set at build time: --dart-define=GOOGLE_MAPS_KEY=AIzaSy...
   // Never hardcode — key must be rotated in Google Cloud Console
-  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY', defaultValue: 'AIzaSyCvK2we4pxX_Wdjjct6DNalW99Gqj__tyc');
+  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY', defaultValue: '');
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
