@@ -100,6 +100,10 @@ Use dedicated values and infrastructure per environment:
 
 Never reuse production credentials in development.
 
+If example files are not present in the checked-out branch, create the staging and
+production env files in the secrets manager or deployment platform directly and
+document the source of truth outside the repo.
+
 ## 8) Admin security (RBAC + 2FA)
 
 - Admin bearer sessions are mandatory for `/api/admin/*` routes.
@@ -108,13 +112,6 @@ Never reuse production credentials in development.
 
 ## 9) End-to-end flow validation
 
-Run:
-
-```bash
-node scripts/smoke-api-patched-flows.cjs
-node scripts/e2e-production-readiness.cjs
-```
-
 Validate at least:
 
 - ride booking
@@ -122,6 +119,15 @@ Validate at least:
 - OTP verification
 - live tracking
 - trip start/completion
+- runtime-config propagation
+- reconnect after network loss
+- active ride continuity after background/kill restore
+
+Use the manual device flow in `docs/MANUAL_TESTING_GUIDE.md` plus the ops endpoints:
+
+- `GET /api/health`
+- `GET /api/ops/ready` with `x-ops-key`
+- `GET /api/ops/metrics` with `x-ops-key`
 
 ## 10) Cloud deployment
 
@@ -141,3 +147,4 @@ Reverse proxy template is in `deploy/nginx/jago.conf`.
 - Admin API unauthorized access returns `401`
 - Mobile release builds succeed
 - Backups verified with test restore
+- Operational evidence package captured and archived

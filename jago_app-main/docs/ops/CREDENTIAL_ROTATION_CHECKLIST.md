@@ -25,7 +25,8 @@ Rotate all credentials previously used in development, backups, or leaked config
 6. Re-run readiness checks:
    - `/api/health`
    - `/api/ops/ready` with `x-ops-key`
-   - `node scripts/smoke-api-patched-flows.cjs`
+   - `/api/ops/metrics` with `x-ops-key`
+   - manual critical-flow validation from `docs/MANUAL_TESTING_GUIDE.md`
 7. Revoke old keys after successful validation.
 
 ## Post-rotation checks
