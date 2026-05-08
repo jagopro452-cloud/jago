@@ -20,6 +20,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _loading = false;
   bool _showNewPass = false;
   bool _showConfirm = false;
+  bool _usingServerOtp = false;
   int _step = 0;
   String? _firebaseVerificationId;
   String? _firebaseIdToken;
@@ -63,6 +64,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _loading = true);
     _firebaseVerificationId = null;
     _firebaseIdToken = null;
+    _usingServerOtp = false;
     await FirebaseOtpService.resetVerification();
     final precheck = await AuthService.forgotPassword(phone);
     if (!mounted) return;
@@ -81,9 +83,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _showSnack('OTP sent to +91$phone');
       },
       onError: (err) {
-        if (!mounted) return;
-        setState(() => _loading = false);
-        _showSnack(err, error: true);
+        _firebaseVerificationId = null;
       },
       onAutoVerify: (idToken) {
         if (!mounted) return;
@@ -91,6 +91,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         setState(() { _loading = false; _step = 2; });
       },
     );
+
+    if (!mounted || _step != 0 || _firebaseVerificationId != null || _firebaseIdToken != null) return;
+
+    final fallbackRes = await AuthService.sendOtp(phone, 'customer');
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (fallbackRes['success'] == true) {
+      setState(() {
+        _usingServerOtp = true;
+        _step = 1;
+      });
+      _startTimer();
+      _showSnack('OTP sent to +91$phone');
+      return;
+    }
+
+    _showSnack(fallbackRes['message'] ?? 'Unable to send OTP right now.', error: true);
   }
 
   Future<void> _verifyOtpStep() async {
@@ -102,6 +119,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     setState(() => _loading = true);
     try {
+      if (_usingServerOtp) {
+        final res = await AuthService.verifyOtp(_phoneCtrl.text.trim(), otp, 'customer');
+        if (!mounted) return;
+        if (res['success'] == true || res['token'] != null) {
+          setState(() { _loading = false; _step = 2; });
+          return;
+        }
+        setState(() => _loading = false);
+        _showSnack(res['message'] ?? 'OTP verification failed. Please try again.', error: true);
+        return;
+      }
+
       final idToken = await FirebaseOtpService.verifyOtp(
         smsCode: otp, verificationId: _firebaseVerificationId);
       if (!mounted) return;
@@ -119,10 +148,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final confirm = _confirmCtrl.text;
     if (newPass.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
     if (newPass != confirm) { _showSnack('Passwords do not match', error: true); return; }
-    if (_firebaseIdToken == null) { _showSnack('Verification expired. Please restart.', error: true); return; }
+    if (!_usingServerOtp && _firebaseIdToken == null) { _showSnack('Verification expired. Please restart.', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.resetPasswordWithFirebase(
-      _firebaseIdToken!, _phoneCtrl.text.trim(), newPass);
+    final res = _usingServerOtp
+        ? await AuthService.resetPassword(_phoneCtrl.text.trim(), _otpCtrl.text.trim(), newPass)
+        : await AuthService.resetPasswordWithFirebase(
+            _firebaseIdToken!, _phoneCtrl.text.trim(), newPass);
     if (!mounted) return;
     setState(() => _loading = false);
     if (res['success'] == true) {

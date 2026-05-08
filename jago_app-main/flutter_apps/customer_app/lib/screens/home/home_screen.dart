@@ -3180,6 +3180,15 @@ class _PlaceSearchSheet extends StatefulWidget {
 }
 
 class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
+  static const List<Map<String, dynamic>> _curatedFallbackPlaces = [
+    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
+    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
+    {'name': 'Pandit Nehru Bus Station', 'lat': 16.5179, 'lng': 80.6238},
+    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
+    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
+    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
+    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
+  ];
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _results = [];
   List<Map<String, dynamic>> _nearby = [];
@@ -3315,12 +3324,39 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                     'placeId': p['placeId']?.toString() ?? '',
                     'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
                     'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
-                  })
+              })
               .where((r) => (r['name'] as String).isNotEmpty)
+              .toList();
+          if (_results.isEmpty) {
+            final normalized = query.trim().toLowerCase();
+            _results = _curatedFallbackPlaces
+                .where((place) => (place['name'] as String).toLowerCase().contains(normalized))
+                .map((place) => <String, dynamic>{
+                      'name': place['name'],
+                      'placeId': 'local:${place['name']}',
+                      'lat': (place['lat'] as num).toDouble(),
+                      'lng': (place['lng'] as num).toDouble(),
+                    })
+                .toList();
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        final normalized = query.trim().toLowerCase();
+        setState(() {
+          _results = _curatedFallbackPlaces
+              .where((place) => (place['name'] as String).toLowerCase().contains(normalized))
+              .map((place) => <String, dynamic>{
+                    'name': place['name'],
+                    'placeId': 'local:${place['name']}',
+                    'lat': (place['lat'] as num).toDouble(),
+                    'lng': (place['lng'] as num).toDouble(),
+                  })
               .toList();
         });
       }
-    } catch (_) {}
+    }
     if (mounted) setState(() => _loading = false);
   }
 

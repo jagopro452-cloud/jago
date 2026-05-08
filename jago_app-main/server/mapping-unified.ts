@@ -127,6 +127,132 @@ const reverseGeocodeCache = new SimpleCache<ReverseGeocodeResult>(2000, 60 * 60 
 const placesCache = new SimpleCache<PlacePrediction[]>(1000, 5 * 60 * 1000);               // 5 min
 const etaCache = new SimpleCache<ETAResult>(3000, 2 * 60 * 1000);                          // 2 min
 
+const CURATED_FALLBACK_PLACES: Array<{
+  name: string;
+  fullAddress: string;
+  lat: number;
+  lng: number;
+  aliases?: string[];
+}> = [
+  { name: "Benz Circle", fullAddress: "Benz Circle, Vijayawada, Andhra Pradesh, India", lat: 16.5062, lng: 80.648, aliases: ["benz", "benz circle road"] },
+  { name: "Vijayawada Railway Station", fullAddress: "Vijayawada Junction, Vijayawada, Andhra Pradesh, India", lat: 16.5175, lng: 80.64, aliases: ["railway station", "junction", "vijayawada junction"] },
+  { name: "Pandit Nehru Bus Station", fullAddress: "PNBS Bus Stand, Vijayawada, Andhra Pradesh, India", lat: 16.5179, lng: 80.6238, aliases: ["pnbs", "bus stand", "bus station"] },
+  { name: "Kanaka Durga Temple", fullAddress: "Kanaka Durga Temple, Vijayawada, Andhra Pradesh, India", lat: 16.5176, lng: 80.6121, aliases: ["durga temple", "kanakadurga"] },
+  { name: "Gannavaram Airport", fullAddress: "Vijayawada International Airport, Gannavaram, Andhra Pradesh, India", lat: 16.5304, lng: 80.7968, aliases: ["airport", "vijayawada airport", "gannavaram"] },
+  { name: "Governorpet", fullAddress: "Governorpet, Vijayawada, Andhra Pradesh, India", lat: 16.5135, lng: 80.6346, aliases: ["governor pet"] },
+  { name: "Patamata", fullAddress: "Patamata, Vijayawada, Andhra Pradesh, India", lat: 16.4883, lng: 80.6681, aliases: ["patamata center", "patamata circle"] },
+  { name: "M G Road", fullAddress: "M G Road, Vijayawada, Andhra Pradesh, India", lat: 16.5069, lng: 80.6489, aliases: ["mg road", "bandar road"] },
+  { name: "Auto Nagar", fullAddress: "Auto Nagar, Vijayawada, Andhra Pradesh, India", lat: 16.4947, lng: 80.6907, aliases: ["autonagar"] },
+  { name: "Poranki", fullAddress: "Poranki, Vijayawada, Andhra Pradesh, India", lat: 16.4741, lng: 80.7151, aliases: ["poranki center"] },
+  { name: "One Town", fullAddress: "One Town, Vijayawada, Andhra Pradesh, India", lat: 16.5217, lng: 80.6185, aliases: ["1 town", "old city"] },
+  { name: "Bhavanipuram", fullAddress: "Bhavanipuram, Vijayawada, Andhra Pradesh, India", lat: 16.5104, lng: 80.5989, aliases: ["bhavani puram"] },
+  { name: "Labbipet", fullAddress: "Labbipet, Vijayawada, Andhra Pradesh, India", lat: 16.5034, lng: 80.6488, aliases: ["labbipeta"] },
+  { name: "Moghalrajpuram", fullAddress: "Moghalrajpuram, Vijayawada, Andhra Pradesh, India", lat: 16.5057, lng: 80.6465, aliases: ["mogalrajpuram"] },
+  { name: "Currency Nagar", fullAddress: "Currency Nagar, Vijayawada, Andhra Pradesh, India", lat: 16.4928, lng: 80.6689, aliases: ["currency nagar"] },
+  { name: "Siddhartha Nagar", fullAddress: "Siddhartha Nagar, Vijayawada, Andhra Pradesh, India", lat: 16.4968, lng: 80.6502, aliases: ["siddartha nagar"] },
+  { name: "NTR Circle", fullAddress: "NTR Circle, Vijayawada, Andhra Pradesh, India", lat: 16.5065, lng: 80.6443, aliases: ["ntr center"] },
+  { name: "Krishna Lanka", fullAddress: "Krishna Lanka, Vijayawada, Andhra Pradesh, India", lat: 16.501, lng: 80.6117, aliases: ["krishnalanka"] },
+];
+
+function normalizePlaceSearchText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function scoreTextMatch(query: string, candidate: string): number {
+  const normalizedQuery = normalizePlaceSearchText(query);
+  const normalizedCandidate = normalizePlaceSearchText(candidate);
+  if (!normalizedQuery || !normalizedCandidate) return 0;
+
+  let score = 0;
+  if (normalizedCandidate === normalizedQuery) score += 120;
+  if (normalizedCandidate.startsWith(normalizedQuery)) score += 90;
+  if (normalizedCandidate.includes(` ${normalizedQuery}`)) score += 70;
+  else if (normalizedCandidate.includes(normalizedQuery)) score += 50;
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  let matchedTokens = 0;
+  for (const token of tokens) {
+    if (normalizedCandidate === token) score += 24;
+    else if (normalizedCandidate.startsWith(token)) score += 18;
+    else if (normalizedCandidate.includes(` ${token}`)) score += 14;
+    else if (normalizedCandidate.includes(token)) score += 8;
+    if (normalizedCandidate.includes(token)) matchedTokens++;
+  }
+
+  if (tokens.length > 1 && matchedTokens === tokens.length) score += 30;
+  return score;
+}
+
+function scoreDistanceBias(lat: number | undefined, lng: number | undefined, placeLat?: number, placeLng?: number): number {
+  if (!lat || !lng || !placeLat || !placeLng) return 0;
+  const distanceKm = Math.sqrt(Math.pow(lat - placeLat, 2) + Math.pow(lng - placeLng, 2)) * 111;
+  if (distanceKm <= 3) return 20;
+  if (distanceKm <= 8) return 12;
+  if (distanceKm <= 20) return 6;
+  return 0;
+}
+
+function scorePredictionForQuery(query: string, prediction: PlacePrediction, lat?: number, lng?: number): number {
+  let score = 0;
+  score += scoreTextMatch(query, prediction.mainText) * 2;
+  score += scoreTextMatch(query, prediction.fullDescription);
+  score += scoreTextMatch(query, prediction.secondaryText);
+  score += scoreDistanceBias(lat, lng, prediction.lat, prediction.lng);
+  if (prediction.types.includes("popular_location")) score += 12;
+  if (prediction.types.includes("curated_fallback")) score += 10;
+  return score;
+}
+
+function rankPredictions(query: string, predictions: PlacePrediction[], lat?: number, lng?: number): PlacePrediction[] {
+  const deduped = new Map<string, PlacePrediction>();
+  for (const prediction of predictions) {
+    const key = normalizePlaceSearchText(prediction.fullDescription || `${prediction.mainText} ${prediction.secondaryText}`);
+    const existing = deduped.get(key);
+    if (!existing) {
+      deduped.set(key, prediction);
+      continue;
+    }
+    const existingScore = scorePredictionForQuery(query, existing, lat, lng);
+    const newScore = scorePredictionForQuery(query, prediction, lat, lng);
+    if (newScore > existingScore || (!existing.lat && prediction.lat)) {
+      deduped.set(key, prediction);
+    }
+  }
+
+  return Array.from(deduped.values())
+    .map((prediction) => ({ prediction, score: scorePredictionForQuery(query, prediction, lat, lng) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.prediction.mainText.localeCompare(b.prediction.mainText))
+    .slice(0, 10)
+    .map((entry) => entry.prediction);
+}
+
+function searchCuratedFallbackLocations(query: string, lat?: number, lng?: number): PlacePrediction[] {
+  const normalized = normalizePlaceSearchText(query);
+  if (!normalized) return [];
+
+  const scored = CURATED_FALLBACK_PLACES.map((place) => {
+    const haystacks = [place.name, place.fullAddress, ...(place.aliases || [])];
+    let score = Math.max(...haystacks.map((candidate) => scoreTextMatch(normalized, candidate)));
+    score += scoreDistanceBias(lat, lng, place.lat, place.lng);
+    return { place, score };
+  })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.place.name.localeCompare(b.place.name))
+    .slice(0, 8);
+
+  return scored.map(({ place }) => ({
+    placeId: `curated:${place.name.toLowerCase().replace(/\s+/g, "-")}`,
+    mainText: place.name,
+    secondaryText: place.fullAddress.replace(`${place.name}, `, ""),
+    fullDescription: place.fullAddress,
+    description: place.fullAddress,
+    types: ["curated_fallback"],
+    lat: place.lat,
+    lng: place.lng,
+  }));
+}
+
 // ── 1. PLACES AUTOCOMPLETE ──────────────────────────────────────────────────
 
 /**
@@ -149,15 +275,15 @@ export async function searchPlaces(
 
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) {
-    // Fallback: search from popular_locations DB
-    return searchPopularLocations(query);
+    const localResults = await searchPopularLocations(query);
+    return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4000);
 
   try {
-    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}&components=country:in&language=en&region=in`;
 
     if (lat && lng) {
       url += `&location=${lat},${lng}&radius=${radius || 50000}`;
@@ -173,7 +299,8 @@ export async function searchPlaces(
     });
     if (!r.ok) {
         console.error(`[mapping] Google API returned status ${r.status}`);
-        return searchPopularLocations(query);
+        const localResults = await searchPopularLocations(query);
+        return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     }
     const data = await r.json() as any;
     console.log(`[mapping] Google response status: ${data.status}`);
@@ -181,13 +308,16 @@ export async function searchPlaces(
     if (data?.status !== "OK") {
       console.warn(`[mapping-unified:searchPlaces] Google API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}. Falling back to Nominatim/Local.`);
       const nomResults = await searchNominatimFallback(query);
-      if (nomResults.length > 0) return nomResults;
-      return searchPopularLocations(query);
+      if (nomResults.length > 0) {
+        return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+      }
+      const localResults = await searchPopularLocations(query);
+      return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     }
 
     if (!data.predictions?.length) {
       console.log(`[mapping-unified:searchPlaces] Google returned 0 results. Trying Nominatim fallback.`);
-      return searchNominatimFallback(query);
+      return rankPredictions(query, [...await searchNominatimFallback(query), ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     }
 
     const results: PlacePrediction[] = data.predictions.map((p: any) => ({
@@ -199,11 +329,16 @@ export async function searchPlaces(
       types: p.types || [],
     }));
 
-    placesCache.set(cacheKey, results);
-    return results;
+    const localResults = await searchPopularLocations(query);
+    const rankedResults = rankPredictions(query, [...results, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    placesCache.set(cacheKey, rankedResults);
+    return rankedResults;
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
-    return searchNominatimFallback(query);
+    const nomResults = await searchNominatimFallback(query);
+    if (nomResults.length > 0) return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    const localResults = await searchPopularLocations(query);
+    return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
   } finally {
     clearTimeout(timeout);
   }
@@ -253,7 +388,8 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
   } catch(e) {
     console.error("[mapping-unified] Nominatim fallback failed:", e);
   }
-  return searchPopularLocations(query);
+  const localResults = await searchPopularLocations(query);
+  return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query)], undefined, undefined);
 }
 
 /**
@@ -264,6 +400,40 @@ export async function getPlaceDetails(
   placeId: string,
   sessionToken?: string
 ): Promise<{ lat: number; lng: number; address: string; shortName: string } | null> {
+  if (placeId.startsWith("curated:")) {
+    const slug = placeId.replace("curated:", "");
+    const match = CURATED_FALLBACK_PLACES.find((place) => place.name.toLowerCase().replace(/\s+/g, "-") === slug);
+    if (match) {
+      return {
+        lat: match.lat,
+        lng: match.lng,
+        address: match.fullAddress,
+        shortName: match.name,
+      };
+    }
+  }
+
+  if (placeId.startsWith("local:")) {
+    const localName = placeId.replace("local:", "").trim();
+    try {
+      const r = await rawDb.execute(rawSql`
+        SELECT name, full_address, latitude, longitude
+        FROM popular_locations
+        WHERE LOWER(name) = ${localName.toLowerCase()}
+        LIMIT 1
+      `);
+      const row = r.rows[0] as any;
+      if (row) {
+        return {
+          lat: parseFloat(String(row.latitude)) || 0,
+          lng: parseFloat(String(row.longitude)) || 0,
+          address: `${row.name}, ${row.full_address || ""}`.replace(/,\s*$/, ""),
+          shortName: row.name || extractShortName(row.full_address || ""),
+        };
+      }
+    } catch {}
+  }
+
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) return null;
 
@@ -329,7 +499,7 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
     }
     return Array.from(unique.values());
   } catch {
-    return [];
+    return searchCuratedFallbackLocations(query);
   }
 }
 

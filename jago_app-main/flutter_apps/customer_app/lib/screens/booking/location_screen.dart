@@ -43,6 +43,16 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen>
     with TickerProviderStateMixin {
+  static const List<Map<String, dynamic>> _curatedFallbackPlaces = [
+    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
+    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
+    {'name': 'Pandit Nehru Bus Station', 'lat': 16.5179, 'lng': 80.6238},
+    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
+    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
+    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
+    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
+    {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
+  ];
   // ── Controllers ──────────────────────────────────────────────────────────
   final _dropCtrl = TextEditingController();
   final _stopCtrl = TextEditingController();
@@ -327,6 +337,36 @@ class _LocationScreenState extends State<LocationScreen>
     setState(() => _sessionToken = 'sess-$rnd-${_pickupLat.toInt()}');
   }
 
+  List<Map<String, dynamic>> _localFallbackMatches(String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) return [];
+
+    final pool = <Map<String, dynamic>>[
+      ..._recent,
+      ..._popular,
+      ..._curatedFallbackPlaces,
+    ];
+    final seen = <String>{};
+    final matches = <Map<String, dynamic>>[];
+
+    for (final item in pool) {
+      final name = (item['name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      final key = name.toLowerCase();
+      if (seen.contains(key) || !key.contains(normalized)) continue;
+      seen.add(key);
+      matches.add({
+        'name': name,
+        'mainText': name,
+        'secondaryText': item['address']?.toString() ?? 'Popular Location',
+        'placeId': item['placeId']?.toString() ?? 'local:$name',
+        'lat': (item['lat'] as num?)?.toDouble() ?? 0.0,
+        'lng': (item['lng'] as num?)?.toDouble() ?? 0.0,
+      });
+    }
+    return matches.take(8).toList();
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
     setState(() {
@@ -385,30 +425,36 @@ class _LocationScreenState extends State<LocationScreen>
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
+        final parsed = preds
+            .map((p) {
+              final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
+              final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
+              final main = p['mainText']?.toString() ?? '';
+              final sec = p['secondaryText']?.toString() ?? '';
+              return <String, dynamic>{
+                'name': p['fullDescription']?.toString() ??
+                    p['mainText']?.toString() ??
+                    '',
+                'mainText': main,
+                'secondaryText': sec,
+                'placeId': p['placeId']?.toString() ?? '',
+                'lat': lat2,
+                'lng': lng2,
+              };
+            })
+            .where((r) => (r['name'] as String).isNotEmpty)
+            .toList();
         setState(() {
-          _searchResults = preds
-              .map((p) {
-                final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
-                final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
-                final main = p['mainText']?.toString() ?? '';
-                final sec = p['secondaryText']?.toString() ?? '';
-                return <String, dynamic>{
-                  'name': p['fullDescription']?.toString() ??
-                          p['mainText']?.toString() ?? '',
-                  'mainText': main,
-                  'secondaryText': sec,
-                  'placeId': p['placeId']?.toString() ?? '',
-                  'lat': lat2,
-                  'lng': lng2,
-                };
-              })
-              .where((r) => (r['name'] as String).isNotEmpty)
-              .toList();
+          _searchResults =
+              parsed.isNotEmpty ? parsed : _localFallbackMatches(query);
         });
         print('[PLACES] Found ${_searchResults.length} results');
       }
     } catch (e) {
       print('[PLACES] Error: $e');
+      if (mounted) {
+        setState(() => _searchResults = _localFallbackMatches(query));
+      }
     }
     if (mounted) setState(() => _searching = false);
   }

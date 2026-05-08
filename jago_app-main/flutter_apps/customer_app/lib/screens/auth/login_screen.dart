@@ -27,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _showPassword = false;
   bool _usePassword = false;
   bool _loading = false;
+  bool _usingServerOtp = false;
   int _seconds = 0;
   Timer? _timer;
   String? _firebaseVerificationId;
@@ -128,6 +129,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
     setState(() => _loading = true);
     _firebaseVerificationId = null;
+    _usingServerOtp = false;
     await FirebaseOtpService.resetVerification();
 
     // PRIMARY: Firebase Phone Auth — await until code is sent or error
@@ -164,8 +166,23 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
+    final fallbackRes = await AuthService.sendOtp(phone, 'customer');
+    if (!mounted) return;
     setState(() => _loading = false);
-    _snack(firebaseError ?? 'Firebase OTP could not be started. Please try again.', error: true);
+    if (fallbackRes['success'] == true) {
+      setState(() {
+        _otpSent = true;
+        _usingServerOtp = true;
+      });
+      _startTimer();
+      _snack('OTP sent to +91$phone');
+      return;
+    }
+
+    final message = fallbackRes['message']?.toString().isNotEmpty == true
+        ? fallbackRes['message'].toString()
+        : (firebaseError ?? 'OTP could not be started. Please try again.');
+    _snack(message, error: true);
   }
 
   Future<void> _verifyOtp() async {
@@ -176,6 +193,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     setState(() => _loading = true);
 
     try {
+      if (_usingServerOtp) {
+        final res = await AuthService.verifyOtp(phone, otp, 'customer');
+        if (!mounted) return;
+        setState(() => _loading = false);
+        if (res['success'] == true || res['token'] != null) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
+        } else {
+          _otpCtrl.clear();
+          _showErrorDialog('Login Failed', res['message'] ?? 'OTP verification failed. Please try again.');
+        }
+        return;
+      }
+
       if (_firebaseVerificationId == null) {
         throw Exception('OTP session expired. Please resend OTP and try again.');
       }

@@ -20,6 +20,7 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
   Timer? _timer;
   Map<String, dynamic>? _data;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -40,20 +41,49 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/verification-status'),
         headers: headers,
-      );
+      ).timeout(const Duration(seconds: 20));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted) {
           setState(() {
             _data = data;
             _loading = false;
+            _error = null;
           });
           if (data['verificationStatus'] == 'approved') {
             _timer?.cancel();
           }
         }
+      } else {
+        String msg = 'Unable to load verification status right now.';
+        try {
+          if ((res.headers['content-type'] ?? '').contains('application/json')) {
+            final data = jsonDecode(res.body);
+            msg = (data['message'] ?? msg).toString();
+          }
+        } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = msg;
+          });
+        }
       }
-    } catch (_) {}
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Verification status request timed out. Please try again.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Unable to reach the server. Please check your connection and retry.';
+        });
+      }
+    }
   }
 
   @override
@@ -82,6 +112,40 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
       ),
       body: _loading
         ? Center(child: CircularProgressIndicator(color: JT.primary))
+        : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 42),
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: JT.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _loading = true;
+                          _error = null;
+                        });
+                        _fetchStatus();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: JT.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(

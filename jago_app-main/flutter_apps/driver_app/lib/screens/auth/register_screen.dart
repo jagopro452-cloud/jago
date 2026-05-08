@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -112,24 +113,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return base64Encode(await file.readAsBytes());
   }
 
+  Future<void> _ensureAuthenticatedDriver() async {
+    final existingToken = await AuthService.getToken();
+    if (existingToken != null && existingToken.isNotEmpty) {
+      return;
+    }
+
+    final phone = _phoneCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    final name = _nameCtrl.text.trim();
+
+    if (phone.length != 10) throw Exception('Enter a valid 10-digit phone number');
+    if (password.length < 6) throw Exception('Password must be at least 6 characters');
+    if (name.length < 2) throw Exception('Please enter your full name');
+
+    final regRes = await AuthService.registerWithPassword(phone, password, name);
+    if (regRes['success'] == true || regRes['token'] != null) {
+      return;
+    }
+
+    final message = (regRes['message'] ?? '').toString().toLowerCase();
+    if (message.contains('already exists')) {
+      final loginRes = await AuthService.loginWithPassword(phone, password);
+      if (loginRes['success'] == true || loginRes['token'] != null) {
+        return;
+      }
+      throw Exception(loginRes['message'] ?? 'Account already exists, but password login failed. Please use Login or Forgot Password.');
+    }
+
+    throw Exception(regRes['message'] ?? 'Registration failed. Try again.');
+  }
+
   Future<void> _submit() async {
     setState(() => _loading = true);
     try {
-      // Ensure driver has an account and token. If not logged in, register first.
-      String? token = await AuthService.getToken();
-      if (token == null || token.isEmpty) {
-        final phone = _phoneCtrl.text.trim();
-        final password = _passwordCtrl.text;
-        final name = _nameCtrl.text.trim();
-        if (phone.length != 10) throw Exception('Enter a valid 10-digit phone number');
-        if (password.length < 6) throw Exception('Password must be at least 6 characters');
-        if (name.length < 2) throw Exception('Please enter your full name');
-        final regRes = await AuthService.registerWithPassword(phone, password, name);
-        if (regRes['success'] != true) {
-          throw Exception(regRes['message'] ?? 'Registration failed. Try again.');
-        }
-        token = await AuthService.getToken();
-      }
+      await _ensureAuthenticatedDriver();
 
       final authHeaders = await AuthService.getHeaders();
       final headers = {...authHeaders, 'Content-Type': 'application/json'};
@@ -152,7 +170,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'vehicleNumber': _vehicleNumCtrl.text.trim().toUpperCase(),
           'vehicleType': _vehicleType,
         }),
-      );
+      ).timeout(const Duration(seconds: 45));
 
       if (profileRes.statusCode != 200) {
         String msg = 'Failed to update profile';
@@ -178,16 +196,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
       for (var entry in docs.entries) {
         if (entry.value != null) {
           final b64 = await _fileToBase64(entry.value);
-          await http.post(
+          final uploadRes = await http.post(
             Uri.parse('${ApiConfig.baseUrl}/api/app/driver/upload-document-base64'),
             headers: headers,
             body: jsonEncode({'docType': entry.key, 'imageData': b64}),
-          );
+          ).timeout(const Duration(seconds: 60));
+          if (uploadRes.statusCode != 200) {
+            String msg = 'Failed to upload ${entry.key}';
+            try {
+              if ((uploadRes.headers['content-type'] ?? '').contains('application/json')) {
+                final decoded = jsonDecode(uploadRes.body);
+                msg = decoded['message'] ?? msg;
+              }
+            } catch (_) {}
+            throw Exception(msg);
+          }
         }
       }
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const PendingVerificationScreen()), (_) => false);
+    } on TimeoutException {
+      _showSnack('Request timed out while submitting documents. Please check your connection and try again.', error: true);
     } catch (e) {
       _showSnack(e.toString(), error: true);
     } finally {

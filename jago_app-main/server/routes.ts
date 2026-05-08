@@ -8159,23 +8159,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!locR.rows.length) return res.json({ trip: null });
       const { lat, lng, vehicle_category_id } = locR.rows[0] as any;
-      // Show matching searching trip within 15km radius
-      const searching = await rawDb.execute(rawSql`
-        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
-          vc.name as vehicle_name, vc.icon as vehicle_icon,
-          ROUND(CAST(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111 AS numeric), 1) as distance_km,
-          CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
-          CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
-        FROM trip_requests t
-        LEFT JOIN users c ON c.id = t.customer_id
-        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
-        WHERE t.current_status = 'searching' AND t.driver_id IS NULL
-          AND t.created_at > NOW() - INTERVAL '10 minutes'
-          AND NOT (${driver.id}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
-          ${vehicle_category_id ? rawSql`AND t.vehicle_category_id = ${vehicle_category_id}::uuid` : rawSql``}
-          AND (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) < 0.02
-        ORDER BY (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) ASC LIMIT 1
-      `);
+      // Show matching searching trip within radius.
+      // Some staging databases may lag optional trip schema like rejected_driver_ids,
+      // so we fall back to a query that does not depend on that column.
+      let searching: any;
+      try {
+        searching = await rawDb.execute(rawSql`
+          SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
+            vc.name as vehicle_name, vc.icon as vehicle_icon,
+            ROUND(CAST(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111 AS numeric), 1) as distance_km,
+            CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
+            CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
+          FROM trip_requests t
+          LEFT JOIN users c ON c.id = t.customer_id
+          LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+          WHERE t.current_status = 'searching' AND t.driver_id IS NULL
+            AND t.created_at > NOW() - INTERVAL '10 minutes'
+            AND NOT (${driver.id}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
+            ${vehicle_category_id ? rawSql`AND t.vehicle_category_id = ${vehicle_category_id}::uuid` : rawSql``}
+            AND (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) < 0.02
+          ORDER BY (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) ASC LIMIT 1
+        `);
+      } catch (queryErr: any) {
+        console.warn("[driver/incoming-trip] rejected_driver_ids-aware query failed, using compatibility fallback:", queryErr?.message || queryErr);
+        searching = await rawDb.execute(rawSql`
+          SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
+            vc.name as vehicle_name, vc.icon as vehicle_icon,
+            ROUND(CAST(SQRT((t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)})) * 111 AS numeric), 1) as distance_km,
+            CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
+            CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
+          FROM trip_requests t
+          LEFT JOIN users c ON c.id = t.customer_id
+          LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+          WHERE t.current_status = 'searching' AND t.driver_id IS NULL
+            AND t.created_at > NOW() - INTERVAL '10 minutes'
+            ${vehicle_category_id ? rawSql`AND t.vehicle_category_id = ${vehicle_category_id}::uuid` : rawSql``}
+            AND (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) < 0.02
+          ORDER BY (t.pickup_lat - ${Number(lat)})*(t.pickup_lat - ${Number(lat)}) + (t.pickup_lng - ${Number(lng)})*(t.pickup_lng - ${Number(lng)}) ASC LIMIT 1
+        `);
+      }
       if (searching.rows.length) {
         return res.json({ trip: camelize(searching.rows[0]), stage: "new_request" });
       }
@@ -16805,7 +16827,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // -- Place Details (get lat/lng from place_id) ---------------------------
   app.get("/api/app/places/details", authApp, async (req, res) => {
     try {
-      const placeId = String(req.query.placeId || "");
+      const placeId = String(req.query.placeId || req.query.place_id || "");
       const sessionToken = String(req.query.sessionToken || "");
       if (!placeId) return res.status(400).json({ message: "placeId required" });
       const details = await getPlaceDetails(placeId, sessionToken);

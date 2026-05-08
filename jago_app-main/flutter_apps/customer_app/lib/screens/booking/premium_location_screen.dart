@@ -53,12 +53,18 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
   bool _isTyping = false;
   bool _detectingLocation = false;
 
-  final String _googleKey = ApiConfig.googleMapsApiKey;
-  
-  final Map<String, String> _googleHeaders = {
-    "X-Android-Package": "com.mindwhile.jago_customer",
-    "X-Android-Cert": "6268DAF7E1B51A673E0F9B4D9570997B8B1ED1B2",
-  };
+  static const List<Map<String, dynamic>> _fallbackPlaces = [
+    {'name': 'Benz Circle', 'address': 'Benz Circle, Vijayawada, Andhra Pradesh', 'lat': 16.5062, 'lng': 80.6480},
+    {'name': 'Vijayawada Railway Station', 'address': 'Vijayawada Junction, Vijayawada, Andhra Pradesh', 'lat': 16.5175, 'lng': 80.6400},
+    {'name': 'PNBS Bus Stand', 'address': 'Pandit Nehru Bus Station, Vijayawada, Andhra Pradesh', 'lat': 16.5179, 'lng': 80.6238},
+    {'name': 'Kanaka Durga Temple', 'address': 'Kanaka Durga Temple, Vijayawada, Andhra Pradesh', 'lat': 16.5176, 'lng': 80.6121},
+    {'name': 'Patamata', 'address': 'Patamata, Vijayawada, Andhra Pradesh', 'lat': 16.4883, 'lng': 80.6681},
+    {'name': 'Labbipet', 'address': 'Labbipet, Vijayawada, Andhra Pradesh', 'lat': 16.5034, 'lng': 80.6488},
+    {'name': 'Moghalrajpuram', 'address': 'Moghalrajpuram, Vijayawada, Andhra Pradesh', 'lat': 16.5057, 'lng': 80.6465},
+    {'name': 'Currency Nagar', 'address': 'Currency Nagar, Vijayawada, Andhra Pradesh', 'lat': 16.4928, 'lng': 80.6689},
+    {'name': 'NTR Circle', 'address': 'NTR Circle, Vijayawada, Andhra Pradesh', 'lat': 16.5065, 'lng': 80.6443},
+    {'name': 'Gannavaram Airport', 'address': 'Vijayawada International Airport, Gannavaram, Andhra Pradesh', 'lat': 16.5304, 'lng': 80.7968},
+  ];
 
   @override
   void initState() {
@@ -116,16 +122,55 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
 
   Future<String> _reverseGeocode(double lat, double lng) async {
     try {
-      final url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'] ?? "Selected Location";
+        final data = json.decode(res.body) as Map<String, dynamic>;
+        final parts = <String>[];
+        for (final k in ['area', 'city', 'state']) {
+          final v = data[k]?.toString() ?? '';
+          if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
         }
+        if (parts.isNotEmpty) return parts.take(3).join(', ');
+        final full = data['formattedAddress']?.toString() ?? '';
+        if (full.isNotEmpty) return full;
       }
     } catch (_) {}
     return "Selected Location";
+  }
+
+  List<Map<String, dynamic>> _localFallbackMatches(String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.length < 2) return const [];
+    final tokens = normalized.split(RegExp(r'\s+')).where((token) => token.isNotEmpty).toList();
+
+    final matches = _fallbackPlaces.map((place) {
+      final haystack = '${place['name']} ${place['address']}'.toLowerCase();
+      var score = 0;
+      if (haystack.startsWith(normalized)) score += 40;
+      if (haystack.contains(normalized)) score += 24;
+      for (final token in tokens) {
+        if (haystack.contains(token)) score += 8;
+      }
+      return {'score': score, 'place': place};
+    }).where((entry) => (entry['score'] as int) > 0).toList()
+      ..sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+
+    return matches.take(8).map((entry) {
+      final place = entry['place'] as Map<String, dynamic>;
+      return {
+        'placeId': 'curated:${place['name'].toString().toLowerCase().replaceAll(' ', '-')}',
+        'mainText': place['name'],
+        'secondaryText': place['address'],
+        'fullDescription': '${place['name']}, ${place['address']}',
+        'description': '${place['name']}, ${place['address']}',
+        'lat': place['lat'],
+        'lng': place['lng'],
+      };
+    }).toList();
   }
 
   void _onSearch(String query) {
@@ -137,33 +182,67 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
         return;
       }
       try {
-        String bias = "";
+        final headers = await AuthService.getHeaders();
+        final qp = StringBuffer('?query=${Uri.encodeComponent(q)}');
         if (_pickupLat != 0 && _pickupLng != 0) {
-          bias = "&locationbias=circle:10000@$_pickupLat,$_pickupLng";
+          qp.write('&lat=$_pickupLat&lng=$_pickupLng');
         }
-        final url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(q)}&key=$_googleKey$bias";
-        final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+        final res = await http.get(
+          Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 6));
         if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          if (mounted) setState(() => _searchResults = data['predictions'] ?? []);
+          final data = json.decode(res.body) as Map<String, dynamic>;
+          final predictions = (data['predictions'] as List<dynamic>?) ?? const [];
+          if (mounted) {
+            setState(() => _searchResults = predictions.isNotEmpty ? predictions : _localFallbackMatches(q));
+          }
         }
-      } catch (_) {}
+      } catch (_) {
+        if (mounted) setState(() => _searchResults = _localFallbackMatches(q));
+      }
     });
   }
 
   Future<void> _selectPlace(dynamic p) async {
-    final placeId = p['place_id'];
+    final inlineLat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+    final inlineLng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+    if (inlineLat != 0.0 || inlineLng != 0.0) {
+      final addr = p['fullDescription']?.toString() ??
+          p['description']?.toString() ??
+          p['mainText']?.toString() ??
+          'Selected Location';
+      if (mounted) {
+        setState(() {
+          if (_pickupFocus.hasFocus) {
+            _pickup = addr; _pickupLat = inlineLat; _pickupLng = inlineLng; _pickupCtrl.text = addr;
+          } else {
+            _drop = addr; _dropLat = inlineLat; _dropLng = inlineLng; _dropCtrl.text = addr;
+          }
+          _searchResults = [];
+        });
+        FocusScope.of(context).unfocus();
+      }
+      return;
+    }
+
+    final placeId = p['placeId'] ?? p['place_id'];
     if (placeId == null) return;
     try {
-      final url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId.toString())}'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['result'] != null) {
-          final loc = data['result']['geometry']['location'];
-          final double lat = (loc['lat'] as num).toDouble();
-          final double lng = (loc['lng'] as num).toDouble();
-          String addr = data['result']['formatted_address'] ?? p['description'] ?? "Selected Location";
+        final data = json.decode(res.body) as Map<String, dynamic>;
+        final double lat = (data['lat'] as num?)?.toDouble() ?? 0.0;
+        final double lng = (data['lng'] as num?)?.toDouble() ?? 0.0;
+        if (lat != 0.0 || lng != 0.0) {
+          String addr = data['address']?.toString() ??
+              p['fullDescription']?.toString() ??
+              p['description']?.toString() ??
+              "Selected Location";
           if (mounted) {
             setState(() {
               if (_pickupFocus.hasFocus) {

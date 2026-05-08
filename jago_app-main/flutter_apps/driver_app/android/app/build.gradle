@@ -5,6 +5,8 @@ plugins {
     id "com.google.gms.google-services"
 }
 
+import groovy.json.JsonSlurper
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -17,7 +19,32 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
 }
 
-def googleMapsApiKey = System.getenv('GOOGLE_MAPS_KEY') ?: localProperties.getProperty('GOOGLE_MAPS_KEY', '')
+def resolveGoogleMapsApiKey = {
+    def envKey = System.getenv('GOOGLE_MAPS_KEY')
+    if (envKey?.trim()) return envKey.trim()
+
+    def localKey = localProperties.getProperty('GOOGLE_MAPS_KEY', '')
+    if (localKey?.trim()) return localKey.trim()
+
+    def googleServicesFile = file('google-services.json')
+    if (googleServicesFile.exists()) {
+        try {
+            def parsed = new JsonSlurper().parseText(googleServicesFile.getText('UTF-8'))
+            def clients = parsed?.client instanceof List ? parsed.client : []
+            def packageName = "com.mindwhile.jago_pilot"
+            def matchingClient = clients.find { client ->
+                client?.client_info?.android_client_info?.package_name == packageName
+            }
+            def fallbackKey = matchingClient?.api_key?.find { it?.current_key }?.current_key
+            if (fallbackKey?.trim()) return fallbackKey.trim()
+        } catch (Exception ignored) {
+        }
+    }
+
+    return ''
+}
+
+def googleMapsApiKey = resolveGoogleMapsApiKey()
 
 android {
     namespace "com.mindwhile.jago_pilot"
@@ -65,8 +92,9 @@ android {
     buildTypes {
         release {
             signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
+            // Staging validation builds prioritize deterministic packaging over size optimization.
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {

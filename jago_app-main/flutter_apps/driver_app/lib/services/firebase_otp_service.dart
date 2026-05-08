@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Wraps Firebase Phone Authentication for driver app.
@@ -10,6 +11,7 @@ class FirebaseOtpService {
   static int? _resendToken;
 
   static String _mapAuthError(FirebaseAuthException e) {
+    final message = (e.message ?? '').toLowerCase();
     switch (e.code) {
       case 'invalid-phone-number':
         return 'Invalid phone number format.';
@@ -19,6 +21,12 @@ class FirebaseOtpService {
         return 'OTP quota exceeded. Please try again later.';
       case 'app-not-authorized':
         return 'Firebase phone auth is not authorized for this app build.';
+      case 'internal-error':
+        if (message.contains('configuration_not_found') ||
+            message.contains('config')) {
+          return 'Firebase OTP is not configured for this Android build yet. This staging APK signing certificate must be added in Firebase before OTP login can work.';
+        }
+        return 'Firebase returned an internal OTP error for this app build. Please use password login until Firebase staging auth is configured correctly.';
       case 'session-expired':
         return 'This OTP session expired. Please resend OTP and try again.';
       case 'invalid-verification-code':
@@ -76,6 +84,7 @@ class FirebaseOtpService {
         },
         verificationFailed: (FirebaseAuthException e) {
           _verificationId = null;
+          debugPrint('Firebase OTP verificationFailed: code=${e.code}, message=${e.message}');
           onError(_mapAuthError(e));
           finish();
         },
@@ -96,6 +105,7 @@ class FirebaseOtpService {
       });
       await completer.future;
     } catch (e) {
+      debugPrint('Firebase OTP sendOtp exception: $e');
       onError('Failed to send OTP: ${e.toString()}');
     }
   }
@@ -120,6 +130,7 @@ class FirebaseOtpService {
       if (idToken == null) throw Exception('Could not get Firebase token. Please try again.');
       return idToken;
     } on FirebaseAuthException catch (e) {
+      debugPrint('Firebase OTP verifyOtp failed: code=${e.code}, message=${e.message}');
       throw Exception(_mapAuthError(e));
     }
   }
