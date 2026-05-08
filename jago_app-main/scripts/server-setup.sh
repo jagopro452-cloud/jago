@@ -44,6 +44,26 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 log "Database URL provided."
 
+if [ -z "$ADMIN_EMAIL" ]; then
+  echo -n "ADMIN_EMAIL: "
+  read -r ADMIN_EMAIL
+  [ -z "$ADMIN_EMAIL" ] && err "ADMIN_EMAIL is required."
+fi
+
+if [ -z "$ADMIN_PASSWORD" ]; then
+  echo -n "ADMIN_PASSWORD: "
+  read -r ADMIN_PASSWORD
+  [ -z "$ADMIN_PASSWORD" ] && err "ADMIN_PASSWORD is required."
+fi
+
+if [ -z "$ADMIN_RESET_KEY" ]; then
+  ADMIN_RESET_KEY="jago-reset-$(openssl rand -hex 8)"
+fi
+
+if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+  warn "GOOGLE_MAPS_API_KEY not set. Leaving blank for manual secret configuration."
+fi
+
 # ── 1. System Update ─────────────────────────────────────────
 log "[1/9] System update..."
 export DEBIAN_FRONTEND=noninteractive
@@ -93,12 +113,12 @@ cat > /var/www/jago/.env << ENVEOF
 NODE_ENV=production
 PORT=5000
 DATABASE_URL=${DATABASE_URL}
-ADMIN_EMAIL=kiranatmakuri518@gmail.com
-ADMIN_PASSWORD=JagoAdmin@2026!
-ADMIN_NAME=Admin
-ADMIN_RESET_KEY=JagoReset2026
+ADMIN_EMAIL=${ADMIN_EMAIL}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
+ADMIN_NAME=${ADMIN_NAME:-Admin}
+ADMIN_RESET_KEY=${ADMIN_RESET_KEY}
 OPS_API_KEY=${OPS_KEY}
-GOOGLE_MAPS_API_KEY=AIzaSyBJIuefXlqcKNsIssYHQP6lpIWQ3ih4_Z8
+GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAZORPAY_WEBHOOK_SECRET=
@@ -174,8 +194,8 @@ echo ""
 echo -e "${CYAN}Server IP   :${NC}  $SERVER_IP"
 echo -e "${CYAN}App URL     :${NC}  http://$SERVER_IP"
 echo -e "${CYAN}Admin Panel :${NC}  http://$SERVER_IP/admin"
-echo -e "${CYAN}Admin Email :${NC}  kiranatmakuri518@gmail.com"
-echo -e "${CYAN}Admin Pass  :${NC}  JagoAdmin@2026!"
+echo -e "${CYAN}Admin Email :${NC}  ${ADMIN_EMAIL}"
+echo -e "${CYAN}Admin Pass  :${NC}  [stored in /var/www/jago/.env]"
 echo ""
 echo -e "${YELLOW}--- STEP A: Point DNS (Cloudflare/GoDaddy) ---${NC}"
 echo "  jagopro.org  A record  ->  $SERVER_IP"

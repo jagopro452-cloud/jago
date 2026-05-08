@@ -23,10 +23,15 @@
 
 set -e  # Exit on any error
 
-# Updated credentials (March 24, 2026)
-ADMIN_EMAIL="Kiranatmakuri518@gmail.com"
-ADMIN_PASSWORD="Greeshmant@2023"
-ADMIN_NAME="Kiran"
+# Credentials must come from the server environment or secret manager.
+ADMIN_EMAIL="${ADMIN_EMAIL:-}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+ADMIN_NAME="${ADMIN_NAME:-Admin}"
+
+if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASSWORD" ]; then
+  echo "ADMIN_EMAIL and ADMIN_PASSWORD must be set in the environment before running this script."
+  exit 1
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -133,9 +138,9 @@ echo "   Admin: https://jagopro.org/admin/auth/login"
 echo "   Customer App: Download from https://jagopro.org/apks/"
 echo "   Driver App: Download from https://jagopro.org/apks/"
 echo ""
-echo "📧 Admin Credentials (UPDATED Mar 24, 2026):"
-echo "   Email:    Kiranatmakuri518@gmail.com"
-echo "   Password: Greeshmant@2023"
+echo "📧 Admin Credentials:"
+echo "   Email:    ${ADMIN_EMAIL}"
+echo "   Password: [FROM ENVIRONMENT]"
 echo ""
 echo "✅ What was deployed:"
 echo "   ✓ Latest code (commit: f0d9a20)"

@@ -22,7 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ops:health": "node scripts/ops/health-alert.cjs"
+    "ops:health": "node scripts/ops/health-alert.cjs",
+    "ops:staging-evidence": "node scripts/ops/capture-staging-evidence.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
