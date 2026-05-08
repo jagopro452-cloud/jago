@@ -122,7 +122,7 @@ export default function SystemHealthPage() {
   });
 
   const {
-    data: vehicleData,
+    data: vehicleData = { vehicles: [] },
     isLoading: vehiclesLoading,
     error: vehiclesError,
     refetch: refetchVehicles,

@@ -15590,7 +15590,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   app.patch("/api/admin/vehicle-status/:vehicleKey", requireAdminAuth, requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const vehicleKey = normalizeVehicleKey(req.params.vehicleKey);
+      const rawVehicleKey = Array.isArray(req.params.vehicleKey) ? req.params.vehicleKey[0] : req.params.vehicleKey;
+      const vehicleKey = normalizeVehicleKey(rawVehicleKey);
       const allowed = vehicleControlDefaults.find((v) => v.key === vehicleKey);
       if (!allowed) return res.status(400).json({ message: "Invalid vehicle type" });
       if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });
@@ -15739,7 +15740,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active = ${isActive} WHERE name ILIKE '%outstation%'`);
       }
 
-      await logAdminAction("toggle_service", "platform_services", null, { serviceKey, status }, (req as any).adminUser?.email);
+      await logAdminAction("toggle_service", "platform_services", undefined, { serviceKey, status }, (req as any).adminUser?.email);
 
       res.json({ success: true, serviceKey, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
