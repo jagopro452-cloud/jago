@@ -185,10 +185,14 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
         _otpCtrl.clear();
         final allDelivered = data['allDelivered'] == true;
         if (allDelivered) {
-          final fare = double.tryParse(_order['total_fare']?.toString() ?? '0') ?? 0;
+          final pricing = data['pricing'] is Map ? Map<String, dynamic>.from(data['pricing']) : <String, dynamic>{};
+          final netDriverEarnings = double.tryParse(pricing['netDriverEarnings']?.toString() ?? '') ??
+              double.tryParse(pricing['breakdown']?['driverEarnings']?.toString() ?? '') ??
+              double.tryParse(_order['driver_earnings']?.toString() ?? '') ??
+              0;
           setState(() {
             _stage = _ParcelStage.completed;
-            _driverEarnings = fare * 0.85; // 15% commission
+            _driverEarnings = netDriverEarnings;
           });
         } else {
           setState(() {

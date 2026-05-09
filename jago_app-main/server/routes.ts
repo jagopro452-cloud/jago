@@ -9197,44 +9197,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // AI-scored reassignment after driver cancellation
-      const cancelNextBest = await findBestDrivers(
-        Number(trip.pickupLat), Number(trip.pickupLng),
+      let vcName = "";
+      if (trip.vehicleCategoryId) {
+        const vcR = await rawDb.execute(rawSql`
+          SELECT name FROM vehicle_categories WHERE id=${trip.vehicleCategoryId}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        vcName = (vcR.rows[0] as any)?.name || "";
+      }
+      const customerR = await rawDb.execute(rawSql`
+        SELECT full_name FROM users WHERE id=${trip.customerId}::uuid LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const serviceType = resolveServiceType(trip.tripType || "ride", vcName);
+      const dispatchMeta: TripMeta = {
+        refId: trip.refId || "",
+        customerName: (customerR.rows[0] as any)?.full_name || "Customer",
+        pickupAddress: trip.pickupAddress || "",
+        destinationAddress: trip.destinationAddress || "",
+        pickupShortName: trip.pickupShortName || undefined,
+        destinationShortName: trip.destinationShortName || undefined,
+        pickupLat: Number(trip.pickupLat),
+        pickupLng: Number(trip.pickupLng),
+        estimatedFare: Number(trip.estimatedFare || 0),
+        estimatedDistance: Number(trip.estimatedDistance || 0),
+        paymentMethod: trip.paymentMethod || "cash",
+        tripType: trip.tripType || "ride",
+      };
+
+      await startDispatch(
+        tripId,
+        trip.customerId,
+        Number(trip.pickupLat),
+        Number(trip.pickupLng),
         trip.vehicleCategoryId || undefined,
-        [driver.id],
-        3
+        serviceType,
+        dispatchMeta,
+        trip.parcelVehicleCategory || undefined,
       );
 
-      if (cancelNextBest.length) {
-        for (const nd of cancelNextBest) {
-          if (io) io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-            tripId,
-            pickupAddress: trip.pickupAddress,
-            destinationAddress: trip.destinationAddress,
-            pickupLat: trip.pickupLat,
-            pickupLng: trip.pickupLng,
-            estimatedFare: trip.estimatedFare || 0,
-            tripType: trip.tripType || 'ride',
-          });
-          const dDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${nd.driverId}::uuid`);
-          const dFcm = (dDevRes.rows[0] as any)?.fcm_token;
-          if (dFcm) notifyDriverNewRide({ fcmToken: dFcm, driverName: nd.fullName, customerName: "Customer", tripId, pickupAddress: trip.pickupAddress, estimatedFare: trip.estimatedFare || 0 }).catch(dbCatch("db"));
-        }
-      } else {
-        // No drivers available � cancel trip and notify customer via both socket + FCM
-        await rawDb.execute(rawSql`
-          UPDATE trip_requests SET current_status='cancelled', cancel_reason='No drivers available after reassignment'
-          WHERE id=${tripId}::uuid AND current_status='searching'
-        `).catch(dbCatch("db"));
-        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${trip.customerId}::uuid`);
-        const custFcm = (custDevRes.rows[0] as any)?.fcm_token || null;
-        notifyTripCancelled({ fcmToken: custFcm, cancelledBy: "driver", tripId }).catch(dbCatch("db"));
-        if (io && trip.customerId) {
-          io.to(`user:${trip.customerId}`).emit("trip:no_drivers", {
-            tripId, message: "Sorry, no pilots available in your area right now. Please try again.",
-          });
-        }
-      }
-      res.json({ success: true, reassigned: cancelNextBest.length > 0 });
+      res.json({ success: true, reassigned: true, status: "searching", canonicalState: "requested" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -15051,7 +15051,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const driverId = (req as any).currentUser?.id;
       const { dropIndex, otp } = req.body;
       const r = await rawDb.execute(rawSql`
-        SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id, is_b2b, b2b_company_id
+        SELECT id, drop_locations, current_drop_index, current_status, customer_id, total_fare, driver_id,
+               payment_method, created_at, expected_delivery_minutes, is_b2b, b2b_company_id
         FROM parcel_orders WHERE id=${req.params.id}::uuid
       `);
       const order = (r.rows as any[])[0];
@@ -15093,11 +15094,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         }).catch(dbCatch("db"));
       }
 
+      let completionPricing: any = null;
       if (allDelivered) {
         // -- FULL REVENUE SETTLEMENT: commission% + GST + insurance ? admin --
         const totalFare = parseFloat(order.total_fare) || 0;
         const serviceType = order.is_b2b ? "b2b_parcel" : "parcel";
         const parcelBreakdown = await calculateRevenueBreakdown(totalFare, serviceType as any, order.driver_id);
+        const paymentMethod = (order.payment_method || "cash").toLowerCase();
+        completionPricing = {
+          totalFare,
+          paymentMethod,
+          breakdown: parcelBreakdown,
+          customerTotal: totalFare,
+          grossFare: totalFare,
+          platformCommission: parcelBreakdown.commission,
+          gstAmount: parcelBreakdown.gst,
+          insuranceAmount: parcelBreakdown.insurance,
+          netDriverEarnings: parcelBreakdown.driverEarnings,
+          driverWalletAdjustment: paymentMethod === "cash" ? -Math.abs(parcelBreakdown.total) : 0,
+        };
 
         // Save revenue breakdown on the order
         await rawDb.execute(rawSql`
@@ -15112,21 +15127,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         `).catch(dbCatch("db"));
 
         // Settle: driver wallet + admin revenue + GST wallet + commission_settlements
-        const payMethod = (order.payment_method || 'cash').toLowerCase();
         await settleRevenue({
           driverId: order.driver_id,
           tripId: order.id,
           fare: totalFare,
-          paymentMethod: payMethod as any,
+          paymentMethod: paymentMethod as any,
           breakdown: parcelBreakdown,
           serviceCategory: serviceType as any,
           serviceLabel: serviceType,
         });
 
         emitParcelLifecycle(order.id, order.customer_id, order.driver_id, "completed", {
-          totalFare, breakdown: parcelBreakdown,
+          totalFare, breakdown: parcelBreakdown, pricing: completionPricing,
         });
-        if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id });
+        if (io) io.to(`user:${order.customer_id}`).emit('parcel:completed', { orderId: order.id, pricing: completionPricing });
 
         // B2B webhook
         if (order.is_b2b && order.b2b_company_id) {
@@ -15136,7 +15150,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           }).catch(dbCatch("db"));
         }
       }
-      res.json({ success: true, allDelivered, nextDrop: allDelivered ? null : drops[nextIdx], slaBreached });
+      res.json({
+        success: true,
+        allDelivered,
+        nextDrop: allDelivered ? null : drops[nextIdx],
+        slaBreached,
+        pricing: completionPricing,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

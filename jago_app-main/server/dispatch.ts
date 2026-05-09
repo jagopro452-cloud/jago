@@ -15,6 +15,7 @@ import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
 import { findParcelCapableDrivers } from "./parcel-advanced";
 import { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { driverCanHandleDispatchService, isDispatchServiceAvailableAtLocation } from "./utils/service-dispatch";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -34,6 +35,12 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
   carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
   outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
+  mini_car:   { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  sedan:      { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  suv:        { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  premium:    { radiusStepsKm: [5, 8, 12, 18, 25], driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
+  city_pool:  { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  intercity:  { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
 function getConfig(serviceType: string): DispatchConfig {
@@ -101,14 +108,26 @@ export function resolveServiceType(
   const vc = (vehicleCategoryName || "").toLowerCase();
 
   if (tt === "parcel" || tt === "delivery") return "parcel";
+  if (tt === "parcel_bike") return "parcel_bike";
+  if (tt === "parcel_auto" || tt === "cargo_auto") return "parcel_auto";
+  if (tt === "tempo" || tt === "mini_truck") return tt;
   if (tt === "cargo" || tt === "b2b") return "b2b_parcel";
-  if (tt === "carpool" || tt === "pool") return "carpool";
-  if (tt === "intercity" || tt === "outstation") return "outstation";
+  if (tt === "carpool" || tt === "pool" || tt === "city_pool") return "city_pool";
+  if (tt === "intercity" || tt === "intercity_pool") return "intercity";
+  if (tt === "outstation" || tt === "outstation_pool") return "outstation";
+  if (tt === "mini" || tt === "mini_car") return "mini_car";
+  if (tt === "sedan") return "sedan";
+  if (tt === "suv") return "suv";
+  if (tt === "premium") return "premium";
 
   // Determine from vehicle category name fallback
   if (vc.includes("bike") || vc.includes("two")) return "bike";
   if (vc.includes("auto") || vc.includes("rickshaw")) return "auto";
-  if (vc.includes("cab") || vc.includes("car") || vc.includes("sedan") || vc.includes("suv") || vc.includes("mini")) return "cab";
+  if (vc.includes("premium")) return "premium";
+  if (vc.includes("sedan")) return "sedan";
+  if (vc.includes("suv")) return "suv";
+  if (vc.includes("mini")) return "mini_car";
+  if (vc.includes("cab") || vc.includes("car")) return "cab";
 
   return "auto"; // default
 }
@@ -315,6 +334,19 @@ export function getActiveDispatchCount(): number {
 async function searchAndDispatchNextRadius(session: DispatchSession): Promise<void> {
   if (session.status !== "searching" && session.status !== "offered") return;
 
+  const serviceAvailable = await isDispatchServiceAvailableAtLocation(
+    session.serviceType,
+    session.pickupLat,
+    session.pickupLng,
+  ).catch(() => true);
+  if (!serviceAvailable) {
+    await expireDispatch(
+      session,
+      `Service ${session.serviceType} is not active for this pickup zone right now.`,
+    );
+    return;
+  }
+
   const config = session.config;
   if (session.radiusIndex >= config.radiusStepsKm.length) {
     // All radius steps exhausted
@@ -374,7 +406,9 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         session.pickupLng,
         radiusKm,
         session.vehicleCategoryId,
+        session.serviceType,
         uniqueExcludeIds,
+        session.parcelVehicleCategory,
         config.driversPerStep
       );
     }
@@ -447,7 +481,13 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
     }
 
     // Verify driver is still available (online, no active trip)
-    const isAvailable = await checkDriverAvailability(driver.driverId);
+    const isAvailable = await checkDriverAvailability(
+      driver.driverId,
+      session.serviceType,
+      session.pickupLat,
+      session.pickupLng,
+      session.parcelVehicleCategory,
+    );
     if (!isAvailable) continue;
 
     // Send request to this single driver
@@ -648,7 +688,13 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
 /**
  * Check if a specific driver is still available to receive a trip offer.
  */
-async function checkDriverAvailability(driverId: string): Promise<boolean> {
+async function checkDriverAvailability(
+  driverId: string,
+  serviceType: string,
+  pickupLat: number,
+  pickupLng: number,
+  parcelVehicleCategory?: string,
+): Promise<boolean> {
   try {
     const r = await rawDb.execute(rawSql`
       SELECT u.is_online, u.is_locked, u.current_trip_id, u.is_active, u.verification_status,
@@ -679,7 +725,19 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       if (d.verification_status !== 'approved') reasons.push(`verification=${d.verification_status}`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
-    return available;
+    if (!available) return false;
+    const serviceEligible = await driverCanHandleDispatchService({
+      driverId,
+      serviceType,
+      pickupLat,
+      pickupLng,
+      parcelVehicleCategory,
+    }).catch(() => false);
+    if (!serviceEligible) {
+      console.log(`[DISPATCH] Driver ${driverId} rejected for ${serviceType} â€” service eligibility mismatch`);
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -694,7 +752,9 @@ async function findDriversInRadius(
   pickupLng: number,
   radiusKm: number,
   vehicleCategoryId: string | undefined,
+  serviceType: string,
   excludeDriverIds: string[],
+  parcelVehicleCategory: string | undefined,
   limit: number
 ): Promise<DriverMatchScore[]> {
   console.log(`[DISPATCH] findDriversInRadius called: Lat=${pickupLat}, Lng=${pickupLng}, Radius=${radiusKm}km, Category=${vehicleCategoryId || 'any'}`);
@@ -747,7 +807,7 @@ async function findDriversInRadius(
         POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
       ) <= ${radiusKm}
     ORDER BY distance_km ASC
-    LIMIT ${limit}
+    LIMIT ${Math.max(limit * 4, limit)}
   `);
 
   // Debug: log total online drivers vs filtered results
@@ -840,8 +900,23 @@ async function findDriversInRadius(
   });
 
   // Sort by score descending — nearest + highest rated first
-  scored.sort((a, b) => b.score - a.score);
-  return scored;
+  const serviceChecks = await Promise.all(
+    scored.map(async (candidate) => {
+      const eligible = await driverCanHandleDispatchService({
+        driverId: candidate.driverId,
+        serviceType,
+        pickupLat,
+        pickupLng,
+        parcelVehicleCategory,
+      }).catch(() => false);
+      return eligible ? candidate : null;
+    }),
+  );
+
+  return serviceChecks
+    .filter((candidate): candidate is DriverMatchScore => candidate !== null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
 }
 
 /**
