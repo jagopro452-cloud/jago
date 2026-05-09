@@ -193,7 +193,7 @@ export async function findBestDrivers(
 
   const drivers = await rawDb.execute(rawSql`
     SELECT
-      u.id, u.full_name, u.phone, u.rating,
+      u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating,
       dl.lat, dl.lng,
       COALESCE(ds.total_trips, 0) as total_trips,
       COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,
@@ -648,7 +648,7 @@ export async function updateDriverStats(driverId: string): Promise<void> {
           THEN COUNT(*) FILTER (WHERE current_status = 'completed')::float / COUNT(*)
           ELSE 0.8
         END as completion_rate,
-        COALESCE((SELECT rating FROM users WHERE id = ${driverId}::uuid), 4.0) as avg_rating,
+        COALESCE((SELECT avg_rating FROM driver_details WHERE user_id = ${driverId}::uuid), 4.0) as avg_rating,
         NOW()
       FROM trip_requests
       WHERE driver_id = ${driverId}::uuid

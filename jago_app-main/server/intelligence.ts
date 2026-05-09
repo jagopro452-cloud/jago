@@ -299,7 +299,7 @@ export async function calculateDriverBehaviorScore(driverId: string): Promise<Dr
   try {
     const stats = await rawDb.execute(rawSql`
       SELECT
-        u.rating,
+        COALESCE(dd.avg_rating, 5.0) as rating,
         COALESCE(ds.total_trips, 0) as total_trips,
         COALESCE(ds.completed_trips, 0) as completed_trips,
         COALESCE(ds.cancelled_trips, 0) as cancelled_trips,
@@ -322,6 +322,7 @@ export async function calculateDriverBehaviorScore(driverId: string): Promise<Dr
         ), 0.7) as on_time_rate
       FROM users u
       LEFT JOIN driver_stats ds ON ds.driver_id = u.id
+      LEFT JOIN driver_details dd ON dd.user_id = u.id
       WHERE u.id = ${driverId}::uuid
     `);
 

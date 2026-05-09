@@ -713,7 +713,7 @@ async function findDriversInRadius(
 
   const drivers = await rawDb.execute(rawSql`
     SELECT
-      u.id, u.full_name, u.phone, u.rating,
+      u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating,
       dl.lat, dl.lng,
       COALESCE(ds.total_trips, 0) as total_trips,
       COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,

@@ -8135,7 +8135,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       // 1. Check if this driver has an active/accepted trip
       const active = await rawDb.execute(rawSql`
-        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone, c.rating as customer_rating,
+        SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
+          COALESCE((
+            SELECT AVG(tr.customer_rating)
+            FROM trip_requests tr
+            WHERE tr.customer_id = c.id AND tr.customer_rating IS NOT NULL
+          ), 5.0) as customer_rating,
           vc.name as vehicle_name,
           CASE WHEN t.is_for_someone_else THEN t.passenger_name ELSE c.full_name END as contact_name,
           CASE WHEN t.is_for_someone_else THEN t.passenger_phone ELSE c.phone END as contact_phone
@@ -9091,13 +9096,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!tripR.rows.length) return res.status(404).json({ message: "Completed trip not found" });
       const customerId = (tripR.rows[0] as any).customer_id;
       await rawDb.execute(rawSql`UPDATE trip_requests SET customer_rating=${parsedRating}, driver_note=${note || ''} WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid`);
-      // Update customer rating average
-      await rawDb.execute(rawSql`
-        UPDATE users SET
-          rating = (rating * total_ratings + ${parsedRating}) / (total_ratings + 1),
-          total_ratings = total_ratings + 1
-        WHERE id=${customerId}::uuid
-      `);
+      // Customer rating is derived from trip_requests.customer_rating for
+      // schema-compatibility with staging databases that do not carry users.rating.
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -10017,7 +10017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { tripId } = req.params;
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
-          d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
+          d.full_name as driver_name, d.phone as driver_phone, COALESCE(dd.avg_rating, 5.0) as driver_rating, d.profile_photo as driver_photo,
           COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
           COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
           vc.name as vehicle_name,
@@ -10072,7 +10072,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
-          d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
+          d.full_name as driver_name, d.phone as driver_phone, COALESCE(dd.avg_rating, 5.0) as driver_rating,
           d.profile_photo as driver_photo,
           COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
           COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
@@ -10384,10 +10384,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await rawDb.execute(rawSql`UPDATE trip_requests SET driver_rating=${parsedRating} WHERE id=${tripId}::uuid AND customer_id=${customer.id}::uuid`);
       if (driverId) {
         await rawDb.execute(rawSql`
-          UPDATE users SET
-            rating = (rating * total_ratings + ${parsedRating}) / (total_ratings + 1),
-            total_ratings = total_ratings + 1
-          WHERE id=${driverId}::uuid
+          UPDATE driver_details
+          SET avg_rating = COALESCE((
+            SELECT AVG(driver_rating)
+            FROM trip_requests
+            WHERE driver_id=${driverId}::uuid AND driver_rating IS NOT NULL
+          ), ${parsedRating})
+          WHERE user_id=${driverId}::uuid
         `);
         // Also insert into reviews table
         await rawDb.execute(rawSql`
@@ -10430,7 +10433,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const r = await rawDb.execute(rawSql`
         SELECT t.*,
           d.full_name as driver_name, d.phone as driver_phone,
-          d.profile_photo as driver_photo, d.rating as driver_rating,
+          d.profile_photo as driver_photo, COALESCE(dd.avg_rating, 5.0) as driver_rating,
           vc.name as vehicle_name, vc.type as vehicle_type, vc.icon as vehicle_icon,
           d.vehicle_number, d.vehicle_model, d.vehicle_color
         FROM trip_requests t
@@ -11011,7 +11014,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid`
         : rawSql``;
       const r = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.rating, dl.lat, dl.lng, dl.heading,
+        SELECT u.id, u.full_name, COALESCE(dd.avg_rating, 5.0) as rating, dl.lat, dl.lng, dl.heading,
           vc.name as vehicle_name, vc.id as vehicle_category_id
         FROM driver_locations dl
         JOIN users u ON u.id = dl.driver_id
@@ -13222,7 +13225,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE driver_id=${user.id}::uuid AND driver_rating IS NOT NULL
           AND created_at >= date_trunc('month', CURRENT_DATE)
         `),
-        rawDb.execute(rawSql`SELECT rating FROM users WHERE id=${user.id}::uuid`),
+        rawDb.execute(rawSql`
+          SELECT COALESCE((
+            SELECT AVG(driver_rating) FROM trip_requests
+            WHERE driver_id=${user.id}::uuid AND driver_rating IS NOT NULL
+              AND created_at >= date_trunc('month', CURRENT_DATE)
+          ), (
+            SELECT avg_rating FROM driver_details WHERE user_id=${user.id}::uuid
+          ), 5) as avg_rating
+        `),
       ]);
       const acc = acceptance.rows[0] as any;
       const totalTrips = parseInt(acc.total || '0');
@@ -13236,7 +13247,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         avgRating: avgRating.toFixed(1),
         performanceScore: Math.min(100, performanceScore),
         level: performanceScore >= 90 ? 'Gold' : performanceScore >= 70 ? 'Silver' : 'Bronze',
-        overallRating: parseFloat((rating.rows[0] as any)?.rating || 5),
+        overallRating: parseFloat((rating.rows[0] as any)?.avg_rating || 5),
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -16342,9 +16353,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const { grade, limit = 50, offset = 0 } = req.query;
       const gradeFilter = grade ? rawSql`WHERE dbs.grade = ${grade}` : rawSql``;
       const r = await rawDb.execute(rawSql`
-        SELECT dbs.*, u.full_name, u.phone, u.rating
+        SELECT dbs.*, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating
         FROM driver_behavior_scores dbs
         JOIN users u ON u.id = dbs.driver_id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
         ${gradeFilter}
         ORDER BY dbs.overall_score DESC
         LIMIT ${parseInt(String(limit))} OFFSET ${parseInt(String(offset))}
@@ -16366,9 +16378,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const { status = 'pending', severity, limit = 50, offset = 0 } = req.query;
       const sevFilter = severity ? rawSql`AND ff.severity = ${severity}` : rawSql``;
       const r = await rawDb.execute(rawSql`
-        SELECT ff.*, u.full_name, u.phone, u.rating
+        SELECT ff.*, u.full_name, u.phone,
+          COALESCE(dd.avg_rating, (
+            SELECT AVG(tr.customer_rating)
+            FROM trip_requests tr
+            WHERE tr.customer_id = u.id AND tr.customer_rating IS NOT NULL
+          ), 5.0) as rating
         FROM fraud_flags ff
         JOIN users u ON u.id = ff.user_id
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
         WHERE ff.status = ${status}
         ${sevFilter}
         ORDER BY ff.created_at DESC

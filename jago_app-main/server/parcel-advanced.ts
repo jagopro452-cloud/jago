@@ -579,7 +579,7 @@ export async function findParcelCapableDriversDetailed(
 
   const eligible = await rawDb.execute(rawSql`
     SELECT
-      u.id, u.full_name, u.phone, u.rating,
+      u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating,
       dl.lat, dl.lng,
       COALESCE(dbs.overall_score, 50) as behavior_score,
       (SELECT ud.fcm_token FROM user_devices ud WHERE ud.user_id = u.id AND ud.fcm_token IS NOT NULL LIMIT 1) as fcm_token,

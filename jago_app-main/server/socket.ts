@@ -368,7 +368,10 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Get driver info
           const driverR = await rawDb.execute(rawSql`
-            SELECT full_name, phone, rating, profile_photo FROM users WHERE id=${userId}::uuid
+            SELECT u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating, u.profile_photo
+            FROM users u
+            LEFT JOIN driver_details dd ON dd.user_id = u.id
+            WHERE u.id=${userId}::uuid
           `);
           const driver = (camelize(driverR.rows[0]) || {}) as any;
 
@@ -583,7 +586,7 @@ export function setupSocket(httpServer: HttpServer) {
             const fare = (tripR.rows[0] as any).actual_fare || (tripR.rows[0] as any).estimated_fare || 0;
             // Socket notify (foreground)
             const dObjR = await rawDb.execute(rawSql`
-              SELECT u.full_name, u.phone, u.rating, u.profile_photo, 
+              SELECT u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating, u.profile_photo, 
                 dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category,
                 dl.lat, dl.lng
               FROM users u
