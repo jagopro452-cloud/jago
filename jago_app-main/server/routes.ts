@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
-import { getSocketHealthSnapshot, notifyNearbyDriversNewTrip, io } from "./socket";
+import { getSocketHealthSnapshot, io } from "./socket";
 import { getOpsSnapshot, noteRuntimeConfigFailure, noteRuntimeConfigPublish } from "./ops-state";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -54,6 +54,7 @@ import {
   resolveServiceType,
   type TripMeta,
 } from "./dispatch";
+import { driverCanHandleDispatchService } from "./utils/service-dispatch";
 import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
 import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
 import {
@@ -8600,7 +8601,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=${tripId}::uuid AND current_status IN ('driver_assigned','searching','accepted')
           AND (driver_id=${driver.id}::uuid OR driver_id IS NULL)
         RETURNING pickup_lat, pickup_lng, vehicle_category_id, rejected_driver_ids, customer_id,
-                  pickup_address, destination_address, estimated_fare
+                  pickup_address, destination_address, estimated_fare, estimated_distance,
+                  payment_method, trip_type, ref_id, pickup_short_name, destination_short_name, seats_booked
       `);
 
       if (tripRes.rows.length) {
@@ -8613,19 +8615,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             if (trip.customerId) {
               io.to(`user:${trip.customerId}`).emit("trip:searching", { tripId, message: "Looking for another pilot..." });
             }
-            const rejectExcludeList = (trip.rejectedDriverIds || []).filter(Boolean);
-            findBestDrivers(
-              Number(trip.pickupLat), Number(trip.pickupLng),
-              trip.vehicleCategoryId || undefined,
-              rejectExcludeList, 3
-            ).then(nextBestDrivers => {
-              for (const nd of nextBestDrivers) {
-                io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-                  tripId, pickupAddress: trip.pickupAddress || "Pickup",
-                  estimatedFare: Number(trip.estimatedFare) || 0,
-                });
+            (async () => {
+              let vcName = "";
+              if (trip.vehicleCategoryId) {
+                const vcR = await rawDb.execute(rawSql`
+                  SELECT name FROM vehicle_categories WHERE id=${trip.vehicleCategoryId}::uuid LIMIT 1
+                `).catch(() => ({ rows: [] as any[] }));
+                vcName = (vcR.rows[0] as any)?.name || "";
               }
-            }).catch(dbCatch("db"));
+              const customerR = await rawDb.execute(rawSql`
+                SELECT full_name FROM users WHERE id=${trip.customerId}::uuid LIMIT 1
+              `).catch(() => ({ rows: [] as any[] }));
+              const serviceType = resolveServiceType(trip.tripType || "ride", vcName);
+              await startDispatch(
+                tripId,
+                trip.customerId,
+                Number(trip.pickupLat),
+                Number(trip.pickupLng),
+                trip.vehicleCategoryId || undefined,
+                serviceType,
+                {
+                  refId: trip.refId || "",
+                  customerName: (customerR.rows[0] as any)?.full_name || "Customer",
+                  pickupAddress: trip.pickupAddress || "",
+                  destinationAddress: trip.destinationAddress || "",
+                  pickupShortName: trip.pickupShortName || undefined,
+                  destinationShortName: trip.destinationShortName || undefined,
+                  pickupLat: Number(trip.pickupLat),
+                  pickupLng: Number(trip.pickupLng),
+                  estimatedFare: Number(trip.estimatedFare || 0),
+                  estimatedDistance: Number(trip.estimatedDistance || 0),
+                  paymentMethod: trip.paymentMethod || "cash",
+                  tripType: trip.tripType || "ride",
+                  requestedSeats: Math.max(1, parseInt(String(trip.seatsBooked || 1), 10) || 1),
+                },
+              );
+            })().catch(dbCatch("db"));
           }
         });
       }
@@ -9221,6 +9246,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         estimatedDistance: Number(trip.estimatedDistance || 0),
         paymentMethod: trip.paymentMethod || "cash",
         tripType: trip.tripType || "ride",
+        requestedSeats: Math.max(1, parseInt(String(trip.seatsBooked || 1), 10) || 1),
       };
 
       await startDispatch(
@@ -9846,6 +9872,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         destinationShortName,
         vehicleCategoryId, estimatedFare, estimatedDistance, distanceKm,
         paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt,
+        passengers = 1, seatsBooked = 1,
         // Book for someone else
         isForSomeoneElse = false, passengerName, passengerPhone,
         // Parcel fields
@@ -9869,6 +9896,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalDestLng = validDestCoords.lng;
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
+      const requestedSeats = Math.max(1, Math.min(6, parseInt(String(seatsBooked || passengers || 1), 10) || 1));
 
       // -- Service activation gate -------------------------------------------
       const rideGate = await rawDb.execute(rawSql`
@@ -10074,7 +10102,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             trip_type, current_status, is_scheduled, scheduled_at,
             is_for_someone_else, passenger_name, passenger_phone,
             receiver_name, receiver_phone, delivery_otp,
-            pickup_short_name, destination_short_name
+            pickup_short_name, destination_short_name, seats_booked
           ) VALUES (
             ${refId}, ${customer.id}::uuid,
             NULL,
@@ -10085,7 +10113,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
             ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
             ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
-            ${finalPickupShort || null}, ${finalDestShort || null}
+            ${finalPickupShort || null}, ${finalDestShort || null}, ${requestedSeats}
           ) RETURNING *
         `);
       } catch (insertErr: any) {
@@ -10101,7 +10129,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             estimated_fare, estimated_distance, payment_method,
             trip_type, current_status, is_scheduled, scheduled_at,
             is_for_someone_else, passenger_name, passenger_phone,
-            receiver_name, receiver_phone, delivery_otp
+            receiver_name, receiver_phone, delivery_otp, seats_booked
           ) VALUES (
             ${refId}, ${customer.id}::uuid,
             NULL,
@@ -10111,7 +10139,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
             ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
             ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
-            ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}
+            ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}, ${requestedSeats}
           ) RETURNING *
         `);
       }
@@ -10189,6 +10217,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         estimatedDistance: tripRow.estimatedDistance || finalDistance || 0,
         paymentMethod: finalPayment,
         tripType,
+        requestedSeats,
       };
 
       // Start sequential dispatch � sends to ONE driver at a time with expanding radius
@@ -10202,8 +10231,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dispatchMeta
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
-        // Fallback to legacy broadcast if dispatch engine fails
-        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(dbCatch("db"));
       });
 
       res.json({
@@ -11234,15 +11261,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- SHARED: Nearby drivers (for customer map) ------------------------------
   app.get("/api/app/nearby-drivers", nearbyDriversLimiter, async (req, res) => {
     try {
-      const { lat, lng, radius = 5, vehicleCategoryId } = req.query;
+      const {
+        lat,
+        lng,
+        radius = 5,
+        vehicleCategoryId,
+        serviceType,
+        parcelVehicleCategory,
+        seats = 1,
+      } = req.query;
       const latNum = Number(lat); const lngNum = Number(lng);
       if (!lat || !lng || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
         return res.status(400).json({ message: "Valid lat and lng required" });
       }
-      const vcFilter = vehicleCategoryId
-        ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId as string}::uuid`
-        : rawSql``;
-      const r = await rawDb.execute(rawSql`
+      const requestedSeats = Math.max(1, Math.min(8, parseInt(String(seats || 1), 10) || 1));
+      const radiusNum = Math.max(1, Math.min(20, Number(radius) || 5));
+      const rawDrivers = await rawDb.execute(rawSql`
         SELECT u.id, u.full_name, COALESCE(dd.avg_rating, 5.0) as rating, dl.lat, dl.lng, dl.heading,
           vc.name as vehicle_name, vc.id as vehicle_category_id
         FROM driver_locations dl
@@ -11251,12 +11285,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
         WHERE dl.is_online=true AND u.is_active=true AND u.is_locked=false
           AND u.current_trip_id IS NULL
-          AND u.verification_status IN ('approved', 'verified', 'pending')
-          ${vcFilter}
-          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${Number(radius) * Number(radius) / 10000}
-        LIMIT 20
+          AND u.verification_status = 'approved'
+          AND (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) < ${radiusNum * radiusNum / 10000}
+        ORDER BY (dl.lat - ${latNum})*(dl.lat - ${latNum}) + (dl.lng - ${lngNum})*(dl.lng - ${lngNum}) ASC
+        LIMIT 40
       `);
-      res.json({ drivers: camelize(r.rows) });
+      const effectiveServiceType = String(serviceType || "").trim().toLowerCase()
+        || (String(parcelVehicleCategory || "").trim() ? "parcel" : "auto");
+      const drivers = (await Promise.all(
+        rawDrivers.rows.map(async (row: any) => {
+          const driver = camelize(row) as any;
+          const canHandle = await driverCanHandleDispatchService({
+            driverId: driver.id,
+            serviceType: effectiveServiceType,
+            pickupLat: latNum,
+            pickupLng: lngNum,
+            requestedVehicleCategoryId: vehicleCategoryId as string | undefined,
+            parcelVehicleCategory: parcelVehicleCategory as string | undefined,
+            requestedSeats,
+          }).catch(() => false);
+          return canHandle ? driver : null;
+        })
+      )).filter(Boolean).slice(0, 20);
+      res.json({ drivers });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -15743,8 +15794,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   setInterval(async () => {
     try {
       const timedOut = await rawDb.execute(rawSql`
-         SELECT t.id, t.pickup_lat, t.pickup_lng, t.pickup_address, t.estimated_fare,
-           t.vehicle_category_id, t.driver_id, t.rejected_driver_ids
+         SELECT t.id, t.pickup_lat, t.pickup_lng, t.pickup_address, t.destination_address,
+           t.estimated_fare, t.estimated_distance, t.payment_method, t.trip_type, t.ref_id,
+           t.pickup_short_name, t.destination_short_name, t.seats_booked,
+           t.vehicle_category_id, t.driver_id, t.rejected_driver_ids, t.customer_id
         FROM trip_requests t
         WHERE t.current_status = 'driver_assigned'
            AND t.driver_id IS NOT NULL
@@ -15768,23 +15821,43 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
         if (io) io.to(`user:${trip.driverId}`).emit("trip:timeout", { tripId: trip.id });
 
-        const excludeList = [...(trip.rejectedDriverIds || []), trip.driverId].filter(Boolean);
-        const nextBest = await findBestDrivers(
-          trip.pickupLat, trip.pickupLng,
-          trip.vehicleCategoryId || undefined,
-          excludeList, 1
-        );
-
-        if (nextBest.length && io) {
-          const nd = nextBest[0];
-          io.to(`user:${nd.driverId}`).emit("trip:new_request", { tripId: trip.id, pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0 });
-          if (nd.fcmToken) {
-            notifyDriverNewRide({ fcmToken: nd.fcmToken, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: trip.id }).catch(dbCatch("db"));
-          }
-          console.log(`[TIMEOUT] Trip ${trip.id} safety-net reassigned to driver ${nd.driverId}`);
-        } else if (io) {
-          notifyNearbyDriversNewTrip(trip.id, trip.pickupLat, trip.pickupLng, trip.vehicleCategoryId, excludeList).catch(dbCatch("db"));
+        let vcName = "";
+        if (trip.vehicleCategoryId) {
+          const vcR = await rawDb.execute(rawSql`
+            SELECT name FROM vehicle_categories WHERE id=${trip.vehicleCategoryId}::uuid LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          vcName = (vcR.rows[0] as any)?.name || "";
         }
+        const customerR = await rawDb.execute(rawSql`
+          SELECT full_name FROM users WHERE id=${trip.customerId}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const serviceType = resolveServiceType(trip.tripType || "ride", vcName);
+        const dispatchMeta: TripMeta = {
+          refId: trip.refId || "",
+          customerName: (customerR.rows[0] as any)?.full_name || "Customer",
+          pickupAddress: trip.pickupAddress || "",
+          destinationAddress: trip.destinationAddress || "",
+          pickupShortName: trip.pickupShortName || undefined,
+          destinationShortName: trip.destinationShortName || undefined,
+          pickupLat: Number(trip.pickupLat),
+          pickupLng: Number(trip.pickupLng),
+          estimatedFare: Number(trip.estimatedFare || 0),
+          estimatedDistance: Number(trip.estimatedDistance || 0),
+          paymentMethod: trip.paymentMethod || "cash",
+          tripType: trip.tripType || "ride",
+          requestedSeats: Math.max(1, parseInt(String(trip.seatsBooked || 1), 10) || 1),
+        };
+
+        await startDispatch(
+          trip.id,
+          trip.customerId,
+          Number(trip.pickupLat),
+          Number(trip.pickupLng),
+          trip.vehicleCategoryId || undefined,
+          serviceType,
+          dispatchMeta,
+          trip.parcelVehicleCategory || undefined,
+        );
       }
     } catch (e: any) {
       console.error("[TIMEOUT] Auto-reassign error:", formatDbError(e));

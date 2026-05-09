@@ -3,7 +3,7 @@ import type { Server as HttpServer } from "http";
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { notifyDriverNewRide, notifyCustomerDriverAccepted, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
-import { onDriverAccepted as dispatchOnDriverAccepted, cancelDispatch as dispatchCancelTrip } from "./dispatch";
+import { onDriverAccepted as dispatchOnDriverAccepted, cancelDispatch as dispatchCancelTrip, resolveServiceType } from "./dispatch";
 import { getRebalancingSuggestion } from "./intelligence";
 import { emitParcelLifecycle, notifyAllReceivers, notifyReceiver } from "./parcel-advanced";
 import {
@@ -15,9 +15,9 @@ import {
   checkSpeedAnomaly,
 } from "./ai";
 import { parseEnv } from "./config/env";
-import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 import { noteSocketAuthFailure, noteSocketDisconnect } from "./ops-state";
 import { canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
+import { driverCanHandleDispatchService } from "./utils/service-dispatch";
 
 export let io: SocketIOServer;
 
@@ -1176,8 +1176,6 @@ export async function notifyNearbyDriversNewTrip(
     const excludeClause = safeIds.length > 0
       ? rawSql`AND NOT (u.id = ANY(${safeIds}::uuid[]))`
       : rawSql``;
-    const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
-
     const drivers = await rawDb.execute(rawSql`
       SELECT u.id, dl.lat, dl.lng
       FROM users u
@@ -1186,15 +1184,10 @@ export async function notifyNearbyDriversNewTrip(
       WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
         AND dl.is_online=true AND u.current_trip_id IS NULL
         AND u.verification_status = 'approved'
-        ${matchingCategoryIds?.length
-        ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : vehicleCategoryId
-          ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-          : rawSql``}
         ${excludeClause}
         AND ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) < 0.06
       ORDER BY ((dl.lat - ${Number(pickupLat)})*(dl.lat - ${Number(pickupLat)}) + (dl.lng - ${Number(pickupLng)})*(dl.lng - ${Number(pickupLng)})) ASC
-      LIMIT 10
+      LIMIT 30
     `);
 
     const tripR = await rawDb.execute(rawSql`
@@ -1211,9 +1204,26 @@ export async function notifyNearbyDriversNewTrip(
     `);
     if (!tripR.rows.length) return;
     const trip = camelize(tripR.rows[0]) as any;
+    const effectiveServiceType = resolveServiceType(trip.tripType || trip.type || "ride", trip.vehicleName || trip.vehicleTypeName || "");
+    const requestedSeats = Math.max(1, parseInt(String(trip.seatsBooked || 1), 10) || 1);
+    const eligibleDrivers = (await Promise.all(
+      drivers.rows.map(async (row: any) => {
+        const driverId = String(row.id || "");
+        const canHandle = await driverCanHandleDispatchService({
+          driverId,
+          serviceType: effectiveServiceType,
+          pickupLat: Number(pickupLat),
+          pickupLng: Number(pickupLng),
+          requestedVehicleCategoryId: vehicleCategoryId,
+          parcelVehicleCategory: trip.parcelVehicleCategory || undefined,
+          requestedSeats,
+        }).catch(() => false);
+        return canHandle ? driverId : null;
+      })
+    )).filter(Boolean) as string[];
 
     // Get driver FCM tokens for background push
-    const driverIds = drivers.rows.map((r: any) => r.id);
+    const driverIds = eligibleDrivers;
     let fcmMap: Record<string, string> = {};
     if (driverIds.length > 0) {
       const devRes = await rawDb.execute(rawSql`
@@ -1225,8 +1235,7 @@ export async function notifyNearbyDriversNewTrip(
       }
     }
 
-    for (const row of drivers.rows) {
-      const driverId = (row as any).id;
+    for (const driverId of eligibleDrivers) {
       const payload = {
         tripId,
         refId: trip.refId,
@@ -1257,7 +1266,7 @@ export async function notifyNearbyDriversNewTrip(
         }).catch(() => { });
       }
     }
-    console.log(`[SOCKET] New trip ${tripId} notified to ${drivers.rows.length} nearby drivers`);
+    console.log(`[SOCKET] New trip ${tripId} notified to ${eligibleDrivers.length} nearby eligible drivers`);
   } catch (e: any) {
     console.error("[SOCKET] notifyNearbyDriversNewTrip error:", e.message);
   }
@@ -1267,15 +1276,6 @@ export async function notifyNearbyDriversNewTrip(
 async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: number) {
   if (!io) return;
   try {
-    const driverProfile = await rawDb.execute(rawSql`
-      SELECT dd.vehicle_category_id
-      FROM driver_details dd
-      WHERE dd.user_id=${driverId}::uuid
-      LIMIT 1
-    `);
-    const driverVehicleCategoryId = (driverProfile.rows[0] as any)?.vehicle_category_id || null;
-    const matchingCategoryIds = await getMatchingDriverCategoryIds(driverVehicleCategoryId);
-
     const trips = await rawDb.execute(rawSql`
       SELECT
         t.*,
@@ -1289,16 +1289,21 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
       WHERE t.current_status='searching'
         AND t.driver_id IS NULL
         AND NOT (${driverId}::uuid = ANY(COALESCE(t.rejected_driver_ids, '{}'::uuid[])))
-        ${matchingCategoryIds?.length
-        ? rawSql`AND t.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
-        : driverVehicleCategoryId
-          ? rawSql`AND t.vehicle_category_id = ${driverVehicleCategoryId}::uuid`
-          : rawSql``}
         AND ((t.pickup_lat - ${lat})*(t.pickup_lat - ${lat}) + (t.pickup_lng - ${lng})*(t.pickup_lng - ${lng})) < 0.06
-      LIMIT 3
+      LIMIT 12
     `);
     for (const row of trips.rows) {
       const trip = camelize(row) as any;
+      const canHandle = await driverCanHandleDispatchService({
+        driverId,
+        serviceType: resolveServiceType(trip.tripType || trip.type || "ride", trip.vehicleName || trip.vehicleTypeName || ""),
+        pickupLat: Number(trip.pickupLat || lat),
+        pickupLng: Number(trip.pickupLng || lng),
+        requestedVehicleCategoryId: trip.vehicleCategoryId || undefined,
+        parcelVehicleCategory: trip.parcelVehicleCategory || undefined,
+        requestedSeats: Math.max(1, parseInt(String(trip.seatsBooked || 1), 10) || 1),
+      }).catch(() => false);
+      if (!canHandle) continue;
       io.to(`user:${driverId}`).emit("trip:new_request", {
         tripId: trip.id,
         refId: trip.refId,

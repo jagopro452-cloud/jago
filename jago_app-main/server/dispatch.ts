@@ -14,7 +14,6 @@ import { io } from "./socket";
 import { notifyDriverNewRide } from "./fcm";
 import { findBestDrivers, type DriverMatchScore } from "./ai";
 import { findParcelCapableDrivers } from "./parcel-advanced";
-import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 import { driverCanHandleDispatchService, isDispatchServiceAvailableAtLocation } from "./utils/service-dispatch";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
@@ -90,6 +89,7 @@ export interface TripMeta {
   estimatedDistance: number;
   paymentMethod: string;
   tripType: string;
+  requestedSeats?: number;
 }
 
 // ── Dispatch Engine (singleton) ──────────────────────────────────────────────
@@ -409,6 +409,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         session.serviceType,
         uniqueExcludeIds,
         session.parcelVehicleCategory,
+        session.tripMeta.requestedSeats,
         config.driversPerStep
       );
     }
@@ -486,7 +487,9 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
       session.serviceType,
       session.pickupLat,
       session.pickupLng,
+      session.vehicleCategoryId,
       session.parcelVehicleCategory,
+      session.tripMeta.requestedSeats,
     );
     if (!isAvailable) continue;
 
@@ -693,7 +696,9 @@ async function checkDriverAvailability(
   serviceType: string,
   pickupLat: number,
   pickupLng: number,
+  requestedVehicleCategoryId?: string,
   parcelVehicleCategory?: string,
+  requestedSeats?: number,
 ): Promise<boolean> {
   try {
     const r = await rawDb.execute(rawSql`
@@ -731,7 +736,9 @@ async function checkDriverAvailability(
       serviceType,
       pickupLat,
       pickupLng,
+      requestedVehicleCategoryId,
       parcelVehicleCategory,
+      requestedSeats,
     }).catch(() => false);
     if (!serviceEligible) {
       console.log(`[DISPATCH] Driver ${driverId} rejected for ${serviceType} â€” service eligibility mismatch`);
@@ -755,6 +762,7 @@ async function findDriversInRadius(
   serviceType: string,
   excludeDriverIds: string[],
   parcelVehicleCategory: string | undefined,
+  requestedSeats: number | undefined,
   limit: number
 ): Promise<DriverMatchScore[]> {
   console.log(`[DISPATCH] findDriversInRadius called: Lat=${pickupLat}, Lng=${pickupLng}, Radius=${radiusKm}km, Category=${vehicleCategoryId || 'any'}`);
@@ -907,7 +915,9 @@ async function findDriversInRadius(
         serviceType,
         pickupLat,
         pickupLng,
+        requestedVehicleCategoryId: vehicleCategoryId,
         parcelVehicleCategory,
+        requestedSeats,
       }).catch(() => false);
       return eligible ? candidate : null;
     }),
