@@ -154,6 +154,8 @@ const CURATED_FALLBACK_PLACES: Array<{
   { name: "Krishna Lanka", fullAddress: "Krishna Lanka, Vijayawada, Andhra Pradesh, India", lat: 16.501, lng: 80.6117, aliases: ["krishnalanka"] },
 ];
 
+const DEFAULT_SEARCH_CENTER = { lat: 16.5062, lng: 80.6480 };
+
 function normalizePlaceSearchText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -280,7 +282,8 @@ export async function searchPlaces(
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) {
     const localResults = await searchPopularLocations(query);
-    return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    const nomResults = await searchNominatimFallback(query, lat, lng, radius);
+    return rankPredictions(query, [...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
   }
 
   const controller = new AbortController();
@@ -304,14 +307,15 @@ export async function searchPlaces(
     if (!r.ok) {
         console.error(`[mapping] Google API returned status ${r.status}`);
         const localResults = await searchPopularLocations(query);
-        return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+        const nomResults = await searchNominatimFallback(query, lat, lng, radius);
+        return rankPredictions(query, [...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     }
     const data = await r.json() as any;
     console.log(`[mapping] Google response status: ${data.status}`);
 
     if (data?.status !== "OK") {
       console.warn(`[mapping-unified:searchPlaces] Google API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}. Falling back to Nominatim/Local.`);
-      const nomResults = await searchNominatimFallback(query);
+      const nomResults = await searchNominatimFallback(query, lat, lng, radius);
       if (nomResults.length > 0) {
         return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
       }
@@ -321,7 +325,7 @@ export async function searchPlaces(
 
     if (!data.predictions?.length) {
       console.log(`[mapping-unified:searchPlaces] Google returned 0 results. Trying Nominatim fallback.`);
-      return rankPredictions(query, [...await searchNominatimFallback(query), ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+      return rankPredictions(query, [...await searchNominatimFallback(query, lat, lng, radius), ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     }
 
     const results: PlacePrediction[] = data.predictions.map((p: any) => ({
@@ -334,12 +338,20 @@ export async function searchPlaces(
     }));
 
     const localResults = await searchPopularLocations(query);
-    const rankedResults = rankPredictions(query, [...results, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    const nomResults = query.trim().length >= 4
+      ? await searchNominatimFallback(query, lat, lng, radius)
+      : [];
+    const rankedResults = rankPredictions(
+      query,
+      [...results, ...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)],
+      lat,
+      lng,
+    );
     placesCache.set(cacheKey, rankedResults);
     return rankedResults;
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
-    const nomResults = await searchNominatimFallback(query);
+    const nomResults = await searchNominatimFallback(query, lat, lng, radius);
     if (nomResults.length > 0) return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
     const localResults = await searchPopularLocations(query);
     return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
@@ -348,11 +360,27 @@ export async function searchPlaces(
   }
 }
 
-async function searchNominatimFallback(query: string): Promise<PlacePrediction[]> {
+function buildSearchViewbox(lat?: number, lng?: number, radiusMeters?: number): string {
+  const centerLat = lat || DEFAULT_SEARCH_CENTER.lat;
+  const centerLng = lng || DEFAULT_SEARCH_CENTER.lng;
+  const radiusKm = Math.max(8, Math.min(35, (radiusMeters || 25000) / 1000));
+  const latDelta = radiusKm / 111;
+  const lngDelta = radiusKm / (111 * Math.cos((centerLat * Math.PI) / 180) || 1);
+  const west = (centerLng - lngDelta).toFixed(5);
+  const north = (centerLat + latDelta).toFixed(5);
+  const east = (centerLng + lngDelta).toFixed(5);
+  const south = (centerLat - latDelta).toFixed(5);
+  return `${west},${north},${east},${south}`;
+}
+
+async function searchNominatimFallback(query: string, lat?: number, lng?: number, radius?: number): Promise<PlacePrediction[]> {
   try {
     const nomController = new AbortController();
     const nomTimeout = setTimeout(() => nomController.abort(), 4000);
-    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=15`;
+    const viewbox = buildSearchViewbox(lat, lng, radius);
+    const nomUrl =
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}` +
+      `&limit=15&addressdetails=1&countrycodes=in&dedupe=1&bounded=1&viewbox=${encodeURIComponent(viewbox)}`;
     
     const nr = await fetch(nomUrl, {
       signal: nomController.signal,
@@ -368,12 +396,13 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
           const parts = (p.display_name || "").split(",");
           const main = p.name || parts[0];
           const sec = parts.slice(1).join(",").trim();
+          const fullDescription = p.display_name || "";
           return {
             placeId: `nom:${p.place_id}`,
             mainText: main,
             secondaryText: sec,
-            fullDescription: p.display_name || "",
-            description: p.display_name || "", // Backward compatibility
+            fullDescription,
+            description: fullDescription, // Backward compatibility
             types: [p.type || "point_of_interest"],
             lat: parseFloat(p.lat) || 0,
             lng: parseFloat(p.lon) || 0,
@@ -393,7 +422,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
     console.error("[mapping-unified] Nominatim fallback failed:", e);
   }
   const localResults = await searchPopularLocations(query);
-  return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query)], undefined, undefined);
+  return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
 }
 
 /**
