@@ -3623,6 +3623,90 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/users", async (req, res) => {
     try {
       const { userType, search, page, limit } = req.query as Record<string, string>;
+      if (userType === "driver") {
+        const pageNum = Number(page) || 1;
+        const limitNum = Math.min(Number(limit) || 15, 100);
+        const offset = (pageNum - 1) * limitNum;
+        const searchLike = search?.trim() ? `%${search.trim()}%` : null;
+
+        const whereSearch = searchLike
+          ? rawSql`AND (u.full_name ILIKE ${searchLike} OR u.email ILIKE ${searchLike} OR u.phone ILIKE ${searchLike})`
+          : rawSql``;
+
+        const rows = await rawDb.execute(rawSql`
+          SELECT
+            u.id,
+            u.full_name,
+            u.first_name,
+            u.last_name,
+            u.email,
+            u.phone,
+            u.user_type,
+            u.is_active,
+            u.profile_image,
+            u.selfie_image,
+            u.vehicle_status,
+            u.rejection_note,
+            u.license_number,
+            u.license_image,
+            u.vehicle_image,
+            u.vehicle_number,
+            u.vehicle_model,
+            u.vehicle_brand,
+            u.vehicle_color,
+            u.vehicle_year,
+            u.city,
+            u.created_at,
+            u.updated_at,
+            dd.avg_rating,
+            dd.availability_status,
+            dd.vehicle_category_id,
+            vc.name AS vehicle_category_name,
+            CASE
+              WHEN u.verification_status = 'verified'
+                AND u.onboard_date IS NULL
+                AND (
+                  EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
+                  OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
+                )
+              THEN 'under_review'
+              ELSE COALESCE(u.verification_status, 'pending')
+            END AS verification_status,
+            (
+              SELECT COUNT(*)::int
+              FROM (
+                SELECT d.doc_type
+                FROM driver_documents d
+                WHERE d.driver_id = u.id
+                UNION
+                SELECT k.document_type
+                FROM driver_kyc_documents k
+                WHERE k.driver_id = u.id
+              ) docs
+            ) AS document_count
+          FROM users u
+          LEFT JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type = 'driver'
+          ${whereSearch}
+          ORDER BY u.created_at DESC
+          LIMIT ${limitNum}
+          OFFSET ${offset}
+        `);
+
+        const totalRes = await rawDb.execute(rawSql`
+          SELECT COUNT(*)::int AS total
+          FROM users u
+          WHERE u.user_type = 'driver'
+          ${whereSearch}
+        `);
+
+        return res.json({
+          data: rows.rows.map((row: any) => camelize(row)),
+          total: Number((totalRes.rows[0] as any)?.total || 0),
+        });
+      }
+
       const result = await storage.getUsers(
         userType,
         search,

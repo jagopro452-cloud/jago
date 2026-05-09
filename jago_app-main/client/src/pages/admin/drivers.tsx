@@ -416,7 +416,11 @@ export default function Drivers() {
                 ) : filtered.map((driver: any, idx: number) => {
                   const name = driver.fullName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Driver";
                   const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
-                  const docsCount = [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length;
+                  const docsCount = Number(
+                    driver.documentCount ??
+                    [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length
+                  );
+                  const isPendingLike = ["pending", "under_review"].includes(driver.verificationStatus || "pending");
                   return (
                     <tr key={driver.id} data-testid={`row-driver-${driver.id}`}>
                       <td className="ps-4 text-muted small">{idx + 1}</td>
@@ -473,9 +477,9 @@ export default function Drivers() {
                       <td className="text-center pe-4">
                         <button className="btn btn-sm"
                           style={{ borderRadius: 8, fontSize: 11,
-                            background: driver.verificationStatus === "pending" ? "#fef3c7" : "#f1f5f9",
-                            color: driver.verificationStatus === "pending" ? "#d97706" : "#64748b",
-                            border: `1px solid ${driver.verificationStatus === "pending" ? "#fde047" : "#e2e8f0"}`,
+                            background: isPendingLike ? "#fef3c7" : "#f1f5f9",
+                            color: isPendingLike ? "#d97706" : "#64748b",
+                            border: `1px solid ${isPendingLike ? "#fde047" : "#e2e8f0"}`,
                           }}
                           onClick={() => setVerifyTarget(driver)}
                           data-testid={`btn-verify-${driver.id}`}>
