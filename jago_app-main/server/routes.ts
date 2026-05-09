@@ -22,7 +22,7 @@ const rawSql = sql;
 import bcrypt from "bcryptjs";
 import { hashPassword, verifyPassword } from "./utils/crypto";
 import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
-import { buildRideLifecycleMeta, canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
+import { buildRideLifecycleMeta, buildTripRealtimePayload, canTransitionRideState, getCanonicalRideState, getRideUiState, toLegacyRideStatus } from "./utils/ride-state";
 import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
@@ -277,35 +277,7 @@ function dbCatchRows(label: string): (err: any) => { rows: any[] } {
 }
 
 function toUiTripState(trip: any): string {
-  const canonical = getCanonicalRideState(trip);
-  switch (canonical) {
-    case "requested":
-      return "requested";
-    case "driver_assigned":
-    case "driver_accepting":
-    case "accepted":
-    case "heading_to_pickup":
-      return "driver_assigned";
-    case "arrived":
-    case "waiting":
-    case "otp_pending":
-      return "driver_arriving";
-    case "otp_verified":
-      return "trip_started";
-    case "in_progress":
-    case "heading_to_destination":
-      return "trip_in_progress";
-    case "completed":
-      return "trip_completed";
-    case "cancelled_by_user":
-    case "cancelled_by_driver":
-    case "cancelled_by_admin":
-    case "expired":
-    case "failed":
-      return "trip_cancelled";
-    default:
-      return canonical;
-  }
+  return getRideUiState(trip);
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -323,13 +295,42 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 function augmentTripPayload(trip: any) {
   if (!trip) return trip;
   const waitingChargePerMin = parseFloat(String(trip.waitingChargePerMin ?? trip.waiting_charge_per_min ?? trip.vcWaitingCharge ?? 0)) || 0;
-  const lifecycleMeta = buildRideLifecycleMeta(trip, { waitingGraceSeconds: 180, waitingChargePerMin });
-  return {
-    ...trip,
-    canonicalState: lifecycleMeta.canonicalState,
-    uiState: toUiTripState({ ...trip, currentStatus: trip.currentStatus || trip.current_status }),
-    lifecycle: lifecycleMeta.lifecycle,
-  };
+  return buildTripRealtimePayload(trip, { waitingGraceSeconds: 180, waitingChargePerMin });
+}
+
+async function loadTripRealtimePayload(tripId: string): Promise<any | null> {
+  const r = await rawDb.execute(rawSql`
+    SELECT t.*,
+      c.full_name as customer_name, c.phone as customer_phone, c.rating as customer_rating,
+      d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating, d.profile_photo as driver_photo,
+      COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
+      COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+      vc.name as vehicle_name,
+      vc.waiting_charge_per_min as vc_waiting_charge,
+      COALESCE(dl.lat, d.current_lat) as driver_lat,
+      COALESCE(dl.lng, d.current_lng) as driver_lng,
+      dl.heading as driver_heading
+    FROM trip_requests t
+    LEFT JOIN users c ON c.id = t.customer_id
+    LEFT JOIN users d ON d.id = t.driver_id
+    LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+    LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
+    LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
+    WHERE t.id = ${tripId}::uuid
+    LIMIT 1
+  `).catch(dbCatchRows("trip-realtime-payload"));
+  return r.rows.length ? augmentTripPayload(camelize(r.rows[0])) : null;
+}
+
+async function emitTripRealtimeUpdate(tripId: string, extra: Record<string, any> = {}): Promise<any | null> {
+  if (!io) return null;
+  const payload = await loadTripRealtimePayload(tripId);
+  if (!payload) return null;
+  const merged = { ...payload, ...extra };
+  if (payload.customerId) io.to(`user:${payload.customerId}`).emit("trip:status_update", merged);
+  if (payload.driverId) io.to(`user:${payload.driverId}`).emit("trip:status_update", merged);
+  io.to(`trip:${tripId}`).emit("trip:status_update", merged);
+  return merged;
 }
 
 /** GeoJSON [lng, lat] ring ray-cast point-in-polygon */
@@ -8325,8 +8326,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.created_at DESC LIMIT 1
       `);
       if (active.rows.length) {
-        const stage = (active.rows[0] as any).current_status;
-        return res.json({ trip: camelize(active.rows[0]), stage });
+        const trip = augmentTripPayload(camelize(active.rows[0]));
+        return res.json({ trip, stage: trip.currentStatus, canonicalState: trip.canonicalState });
       }
       // 2. Check driver location + vehicle category to find matching nearby trips
       const locR = await rawDb.execute(rawSql`
@@ -8377,7 +8378,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `);
       }
       if (searching.rows.length) {
-        return res.json({ trip: camelize(searching.rows[0]), stage: "new_request" });
+        const trip = augmentTripPayload(camelize(searching.rows[0]));
+        return res.json({ trip, stage: "new_request", canonicalState: trip.canonicalState });
       }
       res.json({ trip: null });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -8684,8 +8686,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.status(400).json({ message: "OTP has expired. Please ask customer to regenerate." });
         }
       }
+      if (!canTransitionRideState(trip.current_status, "on_the_way")) {
+        return res.status(409).json({ message: `Invalid ride transition from ${trip.current_status}` });
+      }
       const updated = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='on_the_way', ride_started_at=NOW()
+        UPDATE trip_requests
+        SET current_status='on_the_way',
+            ride_started_at=COALESCE(ride_started_at, NOW()),
+            updated_at=NOW()
         WHERE id=${tripId}::uuid RETURNING *
       `);
       const updatedTrip = camelize(updated.rows[0]);
@@ -8699,40 +8707,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ).catch(dbCatch("db"));
       }
 
-      if (io) {
-        // Fetch driver vehicle info for the broadcast
-        const vR = await rawDb.execute(rawSql`
-          SELECT dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category
-          FROM driver_details dd
-          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-          WHERE dd.user_id = ${driver.id}::uuid LIMIT 1
-        `).catch(() => ({ rows: [] }));
-        const vehicle = vR.rows[0] as any || {};
-
-        const payload = {
-          tripId,
-          status: "on_the_way",
-          currentStatus: "on_the_way",
-          canonicalState: "in_progress",
-          otp,
-          uiState: 'trip_started',
-          driver: {
-            id: driver.id,
-            fullName: driver.fullName,
-            phone: driver.phone,
-            rating: driver.rating,
-            photo: driver.profilePhoto,
-            vehicleNumber: vehicle.vehicle_number || '',
-            vehicleModel: vehicle.vehicle_model || '',
-            vehicleCategory: vehicle.vehicle_category || '',
-            lat: updatedTrip.currentLat,
-            lng: updatedTrip.currentLng
-          }
-        };
-        io.to(`user:${updatedTrip.customerId}`).emit("trip:status_update", payload);
-        io.to(`trip:${tripId}`).emit("trip:status_update", payload);
-      }
-      res.json({ success: true, trip: augmentTripPayload(updatedTrip) });
+      const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: null, otp });
+      res.json({ success: true, trip: payload || augmentTripPayload(updatedTrip) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8765,30 +8741,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
       if (!tripId) return res.status(400).json({ message: "tripId required" });
+      const tripR = await rawDb.execute(rawSql`
+        SELECT t.id, t.current_status, t.pickup_lat, t.pickup_lng, t.pickup_otp, t.customer_id,
+          t.passenger_phone, t.passenger_name, t.is_for_someone_else, t.trip_type, t.arrived_at,
+          c.phone as customer_phone, c.full_name as customer_name,
+          dl.lat as driver_lat, dl.lng as driver_lng
+        FROM trip_requests t
+        LEFT JOIN users c ON c.id = t.customer_id
+        LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
+        WHERE t.id=${tripId}::uuid AND t.driver_id=${driver.id}::uuid
+        LIMIT 1
+      `);
+      if (!tripR.rows.length) return res.status(404).json({ message: "Trip not found" });
+      const tripRow = tripR.rows[0] as any;
+      const currentCanonical = getCanonicalRideState(tripRow);
+      if (tripRow.current_status === "arrived") {
+        const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: tripRow.pickup_otp || null });
+        return res.json({ success: true, pickupOtp: tripRow.pickup_otp || null, trip: payload, canonicalState: payload?.canonicalState || currentCanonical });
+      }
+      if (!canTransitionRideState(tripRow.current_status, "arrived")) {
+        return res.status(400).json({ message: `Cannot mark arrived in status: ${tripRow.current_status}` });
+      }
+
+      const pickupLat = Number(tripRow.pickup_lat) || 0;
+      const pickupLng = Number(tripRow.pickup_lng) || 0;
+      const driverLat = Number(tripRow.driver_lat) || 0;
+      const driverLng = Number(tripRow.driver_lng) || 0;
+      const geofenceMetersR = await rawDb.execute(rawSql`
+        SELECT value FROM business_settings WHERE key_name='driver_arrived_geofence_meters' LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const geofenceMeters = Math.max(75, parseFloat((geofenceMetersR.rows[0] as any)?.value || "250") || 250);
+      if (!driverLat || !driverLng) {
+        return res.status(409).json({ message: "Live driver location required before marking arrived." });
+      }
+      const distanceMeters = haversineKm(driverLat, driverLng, pickupLat, pickupLng) * 1000;
+      if (distanceMeters > geofenceMeters) {
+        return res.status(409).json({
+          message: `Driver is too far from pickup to mark arrived (${Math.round(distanceMeters)}m).`,
+          code: "ARRIVAL_GEOFENCE_MISMATCH",
+        });
+      }
+
       const updR = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='arrived', arrived_at=COALESCE(arrived_at, NOW())
+        UPDATE trip_requests
+        SET current_status='arrived',
+            arrived_at=COALESCE(arrived_at, NOW()),
+            updated_at=NOW()
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status IN ('accepted','driver_assigned')
         RETURNING id, pickup_otp, customer_id
       `);
       if (!updR.rows.length) {
-        const check = await rawDb.execute(rawSql`SELECT current_status FROM trip_requests WHERE id=${tripId}::uuid`);
-        const st = (check.rows[0] as any)?.current_status;
-        if (!st) return res.status(404).json({ message: "Trip not found" });
-        return res.status(400).json({ message: `Cannot mark arrived in status: ${st}` });
+        return res.status(409).json({ message: "Trip state changed before arrival confirmation. Please refresh." });
       }
-      // Get pickup OTP + passenger info + customer FCM token
-      const r = await rawDb.execute(rawSql`
-        SELECT t.pickup_otp, t.customer_id, t.passenger_phone, t.passenger_name,
-          t.is_for_someone_else, t.trip_type, c.phone as customer_phone, c.full_name as customer_name
-        FROM trip_requests t
-        LEFT JOIN users c ON c.id = t.customer_id
-        WHERE t.id=${tripId}::uuid
-      `);
-      const tripRow = r.rows[0] as any;
       const otp = tripRow?.pickup_otp;
       await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');
-      await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver');
+      await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver', {
+        geofenceMeters: Math.round(distanceMeters),
+      });
 
       // ?? Notify customer � driver arrived, show OTP
       const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
@@ -8814,12 +8824,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ).catch(dbCatch("db"));
       }
 
-      if (io && tripRow?.customer_id) {
-        io.to(`user:${tripRow.customer_id}`).emit("trip:status_update", { tripId, status: "arrived", currentStatus: "arrived", canonicalState: "otp_pending", otp, uiState: 'driver_arriving' });
-        io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status: "arrived", currentStatus: "arrived", canonicalState: "otp_pending", otp, uiState: 'driver_arriving' });
-      }
-
-      res.json({ success: true, pickupOtp: otp, canonicalState: "otp_pending" });
+      const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: otp || null, otp: otp || null });
+      res.json({ success: true, pickupOtp: otp, trip: payload, canonicalState: payload?.canonicalState || "otp_pending" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8845,8 +8851,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (tripRow.pickup_otp && pickupOtp !== tripRow.pickup_otp) {
         return res.status(400).json({ message: "Invalid OTP" });
       }
+      if (!canTransitionRideState(tripRow.current_status, "on_the_way")) {
+        return res.status(409).json({ message: `Invalid ride transition from ${tripRow.current_status}` });
+      }
       const startR = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='on_the_way', ride_started_at=COALESCE(ride_started_at, NOW())
+        UPDATE trip_requests
+        SET current_status='on_the_way', ride_started_at=COALESCE(ride_started_at, NOW()), updated_at=NOW()
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
         RETURNING id
       `);
@@ -8862,7 +8872,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             logHeatmapEvent('pickup', parseFloat(t2.pickup_lat), parseFloat(t2.pickup_lng), svc);
           }
         }).catch(dbCatch("db"));
-      res.json({ success: true, message: "Trip started", canonicalState: "in_progress" });
+      const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: null });
+      res.json({ success: true, message: "Trip started", canonicalState: payload?.canonicalState || "in_progress", trip: payload });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

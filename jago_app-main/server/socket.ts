@@ -16,7 +16,7 @@ import {
 } from "./ai";
 import { parseEnv } from "./config/env";
 import { noteSocketAuthFailure, noteSocketDisconnect } from "./ops-state";
-import { canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
+import { buildTripRealtimePayload, canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
 import { driverCanHandleDispatchService } from "./utils/service-dispatch";
 
 export let io: SocketIOServer;
@@ -40,6 +40,50 @@ function camelize(obj: any): any {
       v,
     ])
   );
+}
+
+async function loadTripRealtimePayload(tripId: string): Promise<any | null> {
+  const tripR = await rawDb.execute(rawSql`
+    SELECT
+      t.*,
+      u.full_name as customer_name,
+      vc.name as vehicle_name,
+      vc.icon as vehicle_icon,
+      vc.waiting_charge_per_min as vc_waiting_charge,
+      COALESCE(vc.vehicle_type, '') as vehicle_type_field,
+      d.full_name as driver_name,
+      d.phone as driver_phone,
+      d.rating as driver_rating,
+      d.profile_photo as driver_photo,
+      COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
+      COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+      COALESCE(dl.lat, d.current_lat) as driver_lat,
+      COALESCE(dl.lng, d.current_lng) as driver_lng,
+      dl.heading as driver_heading
+    FROM trip_requests t
+    JOIN users u ON u.id=t.customer_id
+    LEFT JOIN users d ON d.id = t.driver_id
+    LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+    LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
+    LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
+    WHERE t.id=${tripId}::uuid
+    LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  if (!tripR.rows.length) return null;
+  return buildTripRealtimePayload(camelize(tripR.rows[0]), {
+    waitingGraceSeconds: 180,
+    waitingChargePerMin: parseFloat(String((tripR.rows[0] as any)?.vc_waiting_charge || 0)) || 0,
+  });
+}
+
+async function emitTripSnapshot(tripId: string, extra: Record<string, any> = {}) {
+  const payload = await loadTripRealtimePayload(tripId);
+  if (!payload) return null;
+  const merged = { ...payload, ...extra };
+  if (payload.customerId) io.to(`user:${payload.customerId}`).emit("trip:status_update", merged);
+  if (payload.driverId) io.to(`user:${payload.driverId}`).emit("trip:status_update", merged);
+  io.to(`trip:${tripId}`).emit("trip:status_update", merged);
+  return merged;
 }
 
 async function persistSafetyAlert(alert: any, driverId: string) {
@@ -169,7 +213,14 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const tripId = (tripR.rows[0] as any)?.current_trip_id;
           if (tripId) {
-            io.to(`trip:${tripId}`).emit("driver:location_update", { lat, lng, heading, speed, tripId });
+            io.to(`trip:${tripId}`).emit("driver:location_update", {
+              lat,
+              lng,
+              heading,
+              speed,
+              tripId,
+              serverTimestamp: new Date().toISOString(),
+            });
 
             recordWaypoint(tripId, lat, lng, speed);
 
@@ -229,6 +280,11 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           if (r.rows.length) {
             socket.join(`trip:${tripId}`);
+            const payload = await loadTripRealtimePayload(tripId);
+            if (payload) {
+              socket.emit("trip:recovered", payload);
+              socket.emit("trip:status_update", payload);
+            }
             console.log(`[SOCKET] Driver ${userId} rejoined trip room trip:${tripId} after reconnect`);
           }
         } catch (_) { }
@@ -562,6 +618,26 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           const currentTrip = currentTripR.rows[0] as any;
+          const currentCanonical = getCanonicalRideState({
+            current_status: currentTrip.current_status,
+            cancelled_by: currentTrip.cancelled_by,
+            arrived_at: currentTrip.arrived_at,
+          });
+          const nextCanonical = getCanonicalRideState({
+            current_status: status,
+            cancelled_by: status === "cancelled" ? "driver" : currentTrip.cancelled_by,
+            arrived_at: status === "arrived" ? (currentTrip.arrived_at || new Date().toISOString()) : currentTrip.arrived_at,
+          });
+          if (status === currentTrip.current_status || currentCanonical === nextCanonical) {
+            const currentPayload = await emitTripSnapshot(tripId, otp ? { otp } : {});
+            socket.emit("driver:trip_status_ok", {
+              tripId,
+              status: currentTrip.current_status,
+              canonicalState: currentPayload?.canonicalState || currentCanonical,
+              recovered: true,
+            });
+            return;
+          }
           if (status !== currentTrip.current_status &&
             !canTransitionRideState(currentTrip.current_status, status)) {
             socket.emit("error", { message: "Invalid trip state transition" });
@@ -656,64 +732,14 @@ export function setupSocket(httpServer: HttpServer) {
             await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${userId}::uuid`);
           }
 
-          // Get customer id + fare for FCM
-          const tripR = await rawDb.execute(rawSql`
-            SELECT customer_id, estimated_fare, actual_fare, current_status, cancelled_by,
-                   arrived_at, waiting_charge, waiting_charge_per_min
-            FROM trip_requests
-            WHERE id=${tripId}::uuid
-          `);
-          if (tripR.rows.length) {
-            const updatedTrip = tripR.rows[0] as any;
-            const customerId = updatedTrip.customer_id;
-            const fare = updatedTrip.actual_fare || updatedTrip.estimated_fare || 0;
-            // Socket notify (foreground)
-            const dObjR = await rawDb.execute(rawSql`
-              SELECT u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating, u.profile_photo, 
-                dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category,
-                dl.lat, dl.lng
-              FROM users u
-              LEFT JOIN driver_details dd ON dd.user_id = u.id
-              LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-              LEFT JOIN driver_locations dl ON dl.driver_id = u.id
-              WHERE u.id = (SELECT driver_id FROM trip_requests WHERE id=${tripId}::uuid)
-              LIMIT 1
-            `).catch(() => ({ rows: [] }));
-            const dObjRaw = dObjR.rows[0] as any;
-            const driver = dObjRaw ? {
-              id: dObjRaw.id,
-              fullName: dObjRaw.full_name,
-              phone: dObjRaw.phone,
-              rating: dObjRaw.rating,
-              photo: dObjRaw.profile_photo,
-              vehicleNumber: dObjRaw.vehicle_number || '',
-              vehicleModel: dObjRaw.vehicle_model || '',
-              vehicleCategory: dObjRaw.vehicle_category || '',
-              lat: dObjRaw.lat,
-              lng: dObjRaw.lng,
-            } : undefined;
-
-            const payload = {
-              tripId,
-              status,
-              currentStatus: updatedTrip.current_status,
-              canonicalState: getCanonicalRideState({
-                current_status: updatedTrip.current_status,
-                cancelled_by: updatedTrip.cancelled_by,
-                arrived_at: updatedTrip.arrived_at,
-                waiting_charge: updatedTrip.waiting_charge,
-                waiting_charge_per_min: updatedTrip.waiting_charge_per_min,
-              }),
-              otp,
-              driver,
-            };
-            io.to(`user:${customerId}`).emit("trip:status_update", payload);
-            io.to(`trip:${tripId}`).emit("trip:status_update", payload);
+          const payload = await emitTripSnapshot(tripId, otp ? { otp } : {});
+          if (payload?.customerId) {
+            const fare = payload.actualFare || payload.estimatedFare || 0;
             // FCM fallback (background) for key status changes
             if (status === "completed" || status === "cancelled") {
               try {
                 const custDevR = await rawDb.execute(rawSql`
-                  SELECT fcm_token FROM user_devices WHERE user_id=${customerId}::uuid AND fcm_token IS NOT NULL LIMIT 1
+                  SELECT fcm_token FROM user_devices WHERE user_id=${payload.customerId}::uuid AND fcm_token IS NOT NULL LIMIT 1
                 `);
                 const custFcm = (custDevR.rows[0] as any)?.fcm_token;
                 if (custFcm) {
@@ -730,10 +756,7 @@ export function setupSocket(httpServer: HttpServer) {
           socket.emit("driver:trip_status_ok", {
             tripId,
             status,
-            canonicalState: getCanonicalRideState({
-              current_status: status,
-              cancelled_by: status === "cancelled" ? "driver" : null,
-            }),
+            canonicalState: payload?.canonicalState || nextCanonical,
           });
           console.log(`[SOCKET] Trip ${tripId} status → ${status}`);
         } catch (e: any) {
@@ -865,6 +888,11 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           socket.join(`trip:${tripId}`);
+          const payload = await loadTripRealtimePayload(tripId);
+          if (payload) {
+            socket.emit("trip:recovered", payload);
+            socket.emit("trip:status_update", payload);
+          }
           console.log(`[SOCKET] Customer ${userId} tracking trip ${tripId}`);
         } catch (e: any) {
           console.error("[SOCKET] customer:track_trip error:", e.message);

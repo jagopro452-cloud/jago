@@ -137,6 +137,64 @@ export function buildRideLifecycleMeta(trip: any, opts?: { waitingGraceSeconds?:
   };
 }
 
+export function getRideUiState(trip: any, opts?: { waitingGraceSeconds?: number }): string {
+  const canonical = getCanonicalRideState(trip, opts);
+  switch (canonical) {
+    case "requested":
+      return "requested";
+    case "driver_assigned":
+    case "driver_accepting":
+    case "accepted":
+    case "heading_to_pickup":
+      return "driver_assigned";
+    case "arrived":
+    case "waiting":
+    case "otp_pending":
+      return "driver_arriving";
+    case "otp_verified":
+      return "trip_started";
+    case "in_progress":
+    case "heading_to_destination":
+      return "trip_in_progress";
+    case "completed":
+      return "trip_completed";
+    case "cancelled_by_user":
+    case "cancelled_by_driver":
+    case "cancelled_by_admin":
+    case "expired":
+    case "failed":
+      return "trip_cancelled";
+    default:
+      return canonical;
+  }
+}
+
+export function buildTripRealtimePayload(
+  trip: any,
+  opts?: { waitingGraceSeconds?: number; waitingChargePerMin?: number }
+) {
+  const lifecycleMeta = buildRideLifecycleMeta(trip, opts);
+  const legacyStatus = toLegacyRideStatus(lifecycleMeta.canonicalState);
+  return {
+    ...trip,
+    status: legacyStatus,
+    currentStatus: String(trip?.currentStatus || trip?.current_status || legacyStatus),
+    canonicalState: lifecycleMeta.canonicalState,
+    uiState: getRideUiState(trip, { waitingGraceSeconds: opts?.waitingGraceSeconds }),
+    lifecycle: lifecycleMeta.lifecycle,
+    serverTimestamp: new Date().toISOString(),
+    stateVersion: String(
+      trip?.updatedAt ||
+      trip?.updated_at ||
+      trip?.arrivedAt ||
+      trip?.arrived_at ||
+      trip?.rideStartedAt ||
+      trip?.ride_started_at ||
+      ""
+    ),
+  };
+}
+
 export function canTransitionRideState(previous: string, next: string): boolean {
   const from = getCanonicalRideState({ current_status: toLegacyRideStatus(previous) });
   const to = getCanonicalRideState({ current_status: toLegacyRideStatus(next) });
