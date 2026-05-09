@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
+  APP_ENV: z.string().optional(),
   PORT: z.string().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
@@ -59,9 +60,13 @@ export function validateProductionReadiness(env: AppEnv): void {
 
   const critical: string[] = [];
   const warnings: string[] = [];
+  const isStagingRuntime = (env.APP_ENV || "").toLowerCase() === "staging";
 
   // These must be set in production — app cannot function securely without them
-  if (!env.ADMIN_PASSWORD) critical.push("ADMIN_PASSWORD");
+  if (!env.ADMIN_PASSWORD) {
+    if (isStagingRuntime) warnings.push("ADMIN_PASSWORD not set - staging admin bootstrap will be limited");
+    else critical.push("ADMIN_PASSWORD");
+  }
   if (env.ADMIN_EMAIL && !isPlausibleEmail(env.ADMIN_EMAIL)) {
     warnings.push(`ADMIN_EMAIL appears invalid (${env.ADMIN_EMAIL}) - admin sync may be skipped until a valid email is configured`);
   }
