@@ -87,39 +87,95 @@ class _TripScreenState extends State<TripScreen>
   // Animation for status pill
   late AnimationController _pulseCtrl;
 
+  String get _tripId =>
+      (_trip?['id'] ?? _trip?['tripId'] ?? widget.trip?['id'] ?? widget.trip?['tripId'] ?? '')
+          .toString();
+
+  String _normalizedStatus(String? raw) {
+    final status = (raw ?? '').trim();
+    return status == 'in_progress' ? 'on_the_way' : status;
+  }
+
+  void _mergeTripState(Map<String, dynamic>? nextTrip, {String? fallbackStatus}) {
+    if (nextTrip == null && fallbackStatus == null) return;
+    final merged =
+        Map<String, dynamic>.from(_trip ?? widget.trip ?? const <String, dynamic>{});
+    if (nextTrip != null) {
+      merged.addAll(nextTrip);
+    }
+    final status = _normalizedStatus(
+      nextTrip?['currentStatus']?.toString() ??
+          nextTrip?['current_status']?.toString() ??
+          fallbackStatus ??
+          merged['currentStatus']?.toString() ??
+          merged['current_status']?.toString() ??
+          _status,
+    );
+    merged['currentStatus'] = status;
+    merged['current_status'] = status;
+    _trip = merged;
+    _status = status;
+  }
+
+  bool _hasTripRouteCoordinates(Map<String, dynamic>? trip) {
+    if (trip == null) return false;
+    final pickupLat = double.tryParse(
+            trip['pickupLat']?.toString() ?? trip['pickup_lat']?.toString() ?? '') ??
+        0;
+    final pickupLng = double.tryParse(
+            trip['pickupLng']?.toString() ?? trip['pickup_lng']?.toString() ?? '') ??
+        0;
+    final destinationLat = double.tryParse(trip['destinationLat']?.toString() ??
+            trip['destination_lat']?.toString() ??
+            '') ??
+        0;
+    final destinationLng = double.tryParse(trip['destinationLng']?.toString() ??
+            trip['destination_lng']?.toString() ??
+            '') ??
+        0;
+    return pickupLat != 0 &&
+        pickupLng != 0 &&
+        destinationLat != 0 &&
+        destinationLng != 0;
+  }
+
+  Future<void> _refreshTripFromServer({bool force = false}) async {
+    if (!force && _hasTripRouteCoordinates(_trip)) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers)
+          .timeout(const Duration(seconds: 5));
+      if (!mounted || res.statusCode != 200) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final serverTrip = data['trip'];
+      if (serverTrip is Map) {
+        setState(() {
+          _mergeTripState(Map<String, dynamic>.from(serverTrip));
+        });
+        _initMapMarkers();
+      }
+    } catch (_) {}
+  }
+
+  void _focusRoute(double fromLat, double fromLng, double toLat, double toLng) {
+    final controller = _mapController;
+    if (controller == null) return;
+    controller.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(min(fromLat, toLat), min(fromLng, toLng)),
+          northeast: LatLng(max(fromLat, toLat), max(fromLng, toLng)),
+        ),
+        88,
+      ),
+    );
+  }
+
   String _shortLocation(String v) {
     final s = v.trim();
     if (s.isEmpty) return s;
     return s.split(',').first.trim();
-  }
-
-  String _normalizeTripStatus(String? rawStatus) {
-    switch ((rawStatus ?? '').trim()) {
-      case 'requested':
-        return 'driver_assigned';
-      case 'driver_accepting':
-      case 'heading_to_pickup':
-      case 'accepted':
-      case 'driver_assigned':
-        return 'accepted';
-      case 'waiting':
-      case 'otp_pending':
-      case 'arrived':
-        return 'arrived';
-      case 'otp_verified':
-      case 'heading_to_destination':
-      case 'in_progress':
-      case 'on_the_way':
-        return 'on_the_way';
-      case 'cancelled_by_user':
-      case 'cancelled_by_driver':
-      case 'cancelled_by_admin':
-      case 'expired':
-      case 'failed':
-        return 'cancelled';
-      default:
-        return (rawStatus == null || rawStatus.isEmpty) ? 'accepted' : rawStatus;
-    }
   }
 
   @override
@@ -132,8 +188,7 @@ class _TripScreenState extends State<TripScreen>
     _socket.connect(ApiConfig.socketUrl);
     _trip = widget.trip;
     if (_trip != null) {
-      _status = _normalizeTripStatus(
-          _trip!['canonicalState'] ?? _trip!['currentStatus'] ?? _trip!['status']);
+      _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
       // Register active trip so socket can rejoin room on reconnect
       final tripId = _trip!['tripId'] ?? _trip!['id'];
       if (tripId != null) _socket.setActiveTrip(tripId.toString());
@@ -154,6 +209,7 @@ class _TripScreenState extends State<TripScreen>
         _startTripTimer();
       }
       _validateActiveTrip();
+      _refreshTripFromServer();
     });
     print(
         '[TRIP] Screen init — tripId=${_trip?['tripId'] ?? _trip?['id']} status=$_status');
@@ -227,11 +283,8 @@ class _TripScreenState extends State<TripScreen>
           }
           return;
         }
-        final serverStatus = _normalizeTripStatus(
-          (serverTrip['canonicalState'] ??
-                  serverTrip['currentStatus'] ??
-                  serverTrip['current_status'] ??
-                  '')
+        final serverStatus = _normalizedStatus(
+          (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
               .toString(),
         );
         if (serverStatus == 'completed' || serverStatus == 'cancelled') {
@@ -248,12 +301,12 @@ class _TripScreenState extends State<TripScreen>
         if (serverStatus.isNotEmpty && serverStatus != _status) {
           final previousStatus = _status;
           setState(() {
-            _status = serverStatus;
-            _trip = serverTrip;
+            _mergeTripState(serverTrip, fallbackStatus: serverStatus);
           });
           // Route + nav triggers based on new server-authoritative status
+          _initMapMarkers();
           _fetchRouteForCurrentStatus();
-          if ((serverStatus == 'in_progress' || serverStatus == 'on_the_way') &&
+          if (serverStatus == 'on_the_way' &&
               previousStatus != 'in_progress' &&
               previousStatus != 'on_the_way') {
             _startTripTimer();
@@ -542,7 +595,8 @@ class _TripScreenState extends State<TripScreen>
     final myLat = origin?.latitude ?? _center.latitude;
     final myLng = origin?.longitude ?? _center.longitude;
 
-    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
+    final toPickup =
+        _status == 'accepted' || _status == 'driver_assigned' || _status == 'arrived';
 
     double destLat, destLng;
     if (toPickup) {
@@ -686,7 +740,8 @@ class _TripScreenState extends State<TripScreen>
 
   void _computeDistanceAndEta(double lat, double lng) {
     if (_trip == null) return;
-    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
+    final toPickup =
+        _status == 'accepted' || _status == 'driver_assigned' || _status == 'arrived';
     if (lat == 0 && lng == 0) return; // Ignore invalid coordinates
     final tLat = toPickup
         ? double.tryParse(_trip!['pickupLat']?.toString() ?? '') ?? 0.0
@@ -738,7 +793,7 @@ class _TripScreenState extends State<TripScreen>
     }
     setState(() => _loading = true);
     final h = await AuthService.getHeaders();
-    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final tripId = _tripId;
 
     try {
       if (_status == 'accepted' || _status == 'driver_assigned') {
@@ -747,18 +802,30 @@ class _TripScreenState extends State<TripScreen>
             body: jsonEncode({'tripId': tripId}));
         if (!mounted) return;
         if (res.statusCode == 200) {
+          Map<String, dynamic>? responseBody;
+          try {
+            responseBody = jsonDecode(res.body) as Map<String, dynamic>;
+          } catch (_) {}
           setState(() {
-            _status = 'arrived';
+            _mergeTripState(
+              responseBody?['trip'] is Map
+                  ? Map<String, dynamic>.from(responseBody!['trip'] as Map)
+                  : null,
+              fallbackStatus: 'arrived',
+            );
             _loading = false;
           });
+          await _refreshTripFromServer(force: true);
+          _initMapMarkers();
           print('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
           _showSnack('Arrived! Ask customer for OTP 📍');
+          _showOtpBottomSheet();
           // Pre-fetch route to destination while driver waits for OTP
           // (polylines will be ready the moment trip starts)
           await _fetchRouteForCurrentStatus(); // status is now 'arrived' → fetches pickup
           // Actually we want destination route pre-loaded, fetch it explicitly
           final t = _trip;
-          if (t != null) {
+          if (false && t != null) {
             final dLat = double.tryParse(t['destinationLat']?.toString() ?? t['destination_lat']?.toString() ?? '') ?? 0.0;
             final dLng = double.tryParse(t['destinationLng']?.toString() ?? t['destination_lng']?.toString() ?? '') ?? 0.0;
             final origin = _lastTripPosition;
@@ -785,7 +852,7 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Future<void> _completeTrip(Map<String, String> authHeaders) async {
-    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final tripId = _tripId;
     final estFare = _trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? 0.0;
     final estDist =
         _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? 0.0;
@@ -838,7 +905,7 @@ class _TripScreenState extends State<TripScreen>
   Future<void> _cancelTrip(String reason) async {
     setState(() => _loading = true);
     final cancelHeaders = await AuthService.getHeaders();
-    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final tripId = _tripId;
     try {
       await http.post(Uri.parse(ApiConfig.driverCancelTrip),
           headers: {...cancelHeaders, 'Content-Type': 'application/json'},
@@ -984,18 +1051,23 @@ class _TripScreenState extends State<TripScreen>
   Future<void> _verifyOtpAndStart(String otp) async {
     setState(() => _loading = true);
     final h = await AuthService.getHeaders();
-    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final tripId = _tripId;
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp),
           headers: {...h, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId, 'otp': otp}));
       if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final tripPayload =
+            data['trip'] is Map ? Map<String, dynamic>.from(data['trip'] as Map) : null;
         print('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
         if (!mounted) return;
         setState(() {
-          _status = 'in_progress';
+          _mergeTripState(tripPayload, fallbackStatus: 'on_the_way');
           _loading = false;
         });
+        await _refreshTripFromServer(force: true);
+        _initMapMarkers();
         _startTripTimer();
 
         // Use real GPS position as route origin (not stale map center)
@@ -1013,8 +1085,7 @@ class _TripScreenState extends State<TripScreen>
                 '') ??
             0;
         if (dLat != 0 && dLng != 0) {
-          _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(LatLng(dLat, dLng), 15));
+          _focusRoute(fromLat, fromLng, dLat, dLng);
           // Fetch polyline using actual GPS position, not default map center
           await _fetchRoute(fromLat, fromLng, dLat, dLng);
         }
