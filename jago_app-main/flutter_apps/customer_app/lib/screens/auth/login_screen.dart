@@ -166,22 +166,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
-    final fallbackRes = await AuthService.sendOtp(phone, 'customer');
     if (!mounted) return;
     setState(() => _loading = false);
-    if (fallbackRes['success'] == true) {
-      setState(() {
-        _otpSent = true;
-        _usingServerOtp = true;
-      });
-      _startTimer();
-      _snack('OTP sent to +91$phone');
-      return;
-    }
-
-    final message = fallbackRes['message']?.toString().isNotEmpty == true
-        ? fallbackRes['message'].toString()
-        : (firebaseError ?? 'OTP could not be started. Please try again.');
+    final message = firebaseError ?? 'Firebase OTP could not be started. Please try again.';
     _snack(message, error: true);
   }
 

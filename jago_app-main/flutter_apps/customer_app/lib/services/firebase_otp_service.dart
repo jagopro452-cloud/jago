@@ -33,7 +33,7 @@ class FirebaseOtpService {
             message.contains('config')) {
           return 'Firebase OTP is not configured for this Android build yet. This staging APK signing certificate must be added in Firebase before OTP login can work.';
         }
-        return 'Firebase returned an internal OTP error for this app build. Please use password login until Firebase staging auth is configured correctly.';
+        return 'Firebase returned an internal OTP error for this app build. Please retry after the staging Firebase configuration finishes propagating.';
       case 'session-expired':
         return 'This OTP session expired. Please resend OTP and try again.';
       case 'invalid-verification-code':

@@ -94,20 +94,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     if (!mounted || _step != 0 || _firebaseVerificationId != null || _firebaseIdToken != null) return;
 
-    final fallbackRes = await AuthService.sendOtp(phone, 'customer');
     if (!mounted) return;
     setState(() => _loading = false);
-    if (fallbackRes['success'] == true) {
-      setState(() {
-        _usingServerOtp = true;
-        _step = 1;
-      });
-      _startTimer();
-      _showSnack('OTP sent to +91$phone');
-      return;
-    }
-
-    _showSnack(fallbackRes['message'] ?? 'Unable to send OTP right now.', error: true);
+    _showSnack('Firebase OTP could not be started for password reset. Please try again.', error: true);
   }
 
   Future<void> _verifyOtpStep() async {

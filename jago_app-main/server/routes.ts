@@ -4748,7 +4748,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // App: get feature flags
   app.get("/api/app/feature-flags", async (_req, res) => {
     try {
-      const r = await rawDb.execute(rawSql`SELECT key, enabled, description FROM feature_flags`);
+      const r = await rawDb.execute(rawSql`SELECT key, enabled, description FROM feature_flags`)
+        .catch(() => rawDb.execute(rawSql`SELECT key, enabled FROM feature_flags`));
       const flags: Record<string, boolean> = {};
       (r.rows as any[]).forEach(row => { flags[row.key] = row.enabled; });
       res.json({ flags });
@@ -4767,7 +4768,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             OR ${city} = ''
           )
         ORDER BY name ASC
-      `);
+      `).catch(() => rawDb.execute(rawSql`
+        SELECT id, name, latitude, longitude
+        FROM popular_locations
+        ORDER BY name ASC
+      `));
       const locations = camelize(r.rows).map((x: any) => ({
         ...x,
         lat: Number(x.latitude ?? x.lat ?? 0),
@@ -9886,29 +9891,58 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
 
       // Always start as 'searching' � driver must ACCEPT before being assigned
-      const trip = await rawDb.execute(rawSql`
-        INSERT INTO trip_requests (
-          ref_id, customer_id, driver_id, vehicle_category_id,
-          pickup_address, pickup_lat, pickup_lng,
-          destination_address, destination_lat, destination_lng,
-          estimated_fare, estimated_distance, payment_method,
-          trip_type, current_status, is_scheduled, scheduled_at,
-          is_for_someone_else, passenger_name, passenger_phone,
-          receiver_name, receiver_phone, delivery_otp,
-          pickup_short_name, destination_short_name
-        ) VALUES (
-          ${refId}, ${customer.id}::uuid,
-          NULL,
-          ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
-          ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
-          ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
-          ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
-          ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
-          ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
-          ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
-          ${finalPickupShort || null}, ${finalDestShort || null}
-        ) RETURNING *
-      `);
+      let trip;
+      try {
+        trip = await rawDb.execute(rawSql`
+          INSERT INTO trip_requests (
+            ref_id, customer_id, driver_id, vehicle_category_id,
+            pickup_address, pickup_lat, pickup_lng,
+            destination_address, destination_lat, destination_lng,
+            estimated_fare, estimated_distance, payment_method,
+            trip_type, current_status, is_scheduled, scheduled_at,
+            is_for_someone_else, passenger_name, passenger_phone,
+            receiver_name, receiver_phone, delivery_otp,
+            pickup_short_name, destination_short_name
+          ) VALUES (
+            ${refId}, ${customer.id}::uuid,
+            NULL,
+            ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+            ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
+            ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
+            ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
+            ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
+            ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
+            ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal},
+            ${finalPickupShort || null}, ${finalDestShort || null}
+          ) RETURNING *
+        `);
+      } catch (insertErr: any) {
+        const insertMsg = String(insertErr?.message || "");
+        if (!insertMsg.includes("pickup_short_name") && !insertMsg.includes("destination_short_name")) {
+          throw insertErr;
+        }
+        trip = await rawDb.execute(rawSql`
+          INSERT INTO trip_requests (
+            ref_id, customer_id, driver_id, vehicle_category_id,
+            pickup_address, pickup_lat, pickup_lng,
+            destination_address, destination_lat, destination_lng,
+            estimated_fare, estimated_distance, payment_method,
+            trip_type, current_status, is_scheduled, scheduled_at,
+            is_for_someone_else, passenger_name, passenger_phone,
+            receiver_name, receiver_phone, delivery_otp
+          ) VALUES (
+            ${refId}, ${customer.id}::uuid,
+            NULL,
+            ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+            ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
+            ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
+            ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
+            ${tripType}, 'searching', ${isScheduled ? true : false}, ${scheduledAt || null},
+            ${isForSomeoneElse ? true : false}, ${passengerName || null}, ${passengerPhone || null},
+            ${receiverName || null}, ${receiverPhone || null}, ${deliveryOtpVal}
+          ) RETURNING *
+        `);
+      }
       // Store zone_id + coupon/discount on trip (best-effort)
       const newTripId2 = (trip.rows[0] as any).id;
       detectZoneId(validPickupCoords.lat, validPickupCoords.lng).then(zid => {
@@ -10612,7 +10646,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const fareR = await rawDb.execute(rawSql`
         SELECT DISTINCT ON (f.vehicle_category_id)
           f.*, vc.name as vehicle_name, vc.icon as vehicle_icon,
-          vc.vehicle_type as vc_vehicle_type,
+          vc.type as vc_vehicle_type,
           vc.base_fare     as vc_base_fare,
           vc.fare_per_km   as vc_fare_per_km,
           vc.minimum_fare  as vc_minimum_fare,
@@ -10626,7 +10660,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ${vehicleCategoryId ? rawSql`AND f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
         ${category ? rawSql`AND vc.type = ${category}` : rawSql``}
         ORDER BY f.vehicle_category_id, vc.name
-      `);
+      `).catch(async () => {
+        return rawDb.execute(rawSql`
+          SELECT
+            vc.id as vehicle_category_id,
+            vc.name as vehicle_name,
+            vc.icon as vehicle_icon,
+            vc.type as vc_vehicle_type,
+            vc.base_fare as vc_base_fare,
+            vc.fare_per_km as vc_fare_per_km,
+            vc.minimum_fare as vc_minimum_fare,
+            vc.waiting_charge_per_min as vc_waiting_charge,
+            COALESCE(vc.total_seats, 0) as vc_total_seats,
+            COALESCE(vc.is_carpool, false) as vc_is_carpool,
+            vc.is_active as is_active,
+            NULL as fare_per_min,
+            NULL as base_fare,
+            NULL as fare_per_km,
+            NULL as minimum_fare
+          FROM vehicle_categories vc
+          WHERE vc.is_active = true
+          ${vehicleCategoryId ? rawSql`AND vc.id = ${vehicleCategoryId}::uuid` : rawSql``}
+          ${category ? rawSql`AND vc.type = ${category}` : rawSql``}
+          ORDER BY vc.name
+        `);
+      });
       const fares = camelize(fareR.rows).map((f: any) => {
         // Resolve vehicle name for smart defaults
         const vn = (f.vehicleName || '').toLowerCase();

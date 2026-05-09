@@ -3188,6 +3188,9 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
     {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
     {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
+    {'name': 'Labbipet', 'lat': 16.5034, 'lng': 80.6488},
+    {'name': 'Moghalrajpuram', 'lat': 16.5057, 'lng': 80.6465},
+    {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
   ];
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _results = [];
@@ -3197,6 +3200,24 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   Timer? _debounce;
 
   static const Color _primary = JT.primary;
+
+  String _normalizeSearch(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  List<Map<String, dynamic>> _fallbackMatches(String query) {
+    final normalizedQuery = _normalizeSearch(query);
+    if (normalizedQuery.isEmpty) return [];
+    return _curatedFallbackPlaces.where((place) {
+      final normalizedName = _normalizeSearch((place['name'] ?? '').toString());
+      return normalizedName.contains(normalizedQuery) ||
+          normalizedQuery.contains(normalizedName);
+    }).map((place) => <String, dynamic>{
+      'name': place['name'],
+      'placeId': 'local:${place['name']}',
+      'lat': (place['lat'] as num).toDouble(),
+      'lng': (place['lng'] as num).toDouble(),
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -3327,33 +3348,18 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
               })
               .where((r) => (r['name'] as String).isNotEmpty)
               .toList();
-          if (_results.isEmpty) {
-            final normalized = query.trim().toLowerCase();
-            _results = _curatedFallbackPlaces
-                .where((place) => (place['name'] as String).toLowerCase().contains(normalized))
-                .map((place) => <String, dynamic>{
-                      'name': place['name'],
-                      'placeId': 'local:${place['name']}',
-                      'lat': (place['lat'] as num).toDouble(),
-                      'lng': (place['lng'] as num).toDouble(),
-                    })
-                .toList();
+          final fallback = _fallbackMatches(query);
+          final existing = _results.map((item) => (item['name'] ?? '').toString().toLowerCase()).toSet();
+          for (final item in fallback) {
+            final key = (item['name'] ?? '').toString().toLowerCase();
+            if (!existing.contains(key)) _results.add(item);
           }
         });
       }
     } catch (_) {
       if (mounted) {
-        final normalized = query.trim().toLowerCase();
         setState(() {
-          _results = _curatedFallbackPlaces
-              .where((place) => (place['name'] as String).toLowerCase().contains(normalized))
-              .map((place) => <String, dynamic>{
-                    'name': place['name'],
-                    'placeId': 'local:${place['name']}',
-                    'lat': (place['lat'] as num).toDouble(),
-                    'lng': (place['lng'] as num).toDouble(),
-                  })
-              .toList();
+          _results = _fallbackMatches(query);
         });
       }
     }

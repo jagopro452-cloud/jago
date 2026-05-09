@@ -134,7 +134,7 @@ const CURATED_FALLBACK_PLACES: Array<{
   lng: number;
   aliases?: string[];
 }> = [
-  { name: "Benz Circle", fullAddress: "Benz Circle, Vijayawada, Andhra Pradesh, India", lat: 16.5062, lng: 80.648, aliases: ["benz", "benz circle road"] },
+  { name: "Benz Circle", fullAddress: "Benz Circle, Vijayawada, Andhra Pradesh, India", lat: 16.5062, lng: 80.648, aliases: ["benz", "benz circle road", "benzcircle", "benz circe", "benzcirce", "benz circel", "benz center"] },
   { name: "Vijayawada Railway Station", fullAddress: "Vijayawada Junction, Vijayawada, Andhra Pradesh, India", lat: 16.5175, lng: 80.64, aliases: ["railway station", "junction", "vijayawada junction"] },
   { name: "Pandit Nehru Bus Station", fullAddress: "PNBS Bus Stand, Vijayawada, Andhra Pradesh, India", lat: 16.5179, lng: 80.6238, aliases: ["pnbs", "bus stand", "bus station"] },
   { name: "Kanaka Durga Temple", fullAddress: "Kanaka Durga Temple, Vijayawada, Andhra Pradesh, India", lat: 16.5176, lng: 80.6121, aliases: ["durga temple", "kanakadurga"] },
@@ -199,7 +199,11 @@ function scorePredictionForQuery(query: string, prediction: PlacePrediction, lat
   score += scoreTextMatch(query, prediction.secondaryText);
   score += scoreDistanceBias(lat, lng, prediction.lat, prediction.lng);
   if (prediction.types.includes("popular_location")) score += 12;
-  if (prediction.types.includes("curated_fallback")) score += 10;
+  if (prediction.types.includes("curated_fallback")) score += 26;
+  const normalizedDescription = normalizePlaceSearchText(prediction.fullDescription);
+  if (normalizedDescription.includes("vijayawada")) score += 28;
+  if (normalizedDescription.includes("andhra pradesh")) score += 8;
+  if (normalizedDescription.includes("india")) score += 3;
   return score;
 }
 

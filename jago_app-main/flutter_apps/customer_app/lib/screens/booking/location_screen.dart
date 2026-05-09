@@ -52,6 +52,8 @@ class _LocationScreenState extends State<LocationScreen>
     {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
     {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
     {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
+    {'name': 'Labbipet', 'lat': 16.5034, 'lng': 80.6488},
+    {'name': 'Moghalrajpuram', 'lat': 16.5057, 'lng': 80.6465},
   ];
   // ── Controllers ──────────────────────────────────────────────────────────
   final _dropCtrl = TextEditingController();
@@ -337,8 +339,11 @@ class _LocationScreenState extends State<LocationScreen>
     setState(() => _sessionToken = 'sess-$rnd-${_pickupLat.toInt()}');
   }
 
+  String _normalizeSearch(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
   List<Map<String, dynamic>> _localFallbackMatches(String query) {
-    final normalized = query.trim().toLowerCase();
+    final normalized = _normalizeSearch(query);
     if (normalized.isEmpty) return [];
 
     final pool = <Map<String, dynamic>>[
@@ -352,8 +357,9 @@ class _LocationScreenState extends State<LocationScreen>
     for (final item in pool) {
       final name = (item['name'] ?? '').toString();
       if (name.isEmpty) continue;
-      final key = name.toLowerCase();
-      if (seen.contains(key) || !key.contains(normalized)) continue;
+      final key = _normalizeSearch(name);
+      if (seen.contains(key)) continue;
+      if (!key.contains(normalized) && !normalized.contains(key)) continue;
       seen.add(key);
       matches.add({
         'name': name,
@@ -444,9 +450,16 @@ class _LocationScreenState extends State<LocationScreen>
             })
             .where((r) => (r['name'] as String).isNotEmpty)
             .toList();
+        final fallback = _localFallbackMatches(query);
         setState(() {
-          _searchResults =
-              parsed.isNotEmpty ? parsed : _localFallbackMatches(query);
+          _searchResults = parsed.isNotEmpty ? parsed : <Map<String, dynamic>>[];
+          final existing = _searchResults
+              .map((item) => (item['name'] ?? '').toString().toLowerCase())
+              .toSet();
+          for (final item in fallback) {
+            final key = (item['name'] ?? '').toString().toLowerCase();
+            if (!existing.contains(key)) _searchResults.add(item);
+          }
         });
         print('[PLACES] Found ${_searchResults.length} results');
       }

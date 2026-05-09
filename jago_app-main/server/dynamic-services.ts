@@ -222,7 +222,29 @@ export async function getServicesForLocation(
     `;
   }
 
-  const r = await rawDb.execute(query);
+  const r = await rawDb.execute(query).catch(async () => {
+    if (cityName) {
+      return rawDb.execute(rawSql`
+        SELECT ps.service_key as key, ps.service_name as name, ps.icon, ps.color,
+          ps.description, '' as short_description, '' as image_url, '' as eta_label,
+          ps.service_category as category, ps.revenue_model
+        FROM platform_services ps
+        INNER JOIN city_services cs ON cs.service_key = ps.service_key
+        WHERE ps.service_status = 'active'
+          AND cs.city_name = ${cityName}
+          AND cs.is_active = true
+        ORDER BY ps.sort_order ASC
+      `);
+    }
+    return rawDb.execute(rawSql`
+      SELECT service_key as key, service_name as name, icon, color,
+        description, '' as short_description, '' as image_url, '' as eta_label,
+        service_category as category, revenue_model
+      FROM platform_services
+      WHERE service_status = 'active'
+      ORDER BY sort_order ASC
+    `);
+  });
   const services: DynamicService[] = (r.rows as any[]).map(row => ({
     key: row.key,
     name: row.name,
@@ -301,7 +323,32 @@ export async function getParcelVehiclesForLocation(
     `;
   }
 
-  const r = await rawDb.execute(query);
+  const r = await rawDb.execute(query).catch(async () => {
+    if (cityName) {
+      return rawDb.execute(rawSql`
+        SELECT pv.vehicle_key as key, pv.name, pv.subtitle, pv.icon,
+          '' as image_url, pv.capacity_label,
+          pv.max_weight_kg, pv.suitable_items, pv.accent_color,
+          pv.base_fare, pv.per_km, pv.per_kg, pv.load_charge,
+          COALESCE(cpv.eta_minutes, 5) as eta_minutes
+        FROM parcel_vehicle_types pv
+        LEFT JOIN city_parcel_vehicles cpv
+          ON cpv.vehicle_key = pv.vehicle_key AND cpv.city_name = ${cityName}
+        WHERE pv.is_active = true
+          AND (cpv.is_active IS NULL OR cpv.is_active = true)
+        ORDER BY pv.sort_order ASC
+      `);
+    }
+    return rawDb.execute(rawSql`
+      SELECT vehicle_key as key, name, subtitle, icon,
+        '' as image_url, capacity_label,
+        max_weight_kg, suitable_items, accent_color,
+        base_fare, per_km, per_kg, load_charge, 5 as eta_minutes
+      FROM parcel_vehicle_types
+      WHERE is_active = true
+      ORDER BY sort_order ASC
+    `);
+  });
   const vehicles: ParcelVehicleType[] = (r.rows as any[]).map(row => ({
     key: row.key,
     name: row.name,
