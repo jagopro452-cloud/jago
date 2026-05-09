@@ -3665,10 +3665,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             CASE
               WHEN u.verification_status = 'verified'
                 AND u.onboard_date IS NULL
-                AND (
-                  EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
-                  OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
-                )
               THEN 'under_review'
               ELSE COALESCE(u.verification_status, 'pending')
             END AS verification_status,
@@ -3678,10 +3674,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 SELECT d.doc_type
                 FROM driver_documents d
                 WHERE d.driver_id = u.id
-                UNION
-                SELECT k.document_type
-                FROM driver_kyc_documents k
-                WHERE k.driver_id = u.id
               ) docs
             ) AS document_count
           FROM users u
@@ -3692,7 +3684,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ORDER BY u.created_at DESC
           LIMIT ${limitNum}
           OFFSET ${offset}
-        `);
+        `).catch(async () => rawDb.execute(rawSql`
+          SELECT
+            u.id,
+            u.full_name,
+            u.first_name,
+            u.last_name,
+            u.email,
+            u.phone,
+            u.user_type,
+            u.is_active,
+            u.profile_image,
+            u.selfie_image,
+            u.vehicle_status,
+            u.rejection_note,
+            u.license_number,
+            u.license_image,
+            u.vehicle_image,
+            u.vehicle_number,
+            u.vehicle_model,
+            u.vehicle_brand,
+            u.vehicle_color,
+            u.vehicle_year,
+            u.city,
+            u.created_at,
+            u.updated_at,
+            dd.avg_rating,
+            dd.availability_status,
+            dd.vehicle_category_id,
+            vc.name AS vehicle_category_name,
+            CASE
+              WHEN u.verification_status = 'verified'
+                AND u.onboard_date IS NULL
+              THEN 'under_review'
+              ELSE COALESCE(u.verification_status, 'pending')
+            END AS verification_status,
+            (
+              SELECT COUNT(*)::int
+              FROM driver_documents d
+              WHERE d.driver_id = u.id
+            ) AS document_count
+          FROM users u
+          LEFT JOIN driver_details dd ON dd.user_id = u.id
+          LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+          WHERE u.user_type = 'driver'
+          ${whereSearch}
+          ORDER BY u.created_at DESC
+          LIMIT ${limitNum}
+          OFFSET ${offset}
+        `));
 
         const totalRes = await rawDb.execute(rawSql`
           SELECT COUNT(*)::int AS total
@@ -12579,7 +12619,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ORDER BY created_at
     `).catch(async () => {
       const minimal = await rawDb.execute(rawSql`
-        SELECT doc_type, file_url, status, expiry_date
+        SELECT doc_type, doc_url, verification_status, expiry_date, created_at, updated_at
         FROM driver_documents
         WHERE driver_id = ${driverId}::uuid
         ORDER BY created_at
@@ -12590,11 +12630,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     for (const row of legacyRows.rows as any[]) {
       documents.push({
         docType: row.doc_type,
-        fileUrl: row.file_url,
-        status: row.status || "pending",
+        fileUrl: row.file_url || row.doc_url,
+        status: row.status || row.verification_status || "pending",
         expiryDate: row.expiry_date || null,
         adminNote: row.admin_note || null,
-        reviewedAt: row.reviewed_at || null,
+        reviewedAt: row.reviewed_at || row.updated_at || row.created_at || null,
         source: "driver_documents",
       });
     }
@@ -12635,6 +12675,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${user.id}::uuid, ${docType}, ${fileUrl}, 'pending', now(), now())
         ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${fileUrl}, status='pending', updated_at=now()
       `).catch(async () => {
+        const legacyUpsert = await rawDb.execute(rawSql`
+          INSERT INTO driver_documents (driver_id, doc_type, doc_url, verification_status, created_at, updated_at)
+          VALUES (${user.id}::uuid, ${docType}, ${fileUrl}, 'pending', now(), now())
+          ON CONFLICT (driver_id, doc_type) DO UPDATE SET doc_url=${fileUrl}, verification_status='pending', updated_at=now()
+        `).catch(() => null);
+        if (legacyUpsert) return legacyUpsert;
         await rawDb.execute(rawSql`
           CREATE TABLE IF NOT EXISTS driver_documents (
             id SERIAL PRIMARY KEY,
@@ -12657,8 +12703,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/driver/documents", authApp, async (req, res) => {
     try {
       const user = (req as any).currentUser;
-      const r = await rawDb.execute(rawSql`SELECT * FROM driver_documents WHERE driver_id=${user.id}::uuid`).catch(() => ({ rows: [] }));
-      res.json({ success: true, documents: r.rows.map(camelize) });
+      const documents = camelize(await loadDriverVerificationDocuments(user.id));
+      res.json({ success: true, documents });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -12674,7 +12720,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         INSERT INTO driver_documents (driver_id, doc_type, file_url, status, expiry_date, created_at, updated_at)
         VALUES (${user.id}::uuid, ${docType}, ${imageData}, 'pending', ${expiryDate || null}, now(), now())
         ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${imageData}, status='pending', expiry_date=${expiryDate || null}, updated_at=now()
-      `);
+      `).catch(async () => {
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_documents (driver_id, doc_type, doc_url, verification_status, expiry_date, created_at, updated_at)
+          VALUES (${user.id}::uuid, ${docType}, ${imageData}, 'pending', ${expiryDate || null}, now(), now())
+          ON CONFLICT (driver_id, doc_type) DO UPDATE SET doc_url=${imageData}, verification_status='pending', expiry_date=${expiryDate || null}, updated_at=now()
+        `);
+      });
       await promoteDriverVerificationForReview(user.id);
       res.json({ success: true, docType, status: 'pending', message: "Document uploaded. Under review." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -12902,10 +12954,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                CASE
                  WHEN u.verification_status = 'verified'
                    AND u.onboard_date IS NULL
-                   AND (
-                     EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
-                     OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
-                   )
                  THEN 'under_review'
                  ELSE COALESCE(u.verification_status, 'pending')
                END as verification_status,
@@ -12924,19 +12972,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               OR (
                 u.verification_status = 'verified'
                 AND u.onboard_date IS NULL
-                AND (
-                  EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
-                  OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
-                )
               )
               OR EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
-              OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
             ))
             OR (${status} <> 'pending' AND COALESCE(u.verification_status, 'pending') = ${status})
           )
         ORDER BY u.created_at DESC
         LIMIT 100
-      `);
+      `).catch(async () => rawDb.execute(rawSql`
+        SELECT u.id, u.full_name, u.phone, u.email,
+               CASE
+                 WHEN u.verification_status = 'verified'
+                   AND u.onboard_date IS NULL
+                 THEN 'under_review'
+                 ELSE COALESCE(u.verification_status, 'pending')
+               END as verification_status,
+               u.vehicle_status,
+               u.rejection_note, u.license_number, u.license_expiry, u.vehicle_number,
+               u.vehicle_model, u.vehicle_brand, u.vehicle_color, u.vehicle_year,
+               u.date_of_birth, u.city, u.selfie_image, u.profile_image, u.created_at,
+               vc.name as vehicle_category_name, vc.icon as vehicle_category_icon
+        FROM users u
+        LEFT JOIN driver_details dd ON dd.user_id = u.id
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        WHERE u.user_type = 'driver'
+          AND (
+            (${status} = 'pending' AND (
+              COALESCE(u.verification_status, 'pending') IN ('pending', 'under_review')
+              OR (u.verification_status = 'verified' AND u.onboard_date IS NULL)
+              OR EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
+            ))
+            OR (${status} <> 'pending' AND COALESCE(u.verification_status, 'pending') = ${status})
+          )
+        ORDER BY u.created_at DESC
+        LIMIT 100
+      `));
       const drivers = await Promise.all(r.rows.map(async (d: any) => {
         const documents = camelize(await loadDriverVerificationDocuments(d.id));
         return { ...camelize(d), documents };
@@ -12956,7 +13026,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE driver_documents SET status=${status}, admin_note=${adminNote || null},
           reviewed_at=NOW(), updated_at=NOW()
         WHERE driver_id=${id}::uuid AND doc_type=${docType}
-      `).catch(dbCatch("db"));
+      `).catch(async () => {
+        await rawDb.execute(rawSql`
+          UPDATE driver_documents
+          SET verification_status=${status}, updated_at=NOW()
+          WHERE driver_id=${id}::uuid AND doc_type=${docType}
+        `).catch(dbCatch("db"));
+      });
       await rawDb.execute(rawSql`
         UPDATE driver_kyc_documents
         SET status=${status}, admin_note=${adminNote || null}, updated_at=NOW()
@@ -12987,7 +13063,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE driver_documents
         SET status=${status}, admin_note=${note || null}, reviewed_at=NOW(), updated_at=NOW()
         WHERE driver_id=${id}::uuid AND status IN ('pending', 'rejected', 'approved')
-      `).catch(dbCatch("db"));
+      `).catch(async () => {
+        await rawDb.execute(rawSql`
+          UPDATE driver_documents
+          SET verification_status=${status}, updated_at=NOW()
+          WHERE driver_id=${id}::uuid
+        `).catch(dbCatch("db"));
+      });
       await rawDb.execute(rawSql`
         UPDATE driver_kyc_documents
         SET status=${status}, admin_note=${note || null}, updated_at=NOW()
