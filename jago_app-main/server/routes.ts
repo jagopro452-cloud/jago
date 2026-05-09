@@ -12663,6 +12663,100 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return documents;
   };
 
+  const normalizeDriverDocType = (docType: string | null | undefined) => {
+    const value = String(docType || "").trim().toLowerCase();
+    if (!value) return "other";
+    if ([
+      "license",
+      "license_photo",
+      "driving_license",
+      "driving_licence",
+      "dl",
+      "dl_front",
+      "dl_back",
+      "license_front",
+      "license_back",
+    ].includes(value)) return "license";
+    if ([
+      "vehicle",
+      "vehicle_photo",
+      "bike_photo",
+      "car_photo",
+      "vehicle_front",
+      "vehicle_back",
+    ].includes(value)) return "vehicle";
+    if ([
+      "profile",
+      "profile_photo",
+      "selfie",
+      "selfie_photo",
+      "driver_photo",
+    ].includes(value)) return "profile";
+    if (["rc", "registration_certificate"].includes(value)) return "rc";
+    if (["insurance", "insurance_copy"].includes(value)) return "insurance";
+    if (["aadhar", "aadhaar", "aadhar_front", "aadhar_back", "aadhaar_front", "aadhaar_back"].includes(value)) return "aadhar";
+    return value;
+  };
+
+  const enrichDriverVerificationDocuments = async (driverId: string) => {
+    const documents = await loadDriverVerificationDocuments(driverId);
+    const profileRes = await rawDb.execute(rawSql`
+      SELECT license_image, vehicle_image, profile_image, selfie_image, license_number, vehicle_number, vehicle_model,
+             vehicle_brand, vehicle_color, vehicle_year, city, full_name, phone, email, rejection_note,
+             verification_status, vehicle_status, created_at, onboard_date
+      FROM users
+      WHERE id = ${driverId}::uuid
+      LIMIT 1
+    `).catch(() => ({ rows: [] as any[] }));
+
+    const profile = camelize((profileRes.rows[0] as any) || {});
+    const appendSyntheticDoc = (docType: string, fileUrl: string | null | undefined, source: string) => {
+      if (!fileUrl) return;
+      const alreadyPresent = documents.some((doc) => normalizeDriverDocType(doc.docType) === docType && doc.fileUrl === fileUrl);
+      if (alreadyPresent) return;
+      documents.push({
+        docType,
+        fileUrl,
+        status: "pending",
+        source,
+        synthetic: true,
+      });
+    };
+
+    appendSyntheticDoc("license", profile.licenseImage, "users.license_image");
+    appendSyntheticDoc("vehicle", profile.vehicleImage, "users.vehicle_image");
+    appendSyntheticDoc("profile", profile.profileImage || profile.selfieImage, "users.profile_image");
+
+    return { profile, documents };
+  };
+
+  const buildDriverVerificationChecklist = (profile: any, documents: any[]) => {
+    const hasDoc = (normalizedType: string) =>
+      documents.some((doc) => normalizeDriverDocType(doc.docType) === normalizedType && !!doc.fileUrl);
+
+    const checklist = {
+      licenseNumber: !!profile.licenseNumber,
+      licensePhoto: hasDoc("license"),
+      vehicleNumber: !!profile.vehicleNumber,
+      vehiclePhoto: hasDoc("vehicle"),
+      profilePhoto: hasDoc("profile") || !!profile.profileImage || !!profile.selfieImage,
+    };
+
+    const missingItems = Object.entries({
+      "License Number": checklist.licenseNumber,
+      "License Photo": checklist.licensePhoto,
+      "Vehicle Number": checklist.vehicleNumber,
+      "Vehicle Photo": checklist.vehiclePhoto,
+      "Profile Photo": checklist.profilePhoto,
+    }).filter(([, ok]) => !ok).map(([label]) => label);
+
+    return {
+      checklist,
+      missingItems,
+      canApprove: missingItems.length === 0,
+    };
+  };
+
   // -- DRIVER: Upload documents (DL, RC, Aadhar) ----------------------------
   app.post("/api/app/driver/upload-document", authApp, upload.single("document"), async (req, res) => {
     try {
@@ -13015,6 +13109,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  app.get("/api/admin/drivers/:id/verification-detail", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const { profile, documents } = await enrichDriverVerificationDocuments(id);
+      const verification = buildDriverVerificationChecklist(profile, documents);
+      res.json({
+        success: true,
+        driver: {
+          id,
+          ...profile,
+          documents,
+          ...verification,
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
+  });
+
   // -- ADMIN: Review a single document (approve/reject) ----------------------
   app.patch("/api/admin/drivers/:id/doc-review", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
@@ -13051,6 +13164,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const id = String(req.params.id);
       const { status, note, vehicleStatus } = req.body;
       if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      if (status === 'approved') {
+        const { profile, documents } = await enrichDriverVerificationDocuments(id);
+        const verification = buildDriverVerificationChecklist(profile, documents);
+        if (!verification.canApprove) {
+          return res.status(400).json({
+            message: `Driver approval blocked. Missing: ${verification.missingItems.join(", ")}`,
+            missingItems: verification.missingItems,
+          });
+        }
+      }
       await rawDb.execute(rawSql`
         UPDATE users SET
           verification_status=${status},

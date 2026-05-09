@@ -1,149 +1,268 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminJsonRequest, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ImageUploader } from "@/components/image-uploader";
 
 const avatarBg = (name: string) => {
-  const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626","#0ea5e9"];
+  const colors = ["#1a73e8", "#16a34a", "#d97706", "#9333ea", "#0891b2", "#dc2626", "#0ea5e9"];
   return colors[(name || "A").charCodeAt(0) % colors.length];
 };
-const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+
+const initials = (name: string) => (name || "?").split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
+
 const VSTATUS: Record<string, { label: string; cls: string; color: string }> = {
-  pending:  { label: "Pending", cls: "badge bg-warning text-dark", color: "#d97706" },
+  pending: { label: "Pending", cls: "badge bg-warning text-dark", color: "#d97706" },
   under_review: { label: "Under Review", cls: "badge bg-warning text-dark", color: "#d97706" },
   approved: { label: "Approved", cls: "badge bg-success", color: "#16a34a" },
   rejected: { label: "Rejected", cls: "badge bg-danger", color: "#dc2626" },
 };
 
-// ── Verify Modal ──────────────────────────────────────────────────────────────
+const normalizeDocType = (docType: string) => {
+  const value = String(docType || "").trim().toLowerCase();
+  if (["license", "license_photo", "driving_license", "dl", "dl_front", "dl_back", "license_front", "license_back"].includes(value)) return "license";
+  if (["vehicle", "vehicle_photo", "bike_photo", "car_photo", "vehicle_front", "vehicle_back"].includes(value)) return "vehicle";
+  if (["profile", "profile_photo", "selfie", "selfie_photo", "driver_photo"].includes(value)) return "profile";
+  return value || "other";
+};
+
+const formatDocLabel = (docType: string) =>
+  String(docType || "Document")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+
+const getDocSrc = (value?: string | null) => {
+  if (!value) return "";
+  if (value.startsWith("data:")) return value;
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  return value.startsWith("/") ? value : `/${value}`;
+};
+
+const isPdfUrl = (value?: string | null) => {
+  const src = getDocSrc(value);
+  return src.startsWith("data:application/pdf") || src.toLowerCase().includes(".pdf");
+};
+
+function DocumentPreviewCard({
+  title,
+  document,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  title: string;
+  document?: any;
+  busy?: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const src = getDocSrc(document?.fileUrl || document?.file_url);
+  const status = document?.status || "missing";
+  const statusColor = status === "approved" ? "#16a34a" : status === "rejected" ? "#dc2626" : status === "pending" ? "#d97706" : "#94a3b8";
+
+  return (
+    <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{title}</div>
+          <div style={{ fontSize: 10, color: statusColor, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px" }}>
+            {status === "missing" ? "Missing" : status}
+          </div>
+        </div>
+        {src && (
+          <a href={src} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-secondary" style={{ fontSize: 11, borderRadius: 999 }}>
+            <i className="bi bi-box-arrow-up-right me-1"></i>Open
+          </a>
+        )}
+      </div>
+
+      <div style={{ padding: 12 }}>
+        {src ? (
+          isPdfUrl(src) ? (
+            <div style={{ minHeight: 180, borderRadius: 12, background: "#f8fafc", border: "1px dashed #cbd5e1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <i className="bi bi-file-earmark-pdf" style={{ fontSize: 30, color: "#dc2626" }}></i>
+              <div style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>PDF uploaded</div>
+              <div style={{ fontSize: 11, color: "#94a3b8" }}>Open to inspect authenticity</div>
+            </div>
+          ) : (
+            <a href={src} target="_blank" rel="noreferrer">
+              <img src={src} alt={title} style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 12, border: "1px solid #e2e8f0" }} />
+            </a>
+          )
+        ) : (
+          <div style={{ minHeight: 180, borderRadius: 12, background: "#f8fafc", border: "1px dashed #cbd5e1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <i className="bi bi-exclamation-circle" style={{ fontSize: 24, color: "#94a3b8" }}></i>
+            <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>No document available</div>
+          </div>
+        )}
+
+        {document?.adminNote && (
+          <div style={{ marginTop: 10, fontSize: 11, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 10px" }}>
+            {document.adminNote}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn btn-sm btn-outline-success" style={{ flex: 1, borderRadius: 10 }} disabled={!src || busy} onClick={onApprove}>
+            <i className="bi bi-check-circle me-1"></i>Approve
+          </button>
+          <button type="button" className="btn btn-sm btn-outline-danger" style={{ flex: 1, borderRadius: 10 }} disabled={!src || busy} onClick={onReject}>
+            <i className="bi bi-x-circle me-1"></i>Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-
-  const [docs, setDocs] = useState({
-    licenseImage: driver?.licenseImage || "",
-    vehicleImage: driver?.vehicleImage || "",
-    profileImage: driver?.profileImage || "",
-    licenseNumber: driver?.licenseNumber || "",
-    vehicleNumber: driver?.vehicleNumber || "",
-    vehicleModel: driver?.vehicleModel || "",
-  });
   const [rejectNote, setRejectNote] = useState(driver?.rejectionNote || "");
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [pendingDocType, setPendingDocType] = useState<string | null>(null);
 
-  const saveDocs = useMutation({
-    mutationFn: (d: any) => apiRequest("PATCH", `/api/drivers/${driver.id}/documents`, d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/users"] }); },
-    onError: () => toast({ title: "Failed to save document info", variant: "destructive" }),
+  const { data: detailData, isLoading } = useQuery<any>({
+    queryKey: ["/api/admin/drivers/verification-detail", driver?.id],
+    enabled: open && !!driver?.id,
+    queryFn: () => adminJsonRequest<any>(`/api/admin/drivers/${driver.id}/verification-detail`),
   });
 
   const verify = useMutation({
-    mutationFn: (d: any) => apiRequest("PATCH", `/api/drivers/${driver.id}/verify`, d),
+    mutationFn: (d: any) => apiRequest("PATCH", `/api/admin/drivers/${driver.id}/verify-driver`, d),
     onSuccess: (_, vars: any) => {
       qc.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({ title: vars.status === "approved" ? "✅ Driver approved!" : "❌ Driver rejected" });
+      qc.invalidateQueries({ queryKey: ["/api/admin/drivers/verification-detail", driver?.id] });
+      toast({ title: vars.status === "approved" ? "Driver approved" : "Driver rejected" });
       onClose();
+    },
+    onError: (e: any) => {
+      toast({ title: "Verification failed", description: e?.message || "Please try again", variant: "destructive" });
     },
   });
 
-  const handleDocChange = (field: string, val: string) => {
-    const updated = { ...docs, [field]: val };
-    setDocs(updated);
-    saveDocs.mutate({ [field]: val });
-  };
+  const docReview = useMutation({
+    mutationFn: ({ docType, status, adminNote }: { docType: string; status: string; adminNote?: string }) =>
+      apiRequest("PATCH", `/api/admin/drivers/${driver.id}/doc-review`, { docType, status, adminNote }),
+    onSuccess: () => {
+      setPendingDocType(null);
+      qc.invalidateQueries({ queryKey: ["/api/users"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/drivers/verification-detail", driver?.id] });
+      toast({ title: "Document review updated" });
+    },
+    onError: (e: any) => {
+      setPendingDocType(null);
+      toast({ title: "Document review failed", description: e?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
+  const fullDriver = detailData?.driver || driver;
+  const documents: any[] = Array.isArray(fullDriver.documents) ? fullDriver.documents : [];
+  const groupedDocs = useMemo(() => {
+    return documents.reduce((acc: Record<string, any>, doc: any) => {
+      const key = normalizeDocType(doc.docType || doc.doc_type);
+      if (!acc[key]) acc[key] = doc;
+      return acc;
+    }, {});
+  }, [documents]);
+
+  useEffect(() => {
+    setRejectNote(fullDriver.rejectionNote || fullDriver.rejection_note || "");
+  }, [fullDriver.rejectionNote, fullDriver.rejection_note]);
 
   if (!open || !driver) return null;
-  const name = driver.fullName || driver.firstName || "Driver";
-  const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
+  const name = fullDriver.fullName || fullDriver.firstName || "Driver";
+  const verificationStatus = fullDriver.verificationStatus || fullDriver.verification_status || "pending";
+  const vs = VSTATUS[verificationStatus] || VSTATUS.pending;
+  const checklist = fullDriver.checklist || {};
+  const missingItems: string[] = Array.isArray(fullDriver.missingItems) ? fullDriver.missingItems : [];
+  const canApprove = !!fullDriver.canApprove;
+  const otherDocs = documents.filter((doc) => !["license", "vehicle", "profile"].includes(normalizeDocType(doc.docType || doc.doc_type)));
+
+  const reviewDoc = (doc: any, status: string) => {
+    if (!doc) return;
+    const docType = doc.docType || doc.doc_type;
+    setPendingDocType(docType);
+    docReview.mutate({ docType, status, adminNote: status === "rejected" ? rejectNote || undefined : undefined });
+  };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-      onClick={onClose}>
-      <div style={{ background: "white", borderRadius: 18, width: "100%", maxWidth: 880, maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.25)" }}
-        onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div style={{ background: "white", borderRadius: 18, width: "100%", maxWidth: 1100, maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.25)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "16px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 42, height: 42, borderRadius: "50%", background: avatarBg(name), color: "white", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             {initials(name)}
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{name}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>{driver.phone} · {driver.email || "—"}</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>{fullDriver.phone} · {fullDriver.email || "—"}</div>
           </div>
           <span className={vs.cls} style={{ marginLeft: 8, fontSize: 11 }}>{vs.label}</span>
-          <button onClick={onClose} data-testid="btn-modal-close"
-            style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#94a3b8" }}>
+          <button onClick={onClose} data-testid="btn-modal-close" style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#94a3b8" }}>
             <i className="bi bi-x-lg"></i>
           </button>
         </div>
 
-        {/* Body */}
         <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-          {/* Left: fields */}
-          <div style={{ width: 300, borderRight: "1px solid #f1f5f9", padding: "18px 16px", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ width: 320, borderRight: "1px solid #f1f5f9", padding: "18px 16px", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Driver Details</div>
 
-            {[
-              { label: "License Number", field: "licenseNumber", placeholder: "e.g. DL-0420110012345", icon: "bi-card-text" },
-              { label: "Vehicle Number", field: "vehicleNumber", placeholder: "e.g. TS09EP1234", icon: "bi-car-front" },
-              { label: "Vehicle Model", field: "vehicleModel", placeholder: "e.g. Honda Activa 6G", icon: "bi-tools" },
-            ].map(({ label, field, placeholder, icon }) => (
-              <div key={field}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}>
-                  <i className={`bi ${icon} me-1 text-primary`}></i>{label}
-                </label>
-                <input className="admin-form-control" style={{ fontSize: 12 }}
-                  value={(docs as any)[field]}
-                  onChange={e => handleDocChange(field, e.target.value)}
-                  placeholder={placeholder}
-                  data-testid={`input-driver-${field}`}
-                />
-              </div>
-            ))}
+            {isLoading ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>Loading driver details…</div>
+            ) : (
+              <>
+                {[
+                  { label: "License Number", value: fullDriver.licenseNumber || "Missing", icon: "bi-card-text", ok: !!checklist.licenseNumber },
+                  { label: "Vehicle Number", value: fullDriver.vehicleNumber || "Missing", icon: "bi-car-front", ok: !!checklist.vehicleNumber },
+                  { label: "Vehicle Model", value: [fullDriver.vehicleBrand, fullDriver.vehicleModel].filter(Boolean).join(" ") || "Missing", icon: "bi-tools", ok: !!fullDriver.vehicleModel },
+                  { label: "City", value: fullDriver.city || "Missing", icon: "bi-geo-alt", ok: !!fullDriver.city },
+                ].map(({ label, value, icon, ok }) => (
+                  <div key={label}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}>
+                      <i className={`bi ${icon} me-1 text-primary`}></i>{label}
+                    </label>
+                    <div style={{ fontSize: 12, padding: "12px 14px", borderRadius: 12, border: `1px solid ${ok ? "#dbeafe" : "#fecaca"}`, background: ok ? "#f8fafc" : "#fff7ed", color: ok ? "#0f172a" : "#9a3412", fontWeight: ok ? 500 : 700 }}>
+                      {value}
+                    </div>
+                  </div>
+                ))}
 
-            <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 10 }}>Profile Image</div>
-              <ImageUploader label="Profile Photo" value={docs.profileImage}
-                onChange={url => handleDocChange("profileImage", url)} testId="profile" />
-            </div>
+                <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 10 }}>Validation Result</div>
+                  <div style={{ background: canApprove ? "#f0fdf4" : "#fff7ed", border: `1px solid ${canApprove ? "#86efac" : "#fdba74"}`, borderRadius: 12, padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: canApprove ? "#166534" : "#9a3412", marginBottom: 6 }}>
+                      {canApprove ? "Ready for approval" : "Approval blocked"}
+                    </div>
+                    <div style={{ fontSize: 11, color: canApprove ? "#166534" : "#9a3412" }}>
+                      {canApprove ? "All required details and documents are present." : `Missing: ${missingItems.join(", ") || "Unknown items"}`}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {showRejectForm && (
               <div style={{ background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 10, padding: 12 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: "#dc2626", display: "block", marginBottom: 6 }}>
                   Rejection Reason <span style={{ color: "#dc2626" }}>*</span>
                 </label>
-                <textarea rows={3} className="admin-form-control" style={{ fontSize: 12 }}
-                  value={rejectNote} onChange={e => setRejectNote(e.target.value)}
-                  placeholder="Explain why the driver is being rejected…"
-                  data-testid="input-reject-note" />
+                <textarea rows={3} className="admin-form-control" style={{ fontSize: 12 }} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} placeholder="Explain why the driver is being rejected…" data-testid="input-reject-note" />
               </div>
             )}
 
-            {/* Action buttons */}
             <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
               {!showRejectForm ? (
                 <>
-                  <button className="btn btn-success w-100"
-                    disabled={verify.isPending}
-                    onClick={() => verify.mutate({ status: "approved" })}
-                    data-testid="btn-approve-driver">
+                  <button className="btn btn-success w-100" disabled={verify.isPending || !canApprove} onClick={() => verify.mutate({ status: "approved" })} data-testid="btn-approve-driver">
                     {verify.isPending ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-check-circle-fill me-2"></i>}
                     Approve Driver
                   </button>
-                  <button className="btn btn-outline-danger w-100"
-                    onClick={() => setShowRejectForm(true)}
-                    data-testid="btn-show-reject">
+                  <button className="btn btn-outline-danger w-100" onClick={() => setShowRejectForm(true)} data-testid="btn-show-reject">
                     <i className="bi bi-x-circle me-2"></i>Reject Driver
                   </button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-danger w-100"
-                    disabled={!rejectNote || verify.isPending}
-                    onClick={() => verify.mutate({ status: "rejected", note: rejectNote })}
-                    data-testid="btn-confirm-reject">
+                  <button className="btn btn-danger w-100" disabled={!rejectNote || verify.isPending} onClick={() => verify.mutate({ status: "rejected", note: rejectNote })} data-testid="btn-confirm-reject">
                     {verify.isPending ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-x-circle-fill me-2"></i>}
                     Confirm Rejection
                   </button>
@@ -155,25 +274,36 @@ function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; on
             </div>
           </div>
 
-          {/* Right: document images */}
           <div style={{ flex: 1, padding: "18px 16px", overflowY: "auto" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 14 }}>Document Uploads</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <ImageUploader label="🪪 Driving License" value={docs.licenseImage}
-                onChange={url => handleDocChange("licenseImage", url)} testId="license" />
-              <ImageUploader label="🚗 Vehicle Photo" value={docs.vehicleImage}
-                onChange={url => handleDocChange("vehicleImage", url)} testId="vehicle" />
-            </div>
+            {isLoading ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>Loading document previews…</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <DocumentPreviewCard title={groupedDocs.license ? formatDocLabel(groupedDocs.license.docType || groupedDocs.license.doc_type) : "Driving License"} document={groupedDocs.license} busy={docReview.isPending && !!pendingDocType} onApprove={() => reviewDoc(groupedDocs.license, "approved")} onReject={() => reviewDoc(groupedDocs.license, "rejected")} />
+                <DocumentPreviewCard title={groupedDocs.vehicle ? formatDocLabel(groupedDocs.vehicle.docType || groupedDocs.vehicle.doc_type) : "Vehicle Photo"} document={groupedDocs.vehicle} busy={docReview.isPending && !!pendingDocType} onApprove={() => reviewDoc(groupedDocs.vehicle, "approved")} onReject={() => reviewDoc(groupedDocs.vehicle, "rejected")} />
+                <DocumentPreviewCard title={groupedDocs.profile ? formatDocLabel(groupedDocs.profile.docType || groupedDocs.profile.doc_type) : "Profile Photo"} document={groupedDocs.profile} busy={docReview.isPending && !!pendingDocType} onApprove={() => reviewDoc(groupedDocs.profile, "approved")} onReject={() => reviewDoc(groupedDocs.profile, "rejected")} />
+                {otherDocs.map((doc, index) => (
+                  <DocumentPreviewCard
+                    key={`${doc.docType || doc.doc_type || "other"}-${index}`}
+                    title={formatDocLabel(doc.docType || doc.doc_type || "Document")}
+                    document={doc}
+                    busy={docReview.isPending && pendingDocType === (doc.docType || doc.doc_type)}
+                    onApprove={() => reviewDoc(doc, "approved")}
+                    onReject={() => reviewDoc(doc, "rejected")}
+                  />
+                ))}
+              </div>
+            )}
 
-            {/* Document checklist */}
             <div style={{ marginTop: 20, background: "#f8fafc", borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 10 }}>Verification Checklist</div>
               {[
-                { label: "License Number", ok: !!docs.licenseNumber },
-                { label: "License Photo", ok: !!docs.licenseImage },
-                { label: "Vehicle Number", ok: !!docs.vehicleNumber },
-                { label: "Vehicle Photo", ok: !!docs.vehicleImage },
-                { label: "Profile Photo", ok: !!docs.profileImage },
+                { label: "License Number", ok: !!checklist.licenseNumber },
+                { label: "License Photo", ok: !!checklist.licensePhoto },
+                { label: "Vehicle Number", ok: !!checklist.vehicleNumber },
+                { label: "Vehicle Photo", ok: !!checklist.vehiclePhoto },
+                { label: "Profile Photo", ok: !!checklist.profilePhoto },
               ].map(({ label, ok }) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <i className={`bi ${ok ? "bi-check-circle-fill text-success" : "bi-circle text-muted"}`} style={{ fontSize: 14 }}></i>
@@ -182,12 +312,12 @@ function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; on
               ))}
             </div>
 
-            {driver.rejectionNote && (
+            {(fullDriver.rejectionNote || fullDriver.rejection_note) && (
               <div style={{ marginTop: 16, background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 10, padding: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>
                   <i className="bi bi-exclamation-triangle-fill me-1"></i>Previous Rejection Note
                 </div>
-                <div style={{ fontSize: 12, color: "#7f1d1d" }}>{driver.rejectionNote}</div>
+                <div style={{ fontSize: 12, color: "#7f1d1d" }}>{fullDriver.rejectionNote || fullDriver.rejection_note}</div>
               </div>
             )}
           </div>
@@ -197,7 +327,6 @@ function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; on
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Drivers() {
   const [search, setSearch] = useState("");
   const [verifyTab, setVerifyTab] = useState<"all" | "pending" | "approved" | "rejected">("all");
@@ -224,7 +353,7 @@ export default function Drivers() {
     queryFn: () => {
       const params = new URLSearchParams({ userType: "driver", page: String(page), limit: "50" });
       if (search) params.set("search", search);
-      return adminJsonRequest<any>(`/api/users?${params}`).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
+      return adminJsonRequest<any>(`/api/users?${params}`).then((d) => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
     },
   });
 
@@ -235,16 +364,16 @@ export default function Drivers() {
 
   const drivers: any[] = Array.isArray(data?.data) ? data.data : [];
 
-  const filtered = drivers.filter(d => {
+  const filtered = drivers.filter((d) => {
     if (verifyTab === "pending") return ["pending", "under_review"].includes(d.verificationStatus || "pending");
     if (verifyTab === "approved") return d.verificationStatus === "approved";
     if (verifyTab === "rejected") return d.verificationStatus === "rejected";
     return true;
   });
 
-  const pendingCount = drivers.filter(d => ["pending", "under_review"].includes(d.verificationStatus || "pending")).length;
-  const approvedCount = drivers.filter(d => d.verificationStatus === "approved").length;
-  const rejectedCount = drivers.filter(d => d.verificationStatus === "rejected").length;
+  const pendingCount = drivers.filter((d) => ["pending", "under_review"].includes(d.verificationStatus || "pending")).length;
+  const approvedCount = drivers.filter((d) => d.verificationStatus === "approved").length;
+  const rejectedCount = drivers.filter((d) => d.verificationStatus === "rejected").length;
 
   return (
     <div className="container-fluid">
@@ -253,8 +382,7 @@ export default function Drivers() {
           <h4 className="fw-bold mb-0" data-testid="page-title">Driver Management</h4>
           <div className="text-muted small">Onboarding, verification, and driver administration</div>
         </div>
-        <button className="btn btn-primary btn-sm d-flex align-items-center gap-1"
-          onClick={() => setShowAdd(true)} data-testid="btn-add-driver">
+        <button className="btn btn-primary btn-sm d-flex align-items-center gap-1" onClick={() => setShowAdd(true)} data-testid="btn-add-driver">
           <i className="bi bi-person-plus-fill"></i> Add Driver
         </button>
       </div>
@@ -271,39 +399,27 @@ export default function Drivers() {
                 <div className="row g-3">
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Full Name <span className="text-danger">*</span></label>
-                    <input className="form-control" placeholder="e.g. Suresh Reddy"
-                      value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
-                      data-testid="input-driver-name" />
+                    <input className="form-control" placeholder="e.g. Suresh Reddy" value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} data-testid="input-driver-name" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Phone Number <span className="text-danger">*</span></label>
-                    <input className="form-control" placeholder="+91 9876543210" type="tel"
-                      value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                      data-testid="input-driver-phone" />
+                    <input className="form-control" placeholder="+91 9876543210" type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} data-testid="input-driver-phone" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Email <span className="text-muted">(optional)</span></label>
-                    <input className="form-control" placeholder="suresh@example.com" type="email"
-                      value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      data-testid="input-driver-email" />
+                    <input className="form-control" placeholder="suresh@example.com" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} data-testid="input-driver-email" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">License Number</label>
-                    <input className="form-control" placeholder="e.g. AP1234567890"
-                      value={form.licenseNumber} onChange={e => setForm(f => ({ ...f, licenseNumber: e.target.value }))}
-                      data-testid="input-driver-license" />
+                    <input className="form-control" placeholder="e.g. AP1234567890" value={form.licenseNumber} onChange={(e) => setForm((f) => ({ ...f, licenseNumber: e.target.value }))} data-testid="input-driver-license" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Vehicle Number</label>
-                    <input className="form-control" placeholder="e.g. TS 09 AB 1234"
-                      value={form.vehicleNumber} onChange={e => setForm(f => ({ ...f, vehicleNumber: e.target.value }))}
-                      data-testid="input-driver-vehicle-number" />
+                    <input className="form-control" placeholder="e.g. TS 09 AB 1234" value={form.vehicleNumber} onChange={(e) => setForm((f) => ({ ...f, vehicleNumber: e.target.value }))} data-testid="input-driver-vehicle-number" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Vehicle Model</label>
-                    <input className="form-control" placeholder="e.g. Honda Activa, TVS Jupiter"
-                      value={form.vehicleModel} onChange={e => setForm(f => ({ ...f, vehicleModel: e.target.value }))}
-                      data-testid="input-driver-vehicle-model" />
+                    <input className="form-control" placeholder="e.g. Honda Activa, TVS Jupiter" value={form.vehicleModel} onChange={(e) => setForm((f) => ({ ...f, vehicleModel: e.target.value }))} data-testid="input-driver-vehicle-model" />
                   </div>
                 </div>
                 <div className="alert alert-info mt-3 mb-0 py-2" style={{ fontSize: 12, borderRadius: 8 }}>
@@ -312,10 +428,7 @@ export default function Drivers() {
                 </div>
                 <div className="d-flex gap-2 mt-4">
                   <button className="btn btn-light flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
-                  <button className="btn btn-primary flex-1"
-                    disabled={!form.fullName || !form.phone || addDriver.isPending}
-                    onClick={() => addDriver.mutate()}
-                    data-testid="btn-save-driver">
+                  <button className="btn btn-primary flex-1" disabled={!form.fullName || !form.phone || addDriver.isPending} onClick={() => addDriver.mutate()} data-testid="btn-save-driver">
                     {addDriver.isPending ? "Saving…" : "Add Driver"}
                   </button>
                 </div>
@@ -325,7 +438,6 @@ export default function Drivers() {
         </div>
       )}
 
-      {/* Summary cards */}
       <div className="row g-3 mb-3">
         {[
           { label: "Total Drivers", val: drivers.length, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe" },
@@ -333,12 +445,10 @@ export default function Drivers() {
           { label: "Approved", val: approvedCount, icon: "bi-check-circle-fill", color: "#16a34a", bg: "#f0fdf4" },
           { label: "Rejected", val: rejectedCount, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fff5f5" },
         ].map((s, i) => (
-          <div key={i} className="col-6 col-xl-3" style={{ cursor: "pointer" }}
-            onClick={() => { if (i === 1) setVerifyTab("pending"); else if (i === 2) setVerifyTab("approved"); else if (i === 3) setVerifyTab("rejected"); else setVerifyTab("all"); }}>
+          <div key={i} className="col-6 col-xl-3" style={{ cursor: "pointer" }} onClick={() => { if (i === 1) setVerifyTab("pending"); else if (i === 2) setVerifyTab("approved"); else if (i === 3) setVerifyTab("rejected"); else setVerifyTab("all"); }}>
             <div className="card border-0 shadow-sm" style={{ borderRadius: 14, border: s.alert ? `2px solid ${s.color}` : undefined }}>
               <div className="card-body d-flex align-items-center gap-3 py-3">
-                <div className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
-                  style={{ width: 44, height: 44, background: s.bg, color: s.color, fontSize: "1.1rem" }}>
+                <div className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 44, height: 44, background: s.bg, color: s.color, fontSize: "1.1rem" }}>
                   <i className={`bi ${s.icon}`}></i>
                 </div>
                 <div>
@@ -359,8 +469,7 @@ export default function Drivers() {
       </div>
 
       <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
-        <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2"
-          style={{ borderBottom: "1px solid #f1f5f9" }}>
+        <div className="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2" style={{ borderBottom: "1px solid #f1f5f9" }}>
           <ul className="nav nav--tabs p-1 rounded bg-light">
             {([
               ["all", "All Drivers", drivers.length],
@@ -369,22 +478,16 @@ export default function Drivers() {
               ["rejected", "Rejected", rejectedCount],
             ] as const).map(([val, label, cnt]) => (
               <li key={val} className="nav-item">
-                <button className={`nav-link${verifyTab === val ? " active" : ""}`}
-                  onClick={() => setVerifyTab(val)} data-testid={`tab-driver-${val}`}>
+                <button className={`nav-link${verifyTab === val ? " active" : ""}`} onClick={() => setVerifyTab(val)} data-testid={`tab-driver-${val}`}>
                   {label}
-                  {cnt > 0 && <span className="ms-1 badge rounded-pill"
-                    style={{ background: verifyTab === val ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: verifyTab === val ? "white" : "#475569", fontSize: 9 }}>
-                    {cnt}
-                  </span>}
+                  {cnt > 0 && <span className="ms-1 badge rounded-pill" style={{ background: verifyTab === val ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: verifyTab === val ? "white" : "#475569", fontSize: 9 }}>{cnt}</span>}
                 </button>
               </li>
             ))}
           </ul>
           <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "6px 12px" }}>
             <i className="bi bi-search" style={{ fontSize: 12, color: "#94a3b8" }}></i>
-            <input style={{ border: "none", background: "transparent", outline: "none", fontSize: 13, width: 200 }}
-              placeholder="Search drivers…" value={search} onChange={e => setSearch(e.target.value)}
-              data-testid="input-driver-search" />
+            <input style={{ border: "none", background: "transparent", outline: "none", fontSize: 13, width: 200 }} placeholder="Search drivers…" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-driver-search" />
           </div>
         </div>
 
@@ -393,9 +496,8 @@ export default function Drivers() {
             <table className="table table-borderless align-middle table-hover mb-0">
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  {["#","Driver","Contact","Vehicle Info","Documents","Rating","Status","Verification","Action"].map((h, i) => (
-                    <th key={i} className={i === 0 ? "ps-4" : i === 8 ? "text-center pe-4" : ""}
-                      style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", paddingTop: 12, paddingBottom: 12 }}>
+                  {["#", "Driver", "Contact", "Vehicle Info", "Documents", "Rating", "Status", "Verification", "Action"].map((h, i) => (
+                    <th key={i} className={i === 0 ? "ps-4" : i === 8 ? "text-center pe-4" : ""} style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", paddingTop: 12, paddingBottom: 12 }}>
                       {h}
                     </th>
                   ))}
@@ -404,7 +506,7 @@ export default function Drivers() {
               <tbody>
                 {isLoading ? (
                   Array(4).fill(0).map((_, i) => (
-                    <tr key={i}>{Array(9).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
+                    <tr key={i}>{Array(9).fill(0).map((__, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
                   ))
                 ) : filtered.length === 0 ? (
                   <tr><td colSpan={9}>
@@ -416,21 +518,16 @@ export default function Drivers() {
                 ) : filtered.map((driver: any, idx: number) => {
                   const name = driver.fullName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Driver";
                   const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
-                  const docsCount = Number(
-                    driver.documentCount ??
-                    [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length
-                  );
+                  const docsCount = Number(driver.documentCount ?? [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length);
                   const isPendingLike = ["pending", "under_review"].includes(driver.verificationStatus || "pending");
                   return (
                     <tr key={driver.id} data-testid={`row-driver-${driver.id}`}>
                       <td className="ps-4 text-muted small">{idx + 1}</td>
                       <td>
                         <div className="d-flex align-items-center gap-2">
-                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 position-relative"
-                            style={{ width: 38, height: 38, background: avatarBg(name), color: "white", fontSize: 13, fontWeight: 700 }}>
+                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 position-relative" style={{ width: 38, height: 38, background: avatarBg(name), color: "white", fontSize: 13, fontWeight: 700 }}>
                             {driver.profileImage ? (
-                              <img src={driver.profileImage} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }}
-                                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                              <img src={driver.profileImage} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                             ) : initials(name)}
                           </div>
                           <div>
@@ -439,9 +536,7 @@ export default function Drivers() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ fontSize: 12, color: "#64748b" }}>
-                        {driver.phone || "—"}
-                      </td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>{driver.phone || "—"}</td>
                       <td>
                         {driver.vehicleNumber ? (
                           <div>
@@ -465,9 +560,7 @@ export default function Drivers() {
                       </td>
                       <td>
                         <label className="switcher">
-                          <input type="checkbox" className="switcher_input" checked={driver.isActive}
-                            onChange={() => toggleActive.mutate({ id: driver.id, isActive: !driver.isActive })}
-                            data-testid={`toggle-driver-${driver.id}`} />
+                          <input type="checkbox" className="switcher_input" checked={driver.isActive} onChange={() => toggleActive.mutate({ id: driver.id, isActive: !driver.isActive })} data-testid={`toggle-driver-${driver.id}`} />
                           <span className="switcher_control"></span>
                         </label>
                       </td>
@@ -475,14 +568,7 @@ export default function Drivers() {
                         <span className={vs.cls} style={{ fontSize: 10 }}>{vs.label}</span>
                       </td>
                       <td className="text-center pe-4">
-                        <button className="btn btn-sm"
-                          style={{ borderRadius: 8, fontSize: 11,
-                            background: isPendingLike ? "#fef3c7" : "#f1f5f9",
-                            color: isPendingLike ? "#d97706" : "#64748b",
-                            border: `1px solid ${isPendingLike ? "#fde047" : "#e2e8f0"}`,
-                          }}
-                          onClick={() => setVerifyTarget(driver)}
-                          data-testid={`btn-verify-${driver.id}`}>
+                        <button className="btn btn-sm" style={{ borderRadius: 8, fontSize: 11, background: isPendingLike ? "#fef3c7" : "#f1f5f9", color: isPendingLike ? "#d97706" : "#64748b", border: `1px solid ${isPendingLike ? "#fde047" : "#e2e8f0"}` }} onClick={() => setVerifyTarget(driver)} data-testid={`btn-verify-${driver.id}`}>
                           <i className="bi bi-shield-check me-1"></i>
                           {driver.verificationStatus === "approved" ? "View" : "Verify"}
                         </button>
@@ -496,9 +582,7 @@ export default function Drivers() {
         </div>
       </div>
 
-      {verifyTarget && (
-        <VerifyModal driver={verifyTarget} open={!!verifyTarget} onClose={() => setVerifyTarget(null)} />
-      )}
+      {verifyTarget && <VerifyModal driver={verifyTarget} open={!!verifyTarget} onClose={() => setVerifyTarget(null)} />}
     </div>
   );
 }
