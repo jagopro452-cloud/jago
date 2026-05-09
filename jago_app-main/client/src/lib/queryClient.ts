@@ -79,6 +79,16 @@ export async function apiRequest(
   return res;
 }
 
+export async function adminJsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...(init || {}),
+    headers: buildAdminHeaders(init?.headers),
+    credentials: "include",
+  });
+  await throwIfResNotOk(res);
+  return await res.json();
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
