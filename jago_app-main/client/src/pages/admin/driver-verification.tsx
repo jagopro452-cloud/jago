@@ -99,6 +99,9 @@ export default function DriverVerificationPage() {
     );
   };
 
+  const getDocType = (doc: any) => doc.docType || doc.doc_type || "document";
+  const isPendingReview = (status: string) => ["pending", "under_review"].includes(status || "pending");
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
@@ -204,10 +207,12 @@ export default function DriverVerificationPage() {
                         Documents
                       </h4>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {driver.documents?.map((doc: any) => (
-                          <div key={doc.id} className="space-y-2 border rounded-lg p-2 bg-background shadow-sm" data-testid={`doc-${doc.doc_type}-${driver.id}`}>
+                        {driver.documents?.map((doc: any, index: number) => {
+                          const docType = getDocType(doc);
+                          return (
+                          <div key={`${driver.id}-${docType}-${index}`} className="space-y-2 border rounded-lg p-2 bg-background shadow-sm" data-testid={`doc-${docType}-${driver.id}`}>
                             <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[10px] font-bold uppercase truncate opacity-70">{doc.doc_type.replace(/_/g, ' ')}</span>
+                              <span className="text-[10px] font-bold uppercase truncate opacity-70">{docType.replace(/_/g, ' ')}</span>
                               {doc.status === 'approved' ? (
                                 <Check className="w-3 h-3 text-green-500" />
                               ) : doc.status === 'rejected' ? (
@@ -217,16 +222,16 @@ export default function DriverVerificationPage() {
                               )}
                             </div>
                             
-                            {renderDocImage(doc.file_url)}
+                            {renderDocImage(doc.fileUrl || doc.file_url)}
 
                             <div className="flex gap-1 pt-1">
                               <Button 
                                 size="sm" 
                                 variant="outline" 
                                 className="h-7 w-full p-0 border-green-200 hover:bg-green-50 hover:text-green-700 text-green-600"
-                                onClick={() => handleDocReview(driver.id, doc.doc_type, 'approved')}
+                                onClick={() => handleDocReview(driver.id, docType, 'approved')}
                                 disabled={docReviewMutation.isPending}
-                                data-testid={`button-approve-doc-${doc.doc_type}`}
+                                data-testid={`button-approve-doc-${docType}`}
                               >
                                 <Check className="w-3 h-3" />
                               </Button>
@@ -234,25 +239,25 @@ export default function DriverVerificationPage() {
                                 size="sm" 
                                 variant="outline" 
                                 className="h-7 w-full p-0 border-red-200 hover:bg-red-50 hover:text-red-700 text-red-600"
-                                onClick={() => handleDocReview(driver.id, doc.doc_type, 'rejected')}
+                                onClick={() => handleDocReview(driver.id, docType, 'rejected')}
                                 disabled={docReviewMutation.isPending}
-                                data-testid={`button-reject-doc-${doc.doc_type}`}
+                                data-testid={`button-reject-doc-${docType}`}
                               >
                                 <X className="w-3 h-3" />
                               </Button>
                             </div>
-                            {doc.admin_note && (
+                            {(doc.adminNote || doc.admin_note) && (
                               <p className="text-[10px] text-red-500 font-medium leading-tight line-clamp-2 mt-1">
-                                {doc.admin_note}
+                                {doc.adminNote || doc.admin_note}
                               </p>
                             )}
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
                     
                     <div className="pt-4 border-t space-y-4 mt-auto">
-                      {driver.verification_status === 'pending' && (
+                      {isPendingReview(driver.verification_status) && (
                         <div className="space-y-3">
                           <Textarea 
                             placeholder="Reason for rejection (required if rejecting)..." 
@@ -285,7 +290,7 @@ export default function DriverVerificationPage() {
                         </div>
                       )}
                       
-                      {driver.verification_status !== 'pending' && (
+                      {!isPendingReview(driver.verification_status) && (
                         <Button 
                           variant="outline" 
                           className="w-full h-11 border-dashed hover:bg-muted font-medium"

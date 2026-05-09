@@ -7748,9 +7748,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const existing = await rawDb.execute(rawSql`SELECT id FROM users WHERE phone=${phone} AND user_type=${userType} LIMIT 1`);
       if (existing.rows.length) return res.status(409).json({ message: "Account already exists. Please login." });
       const passwordHash = await hashPassword(password);
+      const verificationStatus = userType === "driver" ? "pending" : "approved";
+      const vehicleStatus = userType === "driver" ? "pending" : "approved";
       const insertRes = await rawDb.execute(rawSql`
-        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash)
-        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash})
+        INSERT INTO users (full_name, phone, email, user_type, is_active, wallet_balance, password_hash, verification_status, vehicle_status)
+        VALUES (${fullName}, ${phone}, ${email || null}, ${userType}, true, 0, ${passwordHash}, ${verificationStatus}, ${vehicleStatus})
         RETURNING *
       `);
       // Set referral_code separately (handles DB where column may not exist yet)
@@ -12793,7 +12795,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/drivers/pending-verification", async (req, res) => {
     try {
       const status = (req.query.status as string) || 'pending';
-      const pendingStatuses = status === 'pending' ? ['pending', 'under_review'] : [status];
       const r = await rawDb.execute(rawSql`
         SELECT u.id, u.full_name, u.phone, u.email, u.verification_status, u.vehicle_status,
                u.rejection_note, u.license_number, u.license_expiry, u.vehicle_number,
@@ -12803,7 +12804,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM users u
         LEFT JOIN driver_details dd ON dd.user_id = u.id
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-        WHERE u.user_type = 'driver' AND u.verification_status = ANY(${pendingStatuses})
+        WHERE u.user_type = 'driver'
+          AND (
+            (${status} = 'pending' AND (
+              COALESCE(u.verification_status, 'pending') IN ('pending', 'under_review')
+              OR EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
+              OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
+            ))
+            OR (${status} <> 'pending' AND COALESCE(u.verification_status, 'pending') = ${status})
+          )
         ORDER BY u.created_at DESC
         LIMIT 100
       `);
