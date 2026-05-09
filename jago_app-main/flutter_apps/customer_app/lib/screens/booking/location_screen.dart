@@ -43,18 +43,6 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen>
     with TickerProviderStateMixin {
-  static const List<Map<String, dynamic>> _curatedFallbackPlaces = [
-    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
-    {'name': 'Pandit Nehru Bus Station', 'lat': 16.5179, 'lng': 80.6238},
-    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
-    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-    {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
-    {'name': 'Labbipet', 'lat': 16.5034, 'lng': 80.6488},
-    {'name': 'Moghalrajpuram', 'lat': 16.5057, 'lng': 80.6465},
-  ];
   // ── Controllers ──────────────────────────────────────────────────────────
   final _dropCtrl = TextEditingController();
   final _stopCtrl = TextEditingController();
@@ -307,27 +295,7 @@ class _LocationScreenState extends State<LocationScreen>
       }
     } catch (_) {}
     if (mounted && _popular.isEmpty) {
-      setState(() => _popular = const [
-            {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-            {
-              'name': 'Vijayawada Railway Station',
-              'lat': 16.5175,
-              'lng': 80.6400
-            },
-            {
-              'name': 'Vijayawada Bus Stand',
-              'lat': 16.5179,
-              'lng': 80.6238
-            },
-            {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-            {
-              'name': 'Gannavaram Airport',
-              'lat': 16.5304,
-              'lng': 80.7968
-            },
-            {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-            {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-          ]);
+      setState(() => _popular = const []);
     }
   }
 
@@ -337,40 +305,6 @@ class _LocationScreenState extends State<LocationScreen>
     // This groups multiple keystrokes into 1 billable session
     final rnd = DateTime.now().millisecondsSinceEpoch.toString();
     setState(() => _sessionToken = 'sess-$rnd-${_pickupLat.toInt()}');
-  }
-
-  String _normalizeSearch(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-
-  List<Map<String, dynamic>> _localFallbackMatches(String query) {
-    final normalized = _normalizeSearch(query);
-    if (normalized.isEmpty) return [];
-
-    final pool = <Map<String, dynamic>>[
-      ..._recent,
-      ..._popular,
-      ..._curatedFallbackPlaces,
-    ];
-    final seen = <String>{};
-    final matches = <Map<String, dynamic>>[];
-
-    for (final item in pool) {
-      final name = (item['name'] ?? '').toString();
-      if (name.isEmpty) continue;
-      final key = _normalizeSearch(name);
-      if (seen.contains(key)) continue;
-      if (!key.contains(normalized) && !normalized.contains(key)) continue;
-      seen.add(key);
-      matches.add({
-        'name': name,
-        'mainText': name,
-        'secondaryText': item['address']?.toString() ?? 'Popular Location',
-        'placeId': item['placeId']?.toString() ?? 'local:$name',
-        'lat': (item['lat'] as num?)?.toDouble() ?? 0.0,
-        'lng': (item['lng'] as num?)?.toDouble() ?? 0.0,
-      });
-    }
-    return matches.take(8).toList();
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -450,23 +384,15 @@ class _LocationScreenState extends State<LocationScreen>
             })
             .where((r) => (r['name'] as String).isNotEmpty)
             .toList();
-        final fallback = _localFallbackMatches(query);
         setState(() {
-          _searchResults = parsed.isNotEmpty ? parsed : <Map<String, dynamic>>[];
-          final existing = _searchResults
-              .map((item) => (item['name'] ?? '').toString().toLowerCase())
-              .toSet();
-          for (final item in fallback) {
-            final key = (item['name'] ?? '').toString().toLowerCase();
-            if (!existing.contains(key)) _searchResults.add(item);
-          }
+          _searchResults = parsed;
         });
         print('[PLACES] Found ${_searchResults.length} results');
       }
     } catch (e) {
       print('[PLACES] Error: $e');
       if (mounted) {
-        setState(() => _searchResults = _localFallbackMatches(query));
+        setState(() => _searchResults = []);
       }
     }
     if (mounted) setState(() => _searching = false);
@@ -525,7 +451,9 @@ class _LocationScreenState extends State<LocationScreen>
           final d = jsonDecode(r.body) as Map<String, dynamic>;
           lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
           lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
-          final resolvedName = d['address']?.toString() ?? name;
+          final resolvedName = d['formattedAddress']?.toString() ??
+              d['address']?.toString() ??
+              name;
           if (!mounted) return;
           setState(() => _detectingLocation = false);
           if (forDrop) {

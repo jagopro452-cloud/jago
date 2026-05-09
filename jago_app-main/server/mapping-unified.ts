@@ -40,6 +40,19 @@ export interface ReverseGeocodeResult {
   country: string;
 }
 
+export interface CanonicalPlaceLocation {
+  placeId: string;
+  lat: number;
+  lng: number;
+  formattedAddress: string;
+  shortName: string;
+  area: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+}
+
 export interface MultiWaypointRoute {
   legs: Array<{
     originAddress: string;
@@ -283,7 +296,7 @@ export async function searchPlaces(
   if (!apiKey) {
     const localResults = await searchPopularLocations(query);
     const nomResults = await searchNominatimFallback(query, lat, lng, radius);
-    return rankPredictions(query, [...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    return rankPredictions(query, [...nomResults, ...localResults], lat, lng);
   }
 
   const controller = new AbortController();
@@ -308,7 +321,7 @@ export async function searchPlaces(
         console.error(`[mapping] Google API returned status ${r.status}`);
         const localResults = await searchPopularLocations(query);
         const nomResults = await searchNominatimFallback(query, lat, lng, radius);
-        return rankPredictions(query, [...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+        return rankPredictions(query, [...nomResults, ...localResults], lat, lng);
     }
     const data = await r.json() as any;
     console.log(`[mapping] Google response status: ${data.status}`);
@@ -317,15 +330,15 @@ export async function searchPlaces(
       console.warn(`[mapping-unified:searchPlaces] Google API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}. Falling back to Nominatim/Local.`);
       const nomResults = await searchNominatimFallback(query, lat, lng, radius);
       if (nomResults.length > 0) {
-        return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+        return rankPredictions(query, [...nomResults, ...await searchPopularLocations(query)], lat, lng);
       }
       const localResults = await searchPopularLocations(query);
-      return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+      return rankPredictions(query, localResults, lat, lng);
     }
 
     if (!data.predictions?.length) {
       console.log(`[mapping-unified:searchPlaces] Google returned 0 results. Trying Nominatim fallback.`);
-      return rankPredictions(query, [...await searchNominatimFallback(query, lat, lng, radius), ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+      return rankPredictions(query, [...await searchNominatimFallback(query, lat, lng, radius), ...await searchPopularLocations(query)], lat, lng);
     }
 
     const results: PlacePrediction[] = data.predictions.map((p: any) => ({
@@ -343,7 +356,7 @@ export async function searchPlaces(
       : [];
     const rankedResults = rankPredictions(
       query,
-      [...results, ...nomResults, ...localResults, ...searchCuratedFallbackLocations(query, lat, lng)],
+      [...results, ...nomResults, ...localResults],
       lat,
       lng,
     );
@@ -352,9 +365,9 @@ export async function searchPlaces(
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
     const nomResults = await searchNominatimFallback(query, lat, lng, radius);
-    if (nomResults.length > 0) return rankPredictions(query, [...nomResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    if (nomResults.length > 0) return rankPredictions(query, [...nomResults, ...await searchPopularLocations(query)], lat, lng);
     const localResults = await searchPopularLocations(query);
-    return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+    return rankPredictions(query, localResults, lat, lng);
   } finally {
     clearTimeout(timeout);
   }
@@ -422,7 +435,7 @@ async function searchNominatimFallback(query: string, lat?: number, lng?: number
     console.error("[mapping-unified] Nominatim fallback failed:", e);
   }
   const localResults = await searchPopularLocations(query);
-  return rankPredictions(query, [...localResults, ...searchCuratedFallbackLocations(query, lat, lng)], lat, lng);
+  return rankPredictions(query, localResults, lat, lng);
 }
 
 /**
@@ -432,20 +445,7 @@ async function searchNominatimFallback(query: string, lat?: number, lng?: number
 export async function getPlaceDetails(
   placeId: string,
   sessionToken?: string
-): Promise<{ lat: number; lng: number; address: string; shortName: string } | null> {
-  if (placeId.startsWith("curated:")) {
-    const slug = placeId.replace("curated:", "");
-    const match = CURATED_FALLBACK_PLACES.find((place) => place.name.toLowerCase().replace(/\s+/g, "-") === slug);
-    if (match) {
-      return {
-        lat: match.lat,
-        lng: match.lng,
-        address: match.fullAddress,
-        shortName: match.name,
-      };
-    }
-  }
-
+): Promise<CanonicalPlaceLocation | null> {
   if (placeId.startsWith("local:")) {
     const localName = placeId.replace("local:", "").trim();
     try {
@@ -458,10 +458,16 @@ export async function getPlaceDetails(
       const row = r.rows[0] as any;
       if (row) {
         return {
+          placeId,
           lat: parseFloat(String(row.latitude)) || 0,
           lng: parseFloat(String(row.longitude)) || 0,
-          address: `${row.name}, ${row.full_address || ""}`.replace(/,\s*$/, ""),
+          formattedAddress: `${row.name}, ${row.full_address || ""}`.replace(/,\s*$/, ""),
           shortName: row.name || extractShortName(row.full_address || ""),
+          area: "",
+          city: "",
+          state: "",
+          pincode: "",
+          country: "India",
         };
       }
     } catch {}
@@ -487,11 +493,18 @@ export async function getPlaceDetails(
     if (data?.status !== "OK" || !data.result?.geometry?.location) return null;
 
     const loc = data.result.geometry.location;
+    const components = data.result.address_components || [];
     return {
+      placeId,
       lat: Number(loc.lat),
       lng: Number(loc.lng),
-      address: data.result.formatted_address || "",
+      formattedAddress: data.result.formatted_address || "",
       shortName: data.result.name || extractShortName(data.result.formatted_address || ""),
+      area: findComponent(components, "sublocality_level_1", "sublocality", "neighborhood") || "",
+      city: findComponent(components, "locality", "administrative_area_level_2") || "",
+      state: findComponent(components, "administrative_area_level_1") || "",
+      pincode: findComponent(components, "postal_code") || "",
+      country: findComponent(components, "country") || "India",
     };
   } catch {
     return null;
@@ -532,7 +545,7 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
     }
     return Array.from(unique.values());
   } catch {
-    return searchCuratedFallbackLocations(query);
+    return [];
   }
 }
 

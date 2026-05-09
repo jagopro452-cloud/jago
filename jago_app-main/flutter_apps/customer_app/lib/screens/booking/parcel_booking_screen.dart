@@ -105,17 +105,6 @@ const _kWeightOptions = [
 
 class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     with SingleTickerProviderStateMixin {
-  static const List<Map<String, dynamic>> _curatedFallbackPlaces = [
-    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
-    {'name': 'Pandit Nehru Bus Station', 'lat': 16.5179, 'lng': 80.6238},
-    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
-    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-    {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
-  ];
-
   // Controllers
   final _dropAddressCtrl    = TextEditingController();
   final _pickupAddressCtrl  = TextEditingController();
@@ -303,23 +292,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q, isPickup: false));
   }
 
-  List<Map<String, dynamic>> _fallbackSuggestions(String query) {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return [];
-    return _curatedFallbackPlaces
-        .where((place) => (place['name'] as String).toLowerCase().contains(normalized))
-        .map((place) => {
-              'description': place['name'],
-              'place_id': 'local:${place['name']}',
-              'main_text': place['name'],
-              'secondary_text': 'Popular Location',
-              'lat': (place['lat'] as num).toDouble(),
-              'lng': (place['lng'] as num).toDouble(),
-            })
-        .take(8)
-        .toList();
-  }
-
   Future<void> _searchAddress(String q, {required bool isPickup}) async {
     try {
       final headers = await AuthService.getHeaders();
@@ -340,9 +312,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             'lng': (p['lng'] ?? 0).toDouble(),
           }).toList();
           if (isPickup) {
-            _pickupSuggestions = results.isNotEmpty ? results : _fallbackSuggestions(q);
+            _pickupSuggestions = results;
           } else {
-            _suggestions = results.isNotEmpty ? results : _fallbackSuggestions(q);
+            _suggestions = results;
           }
         });
       }
@@ -350,9 +322,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       if (mounted) {
         setState(() {
           if (isPickup) {
-            _pickupSuggestions = _fallbackSuggestions(q);
+            _pickupSuggestions = [];
           } else {
-            _suggestions = _fallbackSuggestions(q);
+            _suggestions = [];
           }
         });
       }
