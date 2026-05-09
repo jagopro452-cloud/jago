@@ -636,8 +636,9 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
 
   // ── Stage: Completed ──────────────────────────────────────────────────────
   Widget _buildCompletedView() {
-    final fare = double.tryParse(_order['total_fare']?.toString() ?? '0') ?? 0;
-    final earnings = _driverEarnings > 0 ? _driverEarnings : fare * 0.85;
+    final totalFare = double.tryParse(_order['total_fare']?.toString() ?? '0') ?? 0;
+    final storedEarnings = double.tryParse(_order['driver_earnings']?.toString() ?? '0') ?? 0;
+    final earnings = _driverEarnings > 0 ? _driverEarnings : storedEarnings;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -675,7 +676,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen>
               ]),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 Text('Order Fare', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13)),
-                Text('₹${fare.toStringAsFixed(0)}',
+                Text('₹${totalFare.toStringAsFixed(0)}',
                   style: GoogleFonts.poppins(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w500)),
               ]),
             ]),
