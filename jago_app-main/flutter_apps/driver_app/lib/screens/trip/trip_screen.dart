@@ -93,6 +93,35 @@ class _TripScreenState extends State<TripScreen>
     return s.split(',').first.trim();
   }
 
+  String _normalizeTripStatus(String? rawStatus) {
+    switch ((rawStatus ?? '').trim()) {
+      case 'requested':
+        return 'driver_assigned';
+      case 'driver_accepting':
+      case 'heading_to_pickup':
+      case 'accepted':
+      case 'driver_assigned':
+        return 'accepted';
+      case 'waiting':
+      case 'otp_pending':
+      case 'arrived':
+        return 'arrived';
+      case 'otp_verified':
+      case 'heading_to_destination':
+      case 'in_progress':
+      case 'on_the_way':
+        return 'on_the_way';
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
+      case 'cancelled_by_admin':
+      case 'expired':
+      case 'failed':
+        return 'cancelled';
+      default:
+        return (rawStatus == null || rawStatus.isEmpty) ? 'accepted' : rawStatus;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -103,7 +132,8 @@ class _TripScreenState extends State<TripScreen>
     _socket.connect(ApiConfig.socketUrl);
     _trip = widget.trip;
     if (_trip != null) {
-      _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
+      _status = _normalizeTripStatus(
+          _trip!['canonicalState'] ?? _trip!['currentStatus'] ?? _trip!['status']);
       // Register active trip so socket can rejoin room on reconnect
       final tripId = _trip!['tripId'] ?? _trip!['id'];
       if (tripId != null) _socket.setActiveTrip(tripId.toString());
@@ -197,9 +227,13 @@ class _TripScreenState extends State<TripScreen>
           }
           return;
         }
-        final serverStatus =
-            (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
-                .toString();
+        final serverStatus = _normalizeTripStatus(
+          (serverTrip['canonicalState'] ??
+                  serverTrip['currentStatus'] ??
+                  serverTrip['current_status'] ??
+                  '')
+              .toString(),
+        );
         if (serverStatus == 'completed' || serverStatus == 'cancelled') {
           _stopStatePoll();
           if (mounted) {

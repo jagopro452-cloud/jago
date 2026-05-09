@@ -124,10 +124,14 @@ class _TrackingScreenState extends State<TrackingScreen>
     }));
 
     _subs.add(_socket.onTripStatus.listen((data) {
-      if (data == null) return;
       try {
-        final newStatus = data['status']?.toString();
-        if (newStatus == null) return;
+        final newStatus = _normalizeTrackingStatus(
+          data['canonicalState']?.toString() ??
+              data['currentStatus']?.toString() ??
+              data['status']?.toString() ??
+              '',
+          isParcel: widget.isParcel || _resolvedParcelMode,
+        );
 
         // Status rank guard: ensure we only move forward in the lifecycle
         const statusRank = {
@@ -236,7 +240,13 @@ class _TrackingScreenState extends State<TrackingScreen>
           data['pickupOtp']?.toString() ?? data['otp']?.toString();
 
       setState(() {
-        _status = data['status'] ?? data['currentStatus'] ?? 'accepted';
+        _status = _normalizeTrackingStatus(
+          data['canonicalState']?.toString() ??
+              data['currentStatus']?.toString() ??
+              data['status']?.toString() ??
+              'accepted',
+          isParcel: widget.isParcel || _resolvedParcelMode,
+        );
         final Map<String, dynamic> update = {};
         if (pickupOtp != null && pickupOtp.isNotEmpty)
           update['pickupOtp'] = pickupOtp;
@@ -1276,6 +1286,30 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   String _normalizeTrackingStatus(String rawStatus, {required bool isParcel}) {
+    switch (rawStatus) {
+      case 'requested':
+        rawStatus = 'searching';
+        break;
+      case 'driver_accepting':
+      case 'heading_to_pickup':
+        rawStatus = 'accepted';
+        break;
+      case 'waiting':
+      case 'otp_pending':
+        rawStatus = 'arrived';
+        break;
+      case 'otp_verified':
+      case 'heading_to_destination':
+        rawStatus = 'on_the_way';
+        break;
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
+      case 'cancelled_by_admin':
+      case 'expired':
+      case 'failed':
+        rawStatus = 'cancelled';
+        break;
+    }
     if (!isParcel) return rawStatus;
     switch (rawStatus) {
       case 'pending':

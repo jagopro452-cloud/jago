@@ -22,6 +22,7 @@ const rawSql = sql;
 import bcrypt from "bcryptjs";
 import { hashPassword, verifyPassword } from "./utils/crypto";
 import { canWalletCoverCharge, clampSeatRequest, shouldApplyCustomerLateCancelFee } from "./utils/stability-guards";
+import { buildRideLifecycleMeta, canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
 import { getConf } from "./config-db";
 import rateLimit from "express-rate-limit";
 import {
@@ -274,26 +275,36 @@ function dbCatchRows(label: string): (err: any) => { rows: any[] } {
   return (err: any) => { console.error(`[db:${label}]`, formatDbError(err)); return { rows: [] as any[] }; };
 }
 
-const TRIP_UI_STATE_MAP: Record<string, string> = {
-  searching: "requested",
-  driver_assigned: "driver_assigned",
-  accepted: "driver_assigned",
-  arrived: "driver_arriving",
-  on_the_way: "trip_in_progress",
-  completed: "trip_completed",
-  cancelled: "trip_cancelled",
-};
-
 function toUiTripState(trip: any): string {
-  const raw = String(trip?.currentStatus || trip?.current_status || "requested");
-  if (raw === "on_the_way") {
-    const startedAtRaw = trip?.rideStartedAt || trip?.ride_started_at;
-    if (startedAtRaw) {
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - new Date(startedAtRaw).getTime()) / 1000));
-      if (elapsedSec <= 90) return "trip_started";
-    }
+  const canonical = getCanonicalRideState(trip);
+  switch (canonical) {
+    case "requested":
+      return "requested";
+    case "driver_assigned":
+    case "driver_accepting":
+    case "accepted":
+    case "heading_to_pickup":
+      return "driver_assigned";
+    case "arrived":
+    case "waiting":
+    case "otp_pending":
+      return "driver_arriving";
+    case "otp_verified":
+      return "trip_started";
+    case "in_progress":
+    case "heading_to_destination":
+      return "trip_in_progress";
+    case "completed":
+      return "trip_completed";
+    case "cancelled_by_user":
+    case "cancelled_by_driver":
+    case "cancelled_by_admin":
+    case "expired":
+    case "failed":
+      return "trip_cancelled";
+    default:
+      return canonical;
   }
-  return TRIP_UI_STATE_MAP[raw] || raw;
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -306,6 +317,18 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function augmentTripPayload(trip: any) {
+  if (!trip) return trip;
+  const waitingChargePerMin = parseFloat(String(trip.waitingChargePerMin ?? trip.waiting_charge_per_min ?? trip.vcWaitingCharge ?? 0)) || 0;
+  const lifecycleMeta = buildRideLifecycleMeta(trip, { waitingGraceSeconds: 180, waitingChargePerMin });
+  return {
+    ...trip,
+    canonicalState: lifecycleMeta.canonicalState,
+    uiState: toUiTripState({ ...trip, currentStatus: trip.currentStatus || trip.current_status }),
+    lifecycle: lifecycleMeta.lifecycle,
+  };
 }
 
 /** GeoJSON [lng, lat] ring ray-cast point-in-polygon */
@@ -8375,7 +8398,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND t.current_status IN ('driver_assigned','accepted','arrived','on_the_way')
         ORDER BY t.updated_at DESC LIMIT 1
       `);
-      res.json({ trip: r.rows.length ? camelize(r.rows[0]) : null });
+      const trip = r.rows.length ? augmentTripPayload(camelize(r.rows[0])) : null;
+      res.json({ trip });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8526,6 +8550,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           pickupOtp: otp,
           driverId: driver.id,
           uiState: 'driver_assigned',
+          canonicalState: 'heading_to_pickup',
           status: 'accepted',
           currentStatus: 'accepted',
           driver: {
@@ -8552,7 +8577,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripId: tripData.id,
       }).catch(dbCatch("db"));
 
-      res.json({ success: true, trip: tripData, pickupOtp: otp });
+      res.json({ success: true, trip: augmentTripPayload(tripData), pickupOtp: otp, canonicalState: 'heading_to_pickup' });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8662,6 +8687,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const payload = {
           tripId,
           status: "on_the_way",
+          currentStatus: "on_the_way",
+          canonicalState: "in_progress",
           otp,
           uiState: 'trip_started',
           driver: {
@@ -8680,7 +8707,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         io.to(`user:${updatedTrip.customerId}`).emit("trip:status_update", payload);
         io.to(`trip:${tripId}`).emit("trip:status_update", payload);
       }
-      res.json({ success: true, trip: updatedTrip });
+      res.json({ success: true, trip: augmentTripPayload(updatedTrip) });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8714,7 +8741,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { tripId } = req.body;
       if (!tripId) return res.status(400).json({ message: "tripId required" });
       const updR = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='arrived'
+        UPDATE trip_requests SET current_status='arrived', arrived_at=COALESCE(arrived_at, NOW())
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
           AND current_status IN ('accepted','driver_assigned')
         RETURNING id, pickup_otp, customer_id
@@ -8763,11 +8790,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       if (io && tripRow?.customer_id) {
-        io.to(`user:${tripRow.customer_id}`).emit("trip:status_update", { tripId, status: "arrived", otp, uiState: 'driver_arriving' });
-        io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status: "arrived", otp, uiState: 'driver_arriving' });
+        io.to(`user:${tripRow.customer_id}`).emit("trip:status_update", { tripId, status: "arrived", currentStatus: "arrived", canonicalState: "otp_pending", otp, uiState: 'driver_arriving' });
+        io.to(`trip:${tripId}`).emit("trip:status_update", { tripId, status: "arrived", currentStatus: "arrived", canonicalState: "otp_pending", otp, uiState: 'driver_arriving' });
       }
 
-      res.json({ success: true, pickupOtp: otp });
+      res.json({ success: true, pickupOtp: otp, canonicalState: "otp_pending" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8810,7 +8837,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             logHeatmapEvent('pickup', parseFloat(t2.pickup_lat), parseFloat(t2.pickup_lng), svc);
           }
         }).catch(dbCatch("db"));
-      res.json({ success: true, message: "Trip started" });
+      res.json({ success: true, message: "Trip started", canonicalState: "in_progress" });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -9059,6 +9086,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           tripId,
           status: "completed",
           currentStatus: "completed",
+          canonicalState: "completed",
           fare: rideFullFare,
           actualFare: userPayable,
           userDiscount,
@@ -10180,9 +10208,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       res.json({
         success: true,
-        trip: tripRow,
+        trip: augmentTripPayload(tripRow),
         driver: null,
         status: "searching",
+        canonicalState: "requested",
         uiState: toUiTripState({ current_status: 'searching' }),
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -10210,8 +10239,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE t.id = ${tripId}::uuid AND t.customer_id = ${customer.id}::uuid
       `);
       if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
-      const trip = camelize(r.rows[0]) as any;
-      trip.uiState = toUiTripState(trip);
+      const trip = augmentTripPayload(camelize(r.rows[0])) as any;
       if (trip.rideStartedAt) {
         trip.rideTimerSeconds = Math.max(0, Math.floor((Date.now() - new Date(trip.rideStartedAt).getTime()) / 1000));
       }
@@ -10267,8 +10295,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY t.created_at DESC LIMIT 1
       `);
       if (!r.rows.length) return res.json({ trip: null });
-      const trip = camelize(r.rows[0]) as any;
-      trip.uiState = toUiTripState(trip);
+      const trip = augmentTripPayload(camelize(r.rows[0])) as any;
       if (trip.rideStartedAt) {
         trip.rideTimerSeconds = Math.max(0, Math.floor((Date.now() - new Date(trip.rideStartedAt).getTime()) / 1000));
       }

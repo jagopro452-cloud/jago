@@ -17,6 +17,7 @@ import {
 import { parseEnv } from "./config/env";
 import { getMatchingDriverCategoryIds } from "./vehicle-matching";
 import { noteSocketAuthFailure, noteSocketDisconnect } from "./ops-state";
+import { canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
 
 export let io: SocketIOServer;
 
@@ -361,6 +362,9 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           const trip = camelize(tripR.rows[0]) as any;
+          const acceptedCanonicalState = getCanonicalRideState({
+            current_status: "accepted",
+          });
 
           // Atomically claim the trip — only if still available (prevents race condition)
           const claimed = await rawDb.execute(rawSql`
@@ -412,6 +416,7 @@ export function setupSocket(httpServer: HttpServer) {
             pickupOtp,
             status: "accepted",
             currentStatus: "accepted",
+            canonicalState: acceptedCanonicalState,
             driver: {
               id: userId,
               fullName: driver.fullName,
@@ -430,6 +435,7 @@ export function setupSocket(httpServer: HttpServer) {
             pickupOtp,
             status: "accepted",
             currentStatus: "accepted",
+            canonicalState: acceptedCanonicalState,
             driverId: userId,
             driverName: driver.fullName,
             driverPhone: driver.phone,
@@ -455,6 +461,7 @@ export function setupSocket(httpServer: HttpServer) {
             tripId,
             status: "accepted",
             currentStatus: "accepted",
+            canonicalState: acceptedCanonicalState,
             otp: pickupOtp,
             driver: {
               id: userId,
@@ -501,7 +508,15 @@ export function setupSocket(httpServer: HttpServer) {
 
           // Driver joins the trip room so they receive real-time events (cancellation, status changes)
           socket.join(`trip:${tripId}`);
-          socket.emit("driver:accept_trip_ok", { tripId, trip });
+          socket.emit("driver:accept_trip_ok", {
+            tripId,
+            trip: {
+              ...trip,
+              currentStatus: "accepted",
+              canonicalState: acceptedCanonicalState,
+              pickupOtp,
+            },
+          });
           console.log(`[SOCKET] Driver ${userId} accepted trip ${tripId}`);
         } catch (e: any) {
           console.error("[SOCKET] driver:accept_trip error:", e.message);
@@ -526,10 +541,30 @@ export function setupSocket(httpServer: HttpServer) {
       // ── Driver: update trip status ─────────────────────────────────────────
       socket.on("driver:trip_status", async (data: { tripId: string; status: string; otp?: string }) => {
         try {
-          const { tripId, status, otp } = data;
+          const { tripId, otp } = data;
+          const status = toLegacyRideStatus(data.status);
           const allowed = ["accepted", "arrived", "on_the_way", "completed", "cancelled"];
           if (!allowed.includes(status)) {
             socket.emit("error", { message: "Invalid status" });
+            return;
+          }
+
+          const currentTripR = await rawDb.execute(rawSql`
+            SELECT id, customer_id, current_status, payment_status, payment_method,
+                   estimated_fare, actual_fare, cancelled_by, arrived_at,
+                   waiting_charge, waiting_charge_per_min
+            FROM trip_requests
+            WHERE id=${tripId}::uuid
+            LIMIT 1
+          `);
+          if (!currentTripR.rows.length) {
+            socket.emit("error", { message: "Trip not found" });
+            return;
+          }
+          const currentTrip = currentTripR.rows[0] as any;
+          if (status !== currentTrip.current_status &&
+            !canTransitionRideState(currentTrip.current_status, status)) {
+            socket.emit("error", { message: "Invalid trip state transition" });
             return;
           }
 
@@ -538,13 +573,18 @@ export function setupSocket(httpServer: HttpServer) {
               UPDATE trip_requests SET current_status=${status}, ride_started_at=NOW(), updated_at=NOW()
               WHERE id=${tripId}::uuid
             `);
+          } else if (status === "arrived") {
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests
+              SET current_status=${status},
+                  arrived_at=COALESCE(arrived_at, NOW()),
+                  updated_at=NOW()
+              WHERE id=${tripId}::uuid
+            `);
           } else if (status === "completed") {
             // PAYMENT GATE: trip only moves to completed if payment is verified
-            const paymentCheckR = await rawDb.execute(rawSql`
-              SELECT payment_status, payment_method FROM trip_requests WHERE id=${tripId}::uuid
-            `);
-            const paymentStatus = (paymentCheckR.rows[0] as any)?.payment_status;
-            const paymentMethod = (paymentCheckR.rows[0] as any)?.payment_method;
+            const paymentStatus = currentTrip.payment_status;
+            const paymentMethod = currentTrip.payment_method;
             // Cash trips: always allow completion (driver collects cash in person)
             // Paid/wallet/online trips: verify payment_status before completing
             const paymentClear = paymentMethod === 'cash' || paymentStatus === 'paid' || paymentStatus === 'cash' || paymentStatus === 'paid_online' || paymentStatus === 'wallet_paid';
@@ -570,25 +610,41 @@ export function setupSocket(httpServer: HttpServer) {
                   tripId,
                   status: "payment_pending",
                   currentStatus: "payment_pending",
+                  canonicalState: "completed",
                   message: "Ride complete. Awaiting payment confirmation.",
                 });
                 io.to(`user:${customerId}`).emit("trip:status_update", {
                   tripId,
                   status: "payment_pending",
                   currentStatus: "payment_pending",
+                  canonicalState: "completed",
                   message: "Ride complete. Awaiting payment confirmation.",
                 });
                 io.to(`trip:${tripId}`).emit("trip:status_update", {
                   tripId,
                   status: "payment_pending",
                   currentStatus: "payment_pending",
+                  canonicalState: "completed",
                   message: "Ride complete. Awaiting payment confirmation.",
                 });
               }
-              socket.emit("driver:trip_status_ok", { tripId, status: "payment_pending" });
+              socket.emit("driver:trip_status_ok", {
+                tripId,
+                status: "payment_pending",
+                canonicalState: "completed",
+              });
               console.log(`[SOCKET] Trip ${tripId} held at payment_pending — payment not verified`);
               return;
             }
+          } else if (status === "cancelled") {
+            await rawDb.execute(rawSql`
+              UPDATE trip_requests
+              SET current_status=${status},
+                  cancelled_by='driver',
+                  cancelled_at=COALESCE(cancelled_at, NOW()),
+                  updated_at=NOW()
+              WHERE id=${tripId}::uuid
+            `);
           } else {
             await rawDb.execute(rawSql`
               UPDATE trip_requests SET current_status=${status}, updated_at=NOW()
@@ -601,10 +657,16 @@ export function setupSocket(httpServer: HttpServer) {
           }
 
           // Get customer id + fare for FCM
-          const tripR = await rawDb.execute(rawSql`SELECT customer_id, estimated_fare, actual_fare FROM trip_requests WHERE id=${tripId}::uuid`);
+          const tripR = await rawDb.execute(rawSql`
+            SELECT customer_id, estimated_fare, actual_fare, current_status, cancelled_by,
+                   arrived_at, waiting_charge, waiting_charge_per_min
+            FROM trip_requests
+            WHERE id=${tripId}::uuid
+          `);
           if (tripR.rows.length) {
-            const customerId = (tripR.rows[0] as any).customer_id;
-            const fare = (tripR.rows[0] as any).actual_fare || (tripR.rows[0] as any).estimated_fare || 0;
+            const updatedTrip = tripR.rows[0] as any;
+            const customerId = updatedTrip.customer_id;
+            const fare = updatedTrip.actual_fare || updatedTrip.estimated_fare || 0;
             // Socket notify (foreground)
             const dObjR = await rawDb.execute(rawSql`
               SELECT u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating, u.profile_photo, 
@@ -631,7 +693,20 @@ export function setupSocket(httpServer: HttpServer) {
               lng: dObjRaw.lng,
             } : undefined;
 
-            const payload = { tripId, status, otp, driver };
+            const payload = {
+              tripId,
+              status,
+              currentStatus: updatedTrip.current_status,
+              canonicalState: getCanonicalRideState({
+                current_status: updatedTrip.current_status,
+                cancelled_by: updatedTrip.cancelled_by,
+                arrived_at: updatedTrip.arrived_at,
+                waiting_charge: updatedTrip.waiting_charge,
+                waiting_charge_per_min: updatedTrip.waiting_charge_per_min,
+              }),
+              otp,
+              driver,
+            };
             io.to(`user:${customerId}`).emit("trip:status_update", payload);
             io.to(`trip:${tripId}`).emit("trip:status_update", payload);
             // FCM fallback (background) for key status changes
@@ -652,7 +727,14 @@ export function setupSocket(httpServer: HttpServer) {
             }
           }
 
-          socket.emit("driver:trip_status_ok", { tripId, status });
+          socket.emit("driver:trip_status_ok", {
+            tripId,
+            status,
+            canonicalState: getCanonicalRideState({
+              current_status: status,
+              cancelled_by: status === "cancelled" ? "driver" : null,
+            }),
+          });
           console.log(`[SOCKET] Trip ${tripId} status → ${status}`);
         } catch (e: any) {
           console.error("[SOCKET] driver:trip_status error:", e.message);

@@ -178,6 +178,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   // ── App state recovery: if driver has an active trip, go to TripScreen directly ──
+  String _normalizeRecoveredTripStatus(String rawStatus) {
+    switch (rawStatus.trim()) {
+      case 'requested':
+        return 'driver_assigned';
+      case 'driver_accepting':
+      case 'heading_to_pickup':
+      case 'accepted':
+      case 'driver_assigned':
+        return 'accepted';
+      case 'waiting':
+      case 'otp_pending':
+      case 'arrived':
+        return 'arrived';
+      case 'otp_verified':
+      case 'heading_to_destination':
+      case 'in_progress':
+      case 'on_the_way':
+        return 'on_the_way';
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
+      case 'cancelled_by_admin':
+      case 'expired':
+      case 'failed':
+        return 'cancelled';
+      default:
+        return rawStatus;
+    }
+  }
+
   Future<void> _recoverActiveTrip() async {
     try {
       final headers = await AuthService.getHeaders();
@@ -189,8 +218,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final trip = data['trip'];
       if (trip == null) return;
-      final status = trip['currentStatus'] ?? trip['current_status'] ?? '';
+      final status = _normalizeRecoveredTripStatus(
+        (trip['canonicalState'] ?? trip['currentStatus'] ?? trip['current_status'] ?? '')
+            .toString(),
+      );
       if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) return;
+      trip['currentStatus'] = status;
+      trip['status'] = status;
       if (!mounted) return;
       // Navigate directly to trip screen — driver was mid-trip when app crashed
       Navigator.pushReplacement(
