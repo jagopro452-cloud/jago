@@ -68,6 +68,7 @@ export default function DriverVerificationPage() {
     switch (status) {
       case "approved": return <Badge className="bg-green-500 hover:bg-green-600 no-default-hover-elevate">Approved</Badge>;
       case "rejected": return <Badge variant="destructive" className="no-default-hover-elevate">Rejected</Badge>;
+      case "under_review": return <Badge className="bg-amber-500 hover:bg-amber-600 no-default-hover-elevate text-black">Under Review</Badge>;
       default: return <Badge className="bg-yellow-500 hover:bg-yellow-600 no-default-hover-elevate text-black">Pending</Badge>;
     }
   };

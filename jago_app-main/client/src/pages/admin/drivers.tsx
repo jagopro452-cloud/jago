@@ -11,6 +11,7 @@ const avatarBg = (name: string) => {
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
 const VSTATUS: Record<string, { label: string; cls: string; color: string }> = {
   pending:  { label: "Pending", cls: "badge bg-warning text-dark", color: "#d97706" },
+  under_review: { label: "Under Review", cls: "badge bg-warning text-dark", color: "#d97706" },
   approved: { label: "Approved", cls: "badge bg-success", color: "#16a34a" },
   rejected: { label: "Rejected", cls: "badge bg-danger", color: "#dc2626" },
 };
@@ -235,13 +236,13 @@ export default function Drivers() {
   const drivers: any[] = Array.isArray(data?.data) ? data.data : [];
 
   const filtered = drivers.filter(d => {
-    if (verifyTab === "pending") return (d.verificationStatus || "pending") === "pending";
+    if (verifyTab === "pending") return ["pending", "under_review"].includes(d.verificationStatus || "pending");
     if (verifyTab === "approved") return d.verificationStatus === "approved";
     if (verifyTab === "rejected") return d.verificationStatus === "rejected";
     return true;
   });
 
-  const pendingCount = drivers.filter(d => (d.verificationStatus || "pending") === "pending").length;
+  const pendingCount = drivers.filter(d => ["pending", "under_review"].includes(d.verificationStatus || "pending")).length;
   const approvedCount = drivers.filter(d => d.verificationStatus === "approved").length;
   const rejectedCount = drivers.filter(d => d.verificationStatus === "rejected").length;
 

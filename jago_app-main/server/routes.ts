@@ -12448,6 +12448,77 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  const promoteDriverVerificationForReview = async (driverId: string) => {
+    await rawDb.execute(rawSql`
+      UPDATE users
+      SET verification_status = CASE
+            WHEN verification_status = 'approved' THEN verification_status
+            ELSE 'under_review'
+          END,
+          vehicle_status = CASE
+            WHEN vehicle_status = 'approved' THEN vehicle_status
+            ELSE 'under_review'
+          END,
+          rejection_note = NULL,
+          updated_at = NOW()
+      WHERE id = ${driverId}::uuid AND user_type = 'driver'
+    `).catch(dbCatch("db"));
+  };
+
+  const loadDriverVerificationDocuments = async (driverId: string) => {
+    const documents: any[] = [];
+
+    const legacyRows = await rawDb.execute(rawSql`
+      SELECT doc_type, file_url, status, expiry_date, admin_note, reviewed_at
+      FROM driver_documents
+      WHERE driver_id = ${driverId}::uuid
+      ORDER BY created_at
+    `).catch(async () => {
+      const minimal = await rawDb.execute(rawSql`
+        SELECT doc_type, file_url, status, expiry_date
+        FROM driver_documents
+        WHERE driver_id = ${driverId}::uuid
+        ORDER BY created_at
+      `).catch(() => ({ rows: [] as any[] }));
+      return minimal;
+    });
+
+    for (const row of legacyRows.rows as any[]) {
+      documents.push({
+        docType: row.doc_type,
+        fileUrl: row.file_url,
+        status: row.status || "pending",
+        expiryDate: row.expiry_date || null,
+        adminNote: row.admin_note || null,
+        reviewedAt: row.reviewed_at || null,
+        source: "driver_documents",
+      });
+    }
+
+    const kycRows = await rawDb.execute(rawSql`
+      SELECT document_type, document_number, file_url, status, admin_note, updated_at
+      FROM driver_kyc_documents
+      WHERE driver_id = ${driverId}::uuid
+      ORDER BY created_at
+    `).catch(() => ({ rows: [] as any[] }));
+
+    for (const row of kycRows.rows as any[]) {
+      const alreadyPresent = documents.some((doc) => doc.docType === row.document_type && doc.fileUrl === row.file_url);
+      if (alreadyPresent) continue;
+      documents.push({
+        docType: row.document_type,
+        fileUrl: row.file_url,
+        status: row.status || "pending",
+        documentNumber: row.document_number || null,
+        adminNote: row.admin_note || null,
+        reviewedAt: row.updated_at || null,
+        source: "driver_kyc_documents",
+      });
+    }
+
+    return documents;
+  };
+
   // -- DRIVER: Upload documents (DL, RC, Aadhar) ----------------------------
   app.post("/api/app/driver/upload-document", authApp, upload.single("document"), async (req, res) => {
     try {
@@ -12473,6 +12544,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${fileUrl}, status='pending', updated_at=now()
         `);
       });
+      await promoteDriverVerificationForReview(user.id);
       res.json({ success: true, docType, fileUrl, status: 'pending', message: "Document uploaded. Under review." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12499,6 +12571,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         VALUES (${user.id}::uuid, ${docType}, ${imageData}, 'pending', ${expiryDate || null}, now(), now())
         ON CONFLICT (driver_id, doc_type) DO UPDATE SET file_url=${imageData}, status='pending', expiry_date=${expiryDate || null}, updated_at=now()
       `);
+      await promoteDriverVerificationForReview(user.id);
       res.json({ success: true, docType, status: 'pending', message: "Document uploaded. Under review." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12560,12 +12633,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
         WHERE u.id = ${user.id}::uuid
       `);
-      const docsR = await rawDb.execute(rawSql`
-        SELECT doc_type, status, expiry_date, admin_note, reviewed_at
-        FROM driver_documents WHERE driver_id = ${user.id}::uuid ORDER BY created_at
-      `).catch(() => ({ rows: [] }));
       const profile = camelize(profileR.rows[0] || {});
-      const documents = docsR.rows.map(camelize);
+      const documents = camelize(await loadDriverVerificationDocuments(user.id));
       res.json({ success: true, ...profile, documents });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12724,6 +12793,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/drivers/pending-verification", async (req, res) => {
     try {
       const status = (req.query.status as string) || 'pending';
+      const pendingStatuses = status === 'pending' ? ['pending', 'under_review'] : [status];
       const r = await rawDb.execute(rawSql`
         SELECT u.id, u.full_name, u.phone, u.email, u.verification_status, u.vehicle_status,
                u.rejection_note, u.license_number, u.license_expiry, u.vehicle_number,
@@ -12733,16 +12803,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         FROM users u
         LEFT JOIN driver_details dd ON dd.user_id = u.id
         LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
-        WHERE u.user_type = 'driver' AND u.verification_status = ${status}
+        WHERE u.user_type = 'driver' AND u.verification_status = ANY(${pendingStatuses})
         ORDER BY u.created_at DESC
         LIMIT 100
       `);
       const drivers = await Promise.all(r.rows.map(async (d: any) => {
-        const docsR = await rawDb.execute(rawSql`
-          SELECT doc_type, file_url, status, expiry_date, admin_note, reviewed_at
-          FROM driver_documents WHERE driver_id = ${d.id}::uuid ORDER BY created_at
-        `).catch(() => ({ rows: [] }));
-        return { ...camelize(d), documents: docsR.rows.map(camelize) };
+        const documents = camelize(await loadDriverVerificationDocuments(d.id));
+        return { ...camelize(d), documents };
       }));
       res.json({ success: true, drivers, count: drivers.length });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -12751,7 +12818,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- ADMIN: Review a single document (approve/reject) ----------------------
   app.patch("/api/admin/drivers/:id/doc-review", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { docType, status, adminNote } = req.body;
       if (!docType || !status) return res.status(400).json({ message: "docType and status required" });
       if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ message: "Invalid status" });
@@ -12759,7 +12826,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE driver_documents SET status=${status}, admin_note=${adminNote || null},
           reviewed_at=NOW(), updated_at=NOW()
         WHERE driver_id=${id}::uuid AND doc_type=${docType}
-      `);
+      `).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`
+        UPDATE driver_kyc_documents
+        SET status=${status}, admin_note=${adminNote || null}, updated_at=NOW()
+        WHERE driver_id=${id}::uuid AND document_type=${docType}
+      `).catch(dbCatch("db"));
+      if (status === 'pending') {
+        await promoteDriverVerificationForReview(id);
+      }
       res.json({ success: true, docType, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -12767,7 +12842,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -- ADMIN: Approve/Reject entire driver verification ----------------------
   app.patch("/api/admin/drivers/:id/verify-driver", requireAdminRole(["admin", "superadmin"]), async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { status, note, vehicleStatus } = req.body;
       if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ message: "Invalid status" });
       await rawDb.execute(rawSql`
@@ -12778,6 +12853,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           updated_at=NOW()
         WHERE id=${id}::uuid AND user_type='driver'
       `);
+      await rawDb.execute(rawSql`
+        UPDATE driver_documents
+        SET status=${status}, admin_note=${note || null}, reviewed_at=NOW(), updated_at=NOW()
+        WHERE driver_id=${id}::uuid AND status IN ('pending', 'rejected', 'approved')
+      `).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`
+        UPDATE driver_kyc_documents
+        SET status=${status}, admin_note=${note || null}, updated_at=NOW()
+        WHERE driver_id=${id}::uuid AND status IN ('pending', 'rejected', 'approved')
+      `).catch(dbCatch("db"));
       if (status === 'approved') {
         await rawDb.execute(rawSql`UPDATE users SET is_active=true WHERE id=${id}::uuid`);
         // Always grant 30-day free period on approval (no subscription/commission for first month)
