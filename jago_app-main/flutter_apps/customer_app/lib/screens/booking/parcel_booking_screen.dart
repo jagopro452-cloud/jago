@@ -489,7 +489,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         final data = jsonDecode(r.body);
         final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
         Navigator.pushReplacement(context, MaterialPageRoute(
-          builder: (_) => TrackingScreen(tripId: orderId),
+          builder: (_) => TrackingScreen(tripId: orderId, isParcel: true),
         ));
       } else {
         final e = jsonDecode(r.body);

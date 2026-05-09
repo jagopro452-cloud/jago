@@ -24,7 +24,8 @@ import 'trip_completion_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
   final String tripId;
-  const TrackingScreen({super.key, required this.tripId});
+  final bool isParcel;
+  const TrackingScreen({super.key, required this.tripId, this.isParcel = false});
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
@@ -59,6 +60,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   Timer? _pollTimer;
 
   bool _isArriving = false; // "Pilot is about to arrive" flag
+  bool _resolvedParcelMode = false;
 
   // Custom Top Banner state
   String? _bannerMessage;
@@ -1147,9 +1149,13 @@ class _TrackingScreenState extends State<TrackingScreen>
     if (!mounted) return;
     try {
       final headers = await AuthService.getHeaders();
+      final isParcelMode = widget.isParcel || _resolvedParcelMode;
+      final uri = isParcelMode
+          ? Uri.parse(ApiConfig.parcelTrack(widget.tripId))
+          : Uri.parse('${ApiConfig.trackTrip}/${widget.tripId}');
       final res = await http
           .get(
-            Uri.parse('${ApiConfig.trackTrip}/${widget.tripId}'),
+            uri,
             headers: headers,
           )
           .timeout(const Duration(seconds: 10));
@@ -1158,11 +1164,17 @@ class _TrackingScreenState extends State<TrackingScreen>
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final trip = data['trip'];
+        final trip = data['trip'] ?? data['order'];
         if (trip != null) {
-          final rawStatus = trip['currentStatus']?.toString() ?? _status;
+          final rawStatus = (trip['currentStatus'] ??
+                      trip['current_status'] ??
+                      trip['status'])
+                  ?.toString() ??
+              _status;
+          final normalizedStatus =
+              _normalizeTrackingStatus(rawStatus, isParcel: isParcelMode);
           final resolvedStatus =
-              rawStatus == 'payment_pending' ? 'completed' : rawStatus;
+              normalizedStatus == 'payment_pending' ? 'completed' : normalizedStatus;
 
           const statusRank = {
             'searching': 0,
@@ -1202,6 +1214,9 @@ class _TrackingScreenState extends State<TrackingScreen>
                   'estimatedDistance',
                   'type',
                   'tripType',
+                  'vehicleCategory',
+                  'dropLocations',
+                  'drops',
                 ];
                 for (var key in criticalKeys) {
                   if ((trip[key] == null || trip[key].toString().isEmpty) &&
@@ -1213,8 +1228,12 @@ class _TrackingScreenState extends State<TrackingScreen>
               }
 
               final bool statusChanged = _status != resolvedStatus;
+              trip['tripType'] = trip['tripType'] ??
+                  trip['trip_type'] ??
+                  (isParcelMode ? 'parcel' : 'ride');
               _trip = trip;
               _status = resolvedStatus;
+              if (isParcelMode) _resolvedParcelMode = true;
 
               if (resolvedStatus == 'completed') {
                 _walletPendingAmount = double.tryParse(
@@ -1242,6 +1261,10 @@ class _TrackingScreenState extends State<TrackingScreen>
             _pollTimer?.cancel();
           }
         }
+      } else if (!isParcelMode && res.statusCode == 404) {
+        _resolvedParcelMode = true;
+        await _pollStatus();
+        return;
       } else if (res.statusCode == 401) {
         debugPrint('[POLL] Session expired (401) during trip tracking');
         // We DON'T redirect to login here to avoid kicking out a tracking user.
@@ -1252,17 +1275,44 @@ class _TrackingScreenState extends State<TrackingScreen>
     }
   }
 
+  String _normalizeTrackingStatus(String rawStatus, {required bool isParcel}) {
+    if (!isParcel) return rawStatus;
+    switch (rawStatus) {
+      case 'pending':
+      case 'searching':
+        return 'searching';
+      case 'driver_assigned':
+      case 'accepted':
+        return 'accepted';
+      case 'picked_up':
+        return 'arrived';
+      case 'in_transit':
+        return 'on_the_way';
+      case 'delivered':
+        return 'completed';
+      default:
+        return rawStatus;
+    }
+  }
+
   Future<void> _cancelTrip(String reason) async {
-    // Cancel via socket first
-    _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
+    final isParcelMode = widget.isParcel || _resolvedParcelMode;
+    if (!isParcelMode) {
+      // Cancel via socket first
+      _socket.cancelTrip(_trip?['id']?.toString() ?? widget.tripId);
+    }
     // Also HTTP for persistence
     double? walletRefund;
     try {
       final headers = await AuthService.getHeaders();
-      final res = await http.post(Uri.parse(ApiConfig.cancelTrip),
+      final res = await http.post(
+          isParcelMode
+              ? Uri.parse(ApiConfig.parcelCancel(_trip?['id']?.toString() ?? widget.tripId))
+              : Uri.parse(ApiConfig.cancelTrip),
           headers: headers,
-          body: jsonEncode(
-              {'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
+          body: jsonEncode(isParcelMode
+              ? {'reason': reason}
+              : {'tripId': _trip?['id'] ?? widget.tripId, 'reason': reason}));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         walletRefund = double.tryParse(data['walletRefund']?.toString() ?? '');
@@ -1282,12 +1332,13 @@ class _TrackingScreenState extends State<TrackingScreen>
 
 
   void _showCancelDialog() {
+    final isParcelMode = widget.isParcel || _resolvedParcelMode;
     final reasons = _cancelReasons.isNotEmpty
         ? _cancelReasons
         : [
-            'Driver is taking too long',
-            'I booked by mistake',
-            'Changed travel plans',
+            isParcelMode ? 'Pickup is taking too long' : 'Driver is taking too long',
+            isParcelMode ? 'I need to change parcel details' : 'I booked by mistake',
+            'Changed plans',
             'Other reason',
           ];
 
@@ -1344,6 +1395,7 @@ class _TrackingScreenState extends State<TrackingScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isParcelMode = widget.isParcel || _resolvedParcelMode;
     final statusInfo = _getStatusInfo(_status);
     final trip = _trip;
     final otp =
@@ -1479,7 +1531,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                   children: [
                                     _buildPremiumHeader(statusInfo, otp),
                                     const SizedBox(height: 14),
-                                    if (_status != 'searching') ...[
+                                    if (_status != 'searching' && !isParcelMode) ...[
                                       if (driverName != null)
                                         _buildPremiumDriverCard(
                                           name: driverName,
@@ -1531,8 +1583,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                                           onPressed: _showCancelDialog,
                                           icon: const Icon(Icons.close_rounded,
                                               size: 16, color: Color(0xFF64748B)),
-                                          label: const Text('Cancel Ride',
-                                              style: TextStyle(
+                                          label: Text(isParcelMode ? 'Cancel Order' : 'Cancel Ride',
+                                              style: const TextStyle(
                                                   color: Color(0xFF64748B),
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w500)),
@@ -1610,6 +1662,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   // ── Premium UI Components ──────────────────────────────────────────────────
 
   Widget _buildPremiumHeader(Map<String, dynamic> statusInfo, String? otp) {
+    final isParcelMode = widget.isParcel || _resolvedParcelMode;
     final color = statusInfo['color'] as Color;
     final showOtp = otp != null &&
         otp.isNotEmpty &&
