@@ -5,7 +5,7 @@ const EnvSchema = z.object({
   PORT: z.string().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
-  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_EMAIL: z.string().trim().optional(),
   ADMIN_NAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   ADMIN_PHONE: z.string().optional(),
@@ -49,6 +49,11 @@ export function isFalse(value: string | undefined): boolean {
   return ["0", "false", "no", "off"].includes(value.toLowerCase());
 }
 
+function isPlausibleEmail(value: string | undefined): boolean {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export function validateProductionReadiness(env: AppEnv): void {
   if (env.NODE_ENV !== "production") return;
 
@@ -57,6 +62,9 @@ export function validateProductionReadiness(env: AppEnv): void {
 
   // These must be set in production — app cannot function securely without them
   if (!env.ADMIN_PASSWORD) critical.push("ADMIN_PASSWORD");
+  if (env.ADMIN_EMAIL && !isPlausibleEmail(env.ADMIN_EMAIL)) {
+    warnings.push(`ADMIN_EMAIL appears invalid (${env.ADMIN_EMAIL}) - admin sync may be skipped until a valid email is configured`);
+  }
 
   // 2FA delivery check: warn if no phone is set to receive OTP
   const twoFaOn = !isFalse(env.ADMIN_2FA_REQUIRED);
