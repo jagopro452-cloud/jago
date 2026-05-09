@@ -90,6 +90,12 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
   Widget build(BuildContext context) {
     final status = _data?['verificationStatus'] ?? 'pending';
     final name = _data?['fullName'] ?? _data?['full_name'] ?? 'Pilot';
+    final phone = _data?['phone']?.toString() ?? '';
+    final city = _data?['city']?.toString() ?? '';
+    final vehicleNumber = _data?['vehicleNumber']?.toString() ?? _data?['vehicle_number']?.toString() ?? '';
+    final vehicleBrand = _data?['vehicleBrand']?.toString() ?? _data?['vehicle_brand']?.toString() ?? '';
+    final vehicleModel = _data?['vehicleModel']?.toString() ?? _data?['vehicle_model']?.toString() ?? '';
+    final licenseNumber = _data?['licenseNumber']?.toString() ?? _data?['license_number']?.toString() ?? '';
     final docs = (_data?['documents'] as List?) ?? [];
     final rejectionNote = _data?['rejectionNote'] ?? _data?['rejection_note'];
 
@@ -185,10 +191,69 @@ class _PendingVerificationScreenState extends State<PendingVerificationScreen> {
                   child: Text('Document Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: JT.textPrimary)),
                 ),
                 const SizedBox(height: 16),
+                _buildInfoCard(name, phone, city, vehicleNumber, vehicleBrand, vehicleModel, licenseNumber),
+                const SizedBox(height: 20),
                 ...docs.map((doc) => _buildDocTile(doc)).toList(),
               ],
             ),
           ),
+    );
+  }
+
+  Widget _buildInfoCard(
+    String name,
+    String phone,
+    String city,
+    String vehicleNumber,
+    String vehicleBrand,
+    String vehicleModel,
+    String licenseNumber,
+  ) {
+    final rows = <Map<String, String>>[
+      {'label': 'Name', 'value': name},
+      if (phone.isNotEmpty) {'label': 'Phone', 'value': phone},
+      if (city.isNotEmpty) {'label': 'City', 'value': city},
+      if (vehicleNumber.isNotEmpty) {'label': 'Vehicle Number', 'value': vehicleNumber},
+      if (vehicleBrand.isNotEmpty || vehicleModel.isNotEmpty) {'label': 'Vehicle', 'value': [vehicleBrand, vehicleModel].where((e) => e.isNotEmpty).join(' ')},
+      if (licenseNumber.isNotEmpty) {'label': 'License Number', 'value': licenseNumber},
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JT.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JT.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Submitted Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: JT.textPrimary)),
+          const SizedBox(height: 12),
+          ...rows.map((row) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 116,
+                  child: Text(
+                    row['label']!,
+                    style: TextStyle(color: JT.textSecondary, fontSize: 13, fontWeight: FontWeight.w400),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    row['value']!,
+                    style: TextStyle(color: JT.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
     );
   }
 

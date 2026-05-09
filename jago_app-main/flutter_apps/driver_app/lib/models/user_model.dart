@@ -51,7 +51,7 @@ class UserModel {
       vehicleNumber: user['vehicleNumber'] ?? user['vehicle_number'],
       vehicleModel: user['vehicleModel'] ?? user['vehicle_model'],
       vehicleCategory: user['vehicleCategory'] ?? user['vehicle_category'],
-      status: user['status'],
+      status: user['status'] ?? user['verificationStatus'] ?? user['verification_status'],
       referralCode: user['referralCode'] ?? user['referral_code'],
       stats: DriverStats.fromJson(user['stats'] ?? {}),
     );
