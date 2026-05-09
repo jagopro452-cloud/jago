@@ -1204,7 +1204,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _startLocationStreaming();
       _startHeatmapRefresh();
       _startIdleTimer();
-      _showSnack('Online forced for Testing! ✓');
+      _showSnack('You are now online');
     } else {
       _stopLocationStreaming();
       _stopHeatmap();
@@ -1237,9 +1237,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
         if (res.statusCode == 401) {
           _handleSessionExpired();
+          return;
+        }
+        if (res.statusCode == 403) {
+          String message = 'You cannot go online right now.';
+          try {
+            final decoded = jsonDecode(res.body);
+            message = decoded['message']?.toString() ?? message;
+          } catch (_) {}
+          if (!mounted) return;
+          setState(() => _isOnline = false);
+          _stopLocationStreaming();
+          _stopHeatmap();
+          _showSnack(message, error: true);
         }
       } catch (e) {
-        // Silently ignore network failures to keep the UI in the "ON" state for testing.
+        if (!mounted) return;
+        setState(() => _isOnline = false);
+        _stopLocationStreaming();
+        _stopHeatmap();
+        _showSnack('Unable to update online status. Please try again.', error: true);
       }
     });
   }

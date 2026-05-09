@@ -668,7 +668,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       d.is_locked !== true &&
       (d.is_online === true || d.dl_online === true) &&
       d.current_trip_id === null &&
-      ['approved', 'verified', 'pending'].includes(d.verification_status)
+      d.verification_status === 'approved'
     );
     if (!available) {
       const reasons: string[] = [];
@@ -676,7 +676,7 @@ async function checkDriverAvailability(driverId: string): Promise<boolean> {
       if (d.is_locked)                   reasons.push("locked");
       if (!d.is_online && !d.dl_online)  reasons.push("offline (both is_online flags false)");
       if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
-      if (!['approved','verified','pending'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
+      if (d.verification_status !== 'approved') reasons.push(`verification=${d.verification_status}`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;
@@ -739,7 +739,7 @@ async function findDriversInRadius(
       )
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
-      AND u.verification_status IN ('approved', 'verified', 'pending')
+      AND u.verification_status = 'approved'
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
@@ -782,7 +782,7 @@ async function findDriversInRadius(
         if (r.is_locked)                          reasons.push("is_locked=true");
         if (!r.dl_online)                         reasons.push("dl.is_online=false");
         if (r.current_trip_id)                    reasons.push(`on trip ${r.current_trip_id}`);
-        if (!['approved', 'verified', 'pending'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified/pending)`);
+        if (r.verification_status !== 'approved') reasons.push(`verification=${r.verification_status} (need approved)`);
         if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);

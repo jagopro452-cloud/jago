@@ -7914,6 +7914,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // isOnline defaults to true � if you're sending location, you are online.
       // Fallback chain: body.isOnline ? true (never false here; going offline is via online-status endpoint)
       const effectiveOnline = isOnline !== undefined ? Boolean(isOnline) : true;
+      if (effectiveOnline) {
+        const verR = await rawDb.execute(rawSql`SELECT verification_status FROM users WHERE id=${driver.id}::uuid LIMIT 1`);
+        const verificationStatus = String((verR.rows[0] as any)?.verification_status || "pending");
+        if (verificationStatus !== "approved") {
+          return res.status(403).json({
+            message: "Driver approval pending. You cannot go online until admin approval is complete.",
+            verificationStatus,
+          });
+        }
+      }
 
       // Upsert location � always include updated_at=NOW() in both INSERT and ON CONFLICT
       await rawDb.execute(rawSql`
@@ -7942,9 +7952,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (isOnline) {
         // Check verification status FIRST
         const verR = await rawDb.execute(rawSql`SELECT verification_status, rejection_note FROM users WHERE id=${driver.id}::uuid`);
-        const vs = (verR.rows[0] as any)?.verification_status;
-        if (!['approved', 'verified', 'pending'].includes(vs)) {
-          console.log(`[DRIVER_STATUS] Driver ${driver.id} (status: ${vs}) - Allowing regardless of verification status for test`);
+        const vs = String((verR.rows[0] as any)?.verification_status || 'pending');
+        if (vs !== 'approved') {
+          return res.status(403).json({
+            message: "Your account is still under admin verification. You can go online only after approval.",
+            verificationStatus: vs,
+          });
         }
         // Check if driver has selected a revenue model
         const modelR = await rawDb.execute(rawSql`SELECT revenue_model, model_selected_at FROM users WHERE id=${driver.id}::uuid`);
@@ -7954,7 +7967,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Auto-heal: driver has a revenue model set (e.g. by admin) but model_selected_at was never recorded  backfill it
             await rawDb.execute(rawSql`UPDATE users SET model_selected_at=NOW() WHERE id=${driver.id}::uuid`);
           } else {
-            console.log(`[DRIVER_STATUS] Driver ${driver.id} - No model selected, but ALLOWING for test`);
+            return res.status(403).json({
+              message: "Complete onboarding setup before going online.",
+              modelSelectionRequired: true,
+            });
           }
         }
         // Subscription-like models require an active plan before going online
@@ -7968,7 +7984,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!inFreePeriod) {
             const subR = await rawDb.execute(rawSql`SELECT id, end_date FROM driver_subscriptions WHERE driver_id=${driver.id}::uuid AND is_active=true AND end_date > NOW() ORDER BY end_date DESC LIMIT 1`);
             if (!subR.rows.length) {
-              console.log(`[DRIVER_STATUS] Driver ${driver.id} - Subscription expired, but ALLOWING for test`);
+              return res.status(403).json({
+                message: "Active subscription required before going online.",
+                subscriptionRequired: true,
+              });
             }
           }
         }
@@ -7985,12 +8004,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (docExpR.rows.length) {
           const expDoc = docExpR.rows[0] as any;
           const docLabel = expDoc.doc_type === 'rc' ? 'Vehicle RC' : expDoc.doc_type === 'insurance' ? 'Vehicle Insurance' : 'Pollution Certificate (PUC)';
-          // return res.status(403).json({
-          //   message: `Your ${docLabel} has expired (${expDoc.expiry_date}). Please upload an updated document to go online.`,
-          //   documentExpired: true,
-          //   docType: expDoc.doc_type,
-          // });
-          console.log(`[DRIVER_STATUS] Driver ${driver.id} - Documents expired (${expDoc.doc_type}), but ALLOWING for test`);
+          return res.status(403).json({
+            message: `Your ${docLabel} has expired (${expDoc.expiry_date}). Please upload an updated document to go online.`,
+            documentExpired: true,
+            docType: expDoc.doc_type,
+          });
         }
         // Check wallet lock (applies to both models � negative balance)
         const walletR = await rawDb.execute(rawSql`SELECT is_locked, wallet_balance, lock_reason FROM users WHERE id=${driver.id}::uuid`);
@@ -8000,11 +8018,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const thresholdR = await rawDb.execute(rawSql`SELECT value FROM revenue_model_settings WHERE key_name='auto_lock_threshold' LIMIT 1`);
         const lockThreshold = parseFloat((thresholdR.rows[0] as any)?.value || "-100");
         // Block if explicitly locked
-        // if (w?.is_locked) return res.status(403).json({
-        //   message: w.lock_reason || "Account locked. Please recharge wallet to go online.",
-        //   isLocked: true, walletBalance: currentBalance
-        // });
-        if (w?.is_locked) console.log(`[DRIVER_STATUS] Driver ${driver.id} - Locked (${w.lock_reason}), but ALLOWING for test`);
+        if (w?.is_locked) return res.status(403).json({
+          message: w.lock_reason || "Account locked. Please recharge wallet to go online.",
+          isLocked: true, walletBalance: currentBalance
+        });
         // Block if wallet is below threshold (auto-lock that wasn't yet written)
         if (currentBalance < lockThreshold) {
           const lockMsg = `Wallet balance ?${currentBalance.toFixed(2)} is below minimum threshold ?${lockThreshold}. Recharge wallet to go online.`;

@@ -238,6 +238,27 @@ export function setupSocket(httpServer: HttpServer) {
         try {
           const { isOnline, lat, lng } = data;
           const hasValidCoords = lat != null && lng != null && isFinite(lat) && isFinite(lng) && (lat !== 0 || lng !== 0);
+          if (isOnline) {
+            const verR = await rawDb.execute(rawSql`
+              SELECT verification_status FROM users WHERE id=${userId}::uuid LIMIT 1
+            `);
+            const verificationStatus = String((verR.rows[0] as any)?.verification_status || "pending");
+            if (verificationStatus !== "approved") {
+              await rawDb.execute(rawSql`
+                UPDATE users SET is_online=false WHERE id=${userId}::uuid
+              `).catch(() => undefined);
+              await rawDb.execute(rawSql`
+                UPDATE driver_locations SET is_online=false, updated_at=NOW()
+                WHERE driver_id=${userId}::uuid
+              `).catch(() => undefined);
+              socket.emit("driver:online_error", {
+                message: "Admin approval pending. You cannot go online yet.",
+                verificationStatus,
+              });
+              socket.emit("driver:online_ack", { isOnline: false });
+              return;
+            }
+          }
 
           // UPSERT — creates the row if it doesn't exist (new drivers have no row yet)
           // Only write lat/lng if we have a valid GPS fix; never store 0,0 as it breaks radius search
@@ -1082,7 +1103,7 @@ export async function notifyNearbyDriversNewTrip(
       JOIN driver_details dd ON dd.user_id = u.id
       WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
         AND dl.is_online=true AND u.current_trip_id IS NULL
-        AND u.verification_status IN ('approved', 'verified', 'pending')
+        AND u.verification_status = 'approved'
         ${matchingCategoryIds?.length
         ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
         : vehicleCategoryId
