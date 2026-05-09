@@ -1539,14 +1539,6 @@ async function ensureOperationalSchema() {
     `).catch(dbCatch("db"));
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
-    // -- Auto-promote pending drivers to verified so they can go online ------
-    // Drivers who registered but were never admin-reviewed stay stuck at 'pending'.
-    // 'verified' = registered and active, 'approved' = explicitly admin-approved.
-    // Both 'verified' and 'approved' are allowed to go online and receive trips.
-    await rawDb.execute(rawSql`
-      UPDATE users SET verification_status='verified'
-      WHERE user_type='driver' AND verification_status='pending' AND is_active=true
-    `).catch(dbCatch("db"));
     // Backfill model_selected_at so drivers aren't blocked by the model selection gate
     await rawDb.execute(rawSql`
       UPDATE users SET
@@ -1554,7 +1546,7 @@ async function ensureOperationalSchema() {
         model_selected_at = COALESCE(model_selected_at, NOW())
       WHERE user_type='driver' AND is_active=true
     `).catch(dbCatch("db"));
-    console.log('[seed] pending drivers promoted to verified, model_selected_at backfilled');
+    console.log('[seed] driver revenue model backfilled without altering verification state');
 
     // -- Seed trip_fares using vehicle_categories pricing as source of truth --
     // Inserts only where no fare row exists yet. Safe to re-run.
@@ -12796,7 +12788,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const status = (req.query.status as string) || 'pending';
       const r = await rawDb.execute(rawSql`
-        SELECT u.id, u.full_name, u.phone, u.email, u.verification_status, u.vehicle_status,
+        SELECT u.id, u.full_name, u.phone, u.email,
+               CASE
+                 WHEN u.verification_status = 'verified'
+                   AND u.onboard_date IS NULL
+                   AND (
+                     EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
+                     OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
+                   )
+                 THEN 'under_review'
+                 ELSE COALESCE(u.verification_status, 'pending')
+               END as verification_status,
+               u.vehicle_status,
                u.rejection_note, u.license_number, u.license_expiry, u.vehicle_number,
                u.vehicle_model, u.vehicle_brand, u.vehicle_color, u.vehicle_year,
                u.date_of_birth, u.city, u.selfie_image, u.profile_image, u.created_at,
@@ -12808,6 +12811,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND (
             (${status} = 'pending' AND (
               COALESCE(u.verification_status, 'pending') IN ('pending', 'under_review')
+              OR (
+                u.verification_status = 'verified'
+                AND u.onboard_date IS NULL
+                AND (
+                  EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
+                  OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
+                )
+              )
               OR EXISTS (SELECT 1 FROM driver_documents d WHERE d.driver_id = u.id)
               OR EXISTS (SELECT 1 FROM driver_kyc_documents k WHERE k.driver_id = u.id)
             ))
