@@ -7,6 +7,7 @@ import { getSocketHealthSnapshot, io } from "./socket";
 import {
   getOpsSnapshot,
   getRideTelemetrySnapshot,
+  noteRideRouteFailure,
   noteRuntimeConfigFailure,
   noteRuntimeConfigPublish,
 } from "./ops-state";
@@ -8672,8 +8673,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const driver = (req as any).currentUser;
       const { tripId, otp } = req.body;
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!tripId || !uuidRe.test(tripId)) return res.status(400).json({ message: "Invalid trip ID" });
-      if (!otp || String(otp).trim().length < 4) return res.status(400).json({ message: "Pickup OTP required" });
+      if (!tripId || !uuidRe.test(tripId)) {
+        return res.status(400).json({ message: "Invalid trip ID" });
+      }
+      if (!otp || String(otp).trim().length < 4) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          code: "pickup_otp_missing",
+          message: "Pickup OTP missing while attempting trip start",
+        });
+        return res.status(400).json({ message: "Pickup OTP required" });
+      }
       const r = await rawDb.execute(rawSql`
         SELECT *, (SELECT full_name FROM users WHERE id=customer_id) as customer_name,
           (SELECT phone FROM users WHERE id=customer_id) as customer_phone
@@ -8681,17 +8692,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND driver_id=${driver.id}::uuid
           AND current_status = 'arrived'
       `);
-      if (!r.rows.length) return res.status(404).json({ message: "Trip not found" });
+      if (!r.rows.length) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          code: "pickup_otp_trip_missing",
+          message: "Trip not found in arrived state during OTP verification",
+          severity: "critical",
+        });
+        return res.status(404).json({ message: "Trip not found" });
+      }
       const trip = r.rows[0] as any;
-      if (trip.pickup_otp !== otp) return res.status(400).json({ message: "Wrong OTP. Please check with sender." });
+      if (trip.pickup_otp !== otp) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: trip.customer_id,
+          code: "pickup_otp_invalid",
+          message: "Invalid pickup OTP blocked destination route transition",
+        });
+        return res.status(400).json({ message: "Wrong OTP. Please check with sender." });
+      }
       // OTP expiry: valid for 40 minutes from when driver accepted the trip
       if (trip.driver_accepted_at) {
         const acceptedAt = new Date(trip.driver_accepted_at).getTime();
         if (Date.now() - acceptedAt > 40 * 60 * 1000) {
+          noteRideRouteFailure({
+            tripId,
+            driverId: driver.id,
+            customerId: trip.customer_id,
+            code: "pickup_otp_expired",
+            message: "Pickup OTP expired before trip could transition to destination route",
+          });
           return res.status(400).json({ message: "OTP has expired. Please ask customer to regenerate." });
         }
       }
       if (!canTransitionRideState(trip.current_status, "on_the_way")) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: trip.customer_id,
+          code: "pickup_otp_invalid_transition",
+          message: `Invalid route transition from ${trip.current_status} during OTP verification`,
+          severity: "critical",
+          canonicalState: getCanonicalRideState(trip),
+        });
         return res.status(409).json({ message: `Invalid ride transition from ${trip.current_status}` });
       }
       const updated = await rawDb.execute(rawSql`
@@ -8714,7 +8759,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: null, otp });
       res.json({ success: true, trip: payload || augmentTripPayload(updatedTrip) });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      noteRideRouteFailure({
+        tripId: req.body?.tripId,
+        driverId: (req as any)?.currentUser?.id,
+        code: "pickup_otp_server_error",
+        message: safeErrMsg(e),
+        severity: "critical",
+      });
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // -- DRIVER: Verify delivery OTP (Parcel) ---------------------------------
@@ -8745,7 +8799,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId } = req.body;
-      if (!tripId) return res.status(400).json({ message: "tripId required" });
+      if (!tripId) {
+        return res.status(400).json({ message: "tripId required" });
+      }
       const tripR = await rawDb.execute(rawSql`
         SELECT t.id, t.current_status, t.pickup_lat, t.pickup_lng, t.pickup_otp, t.customer_id,
           t.passenger_phone, t.passenger_name, t.is_for_someone_else, t.trip_type, t.arrived_at,
@@ -8757,7 +8813,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE t.id=${tripId}::uuid AND t.driver_id=${driver.id}::uuid
         LIMIT 1
       `);
-      if (!tripR.rows.length) return res.status(404).json({ message: "Trip not found" });
+      if (!tripR.rows.length) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          code: "arrived_trip_missing",
+          message: "Arrived at pickup failed because trip was not found for driver",
+          severity: "critical",
+        });
+        return res.status(404).json({ message: "Trip not found" });
+      }
       const tripRow = tripR.rows[0] as any;
       const currentCanonical = getCanonicalRideState(tripRow);
       if (tripRow.current_status === "arrived") {
@@ -8765,6 +8830,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ success: true, pickupOtp: tripRow.pickup_otp || null, trip: payload, canonicalState: payload?.canonicalState || currentCanonical });
       }
       if (!canTransitionRideState(tripRow.current_status, "arrived")) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_invalid_transition",
+          message: `Cannot mark arrived from ${tripRow.current_status}`,
+          severity: "critical",
+          canonicalState: currentCanonical,
+        });
         return res.status(400).json({ message: `Cannot mark arrived in status: ${tripRow.current_status}` });
       }
 
@@ -8777,10 +8851,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `).catch(() => ({ rows: [] as any[] }));
       const geofenceMeters = Math.max(75, parseFloat((geofenceMetersR.rows[0] as any)?.value || "250") || 250);
       if (!driverLat || !driverLng) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_missing_live_location",
+          message: "Arrived at pickup blocked because live driver location was missing",
+          severity: "critical",
+          canonicalState: currentCanonical,
+        });
         return res.status(409).json({ message: "Live driver location required before marking arrived." });
       }
       const distanceMeters = haversineKm(driverLat, driverLng, pickupLat, pickupLng) * 1000;
       if (distanceMeters > geofenceMeters) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrival_geofence_mismatch",
+          message: `Driver was ${Math.round(distanceMeters)}m away from pickup while marking arrived`,
+          canonicalState: currentCanonical,
+        });
         return res.status(409).json({
           message: `Driver is too far from pickup to mark arrived (${Math.round(distanceMeters)}m).`,
           code: "ARRIVAL_GEOFENCE_MISMATCH",
@@ -8797,6 +8888,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         RETURNING id, pickup_otp, customer_id
       `);
       if (!updR.rows.length) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_state_race",
+          message: "Trip state changed before arrival confirmation could be persisted",
+          severity: "critical",
+          canonicalState: currentCanonical,
+        });
         return res.status(409).json({ message: "Trip state changed before arrival confirmation. Please refresh." });
       }
       const otp = tripRow?.pickup_otp;
@@ -8831,7 +8931,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: otp || null, otp: otp || null });
       res.json({ success: true, pickupOtp: otp, trip: payload, canonicalState: payload?.canonicalState || "otp_pending" });
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) {
+      noteRideRouteFailure({
+        tripId: req.body?.tripId,
+        driverId: (req as any)?.currentUser?.id,
+        code: "arrived_server_error",
+        message: safeErrMsg(e),
+        severity: "critical",
+      });
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
   });
 
   // -- DRIVER: Start trip (arrived ? on_the_way) ----------------------------

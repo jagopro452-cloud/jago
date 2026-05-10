@@ -764,33 +764,149 @@ class _TrackingScreenState extends State<TrackingScreen>
       {bool isSearching = false}) async {
     final key = "${type}_$isSearching";
     if (_markerIconCache.containsKey(key)) return _markerIconCache[key]!;
-    final icon = await _drawMarkerIcon(type, isSearching: isSearching);
+    final icon =
+        await _drawPremiumVehicleMarkerIcon(type, isSearching: isSearching);
     _markerIconCache[key] = icon;
     return icon;
   }
 
+  String _vehicleMarkerAssetPath(String rawType) {
+    final type = rawType.toLowerCase();
+    if (type.contains('parcel')) {
+      if (type.contains('bike')) return 'assets/images/vehicle_markers/bike_tracking.png';
+      if (type.contains('auto')) return 'assets/images/vehicle_markers/auto_tracking.png';
+      return 'assets/images/vehicle_markers/truck_tracking.png';
+    }
+    if (type.contains('truck') ||
+        type.contains('van') ||
+        type.contains('pickup') ||
+        type.contains('cargo')) {
+      return 'assets/images/vehicle_markers/truck_tracking.png';
+    }
+    if (type.contains('auto') || type.contains('rickshaw')) {
+      return 'assets/images/vehicle_markers/auto_tracking.png';
+    }
+    if (type.contains('bike') || type.contains('scooter') || type.contains('moto')) {
+      return 'assets/images/vehicle_markers/bike_tracking.png';
+    }
+    return 'assets/images/vehicle_markers/car_tracking.png';
+  }
+
+  Future<ui.Image> _loadVehicleMarkerImage(
+    String assetPath, {
+    required int targetWidth,
+  }) async {
+    final data = await rootBundle.load(assetPath);
+    final codec = await ui.instantiateImageCodec(
+      data.buffer.asUint8List(),
+      targetWidth: targetWidth,
+    );
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
+  Future<BitmapDescriptor> _drawPremiumVehicleMarkerIcon(
+    String type, {
+    bool isSearching = false,
+  }) async {
+    final vehicleImage = await _loadVehicleMarkerImage(
+      _vehicleMarkerAssetPath(type),
+      targetWidth: isSearching ? 72 : 88,
+    );
+    final imageWidth = vehicleImage.width.toDouble();
+    final imageHeight = vehicleImage.height.toDouble();
+    final double size =
+        math.max(imageWidth, imageHeight) + (isSearching ? 16 : 20);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    final cardRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(6, 6, size - 12, size - 12),
+      const Radius.circular(22),
+    );
+    canvas.drawRRect(
+      cardRect.shift(const Offset(0, 6)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: isSearching ? 0.14 : 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()..color = Colors.white.withValues(alpha: isSearching ? 0.94 : 0.98),
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()
+        ..color = const Color(0xFFDCE7FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+
+    final imageOffset = Offset(
+      (size - imageWidth) / 2,
+      (size - imageHeight) / 2 - (isSearching ? 1 : 2),
+    );
+    canvas.drawImage(
+      vehicleImage,
+      imageOffset,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+
+    if (isSearching) {
+      canvas.drawCircle(
+        Offset(size - 18, 18),
+        7,
+        Paint()..color = const Color(0xFF2F7BFF),
+      );
+      canvas.drawCircle(
+        Offset(size - 18, 18),
+        7,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+
+    final img =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
+  }
+
   Future<BitmapDescriptor> _drawMarkerIcon(String type,
       {bool isSearching = false}) async {
-    const double size = 110.0;
+    final vehicleImage = await _loadVehicleMarkerImage(
+      _vehicleMarkerAssetPath(type),
+      targetWidth: isSearching ? 72 : 88,
+    );
+    final imageWidth = vehicleImage.width.toDouble();
+    final imageHeight = vehicleImage.height.toDouble();
+    final double size = math.max(imageWidth, imageHeight) + (isSearching ? 16 : 20);
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
 
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.18)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-    canvas.drawCircle(
-        const Offset(size / 2, size / 2 + 3), size / 2 - 10, shadowPaint);
-
-    final bgPaint = Paint()
-      ..color = isSearching ? const Color(0xFF2F7BFF) : const Color(0xFF1E40AF);
-    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 12, bgPaint);
-
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-    canvas.drawCircle(
-        const Offset(size / 2, size / 2), size / 2 - 12, borderPaint);
+    final cardRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(6, 6, size - 12, size - 12),
+      const Radius.circular(22),
+    );
+    canvas.drawRRect(
+      cardRect.shift(const Offset(0, 6)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: isSearching ? 0.14 : 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()..color = Colors.white.withValues(alpha: isSearching ? 0.94 : 0.98),
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()
+        ..color = const Color(0xFFDCE7FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
 
     final emoji =
         (type.contains('auto')) ? '🛺' : (type.contains('bike') ? '🏍️' : '🚗');

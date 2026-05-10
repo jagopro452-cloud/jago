@@ -191,13 +191,13 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
 
   // ── Vehicle image URLs (real vehicle images, network with emoji fallback) ──
   // Matches the premium Cloudinary assets used in home_screen.dart
-  static const Map<String, String> _vehicleImageUrls = {
+  static final Map<String, String> _vehicleImageUrls = {
     'bike': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775123974/bike_logo_g7idrq.png',
     'auto': 'https://res.cloudinary.com/kits/image/upload/q_auto/f_auto/v1775125550/ChatGPT_Image_Apr_2_2026_03_55_30_PM_ywb7fj.png',
     'cab': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_27_28_AM_w0rcnh',
     'premium': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_31_05_AM_kavp5e',
     'parcel_bike': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
-    'parcel_auto': 'https://oyster-app-9e9cd.ondigitalocean.app/static/vehicles/parcel_auto.png',
+    'parcel_auto': ApiConfig.staticAsset('/static/vehicles/parcel_auto.png'),
     'mini_truck':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
     'pickup_van':  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
   };

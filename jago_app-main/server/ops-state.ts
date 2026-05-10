@@ -472,6 +472,34 @@ export function noteRideSocketAnomaly(event: {
   finalizeRideTelemetry(entry);
 }
 
+export function noteRideRouteFailure(event: {
+  tripId?: string | null;
+  driverId?: string | null;
+  customerId?: string | null;
+  code: string;
+  message: string;
+  severity?: RideTelemetrySeverity;
+  canonicalState?: string | null;
+}) {
+  const tripId = String(event.tripId || "").trim();
+  if (!tripId) return;
+  const entry = ensureRideTelemetry(tripId);
+  entry.driverId = event.driverId || entry.driverId;
+  entry.customerId = event.customerId || entry.customerId;
+  entry.updatedAt = nowIso();
+  if (event.canonicalState) {
+    entry.canonicalState = String(event.canonicalState);
+  }
+  entry.unhealthyReason = event.message;
+  pushRideAlert(
+    entry,
+    event.code,
+    event.severity || "warning",
+    event.message,
+  );
+  finalizeRideTelemetry(entry);
+}
+
 export function getRideTelemetrySnapshot() {
   trimInactiveRideTelemetry();
   const rides = Array.from(rideTelemetry.values())
